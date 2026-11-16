@@ -9,6 +9,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bottom;
 mod canvas;
 mod explorer;
 mod cargo;
@@ -57,6 +58,8 @@ const ID_BUILD: i32 = 140;
 const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
 const ID_CLOSE: i32 = 106;
+const ID_DEBUG: i32 = 143;
+const ID_RELEASE: i32 = 144;
 const ID_EDIT_MENUS: i32 = 113;
 const ID_CUT: i32 = 115;
 const ID_COPY: i32 = 116;
@@ -122,6 +125,9 @@ pub struct Studio {
     pub toolbox: HWND,
     pub status: HWND,
     pub errors: HWND,
+    bottom: Option<Box<bottom::Bottom>>,
+    /// Build with `--release`.
+    release: bool,
     diagnostics: Vec<cargo::Diagnostic>,
     building: bool,
     running: Option<std::process::Child>,
@@ -275,6 +281,11 @@ fn build_menu() -> HMENU {
         add(proj, ID_BUILD, t("Build"), "Ctrl+B");
         add(proj, ID_RUN, t("Run"), "F5");
         add(proj, ID_STOP, t("Stop"), "Shift+F5");
+        sep(proj);
+        add(proj, ID_DEBUG, "Debug", "");
+        add(proj, ID_RELEASE, "Release", "");
+        let release = studio().is_some_and(|s| s.release);
+        wm::CheckMenuItem(proj, if release { ID_RELEASE } else { ID_DEBUG } as u32, wm::MF_CHECKED.0);
         sub(t("&Project"), proj);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
@@ -906,7 +917,12 @@ impl Studio {
         }
         self.building = true;
         controls::status_text(self.status, 0, t("Building..."));
-        cargo::build(self.hwnd, dir, then_run);
+        if let Some(b) = self.bottom.as_ref() {
+            b.clear_output();
+            b.show_tab(1);
+        }
+        self.show_errors(true);
+        cargo::build(self.hwnd, dir, then_run, self.release);
     }
 
     fn stop(&mut self) {
@@ -918,7 +934,9 @@ impl Studio {
 
     fn show_errors(&mut self, on: bool) {
         self.layout.items[2].1.bounds.h = if on { ERRORS_HEIGHT } else { 0 };
-        win::show(self.errors, on);
+        if let Some(b) = self.bottom.as_ref() {
+            win::show(b.hwnd, on);
+        }
         self.layout.apply(self.hwnd);
     }
 
@@ -948,7 +966,13 @@ impl Studio {
         }
         let errors = self.diagnostics.iter().filter(|d| d.error).count();
         let warnings = self.diagnostics.len() - errors;
-        self.show_errors(!self.diagnostics.is_empty());
+        // Problems show their list; a clean build leaves its output on screen.
+        if let Some(b) = self.bottom.as_ref() {
+            b.add_line(&format!("{} ({:.1} s)", if out.ok { t("Build succeeded") } else { t("Build failed") }, out.seconds));
+            if !self.diagnostics.is_empty() {
+                b.show_tab(0);
+            }
+        }
         if out.ok {
             controls::status_text(self.status, 0, &tf("Built in {0} s - {1} warnings", &[&format!("{:.1}", out.seconds), &warnings]));
             if out.then_run {
@@ -1042,6 +1066,15 @@ impl Studio {
             ID_BUILD => self.start_build(false),
             ID_RUN => self.start_build(true),
             ID_STOP => self.stop(),
+            ID_DEBUG | ID_RELEASE => {
+                self.release = id == ID_RELEASE;
+                controls::status_text(self.status, 2, if self.release { "Release" } else { "Debug" });
+                unsafe {
+                    let old = wm::GetMenu(self.hwnd);
+                    let _ = wm::SetMenu(self.hwnd, Some(build_menu()));
+                    let _ = wm::DestroyMenu(old);
+                }
+            }
             ID_THEME_NONE => {
                 self.edit(|f| f.form.theme = None);
                 self.load_theme();
@@ -1065,6 +1098,9 @@ impl Studio {
         }
         if let Some(e) = self.explorer.as_mut() {
             e.relabel();
+        }
+        if let Some(b) = self.bottom.as_ref() {
+            b.relabel();
         }
         self.refresh_tabs();
         controls::status_text(self.status, 0, t("Ready"));
@@ -1191,6 +1227,13 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
             }
             win::def(hwnd, msg, w, l)
+        }
+        cargo::WM_BUILD_LINE => {
+            let line = unsafe { Box::from_raw(l.0 as *mut String) };
+            if let Some(b) = s.bottom.as_ref() {
+                b.add_line(&line);
+            }
+            LRESULT(0)
         }
         cargo::WM_BUILD_DONE => {
             let out = unsafe { Box::from_raw(l.0 as *mut cargo::Outcome) };
@@ -1363,9 +1406,11 @@ fn main() {
         let toolbox = win::toolbar_column(hwnd, ID_TOOLBOX, &toolbox_items());
         let tabbar = controls::tabs(hwnd, ID_TABS, font, &[t("Untitled")]);
         let status = controls::status_bar(hwnd, ID_STATUS, font);
-        let errors = win::list(hwnd, ID_ERRORS, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
-        win::show(errors, false);
-        controls::status_parts(status, &[260]);
+        let bottom = bottom::Bottom::new(hwnd, font, ID_ERRORS);
+        let errors = bottom.errors;
+        let bottom_hwnd = bottom.hwnd;
+        controls::status_parts(status, &[260, 80]);
+        controls::status_text(status, 2, "Debug");
         controls::status_text(status, 0, t("Ready"));
         let dpi = win::dpi(hwnd);
         let status_h = phai_ui::layout::unscale(controls::status_height(status), dpi);
@@ -1373,7 +1418,7 @@ fn main() {
         layout
             .add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
-            .add(errors, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
+            .add(bottom_hwnd, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(toolbox, Item { bounds: Rect::new(0, 0, win::TOOLBAR_HEIGHT + 4, 0), dock: Dock::Left, anchor: Anchor::default() });
         let studio_box = Box::new(Studio {
             hwnd,
@@ -1382,6 +1427,8 @@ fn main() {
             toolbox,
             status,
             errors,
+            bottom: Some(bottom),
+            release: false,
             diagnostics: vec![],
             building: false,
             running: None,

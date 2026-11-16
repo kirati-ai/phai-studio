@@ -53,7 +53,7 @@ edition = "2021"
 # Made with Phai Studio.
 
 [dependencies]
-phai-ui = {{ path = {ui:?} }}
+phai-ui = {ui}
 windows = {{ version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -70,8 +70,21 @@ codegen-units = 1
 panic = "abort"
 strip = true
 "#,
-        ui = phai_ui_path().to_string_lossy().replace('\\', "/")
+        ui = phai_ui_dependency()
     )
+}
+
+/// How a new project names phai-ui: this machine's copy while Phai Studio runs beside its source,
+/// else the repository Phai Studio was built from (`repository` in the workspace Cargo.toml) - so a
+/// project made by someone who only downloaded Phai Studio builds anywhere.
+pub fn phai_ui_dependency() -> String {
+    let local = phai_ui_path();
+    let repo = env!("CARGO_PKG_REPOSITORY");
+    if local.join("Cargo.toml").is_file() || repo.is_empty() {
+        format!("{{ path = {:?} }}", local.to_string_lossy().replace('\\', "/"))
+    } else {
+        format!("{{ git = {repo:?} }}")
+    }
 }
 
 const BUILD_RS: &str = r#"//! Embeds a manifest that names Common Controls 6. Without it Windows hands the program the old
