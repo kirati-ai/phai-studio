@@ -1449,6 +1449,23 @@ pub fn toolbar_choose(h: HWND, command: i32) {
     }
 }
 
+/// Shows a toolbar button pressed in (`on`) or not - a toggle, as Visual Studio's Categorized
+/// and Alphabetical are. The theme's pressed colour is drawn behind it.
+pub fn toolbar_check(h: HWND, command: i32, on: bool) {
+    const BTNS_CHECK: u8 = 0x02;
+    const TBIF_STYLE: u32 = 0x0008;
+    let info = windows::Win32::UI::Controls::TBBUTTONINFOW {
+        cbSize: std::mem::size_of::<windows::Win32::UI::Controls::TBBUTTONINFOW>() as u32,
+        dwMask: windows::Win32::UI::Controls::TBBUTTONINFOW_MASK(TBIF_STYLE),
+        fsStyle: BTNS_CHECK,
+        ..Default::default()
+    };
+    unsafe {
+        wm::SendMessageW(h, 0x0440 /* TB_SETBUTTONINFOW */, Some(WPARAM(command as usize)), Some(LPARAM(&info as *const _ as isize)));
+        wm::SendMessageW(h, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(command as usize)), Some(LPARAM(on as isize)));
+    }
+}
+
 /// Each toolbar's buttons, so [`retheme`] can draw their icons again in the new colour.
 type ToolItems = Vec<(i32, String, u16)>;
 static TOOLBARS: Mutex<Option<HashMap<isize, ToolItems>>> = Mutex::new(None);
@@ -1479,6 +1496,12 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         if old != 0 {
             let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
         }
+        // Toggles pressed in stay pressed in across the rebuild.
+        let pressed: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && wm::SendMessageW(h, 0x040A /* TB_ISBUTTONCHECKED */, Some(WPARAM(*c as usize)), None).0 != 0).collect();
+        let toggles: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && {
+            let mut info = windows::Win32::UI::Controls::TBBUTTONINFOW { cbSize: std::mem::size_of::<windows::Win32::UI::Controls::TBBUTTONINFOW>() as u32, dwMask: windows::Win32::UI::Controls::TBBUTTONINFOW_MASK(0x0008), ..Default::default() };
+            wm::SendMessageW(h, 0x043F /* TB_GETBUTTONINFOW */, Some(WPARAM(*c as usize)), Some(LPARAM(&mut info as *mut _ as isize))).0 >= 0 && info.fsStyle & 0x02 != 0
+        }).collect();
         while wm::SendMessageW(h, TB_BUTTONCOUNT, None, None).0 > 0 {
             wm::SendMessageW(h, TB_DELETEBUTTON, Some(WPARAM(0)), None);
         }
@@ -1498,6 +1521,9 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
             })
             .collect();
         wm::SendMessageW(h, TB_ADDBUTTONSW, Some(WPARAM(buttons.len())), Some(LPARAM(buttons.as_ptr() as isize)));
+        for c in toggles {
+            toolbar_check(h, c, pressed.contains(&c));
+        }
         // A column: every button on a row of its own, one of the group chosen at a time.
         if COLUMNS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.contains(&(h.0 as isize))) {
             const TBSTATE_WRAP: u8 = 0x20;

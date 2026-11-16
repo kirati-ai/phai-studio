@@ -17,6 +17,7 @@ mod project;
 mod preview;
 mod props;
 mod text;
+mod toolbox;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -65,6 +66,7 @@ const ID_VIEW_PROPS: i32 = 182;
 const ID_VIEW_OUTPUT: i32 = 183;
 const ID_SPLIT_SIDE: i32 = 207;
 const ID_SPLIT_BOTTOM: i32 = 208;
+const ID_SPLIT_TOOLBOX: i32 = 209;
 /// File > Recent: `ID_RECENT + n`, newest first.
 const ID_RECENT: i32 = 160;
 /// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
@@ -100,6 +102,12 @@ const ID_THEME_NEW: i32 = 130;
 const ID_THEME_IMPORT: i32 = 131;
 /// For the properties pane's Theme "…".
 pub const ID_THEME_IMPORT_PUB: i32 = ID_THEME_IMPORT;
+pub const ID_TOOL_PUB: i32 = ID_TOOL;
+
+/// The kind a toolbox command puts on the form; `None` for the Pointer.
+pub fn tool_kind(id: i32) -> Option<Kind> {
+    (id > ID_TOOL).then(|| Kind::ALL.get((id - ID_TOOL - 1) as usize).copied()).flatten()
+}
 const ID_THEME_NONE: i32 = 132;
 
 const ID_TOOLBAR: i32 = 200;
@@ -195,6 +203,9 @@ pub struct Studio {
     pub canvas: Option<Canvas>,
     side: HWND,
     side_split: HWND,
+    toolbox_split: HWND,
+    /// Design pixels: the toolbox's width.
+    toolbox_w: i32,
     bottom_split: HWND,
     /// Design pixels: the side panes' width and the bottom pane's height.
     side_w: i32,
@@ -248,8 +259,8 @@ pub fn kind_label(k: Kind) -> &'static str {
     }
 }
 
-/// The toolbox: the pointer, then every kind, as icons; the names are the tooltips.
-fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
+/// The toolbox: the pointer, then every kind - its command, name and icon.
+pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
     let mut v = vec![(ID_TOOL, t("Pointer"), glyph::POINTER)];
     for (i, k) in Kind::ALL.iter().enumerate() {
         let g = match k {
@@ -456,6 +467,27 @@ impl Studio {
 
     /// A property typed into its box: the model takes it now, the canvas shows it now.
     pub fn apply(&mut self, key: Key, text: &str) {
+        // A composite typed in whole: its parts, one by one.
+        match key {
+            Key::Location | Key::Size | Key::FormSize => {
+                let Some((a, b)) = props::pair(text) else { return };
+                let (ka, kb) = match key {
+                    Key::Location => (Key::X, Key::Y),
+                    Key::Size => (Key::W, Key::H),
+                    _ => (Key::FormWidth, Key::FormHeight),
+                };
+                self.apply(ka, &a.to_string());
+                return self.apply(kb, &b.to_string());
+            }
+            Key::FontAll => {
+                let Some((size, bold)) = props::font_spec(text) else { return };
+                // The form's own size is no size of this control's.
+                let own = size.filter(|n| Some(*n) != self.doc.form.form.font_size.or(Some(9)));
+                self.apply(Key::Font, &own.map(|n| n.to_string()).unwrap_or_default());
+                return self.apply(Key::Bold, if bold { "True" } else { "False" });
+            }
+            _ => {}
+        }
         let f = &mut self.doc.form;
         let num = text.trim().parse::<i32>().ok();
         // A list is one item a line, as the "…" dialog writes it; commas also part, as typed in a box.
@@ -712,7 +744,7 @@ impl Studio {
     }
 
     pub fn toolbox_reset(&mut self) {
-        win::toolbar_choose(self.toolbox, ID_TOOL);
+        toolbox::choose(self.toolbox, ID_TOOL);
     }
 
     /// The form's size as the canvas shows it now.
@@ -785,7 +817,7 @@ impl Studio {
 
     /// The toolbox double-clicked: the kind goes on the form at once, as in Visual Studio, at the
     /// margin or a little below and right of what is already there.
-    fn add_at_margin(&mut self, kind: Kind) {
+    pub fn add_at_margin(&mut self, kind: Kind) {
         let m = phai_design::metrics::MARGIN;
         let (w, h) = kind.default_size();
         let taken: Vec<(i32, i32)> = self.doc.form.control.iter().filter_map(|c| c.bounds).map(|b| (b[0], b[1])).collect();
@@ -1617,11 +1649,15 @@ impl Studio {
         match pane {
             Pane::Toolbox => {
                 self.toolbox_on = on;
-                let tb = self.toolbox;
+                let (tb, split, w) = (self.toolbox, self.toolbox_split, self.toolbox_w);
                 if let Some(i) = self.item(tb) {
-                    i.bounds.w = if on { win::TOOLBAR_HEIGHT + 4 } else { 0 };
+                    i.bounds.w = if on { w } else { 0 };
+                }
+                if let Some(i) = self.item(split) {
+                    i.bounds.w = if on { 6 } else { 0 };
                 }
                 win::show(tb, on);
+                win::show(split, on);
             }
             Pane::Explorer | Pane::Properties => {
                 let (mut e, mut p) = explorer::side_panes(self.side);
@@ -1661,7 +1697,13 @@ impl Studio {
     /// A splitter dragged `d` device pixels: the pane beside it takes or gives the room.
     fn split(&mut self, id: i32, d: i32) {
         let d = phai_ui::layout::unscale(d, win::dpi(self.hwnd));
-        if id == ID_SPLIT_SIDE {
+        if id == ID_SPLIT_TOOLBOX {
+            self.toolbox_w = (self.toolbox_w + d).clamp(140, 600);
+            let (tb, w) = (self.toolbox, self.toolbox_w);
+            if let Some(i) = self.item(tb) {
+                i.bounds.w = w;
+            }
+        } else if id == ID_SPLIT_SIDE {
             self.side_w = (self.side_w - d).clamp(180, 900);
             let (side, w) = (self.side, self.side_w);
             if let Some(i) = self.item(side) {
@@ -1892,8 +1934,8 @@ impl Studio {
 
     fn relabel(&mut self) {
         win::set_toolbar(self.toolbar, &toolbar_items());
-        win::set_toolbar(self.toolbox, &toolbox_items());
-        win::toolbar_choose(self.toolbox, self.tool.and_then(|k| Kind::ALL.iter().position(|x| *x == k)).map(|i| ID_TOOL + 1 + i as i32).unwrap_or(ID_TOOL));
+        toolbox::relabel(self.toolbox);
+        toolbox::choose(self.toolbox, self.tool.and_then(|k| Kind::ALL.iter().position(|x| *x == k)).map(|i| ID_TOOL + 1 + i as i32).unwrap_or(ID_TOOL));
         unsafe {
             let old = wm::GetMenu(self.hwnd);
             let _ = wm::SetMenu(self.hwnd, Some(build_menu()));
@@ -2068,14 +2110,6 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
-            if hdr.hwndFrom == s.toolbox && hdr.code == cc::NM_DBLCLK && s.doc.code.is_none() {
-                let m = unsafe { &*(l.0 as *const cc::NMMOUSE) };
-                let id = m.dwItemSpec as i32;
-                if let Some(kind) = (id > ID_TOOL).then(|| Kind::ALL.get((id - ID_TOOL - 1) as usize).copied()).flatten() {
-                    s.add_at_margin(kind);
-                    return LRESULT(0);
-                }
-            }
             if s.bottom.as_ref().is_some_and(|b| b.refs == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
@@ -2275,7 +2309,7 @@ fn main() {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(build_menu()), Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
         let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &toolbar_items());
-        let toolbox = win::toolbar_column(hwnd, ID_TOOLBOX, &toolbox_items());
+        let toolbox = toolbox::new(hwnd, ID_TOOLBOX, font);
         let tabbar = controls::tabs(hwnd, ID_TABS, font, &[t("Untitled")]);
         let status = controls::status_bar(hwnd, ID_STATUS, font);
         let bottom = bottom::Bottom::new(hwnd, font, ID_ERRORS);
@@ -2294,7 +2328,10 @@ fn main() {
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_hwnd, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_split, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
-            .add(toolbox, Item { bounds: Rect::new(0, 0, win::TOOLBAR_HEIGHT + 4, 0), dock: Dock::Left, anchor: Anchor::default() });
+            .add(toolbox, Item { bounds: Rect::new(0, 0, toolbox::WIDTH, 0), dock: Dock::Left, anchor: Anchor::default() });
+        // Every docked pane has its edge to drag, as in Visual Studio.
+        let toolbox_split = controls::splitter(hwnd, ID_SPLIT_TOOLBOX, true);
+        layout.add(toolbox_split, Item { bounds: Rect::new(0, 0, 6, 0), dock: Dock::Left, anchor: Anchor::default() });
         let studio_box = Box::new(Studio {
             hwnd,
             font,
@@ -2313,6 +2350,8 @@ fn main() {
             canvas: None,
             side: HWND::default(),
             side_split: HWND::default(),
+            toolbox_split,
+            toolbox_w: toolbox::WIDTH,
             bottom_split: HWND::default(),
             side_w: 280,
             bottom_h: ERRORS_HEIGHT,
@@ -2349,7 +2388,6 @@ fn main() {
         s.layout.add(canvas.hwnd, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
         s.props = Some(props);
         s.explorer = Some(explorer);
-        win::toolbar_choose(toolbox, ID_TOOL);
         s.canvas = Some(canvas);
         win::theme_frame(hwnd);
         let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 1100), bottom: win::px(hwnd, 700) };
