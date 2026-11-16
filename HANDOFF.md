@@ -56,7 +56,12 @@ control มาตรฐานที่ยังขาด (checkbox, radio, combo
 - windows-rs 0.62: ค่าคงที่บางตัวไม่มีใน feature ที่เปิด เขียนเป็นตัวเลขพร้อมคอมเมนต์ชื่อ
 
 ### ขั้นต่อไปหลังจากนี้
-ขั้น 2 designer (2–3 สัปดาห์), ขั้น 3 build/run + ส่วนเสริม VS Code (~1 สัปดาห์) — รายละเอียดใน `PLAN.md`
+ขั้น 2 designer (2–3 สัปดาห์), ขั้น 3 build/run (~1 สัปดาห์) — รายละเอียดใน `PLAN.md`
+
+### ตัวแก้โค้ด: ไม่ใช้ VS Code
+เจ้านายเลือก (2026-11-16) **แปลง Monaco เป็น Rust** เป็นตัวแก้โค้ดของเราเอง (`phai-editor`) — สายแยก E0–E7
+ใน `PLAN.md` หัวใจ: ชั้น `common/` แปลงทีละไฟล์**พร้อมเทสต์ของ Monaco**, ชั้น `browser/` เขียนใหม่บน DirectWrite
+ต้นฉบับอยู่ใน `microsoft/vscode` `src/vs/editor/` (ไม่ใช่ repo monaco-editor) — MIT เก็บ LICENSE ไว้
 
 ### รอเจ้านาย
 ฟรีหรือขาย · สร้าง repo บน GitHub · วันเริ่ม
