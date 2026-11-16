@@ -68,6 +68,41 @@ pub fn arrange(rects: &mut [[i32; 4]], primary: usize, op: Op) {
     }
 }
 
+/// How close an edge must come to another, design pixels, to be drawn to it.
+pub const SNAP: i32 = 5;
+
+/// Snaplines, as Visual Studio's designer draws them: where a moving rectangle's edges come
+/// within [`SNAP`] of another control's edges or of the form's margin. Returns how far to move it
+/// on to touch them, and the lines to draw - `(true, x)` a vertical line at x, `(false, y)` a
+/// horizontal one.
+pub fn snaplines(moving: [i32; 4], others: &[[i32; 4]], form: [i32; 2], margin: i32) -> ((i32, i32), Vec<(bool, i32)>) {
+    let [x, y, w, h] = moving;
+    let mut xs: Vec<i32> = vec![margin, form[0] - margin];
+    let mut ys: Vec<i32> = vec![margin, form[1] - margin];
+    for o in others {
+        xs.extend([o[0], o[0] + o[2]]);
+        ys.extend([o[1], o[1] + o[3]]);
+    }
+    // The nearest line to either edge, if near enough: (shift, line).
+    let best = |a: i32, b: i32, lines: &[i32]| {
+        lines
+            .iter()
+            .flat_map(|&l| [(l - a, l), (l - b, l)])
+            .filter(|(d, _)| d.abs() <= SNAP)
+            .min_by_key(|(d, _)| d.abs())
+    };
+    let mut lines = Vec::new();
+    let dx = best(x, x + w, &xs).map(|(d, l)| {
+        lines.push((true, l));
+        d
+    });
+    let dy = best(y, y + h, &ys).map(|(d, l)| {
+        lines.push((false, l));
+        d
+    });
+    ((dx.unwrap_or(0), dy.unwrap_or(0)), lines)
+}
+
 #[derive(Serialize, Deserialize)]
 struct Clip {
     control: Vec<Control>,
@@ -155,6 +190,19 @@ mod tests {
         let mut two = vec![[0, 0, 10, 10], [50, 0, 10, 10]];
         arrange(&mut two, 0, Op::SpaceAcross);
         assert_eq!(two, vec![[0, 0, 10, 10], [50, 0, 10, 10]], "two need no spacing");
+    }
+
+    #[test]
+    fn edges_are_drawn_to_other_edges_and_the_margin() {
+        // A button 3 px right of another's left edge: drawn back to it, a vertical line there.
+        let ((dx, dy), lines) = snaplines([103, 50, 75, 23], &[[100, 10, 60, 23]], [480, 320], 11);
+        assert_eq!((dx, dy), (-3, 0));
+        assert_eq!(lines, vec![(true, 100)]);
+        // Near the form's right margin with its right edge.
+        let ((dx, _), _) = snaplines([392, 200, 75, 23], &[], [480, 320], 11);
+        assert_eq!(392 + dx + 75, 480 - 11);
+        // Far from everything: nothing.
+        assert_eq!(snaplines([200, 150, 50, 20], &[[10, 10, 20, 20]], [480, 320], 11), ((0, 0), vec![]));
     }
 
     #[test]

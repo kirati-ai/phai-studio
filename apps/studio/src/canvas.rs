@@ -62,6 +62,8 @@ pub struct Canvas {
     marks: Vec<HWND>,
     /// The chosen controls and where each was when a move began.
     group: Vec<(usize, [i32; 4])>,
+    /// Snaplines on show while a move snaps.
+    lines: Vec<HWND>,
     drag: Drag,
     cursor: PCWSTR,
 }
@@ -91,7 +93,7 @@ impl Canvas {
             wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
-        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], marks: vec![], group: vec![], drag: Drag::None, cursor: wm::IDC_ARROW }
+        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW }
     }
 
     /// Builds the form again from the model: size, controls, handles.
@@ -102,7 +104,7 @@ impl Canvas {
             for h in self.live.drain(..).chain(self.toolbar.take()).chain(self.handles.drain(..)) {
                 let _ = wm::DestroyWindow(h);
             }
-            for h in self.marks.drain(..) {
+            for h in self.marks.drain(..).chain(self.lines.drain(..)) {
                 let _ = wm::DestroyWindow(h);
             }
             for h in self.form_handles.drain(..) {
@@ -153,10 +155,9 @@ impl Canvas {
         let Some(s) = studio() else { return };
         let dpi = win::dpi(self.surface);
         let hs = scale(HANDLE, dpi);
-        let moved = |r: [i32; 4]| match self.drag {
-            Drag::Move { d, .. } => [r[0] + d.0, r[1] + d.1, r[2], r[3]],
-            _ => r,
-        };
+        // While a group moves its windows are already where they are going: their rectangles are
+        // read as they are, with nothing added.
+        let moved = |r: [i32; 4]| r;
         let shown = match self.drag {
             Drag::Create { from, to, .. } | Drag::Band { from, to } => Some(norm(from, to)),
             Drag::Resize { now, .. } => Some(now),
@@ -320,13 +321,31 @@ impl Canvas {
         let Some(s) = studio() else { return };
         let p = self.design_point(self.surface, l);
         let dpi = win::dpi(self.surface);
+        // What a moving group may snap to: every other control shown, worked out before the drag
+        // is borrowed.
+        let others: Vec<[i32; 4]> = if matches!(self.drag, Drag::Move { .. }) {
+            (0..self.live.len()).filter(|i| !self.group.iter().any(|(g, _)| g == i) && unsafe { wm::IsWindowVisible(self.live[*i]) }.as_bool()).map(|i| self.rect_of(i)).collect()
+        } else {
+            vec![]
+        };
         match &mut self.drag {
             Drag::Create { to, .. } => *to = (snap(p.0), snap(p.1)),
             Drag::Move { from, d } => {
-                // The first one snaps to the grid; the rest keep their places beside it.
+                // The first one snaps to other controls' edges and the form's margin where it
+                // comes near them, with a line to show it, else to the grid; the rest keep their
+                // places beside it.
                 let first = self.group[0].1;
-                *d = (snap(first[0] + p.0 - from.0) - first[0], snap(first[1] + p.1 - from.1) - first[1]);
+                let raw = (p.0 - from.0, p.1 - from.1);
+                let moved_rect = [first[0] + raw.0, first[1] + raw.1, first[2], first[3]];
+                let ((sx, sy), lines) = phai_form::arrange::snaplines(moved_rect, &others, s.doc.form.form.size, phai_design::metrics::MARGIN);
+                let snapped_x = lines.iter().any(|(v, _)| *v);
+                let snapped_y = lines.iter().any(|(v, _)| !*v);
+                *d = (
+                    if snapped_x { raw.0 + sx } else { snap(first[0] + raw.0) - first[0] },
+                    if snapped_y { raw.1 + sy } else { snap(first[1] + raw.1) - first[1] },
+                );
                 let d = *d;
+                show_lines(&mut self.lines, self.surface, &lines, s.doc.form.form.size);
                 for (i, r) in &self.group {
                     win::move_to(self.live[*i], scale(r[0] + d.0, dpi), scale(r[1] + d.1, dpi), scale(r[2], dpi), scale(r[3], dpi));
                 }
@@ -380,6 +399,7 @@ impl Canvas {
             let _ = km::ReleaseCapture();
         }
         let drag = std::mem::replace(&mut self.drag, Drag::None);
+        show_lines(&mut self.lines, self.surface, &[], [0, 0]);
         match drag {
             Drag::Create { kind, from, to } => {
                 let mut r = norm(from, to);
@@ -561,6 +581,46 @@ impl Canvas {
         s.refresh_props();
         s.say_selection();
         true
+    }
+}
+
+/// The snaplines across the form, in the accent colour: shown, moved, or all hidden.
+fn show_lines(windows: &mut Vec<HWND>, surface: HWND, lines: &[(bool, i32)], form: [i32; 2]) {
+    let class = win::register("PhaiStudioSnap", Some(snap_proc), None);
+    while windows.len() < lines.len() {
+        windows.push(create_child(&class, surface, WINDOW_EX_STYLE(0)));
+    }
+    let dpi = win::dpi(surface);
+    for (k, h) in windows.iter().enumerate() {
+        match lines.get(k) {
+            Some(&(vertical, at)) => {
+                if vertical {
+                    win::move_to(*h, scale(at, dpi), 0, 1.max(scale(1, dpi) / 2), scale(form[1], dpi));
+                } else {
+                    win::move_to(*h, 0, scale(at, dpi), scale(form[0], dpi), 1.max(scale(1, dpi) / 2));
+                }
+                unsafe {
+                    let _ = wm::SetWindowPos(*h, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE | wm::SWP_SHOWWINDOW);
+                }
+            }
+            None => win::show(*h, false),
+        }
+    }
+}
+
+extern "system" fn snap_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_NCHITTEST => LRESULT(-1),
+        wm::WM_ERASEBKGND => {
+            let dc = Gdi::HDC(w.0 as *mut _);
+            let mut r = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(h, &mut r);
+            }
+            win::fill(dc, &r, theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f)));
+            LRESULT(1)
+        }
+        _ => win::def(h, msg, w, l),
     }
 }
 
