@@ -2,8 +2,17 @@
 
 ## ▶ เริ่มตรงนี้
 
-**สถานะ: ยังไม่เริ่มเขียนโค้ด** มีแค่แผน (`PLAN.md`) และ repo นี้มีแค่ในเครื่อง (`git init` แล้ว ยังไม่มี GitHub)
-เจ้านายสั่งให้ทำ PhaiDesk ให้เสร็จก่อน — เริ่มเมื่อเจ้านายบอกให้เริ่ม
+**สถานะ (2026-11-16): เริ่มแล้ว** เจ้านายสั่งเริ่ม ("เกินไปก็ไม่ติดอะไร ขอให้ฉันได้ phai studio")
+- ขั้น 0 เสร็จ: `docs/phaiform.md`
+- ขั้น 1 ใช้งานได้: `crates/phai-ui` (เทสต์ 17 ตัว, clippy สะอาด) + `apps/gallery` หน้าต่างรวมทุก control
+- **ต่อไป: ขั้น 2 designer** — อ่าน/เขียน `.phaiform`, สร้างโค้ดตาม `docs/phaiform.md`, หน้าต่าง designer ที่สร้างจาก `phai-ui` เอง
+
+ตรวจด้วยภาพทุกครั้ง:
+```
+cargo build -p phai-gallery
+target\debug\phai-gallery.exe --shot out.png [--dark] [--thai] [--tab 1] [--css apps\gallery	hemeslue.css]
+```
+repo ยังมีแค่ในเครื่อง (ยังไม่มี GitHub)
 
 ### คืออะไร
 ตัวออกแบบหน้าต่างแบบลากวางสำหรับโปรแกรม Windows ที่เขียนด้วย Rust: วางปุ่ม/รายการ/toolbar/menu
@@ -17,13 +26,13 @@
   เฉพาะตอนชี้/เลือก — เจ้านายไม่ชอบตัวใหญ่และข้อความอธิบายยาว
 - ห้าม reboot เครื่อง · ห้ามเขียน crypto เอง · เครื่องมืออยู่ที่ `D:\Tools` (Rust: `D:\Tools\Rust`)
 
-### ขั้น 0 — รูปแบบไฟล์ (1–2 วัน)
+### ขั้น 0 — รูปแบบไฟล์ (เสร็จ: `docs/phaiform.md`)
 - `.phaiform` (แนะนำ TOML หรือ JSON อ่านง่าย diff ได้): ขนาดฟอร์ม, รายการ control (ชนิด, id, ข้อความเป็นคีย์อังกฤษ,
   ตำแหน่ง/ขนาดแบบ design pixel ที่ 96 DPI, anchor/dock), เมนู, toolbar
 - โค้ดที่สร้าง: `form_name_ui.rs` (designer เขียน ห้ามแก้มือ) + `form_name.rs` (ของผู้ใช้: event handler)
   แบบเดียวกับ `Form.Designer.cs` + `Form.cs` — **ไม่อ่านโค้ดผู้ใช้กลับเข้ามา**
 
-### ขั้น 1 — ไลบรารี `phai-ui` (~1 สัปดาห์)
+### ขั้น 1 — ไลบรารี `phai-ui` (ทำแล้ว ดูโค้ดใน `crates/phai-ui`)
 **ก๊อปปี้** (ไม่ย้าย) จาก `D:\Project.NET\phai-desk\agent-rs\agent\src\console\`:
 
 | ไฟล์ต้นทาง | ได้อะไร |
@@ -48,6 +57,12 @@ control มาตรฐานที่ยังขาด (checkbox, radio, combo
 (`draw_button`, `list_custom_draw`, `toolbar_rule`, `glyph_icon` สี `#3c3c3c`) → รวมเป็น struct สีมีชื่อ
 แบบ `phai-desk/UI/ModernUi.cs` แล้วทุกฟังก์ชันอ่านจากธีม; เพิ่มสว่าง/มืด และ DWM (แถบชื่อ, มุมมน, Mica) บน Windows 11
 แนวหน้าตา: Fluent ของ Windows 11 แบบ WPF UI — เอาแค่ภาษาออกแบบ ไม่ก๊อปปี้โค้ด
+
+### บทเรียนจากการทำ `phai-ui`
+- control ลูกที่สร้างทีหลังอยู่**ล่าง** z-order — group ต้องถูกส่งไปล่างสุดตอนจัดวาง (`Layout::apply` ทำให้แล้ว)
+- ธีม Explorer ของ list วาดแถวที่เลือกเอง สี `list:selected` จะไม่ขึ้น → ไม่ใส่ธีม Explorer ให้ตัว list
+- ระยะห่างตามมาตรฐาน Windows: ขอบ 11, ระหว่างแถว 7, control สูง 23, ปุ่มกว้างอย่างน้อย 75 (design px)
+  ความกว้างที่มีข้อความวัดทั้งอังกฤษและไทย — เจ้านายไม่ชอบตัวใหญ่ ระยะห่าง และข้อความอธิบาย
 
 ### บทเรียนจาก PhaiDesk ที่ต้องพกมา
 - ถ่ายภาพหน้าต่างจริงเพื่อตรวจทุกครั้ง (`PrintWindow`) — บั๊กหน้าตาไม่เห็นจากโค้ด
