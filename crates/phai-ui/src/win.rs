@@ -266,6 +266,10 @@ pub fn set_css(h: HWND, classes: &str, id: &str) {
         c.classes = classes.split_whitespace().map(str::to_string).collect();
         c.id = (!id.is_empty()).then(|| id.to_string());
     });
+    // A rule for this class or id may change the font of a control Windows draws.
+    if matches!(kind_of(h), Some(Kind::Label) | Some(Kind::Edit)) {
+        theme_native(h);
+    }
     unsafe {
         let _ = Gdi::InvalidateRect(Some(h), None, true);
     }
@@ -319,6 +323,48 @@ pub fn round_rect(dc: HDC, r: RECT, fill: Color, border: Color, radius: i32) {
 pub fn fill(dc: HDC, r: &RECT, c: Color) {
     unsafe {
         Gdi::FillRect(dc, r, brush(c));
+    }
+}
+
+/// The font a style asks for with `font-size` / `font-weight`, at `h`'s scale; `None` when it asks
+/// for neither, and the control keeps its own. Kept for the life of the process, one per size,
+/// weight and scale.
+pub fn css_font(h: HWND, s: &Style) -> Option<HFONT> {
+    static FONTS: Mutex<Option<HashMap<(i32, i32, i32), isize>>> = Mutex::new(None);
+    if s.font_size.is_none() && s.font_weight.is_none() {
+        return None;
+    }
+    let d = dpi(h);
+    let key = (s.font_size.unwrap_or(0), s.font_weight.unwrap_or(0), d);
+    let mut map = FONTS.lock().unwrap_or_else(|e| e.into_inner());
+    let f = map.get_or_insert_with(HashMap::new).entry(key).or_insert_with(|| unsafe {
+        let mut metrics = wm::NONCLIENTMETRICSW { cbSize: std::mem::size_of::<wm::NONCLIENTMETRICSW>() as u32, ..Default::default() };
+        let _ = HiDpi::SystemParametersInfoForDpi(wm::SPI_GETNONCLIENTMETRICS.0, metrics.cbSize, Some(&mut metrics as *mut _ as *mut _), 0, d as u32);
+        let mut lf = metrics.lfMessageFont;
+        if let Some(pt) = s.font_size {
+            lf.lfHeight = -(pt * d / 72);
+        }
+        if let Some(wt) = s.font_weight {
+            lf.lfWeight = wt;
+        }
+        Gdi::CreateFontIndirectW(&lf).0 as isize
+    });
+    Some(HFONT(*f as *mut _))
+}
+
+/// Text in `colour`, in the font `s` asks for, else the control's own.
+pub fn draw_text_styled(dc: HDC, h: HWND, text: &str, r: &mut RECT, colour: Color, flags: Gdi::DRAW_TEXT_FORMAT, s: &Style) {
+    if text.is_empty() {
+        return;
+    }
+    let font = css_font(h, s).unwrap_or_else(|| unsafe { HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _) });
+    unsafe {
+        let old = Gdi::SelectObject(dc, font.into());
+        Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+        Gdi::SetTextColor(dc, cr(colour));
+        let mut w: Vec<u16> = text.encode_utf16().collect();
+        Gdi::DrawTextW(dc, &mut w, r, flags);
+        Gdi::SelectObject(dc, old);
     }
 }
 
@@ -539,7 +585,7 @@ pub fn draw_item(l: LPARAM) -> bool {
             }
             let label_fg = if state.disabled { fg } else { theme::style(kind.css(), State::default()).color_or(window_text()) };
             let mut tr = RECT { left: bx.right + px(h, 8), ..r };
-            draw_text(dc, h, &text, &mut tr, label_fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            draw_text_styled(dc, h, &text, &mut tr, label_fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
             if state.focus {
                 let mut fr = tr;
                 let (w, th) = measure(h, unsafe { HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _) }, &text);
@@ -554,7 +600,7 @@ pub fn draw_item(l: LPARAM) -> bool {
             let radius = px(h, s.border_radius.unwrap_or(4) * 2);
             round_rect(dc, r, s.background_or(Color::rgb(255, 255, 255)), s.border_or(Color::rgb(212, 212, 212)), radius);
             let mut tr = r;
-            draw_text(dc, h, &text, &mut tr, fg, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            draw_text_styled(dc, h, &text, &mut tr, fg, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
         }
     }
     true
@@ -567,6 +613,7 @@ pub fn label(parent: HWND, text: &str, id: i32, f: HFONT) -> HWND {
     const SS_CENTERIMAGE: u32 = 0x200;
     let h = child(parent, "STATIC", text, WINDOW_STYLE(SS_NOPREFIX | SS_CENTERIMAGE), WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::Label);
+    theme_native(h);
     h
 }
 
@@ -914,6 +961,14 @@ pub fn theme_native(h: HWND) {
                     tree_icons(h, &g);
                 }
             }
+            Some(Kind::Label) | Some(Kind::Edit) => {
+                let kind = kind_of(h).unwrap_or(Kind::Label);
+                if let Some(f) = css_font(h, &style_of(h, kind, State::default())) {
+                    set_font(h, f);
+                }
+                // A box of several lines scrolls; its bar follows a dark theme.
+                let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
+            }
             Some(Kind::Combo) => {
                 let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_CFD") } else { PCWSTR::null() }, PCWSTR::null());
             }
@@ -1108,6 +1163,27 @@ pub fn toolbar_custom_draw(l: LPARAM) -> LRESULT {
 
 // --- the window frame -------------------------------------------------------------------------
 
+/// Pop-up menus and scroll bars dark or light with the theme. Windows does this for Explorer
+/// through two functions of uxtheme.dll it exports only by number (SetPreferredAppMode, 135;
+/// FlushMenuThemes, 136) - the way Notepad++ and others follow a dark theme. Where they are
+/// missing nothing changes.
+fn app_dark(dark: bool) {
+    use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    type SetMode = unsafe extern "system" fn(i32) -> i32;
+    type Flush = unsafe extern "system" fn();
+    unsafe {
+        let Ok(ux) = LoadLibraryW(windows::core::w!("uxtheme.dll")) else { return };
+        if let Some(f) = GetProcAddress(ux, windows::core::PCSTR(135usize as *const u8)) {
+            let set: SetMode = std::mem::transmute(f);
+            set(if dark { 2 } else { 3 }); // ForceDark / ForceLight
+        }
+        if let Some(f) = GetProcAddress(ux, windows::core::PCSTR(136usize as *const u8)) {
+            let flush: Flush = std::mem::transmute(f);
+            flush();
+        }
+    }
+}
+
 /// The title bar follows the theme: dark when it is dark (Windows 10 2004 and later), and the
 /// corners rounded on Windows 11. Older Windows ignore what they do not know.
 pub fn theme_frame(hwnd: HWND) {
@@ -1116,6 +1192,7 @@ pub fn theme_frame(hwnd: HWND) {
     const DWMWA_WINDOW_CORNER_PREFERENCE: i32 = 33;
     const DWMWCP_ROUND: u32 = 2;
     let dark: u32 = theme::current().is_dark() as u32;
+    app_dark(dark != 0);
     unsafe {
         let _ = DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE(DWMWA_USE_IMMERSIVE_DARK_MODE), &dark as *const _ as *const _, 4);
         let _ = DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE(DWMWA_WINDOW_CORNER_PREFERENCE), &DWMWCP_ROUND as *const _ as *const _, 4);

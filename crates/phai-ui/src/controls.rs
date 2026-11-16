@@ -96,7 +96,7 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                 let _ = wm::GetClientRect(h, &mut r);
                 win::fill(dc, &r, win::window_background());
                 let text = win::text_of(h);
-                let (tw, th) = win::measure(h, s.font, &text);
+                let (tw, th) = win::measure(h, win::css_font(h, &st).unwrap_or(s.font), &text);
                 let top = th / 2;
                 let frame = RECT { top: r.top + top, ..r };
                 win::round_rect(dc, frame, Color::TRANSPARENT, st.border_or(Color::rgb(229, 229, 229)), px(h, st.border_radius.unwrap_or(6) * 2));
@@ -106,7 +106,7 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                     let back = RECT { left: x - gap, top: r.top, right: x + tw + gap, bottom: r.top + th };
                     win::fill(dc, &back, win::window_background());
                     let mut tr = RECT { left: x, top: r.top, right: x + tw, bottom: r.top + th };
-                    win::draw_text(dc, h, &text, &mut tr, st.color_or(win::window_text()), Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+                    win::draw_text_styled(dc, h, &text, &mut tr, st.color_or(win::window_text()), Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
                 }
                 let _ = Gdi::EndPaint(h, &ps);
                 LRESULT(0)
@@ -169,7 +169,8 @@ fn tab_edges(h: HWND, t: &Tabs) -> Vec<(i32, i32)> {
     t.labels
         .iter()
         .map(|l| {
-            let (w, _) = win::measure(h, t.font, l);
+            let font = win::css_font(h, &win::style_of(h, Kind::Tabs, State::default())).unwrap_or(t.font);
+            let (w, _) = win::measure(h, font, l);
             let e = (x, x + w + 2 * pad);
             x = e.1;
             e
@@ -200,7 +201,7 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 for (i, (a, b)) in tab_edges(h, t).into_iter().enumerate() {
                     let st = win::style_of(h, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
                     let mut tr = RECT { left: a, right: b, top: r.top, bottom: r.bottom - px(h, 3) };
-                    win::draw_text(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text()), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+                    win::draw_text_styled(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text()), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
                     if i == t.selected {
                         let inset = px(h, 12);
                         let line = RECT { left: a + inset, right: b - inset, top: r.bottom - px(h, 3), bottom: r.bottom };
@@ -328,7 +329,7 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
                         win::fill(dc, &sep, st.border_or(Color::rgb(229, 229, 229)));
                     }
                     let mut tr = RECT { left: x + pad, right: x + width - pad, top: r.top + 1, bottom: r.bottom };
-                    win::draw_text(dc, h, text, &mut tr, fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+                    win::draw_text_styled(dc, h, text, &mut tr, fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS, &st);
                     x += width;
                 }
                 let _ = Gdi::EndPaint(h, &ps);

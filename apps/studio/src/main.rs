@@ -59,6 +59,9 @@ const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
 const ID_CLOSE: i32 = 106;
 const ID_DEBUG: i32 = 143;
+/// File > Recent: `ID_RECENT + n`, newest first.
+const ID_RECENT: i32 = 160;
+const RECENT_MAX: usize = 9;
 const ID_RELEASE: i32 = 144;
 const ID_EDIT_MENUS: i32 = 113;
 const ID_CUT: i32 = 115;
@@ -227,6 +230,10 @@ fn build_menu() -> HMENU {
         let sep = |m: HMENU| {
             let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);
         };
+        let sub_of = |parent: HMENU, label: &str, m: HMENU| {
+            let w = wide(label);
+            let _ = wm::AppendMenuW(parent, wm::MF_POPUP, m.0 as usize, PCWSTR(w.as_ptr()));
+        };
         let sub = |label: &str, m: HMENU| {
             let w = wide(label);
             let _ = wm::AppendMenuW(bar, wm::MF_POPUP, m.0 as usize, PCWSTR(w.as_ptr()));
@@ -239,6 +246,14 @@ fn build_menu() -> HMENU {
         add(file, ID_CLOSE, t("Close"), "Ctrl+W");
         sep(file);
         add(file, ID_NEW_PROJECT, t("New project..."), "");
+        let recent = recent_files();
+        if !recent.is_empty() {
+            let rm = wm::CreatePopupMenu().unwrap_or_default();
+            for (k, p) in recent.iter().enumerate() {
+                add(rm, ID_RECENT + k as i32, &format!("&{} {}", k + 1, p.display()), "");
+            }
+            sub_of(file, t("Recent"), rm);
+        }
         sep(file);
         add(file, ID_EXIT, t("Exit"), "");
         sub(t("&File"), file);
@@ -773,7 +788,11 @@ impl Studio {
     pub fn open_path(&mut self, path: &Path) {
         let name = path.display().to_string();
         match std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|src| FormFile::parse(&src).map_err(|e| e.to_string())) {
-            Ok(f) => self.set_doc(f, Some(path.to_path_buf())),
+            Ok(f) => {
+                self.set_doc(f, Some(path.to_path_buf()));
+                remember_recent(path);
+                self.rebuild_menu();
+            }
             Err(e) => {
                 win::message(Some(self.hwnd), &format!("{}\n\n{e}", tf("{0} cannot be opened", &[&name])), "Phai Studio", wm::MB_ICONWARNING);
             }
@@ -1066,6 +1085,11 @@ impl Studio {
             ID_BUILD => self.start_build(false),
             ID_RUN => self.start_build(true),
             ID_STOP => self.stop(),
+            r if (ID_RECENT..ID_RECENT + RECENT_MAX as i32).contains(&r) => {
+                if let Some(p) = recent_files().get((r - ID_RECENT) as usize).cloned() {
+                    self.open_path(&p);
+                }
+            }
             ID_DEBUG | ID_RELEASE => {
                 self.release = id == ID_RELEASE;
                 controls::status_text(self.status, 2, if self.release { "Release" } else { "Debug" });
@@ -1081,6 +1105,14 @@ impl Studio {
                 self.refresh_props();
             }
             _ => {}
+        }
+    }
+
+    fn rebuild_menu(&self) {
+        unsafe {
+            let old = wm::GetMenu(self.hwnd);
+            let _ = wm::SetMenu(self.hwnd, Some(build_menu()));
+            let _ = wm::DestroyMenu(old);
         }
     }
 
@@ -1116,6 +1148,28 @@ pub fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options 
     let dir = form.with_file_name("");
     let watch = dir.ancestors().find(|d| d.join("Cargo.toml").exists()).and_then(|root| dir.join(th).strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")));
     codegen::Options { theme_include: Some(th.replace('\\', "/")), theme_watch: watch }
+}
+
+/// Where Phai Studio keeps what it remembers for this person: `%APPDATA%\Phai Studio`.
+fn settings_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("APPDATA")?).join("Phai Studio"))
+}
+
+/// The forms opened last, newest first, those still there.
+fn recent_files() -> Vec<PathBuf> {
+    let Some(dir) = settings_dir() else { return vec![] };
+    std::fs::read_to_string(dir.join("recent.txt")).unwrap_or_default().lines().map(PathBuf::from).filter(|p| p.is_file()).take(RECENT_MAX).collect()
+}
+
+fn remember_recent(path: &Path) {
+    let Some(dir) = settings_dir() else { return };
+    let path = path.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or_else(|_| path.to_path_buf());
+    let mut list = recent_files();
+    list.retain(|p| p != &path);
+    list.insert(0, path);
+    list.truncate(RECENT_MAX);
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(dir.join("recent.txt"), list.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"));
 }
 
 /// Puts `text` on the clipboard.

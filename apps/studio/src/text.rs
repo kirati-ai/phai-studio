@@ -96,6 +96,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("{0} already exists", "มี {0} อยู่แล้ว"),
     ("Menus...", "เมนู..."),
     ("Cut", "ตัด"),
+    ("Recent", "ล่าสุด"),
     ("Errors", "ข้อผิดพลาด"),
     ("Output", "ผลลัพธ์"),
     ("Build succeeded", "สร้างโปรแกรมสำเร็จ"),

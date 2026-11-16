@@ -23,7 +23,7 @@
        border-width  border-radius       pixels at 100% scale (4 or 4px)
        accent-color                      the tick, the radio dot, the chosen tab's line
        icon-color                        toolbar icons
-       font-size  font-weight            read, not yet drawn
+       font-size  font-weight            points (9pt) and 400 / 600 / 700, normal or bold
 
    A mistake is shown with its line; the window keeps the theme it had.
    ==================================================================================== */
