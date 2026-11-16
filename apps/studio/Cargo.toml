@@ -18,6 +18,7 @@ serde_json = "1"
 phai-ui = { path = "../../crates/phai-ui" }
 phai-form = { path = "../../crates/phai-form" }
 phai-design = { path = "../../crates/phai-design" }
+phai-editor = { path = "../../crates/phai-editor" }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Com",
