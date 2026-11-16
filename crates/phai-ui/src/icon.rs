@@ -55,6 +55,38 @@ pub mod glyph {
     pub const PROGRESS: u16 = 0xE9D9; // Diagnostic
     pub const TEXTAREA: u16 = 0xE70B; // QuickNote
     pub const COLOR: u16 = 0xE790;
+    pub const BACK: u16 = 0xE72B;
+    pub const FORWARD: u16 = 0xE72A;
+    pub const SAVE_ALL: u16 = 0xE78C; // SaveLocal
+    pub const NEW_FOLDER: u16 = 0xE8F4;
+    pub const STOP: u16 = 0xE71A;
+
+    // The designer's Layout bar, as Visual Studio draws it: boxes and a line, drawn by
+    // `super::shape_rects` rather than taken from the icon font, which has no such pictures.
+    pub const LAY_GRID: u16 = 0x0180;
+    pub const LAY_LEFTS: u16 = 0x0181;
+    pub const LAY_CENTERS: u16 = 0x0182;
+    pub const LAY_RIGHTS: u16 = 0x0183;
+    pub const LAY_TOPS: u16 = 0x0184;
+    pub const LAY_MIDDLES: u16 = 0x0185;
+    pub const LAY_BOTTOMS: u16 = 0x0186;
+    pub const LAY_SAME_WIDTH: u16 = 0x0187;
+    pub const LAY_SIZE_GRID: u16 = 0x0188;
+    pub const LAY_SAME_HEIGHT: u16 = 0x0189;
+    pub const LAY_SAME_SIZE: u16 = 0x018A;
+    pub const LAY_SPACE_ACROSS: u16 = 0x018B;
+    pub const LAY_MORE_ACROSS: u16 = 0x018C;
+    pub const LAY_LESS_ACROSS: u16 = 0x018D;
+    pub const LAY_NONE_ACROSS: u16 = 0x018E;
+    pub const LAY_SPACE_DOWN: u16 = 0x018F;
+    pub const LAY_MORE_DOWN: u16 = 0x0190;
+    pub const LAY_LESS_DOWN: u16 = 0x0191;
+    pub const LAY_NONE_DOWN: u16 = 0x0192;
+    pub const LAY_CENTER_ACROSS: u16 = 0x0193;
+    pub const LAY_CENTER_DOWN: u16 = 0x0194;
+    pub const LAY_FRONT: u16 = 0x0195;
+    pub const LAY_BACK: u16 = 0x0196;
+    pub const LAY_TAB_ORDER: u16 = 0x0197;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).
     pub const NAMES: &[(&str, u16)] = &[
@@ -68,6 +100,14 @@ pub mod glyph {
         ("LIST", LIST), ("GROUP", GROUP), ("TABS", TABS), ("STATUS", STATUS), ("BUTTON", BUTTON),
         ("FORM", FORM), ("ALIGN_LEFT", ALIGN_LEFT), ("ALIGN_CENTER", ALIGN_CENTER), ("ALIGN_RIGHT", ALIGN_RIGHT),
         ("CALENDAR", CALENDAR), ("NUMBER", NUMBER), ("SLIDER", SLIDER), ("PROGRESS", PROGRESS), ("TEXTAREA", TEXTAREA), ("COLOR", COLOR),
+        ("BACK", BACK), ("FORWARD", FORWARD), ("SAVE_ALL", SAVE_ALL), ("NEW_FOLDER", NEW_FOLDER), ("STOP", STOP),
+        ("LAY_GRID", LAY_GRID), ("LAY_LEFTS", LAY_LEFTS), ("LAY_CENTERS", LAY_CENTERS), ("LAY_RIGHTS", LAY_RIGHTS),
+        ("LAY_TOPS", LAY_TOPS), ("LAY_MIDDLES", LAY_MIDDLES), ("LAY_BOTTOMS", LAY_BOTTOMS), ("LAY_SAME_WIDTH", LAY_SAME_WIDTH),
+        ("LAY_SIZE_GRID", LAY_SIZE_GRID), ("LAY_SAME_HEIGHT", LAY_SAME_HEIGHT), ("LAY_SAME_SIZE", LAY_SAME_SIZE),
+        ("LAY_SPACE_ACROSS", LAY_SPACE_ACROSS), ("LAY_MORE_ACROSS", LAY_MORE_ACROSS), ("LAY_LESS_ACROSS", LAY_LESS_ACROSS),
+        ("LAY_NONE_ACROSS", LAY_NONE_ACROSS), ("LAY_SPACE_DOWN", LAY_SPACE_DOWN), ("LAY_MORE_DOWN", LAY_MORE_DOWN),
+        ("LAY_LESS_DOWN", LAY_LESS_DOWN), ("LAY_NONE_DOWN", LAY_NONE_DOWN), ("LAY_CENTER_ACROSS", LAY_CENTER_ACROSS),
+        ("LAY_CENTER_DOWN", LAY_CENTER_DOWN), ("LAY_FRONT", LAY_FRONT), ("LAY_BACK", LAY_BACK), ("LAY_TAB_ORDER", LAY_TAB_ORDER),
     ];
 
     pub fn by_name(name: &str) -> Option<u16> {
@@ -121,9 +161,121 @@ pub fn from_bgra(pixels: &[u8], width: i32, height: i32, hotspot_x: i32, hotspot
     }
 }
 
+/// The rectangles, on a 16-unit square, of a picture drawn rather than taken from the font -
+/// `(x, y, w, h)`. Lines are a unit thick.
+pub fn shape_rects(g: u16) -> Option<Vec<(f32, f32, f32, f32)>> {
+    use glyph::*;
+    // A frame round the square, for the centring pictures; the grid's dots.
+    let frame = vec![(1.0, 1.0, 14.0, 1.0), (1.0, 14.0, 14.0, 1.0), (1.0, 1.0, 1.0, 14.0), (14.0, 1.0, 1.0, 14.0)];
+    let dots = |v: &mut Vec<(f32, f32, f32, f32)>| {
+        for y in [1.0, 5.0, 9.0, 13.0] {
+            for x in [1.0, 5.0, 9.0, 13.0] {
+                v.push((x, y, 1.5, 1.5));
+            }
+        }
+    };
+    let outline = |x: f32, y: f32, w: f32, h: f32| vec![(x, y, w, 1.0), (x, y + h - 1.0, w, 1.0), (x, y, 1.0, h), (x + w - 1.0, y, 1.0, h)];
+    let v = match g {
+        LAY_GRID => {
+            let mut v = vec![];
+            dots(&mut v);
+            v.push((5.0, 5.0, 6.0, 6.0));
+            v
+        }
+        LAY_SIZE_GRID => {
+            let mut v = vec![];
+            dots(&mut v);
+            v.extend(outline(5.0, 5.0, 9.0, 9.0));
+            v.push((10.0, 10.0, 4.0, 4.0));
+            v
+        }
+        LAY_LEFTS => vec![(1.0, 1.0, 1.0, 14.0), (3.0, 3.0, 11.0, 4.0), (3.0, 9.0, 7.0, 4.0)],
+        LAY_CENTERS => vec![(7.5, 1.0, 1.0, 14.0), (2.0, 3.0, 12.0, 4.0), (4.0, 9.0, 8.0, 4.0)],
+        LAY_RIGHTS => vec![(14.0, 1.0, 1.0, 14.0), (2.0, 3.0, 11.0, 4.0), (6.0, 9.0, 7.0, 4.0)],
+        LAY_TOPS => vec![(1.0, 1.0, 14.0, 1.0), (3.0, 3.0, 4.0, 11.0), (9.0, 3.0, 4.0, 7.0)],
+        LAY_MIDDLES => vec![(1.0, 7.5, 14.0, 1.0), (3.0, 2.0, 4.0, 12.0), (9.0, 4.0, 4.0, 8.0)],
+        LAY_BOTTOMS => vec![(1.0, 14.0, 14.0, 1.0), (3.0, 2.0, 4.0, 11.0), (9.0, 6.0, 4.0, 7.0)],
+        LAY_SAME_WIDTH => vec![(2.0, 2.0, 12.0, 4.0), (2.0, 10.0, 12.0, 4.0), (2.0, 7.5, 12.0, 1.0)],
+        LAY_SAME_HEIGHT => vec![(2.0, 2.0, 4.0, 12.0), (10.0, 2.0, 4.0, 12.0), (7.5, 2.0, 1.0, 12.0)],
+        LAY_SAME_SIZE => vec![(1.0, 1.0, 6.0, 6.0), (9.0, 1.0, 6.0, 6.0), (1.0, 9.0, 6.0, 6.0), (9.0, 9.0, 6.0, 6.0)],
+        LAY_SPACE_ACROSS => vec![(1.0, 3.0, 3.0, 10.0), (6.5, 3.0, 3.0, 10.0), (12.0, 3.0, 3.0, 10.0)],
+        LAY_MORE_ACROSS => vec![(0.0, 3.0, 3.0, 10.0), (13.0, 3.0, 3.0, 10.0), (4.0, 7.5, 8.0, 1.0), (4.0, 6.0, 1.0, 4.0), (11.0, 6.0, 1.0, 4.0)],
+        LAY_LESS_ACROSS => vec![(1.0, 3.0, 3.0, 10.0), (12.0, 3.0, 3.0, 10.0), (5.0, 7.5, 6.0, 1.0), (7.5, 6.0, 1.0, 4.0)],
+        LAY_NONE_ACROSS => vec![(3.0, 3.0, 5.0, 10.0), (8.0, 3.0, 5.0, 10.0)],
+        LAY_SPACE_DOWN => vec![(3.0, 1.0, 10.0, 3.0), (3.0, 6.5, 10.0, 3.0), (3.0, 12.0, 10.0, 3.0)],
+        LAY_MORE_DOWN => vec![(3.0, 0.0, 10.0, 3.0), (3.0, 13.0, 10.0, 3.0), (7.5, 4.0, 1.0, 8.0), (6.0, 4.0, 4.0, 1.0), (6.0, 11.0, 4.0, 1.0)],
+        LAY_LESS_DOWN => vec![(3.0, 1.0, 10.0, 3.0), (3.0, 12.0, 10.0, 3.0), (7.5, 5.0, 1.0, 6.0), (6.0, 7.5, 4.0, 1.0)],
+        LAY_NONE_DOWN => vec![(3.0, 3.0, 10.0, 5.0), (3.0, 8.0, 10.0, 5.0)],
+        LAY_CENTER_ACROSS => {
+            let mut v = frame;
+            v.push((5.0, 6.0, 6.0, 4.0));
+            v.push((7.5, 3.0, 1.0, 10.0));
+            v
+        }
+        LAY_CENTER_DOWN => {
+            let mut v = frame;
+            v.push((6.0, 5.0, 4.0, 6.0));
+            v.push((3.0, 7.5, 10.0, 1.0));
+            v
+        }
+        LAY_FRONT => {
+            let mut v = outline(1.0, 1.0, 9.0, 9.0);
+            v.push((6.0, 6.0, 9.0, 9.0));
+            v
+        }
+        LAY_BACK => {
+            let mut v = vec![(1.0, 1.0, 9.0, 5.0), (1.0, 6.0, 5.0, 4.0)];
+            v.extend(outline(6.0, 6.0, 9.0, 9.0));
+            v
+        }
+        LAY_TAB_ORDER => {
+            let mut v = outline(1.0, 2.0, 14.0, 12.0);
+            v.extend([(4.0, 5.0, 2.0, 6.0), (8.0, 5.0, 4.0, 1.0), (11.0, 5.0, 1.0, 3.0), (8.0, 7.5, 4.0, 1.0), (8.0, 7.5, 1.0, 3.5), (8.0, 10.0, 4.0, 1.0)]);
+            v
+        }
+        _ => return None,
+    };
+    Some(v)
+}
+
+/// A drawn picture's pixels: each pixel as much ink as the rectangles cover of it.
+fn shape_pixels(rects: &[(f32, f32, f32, f32)], size: i32, colour: Color) -> Vec<u8> {
+    let k = size as f32 / 16.0;
+    let mut out = vec![0u8; (size * size * 4) as usize];
+    for py in 0..size {
+        for px in 0..size {
+            let (x0, y0) = (px as f32, py as f32);
+            let mut cover = 0.0f32;
+            // A box is drawn as its outline, a line as itself: thin strokes, as the icon font's.
+            let mut parts: Vec<(f32, f32, f32, f32)> = Vec::new();
+            for &(x, y, w, h) in rects {
+                if w >= 3.0 && h >= 3.0 {
+                    parts.extend([(x, y, w, 1.0), (x, y + h - 1.0, w, 1.0), (x, y + 1.0, 1.0, h - 2.0), (x + w - 1.0, y + 1.0, 1.0, h - 2.0)]);
+                } else {
+                    parts.push((x, y, w, h));
+                }
+            }
+            for (x, y, w, h) in parts {
+                let (l, t, r, b) = (x * k, y * k, (x + w) * k, (y + h) * k);
+                let ox = (r.min(x0 + 1.0) - l.max(x0)).max(0.0);
+                let oy = (b.min(y0 + 1.0) - t.max(y0)).max(0.0);
+                cover += ox * oy;
+            }
+            let a = (cover.min(1.0) * 255.0).round() as u8;
+            let i = ((py * size + px) * 4) as usize;
+            out[i..i + 4].copy_from_slice(&[colour.b, colour.g, colour.r, a]);
+        }
+    }
+    out
+}
+
 /// The pixels of one glyph of Windows' icon font, `size` square, in `colour`; `None` when neither
-/// Segoe Fluent Icons nor Segoe MDL2 Assets is installed.
+/// Segoe Fluent Icons nor Segoe MDL2 Assets is installed. A drawn picture's code gives its
+/// rectangles instead.
 pub fn glyph_pixels(glyph: u16, size: i32, colour: Color) -> Option<Vec<u8>> {
+    if let Some(rects) = shape_rects(glyph) {
+        return Some(shape_pixels(&rects, size, colour));
+    }
     unsafe {
         let screen = Gdi::GetDC(None);
         let dc = Gdi::CreateCompatibleDC(Some(screen));

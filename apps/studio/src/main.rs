@@ -68,6 +68,12 @@ const ID_VIEW_OUTPUT: i32 = 183;
 const ID_SPLIT_SIDE: i32 = 207;
 const ID_SPLIT_BOTTOM: i32 = 208;
 const ID_SPLIT_TOOLBOX: i32 = 209;
+/// The Debug / Release box on the Standard bar.
+const ID_CONFIG: i32 = 210;
+const ID_SAVE_ALL: i32 = 211;
+const ID_NAV_BACK: i32 = 212;
+const ID_NAV_FORWARD: i32 = 213;
+const ID_LAYOUT_BAR: i32 = 214;
 /// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
 const TIMER_SLIDE: usize = 7301;
 /// File > Recent: `ID_RECENT + n`, newest first.
@@ -92,12 +98,27 @@ const ID_REFERENCES: i32 = 197;
 const ID_COMMENT: i32 = 198;
 /// One step of `--lsptest`, posted again and again until it is done.
 const ID_LSP_TEST: i32 = 196;
-/// Format menu: `ID_FORMAT + Op as index` in `FORMATS` order.
-const ID_FORMAT: i32 = 150;
-const FORMATS: [phai_form::arrange::Op; 11] = {
+/// Format menu and the Layout bar: `ID_FORMAT + Op as index` in `FORMATS` order.
+const ID_FORMAT: i32 = 400;
+const FORMATS: [phai_form::arrange::Op; 21] = {
     use phai_form::arrange::Op::*;
-    [Lefts, Centers, Rights, Tops, Middles, Bottoms, SameWidth, SameHeight, SameSize, SpaceAcross, SpaceDown]
+    [Lefts, Centers, Rights, Tops, Middles, Bottoms, SameWidth, SameHeight, SameSize, SpaceAcross, SpaceDown, AlignToGrid, SizeToGrid, MoreAcross, LessAcross, NoneAcross, MoreDown, LessDown, NoneDown, CenterAcross, CenterDown]
 };
+
+/// `ID_FORMAT` + the place of `op` in `FORMATS`.
+fn format_id(op: phai_form::arrange::Op) -> i32 {
+    ID_FORMAT + FORMATS.iter().position(|o| *o == op).unwrap_or(0) as i32
+}
+
+/// What the Format menu and the Layout bar call each of `FORMATS`.
+fn format_names() -> [&'static str; 21] {
+    [
+        t("Align lefts"), t("Align centers"), t("Align rights"), t("Align tops"), t("Align middles"), t("Align bottoms"),
+        t("Same width"), t("Same height"), t("Same size"), t("Space evenly across"), t("Space evenly down"),
+        t("Align to grid"), t("Size to grid"), t("More space across"), t("Less space across"), t("No space across"),
+        t("More space down"), t("Less space down"), t("No space down"), t("Center across"), t("Center down"),
+    ]
+}
 const ID_EDIT_TOOLBAR: i32 = 114;
 /// Toolbox buttons: the pointer, then each kind in `Kind::ALL` order.
 const ID_TOOL: i32 = 300;
@@ -207,6 +228,14 @@ pub struct Studio {
     side: HWND,
     side_split: HWND,
     toolbox_split: HWND,
+    /// The form designer's Layout bar, under the Standard bar.
+    layout_bar: HWND,
+    /// The Debug / Release box on the Standard bar.
+    config: HWND,
+    /// Places in code that F12, a reference or an error went from, for Navigate backward and
+    /// forward; `nav_at` is where in them we are.
+    nav: Vec<(PathBuf, (usize, usize))>,
+    nav_at: usize,
     /// Auto Hide: the toolbox, and the right-hand panes (as one group), each hidden at its edge.
     auto_left: bool,
     auto_right: bool,
@@ -297,26 +326,72 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
     v
 }
 
+/// The Standard bar, as Visual Studio's: back and forward, new and open, save and save all, undo
+/// and redo, the Debug / Release box, Start with the project's name, Stop, Build, then Phai's own.
 fn toolbar_items() -> Vec<(i32, &'static str, u16)> {
     vec![
-        (ID_NEW, t("New"), glyph::NEW),
+        (ID_NAV_BACK, t("Navigate backward"), glyph::BACK),
+        (ID_NAV_FORWARD, t("Navigate forward"), glyph::FORWARD),
+        (0, "", 0),
+        (ID_NEW_PROJECT, t("New project"), glyph::NEW_FOLDER),
+        (ID_NEW, t("New form"), glyph::NEW),
         (ID_OPEN, t("Open"), glyph::OPEN),
         (ID_SAVE, t("Save"), glyph::SAVE),
+        (ID_SAVE_ALL, t("Save all"), glyph::SAVE_ALL),
         (0, "", 0),
         (ID_UNDO, t("Undo"), glyph::UNDO),
         (ID_REDO, t("Redo"), glyph::REDO),
-        (ID_DELETE, t("Delete"), glyph::DELETE),
         (0, "", 0),
-        (ID_FORMAT, t("Align lefts"), glyph::ALIGN_LEFT),
-        (ID_FORMAT + 1, t("Align centers"), glyph::ALIGN_CENTER),
-        (ID_FORMAT + 2, t("Align rights"), glyph::ALIGN_RIGHT),
+        (0, "gap:96", 0),
         (0, "", 0),
+        (ID_RUN, t("Start"), glyph::PLAY),
+        (ID_STOP, t("Stop"), glyph::STOP),
         (ID_BUILD, t("Build"), glyph::BUILD),
-        (ID_RUN, t("Run"), glyph::PLAY),
-        (ID_PREVIEW, t("Preview"), glyph::MONITOR),
         (0, "", 0),
+        (ID_PREVIEW, t("Preview"), glyph::MONITOR),
         (ID_THEME_TOGGLE, t("Theme"), glyph::BRIGHTNESS),
         (ID_LANG, t("Language"), glyph::LANGUAGE),
+    ]
+}
+
+/// The Layout bar of the form designer, as Visual Studio's.
+fn layout_items() -> Vec<(i32, &'static str, u16)> {
+    use phai_form::arrange::Op::*;
+    let n = format_names();
+    let f = |op: phai_form::arrange::Op, g: u16| (format_id(op), n[FORMATS.iter().position(|o| *o == op).unwrap_or(0)], g);
+    vec![
+        f(AlignToGrid, glyph::LAY_GRID),
+        (0, "", 0),
+        f(Lefts, glyph::LAY_LEFTS),
+        f(Centers, glyph::LAY_CENTERS),
+        f(Rights, glyph::LAY_RIGHTS),
+        (0, "", 0),
+        f(Tops, glyph::LAY_TOPS),
+        f(Middles, glyph::LAY_MIDDLES),
+        f(Bottoms, glyph::LAY_BOTTOMS),
+        (0, "", 0),
+        f(SameWidth, glyph::LAY_SAME_WIDTH),
+        f(SizeToGrid, glyph::LAY_SIZE_GRID),
+        f(SameHeight, glyph::LAY_SAME_HEIGHT),
+        f(SameSize, glyph::LAY_SAME_SIZE),
+        (0, "", 0),
+        f(SpaceAcross, glyph::LAY_SPACE_ACROSS),
+        f(MoreAcross, glyph::LAY_MORE_ACROSS),
+        f(LessAcross, glyph::LAY_LESS_ACROSS),
+        f(NoneAcross, glyph::LAY_NONE_ACROSS),
+        (0, "", 0),
+        f(SpaceDown, glyph::LAY_SPACE_DOWN),
+        f(MoreDown, glyph::LAY_MORE_DOWN),
+        f(LessDown, glyph::LAY_LESS_DOWN),
+        f(NoneDown, glyph::LAY_NONE_DOWN),
+        (0, "", 0),
+        f(CenterAcross, glyph::LAY_CENTER_ACROSS),
+        f(CenterDown, glyph::LAY_CENTER_DOWN),
+        (0, "", 0),
+        (ID_FRONT, t("Bring to front"), glyph::LAY_FRONT),
+        (ID_BACK, t("Send to back"), glyph::LAY_BACK),
+        (0, "", 0),
+        (ID_TAB_ORDER, t("Tab order"), glyph::LAY_TAB_ORDER),
     ]
 }
 
@@ -408,9 +483,9 @@ fn build_menu() -> HMENU {
         wm::CheckMenuItem(view, if words::is_thai() { ID_THAI } else { ID_ENGLISH } as u32, wm::MF_CHECKED.0);
         sub(t("&View"), view);
         let fmt = wm::CreatePopupMenu().unwrap_or_default();
-        let names = [t("Align lefts"), t("Align centers"), t("Align rights"), t("Align tops"), t("Align middles"), t("Align bottoms"), t("Same width"), t("Same height"), t("Same size"), t("Space evenly across"), t("Space evenly down")];
+        let names = format_names();
         for (k, name) in names.iter().enumerate() {
-            if k == 6 || k == 9 {
+            if matches!(k, 6 | 9 | 11 | 13 | 19) {
                 sep(fmt);
             }
             add(fmt, ID_FORMAT + k as i32, name, "");
@@ -855,11 +930,11 @@ impl Studio {
     /// Lines the chosen controls up against the first one chosen.
     fn format(&mut self, op: phai_form::arrange::Op) {
         let chosen: Vec<usize> = self.selection().into_iter().filter(|i| self.doc.form.control[*i].dock.as_deref().is_none_or(|d| d == "none")).collect();
-        if chosen.len() < 2 {
+        if chosen.is_empty() || chosen.len() < 2 && !op.works_alone() {
             return;
         }
         let mut rects: Vec<[i32; 4]> = chosen.iter().map(|i| self.doc.form.control[*i].rect()).collect();
-        phai_form::arrange::arrange(&mut rects, 0, op);
+        phai_form::arrange::arrange_in(&mut rects, 0, op, self.doc.form.form.size, canvas::GRID * 2);
         self.edit(|f| {
             for (i, r) in chosen.iter().zip(&rects) {
                 f.control[*i].bounds = Some(*r);
@@ -1066,6 +1141,7 @@ impl Studio {
             Ask::Complete => phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300)),
             Ask::Definition => match phai_editor::lsp::locations_of(&result).into_iter().next() {
                 Some(place) => {
+                    self.remember_place();
                     self.open_code(&place.path);
                     if let Some(code) = self.doc.code {
                         phai_editor::view::select_lsp(code, place.start, place.end);
@@ -1255,6 +1331,7 @@ impl Studio {
     /// Double-click in the References list: that place, in Phai's editor.
     fn open_reference(&mut self, row: usize) {
         let Some(r) = self.references.get(row).cloned() else { return };
+        self.remember_place();
         self.open_code(&r.path);
         if let Some(h) = self.doc.code {
             phai_editor::view::select_lsp(h, r.start, r.end);
@@ -1421,6 +1498,7 @@ impl Studio {
     }
 
     pub fn say_selection(&self) {
+        self.say_bars();
         if let Some(h) = self.doc.code {
             let (l, c) = phai_editor::view::caret_position(h);
             controls::status_text(self.status, 1, &tf("Line {0}, column {1}", &[&l, &c]));
@@ -1654,6 +1732,88 @@ impl Studio {
     /// The layout item of window `h`.
     fn item(&mut self, h: HWND) -> Option<&mut Item> {
         self.layout.items.iter_mut().find(|(w, _)| *w == h).map(|(_, i)| i)
+    }
+
+    /// The bars as things are: Start named for the project, Debug or Release in its box, the box
+    /// over its room, back and forward and the Layout bar usable only when they would do something.
+    pub fn say_bars(&self) {
+        let project = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+        win::toolbar_text(self.toolbar, ID_RUN, project.as_deref().unwrap_or(t("Start")));
+        let gap = toolbar_items().iter().position(|(_, l, _)| l.starts_with("gap:")).unwrap_or(0);
+        let r = win::toolbar_item_rect(self.toolbar, gap);
+        win::move_to(self.config, r.left, r.top + (r.bottom - r.top - win::px(self.toolbar, 24)) / 2, r.right - r.left, win::px(self.toolbar, 200));
+        unsafe {
+            wm::SendMessageW(self.config, 0x014E /* CB_SETCURSEL */, Some(WPARAM(self.release as usize)), None);
+        }
+        win::toolbar_enable(self.toolbar, ID_NAV_BACK, self.nav_at > 0);
+        win::toolbar_enable(self.toolbar, ID_NAV_FORWARD, self.nav_at + 1 < self.nav.len());
+        let design = self.doc.code.is_none();
+        let n = self.selection().len();
+        for (k, op) in FORMATS.iter().enumerate() {
+            win::toolbar_enable(self.layout_bar, ID_FORMAT + k as i32, design && (n >= 2 || n == 1 && op.works_alone()));
+        }
+        win::toolbar_enable(self.layout_bar, ID_FRONT, design && n >= 1);
+        win::toolbar_enable(self.layout_bar, ID_BACK, design && n >= 1);
+        win::toolbar_enable(self.layout_bar, ID_TAB_ORDER, design);
+        win::toolbar_check(self.layout_bar, ID_TAB_ORDER, self.canvas.as_ref().is_some_and(|c| c.tab_mode()));
+    }
+
+    /// Remembers where the caret is before a jump - F12, a reference, an error - for Navigate
+    /// backward; what was ahead is forgotten, as in a browser.
+    fn remember_place(&mut self) {
+        let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) else { return };
+        let at = phai_editor::view::caret_position(h);
+        self.nav.truncate(self.nav_at);
+        if self.nav.last() != Some(&(path.clone(), at)) {
+            self.nav.push((path, at));
+        }
+        self.nav_at = self.nav.len();
+        self.say_bars();
+    }
+
+    /// Navigate backward (`back`) or forward through the places jumped from.
+    fn navigate(&mut self, back: bool) {
+        if back {
+            if self.nav_at == 0 {
+                return;
+            }
+            // Leaving the newest place: keep it, so forward comes back to it.
+            if self.nav_at == self.nav.len() {
+                if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
+                    let here = (path, phai_editor::view::caret_position(h));
+                    if self.nav.last() != Some(&here) {
+                        self.nav.push(here);
+                    }
+                }
+            }
+            self.nav_at -= 1;
+        } else {
+            if self.nav_at + 1 >= self.nav.len() {
+                return;
+            }
+            self.nav_at += 1;
+        }
+        let (path, (line, col)) = self.nav[self.nav_at].clone();
+        self.open_code(&path);
+        if let Some(h) = self.doc.code {
+            phai_editor::view::go_to(h, line, col);
+        }
+        self.say_bars();
+    }
+
+    /// File > Save all: every tab with changes, the one in front last shown again.
+    fn save_all(&mut self) {
+        let front = self.active;
+        for i in 0..self.tabs.len() {
+            let dirty = if i == self.active { self.doc.dirty } else { self.tabs[i].doc.dirty };
+            if dirty {
+                self.activate(i);
+                if !self.save(false) {
+                    return;
+                }
+            }
+        }
+        self.activate(front);
     }
 
     /// Whether a pane hides itself at its edge.
@@ -1998,6 +2158,7 @@ impl Studio {
         let (line, column) = (d.line as usize, d.column as usize);
         controls::status_text(self.status, 0, &format!("{}:{line}:{column}", file.display()));
         // Into Phai's own editor, at the line.
+        self.remember_place();
         self.open_code(&file);
         if let Some(h) = self.doc.code {
             phai_editor::view::go_to(h, line, column);
@@ -2075,6 +2236,15 @@ impl Studio {
             ID_SAVE => {
                 self.save(false);
             }
+            ID_SAVE_ALL => self.save_all(),
+            ID_NAV_BACK | ID_NAV_FORWARD => self.navigate(id == ID_NAV_BACK),
+            ID_CONFIG => {
+                // The box speaks of many things; only a change of choice matters.
+                let release = win::combo_selected(self.config) == 1;
+                if release != self.release {
+                    self.command(if release { ID_RELEASE } else { ID_DEBUG });
+                }
+            }
             ID_SAVE_AS => {
                 self.save(true);
             }
@@ -2148,10 +2318,13 @@ impl Studio {
             let _ = wm::SetMenu(self.hwnd, Some(build_menu()));
             let _ = wm::DestroyMenu(old);
         }
+        self.say_bars();
     }
 
     fn relabel(&mut self) {
         win::set_toolbar(self.toolbar, &toolbar_items());
+        win::set_toolbar(self.layout_bar, &layout_items());
+        self.say_bars();
         toolbox::relabel(self.toolbox);
         toolbox::choose(self.toolbox, self.tool.and_then(|k| Kind::ALL.iter().position(|x| *x == k)).map(|i| ID_TOOL + 1 + i as i32).unwrap_or(ID_TOOL));
         unsafe {
@@ -2531,6 +2704,9 @@ fn main() {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(build_menu()), Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
         let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &toolbar_items());
+        let layout_bar = win::toolbar(hwnd, ID_LAYOUT_BAR, &layout_items());
+        // The Debug / Release box lies over the room the Standard bar keeps for it.
+        let config = win::combo(toolbar, ID_CONFIG, font, &["Debug", "Release"]);
         let toolbox = toolbox::new(hwnd, ID_TOOLBOX, font);
         let tabbar = controls::tabs(hwnd, ID_TABS, font, &[t("Untitled")]);
         let status = controls::status_bar(hwnd, ID_STATUS, font);
@@ -2547,6 +2723,7 @@ fn main() {
         let mut layout = Layout::new((1100, 700));
         layout
             .add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
+            .add(layout_bar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_hwnd, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_split, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
@@ -2573,6 +2750,10 @@ fn main() {
             side: HWND::default(),
             side_split: HWND::default(),
             toolbox_split,
+            layout_bar,
+            config,
+            nav: vec![],
+            nav_at: 0,
             auto_left: false,
             auto_right: false,
             right_saved: (true, true),
