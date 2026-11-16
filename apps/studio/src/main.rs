@@ -59,6 +59,12 @@ const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
 const ID_CLOSE: i32 = 106;
 const ID_DEBUG: i32 = 143;
+const ID_VIEW_TOOLBOX: i32 = 180;
+const ID_VIEW_EXPLORER: i32 = 181;
+const ID_VIEW_PROPS: i32 = 182;
+const ID_VIEW_OUTPUT: i32 = 183;
+const ID_SPLIT_SIDE: i32 = 207;
+const ID_SPLIT_BOTTOM: i32 = 208;
 /// File > Recent: `ID_RECENT + n`, newest first.
 const ID_RECENT: i32 = 160;
 /// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
@@ -93,6 +99,15 @@ const ID_ERRORS: i32 = 205;
 const ID_TABS: i32 = 206;
 /// The error list's height when it shows, design pixels.
 const ERRORS_HEIGHT: i32 = 140;
+
+/// The docked panes the View menu shows and hides.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pane {
+    Toolbox,
+    Explorer,
+    Properties,
+    Output,
+}
 
 pub struct Doc {
     pub form: FormFile,
@@ -151,6 +166,14 @@ pub struct Studio {
     /// Requests sent to it, by id: which editor asked, and whether for a hover (else completions).
     asked: std::collections::HashMap<i64, (HWND, bool)>,
     pub canvas: Option<Canvas>,
+    side: HWND,
+    side_split: HWND,
+    bottom_split: HWND,
+    /// Design pixels: the side panes' width and the bottom pane's height.
+    side_w: i32,
+    bottom_h: i32,
+    toolbox_on: bool,
+    bottom_on: bool,
     pub props: Option<Props>,
     pub explorer: Option<explorer::Explorer>,
     tabbar: HWND,
@@ -295,6 +318,19 @@ fn build_menu() -> HMENU {
         sub(t("&Edit"), edit);
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
+        sep(view);
+        add(view, ID_VIEW_TOOLBOX, t("Toolbox"), "");
+        add(view, ID_VIEW_EXPLORER, t("Project explorer"), "");
+        add(view, ID_VIEW_PROPS, t("Properties"), "");
+        add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
+        if let Some(s) = studio() {
+            let (e, p) = explorer::side_panes(s.side);
+            for (id, on) in [(ID_VIEW_TOOLBOX, s.toolbox_on), (ID_VIEW_EXPLORER, e), (ID_VIEW_PROPS, p), (ID_VIEW_OUTPUT, s.bottom_on)] {
+                if on {
+                    wm::CheckMenuItem(view, id as u32, wm::MF_CHECKED.0);
+                }
+            }
+        }
         sep(view);
         add(view, ID_LIGHT, t("Light"), "");
         add(view, ID_DARK, t("Dark"), "");
@@ -1182,9 +1218,75 @@ impl Studio {
     }
 
     fn show_errors(&mut self, on: bool) {
-        self.layout.items[2].1.bounds.h = if on { ERRORS_HEIGHT } else { 0 };
-        if let Some(b) = self.bottom.as_ref() {
-            win::show(b.hwnd, on);
+        self.show_pane(Pane::Output, on);
+    }
+
+    /// The layout item of window `h`.
+    fn item(&mut self, h: HWND) -> Option<&mut Item> {
+        self.layout.items.iter_mut().find(|(w, _)| *w == h).map(|(_, i)| i)
+    }
+
+    /// Shows or hides a docked pane, as the View menu and the panes' close buttons do.
+    pub fn show_pane(&mut self, pane: Pane, on: bool) {
+        match pane {
+            Pane::Toolbox => {
+                self.toolbox_on = on;
+                let tb = self.toolbox;
+                if let Some(i) = self.item(tb) {
+                    i.bounds.w = if on { win::TOOLBAR_HEIGHT + 4 } else { 0 };
+                }
+                win::show(tb, on);
+            }
+            Pane::Explorer | Pane::Properties => {
+                let (mut e, mut p) = explorer::side_panes(self.side);
+                if pane == Pane::Explorer {
+                    e = on;
+                } else {
+                    p = on;
+                }
+                let any = explorer::show_side_panes(self.side, e, p);
+                let (side, split, w) = (self.side, self.side_split, self.side_w);
+                if let Some(i) = self.item(side) {
+                    i.bounds.w = if any { w } else { 0 };
+                }
+                if let Some(i) = self.item(split) {
+                    i.bounds.w = if any { 6 } else { 0 };
+                }
+                win::show(side, any);
+                win::show(split, any);
+            }
+            Pane::Output => {
+                self.bottom_on = on;
+                let (bh, split, h) = (self.bottom.as_ref().map(|b| b.hwnd).unwrap_or_default(), self.bottom_split, self.bottom_h);
+                if let Some(i) = self.item(bh) {
+                    i.bounds.h = if on { h } else { 0 };
+                }
+                if let Some(i) = self.item(split) {
+                    i.bounds.h = if on { 6 } else { 0 };
+                }
+                win::show(bh, on);
+                win::show(split, on);
+            }
+        }
+        self.layout.apply(self.hwnd);
+        self.rebuild_menu();
+    }
+
+    /// A splitter dragged `d` device pixels: the pane beside it takes or gives the room.
+    fn split(&mut self, id: i32, d: i32) {
+        let d = phai_ui::layout::unscale(d, win::dpi(self.hwnd));
+        if id == ID_SPLIT_SIDE {
+            self.side_w = (self.side_w - d).clamp(180, 900);
+            let (side, w) = (self.side, self.side_w);
+            if let Some(i) = self.item(side) {
+                i.bounds.w = w;
+            }
+        } else {
+            self.bottom_h = (self.bottom_h - d).clamp(60, 900);
+            let (bh, h) = (self.bottom.as_ref().map(|b| b.hwnd).unwrap_or_default(), self.bottom_h);
+            if let Some(i) = self.item(bh) {
+                i.bounds.h = h;
+            }
         }
         self.layout.apply(self.hwnd);
     }
@@ -1266,6 +1368,16 @@ impl Studio {
                     self.open_path(&p);
                 }
             }
+            ID_VIEW_TOOLBOX => self.show_pane(Pane::Toolbox, !self.toolbox_on),
+            ID_VIEW_EXPLORER => {
+                let on = !explorer::side_panes(self.side).0;
+                self.show_pane(Pane::Explorer, on);
+            }
+            ID_VIEW_PROPS => {
+                let on = !explorer::side_panes(self.side).1;
+                self.show_pane(Pane::Properties, on);
+            }
+            ID_VIEW_OUTPUT => self.show_pane(Pane::Output, !self.bottom_on),
             ID_EDIT_MENUS => self.edit_menus(),
             ID_CUT => {
                 self.copy();
@@ -1383,6 +1495,7 @@ impl Studio {
         if let Some(b) = self.bottom.as_ref() {
             b.relabel();
         }
+        explorer::relabel_side(self.side);
         self.refresh_tabs();
         controls::status_text(self.status, 0, t("Ready"));
         self.say_title();
@@ -1524,6 +1637,10 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
     match msg {
         wm::WM_SIZE => {
             s.layout.apply(hwnd);
+            LRESULT(0)
+        }
+        phai_ui::controls::WM_SPLIT => {
+            s.split(w.0 as i32, l.0 as i32);
             LRESULT(0)
         }
         wm::WM_COMMAND => {
@@ -1736,6 +1853,8 @@ fn main() {
         let bottom = bottom::Bottom::new(hwnd, font, ID_ERRORS);
         let errors = bottom.errors;
         let bottom_hwnd = bottom.hwnd;
+        let bottom_split = controls::splitter(hwnd, ID_SPLIT_BOTTOM, false);
+        win::show(bottom_split, false);
         controls::status_parts(status, &[260, 80]);
         controls::status_text(status, 2, "Debug");
         controls::status_text(status, 0, t("Ready"));
@@ -1746,6 +1865,7 @@ fn main() {
             .add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_hwnd, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
+            .add(bottom_split, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(toolbox, Item { bounds: Rect::new(0, 0, win::TOOLBAR_HEIGHT + 4, 0), dock: Dock::Left, anchor: Anchor::default() });
         let studio_box = Box::new(Studio {
             hwnd,
@@ -1762,6 +1882,13 @@ fn main() {
             lsp: None,
             asked: std::collections::HashMap::new(),
             canvas: None,
+            side: HWND::default(),
+            side_split: HWND::default(),
+            bottom_split: HWND::default(),
+            side_w: 280,
+            bottom_h: ERRORS_HEIGHT,
+            toolbox_on: true,
+            bottom_on: false,
             props: None,
             explorer: None,
             tabbar,
@@ -1781,9 +1908,14 @@ fn main() {
         let side = explorer::side_panel(hwnd);
         let explorer = explorer::Explorer::new(side, font);
         let props = Props::new(side, ID_PROPS, font);
-        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd);
+        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd, font);
         let canvas = Canvas::new(hwnd, ID_CANVAS);
+        let side_split = controls::splitter(hwnd, ID_SPLIT_SIDE, true);
+        s.side = side;
+        s.side_split = side_split;
+        s.bottom_split = bottom_split;
         s.layout.add(side, Item { bounds: Rect::new(0, 0, 280, 0), dock: Dock::Right, anchor: Anchor::default() });
+        s.layout.add(side_split, Item { bounds: Rect::new(0, 0, 6, 0), dock: Dock::Right, anchor: Anchor::default() });
         s.layout.add(tabbar, Item { bounds: Rect::new(0, 0, 0, 30), dock: Dock::Top, anchor: Anchor::default() });
         s.layout.add(canvas.hwnd, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
         s.props = Some(props);
@@ -1797,7 +1929,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && args[i - 1] != "--selftest" && args[i - 1] != "--selftest-multi" && args[i - 1] != "--tab").map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -1810,6 +1942,14 @@ fn main() {
         }
         if forms.len() > 1 {
             s.activate(0);
+        }
+        // `--command N` (more than once) does what menu command N does - for checking by picture.
+        for (i, a) in args.iter().enumerate() {
+            if a == "--command" {
+                if let Some(id) = args.get(i + 1).and_then(|n| n.parse::<usize>().ok()) {
+                    let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(id), LPARAM(0));
+                }
+            }
         }
         // `--menus` opens the menu editor at once - for checking it by its picture.
         if args.iter().any(|a| a == "--menus") {

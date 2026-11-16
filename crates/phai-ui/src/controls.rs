@@ -344,3 +344,194 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         }
     }
 }
+
+// --- panes: a caption with a close button, and a splitter ---------------------------------------
+//
+// What makes a panel a docked pane, as Visual Studio's tool windows are: a caption naming it with
+// a close button, and a splitter beside it to drag its size.
+
+/// A caption's close button was pressed: `WM_COMMAND` with the caption's id and this high word.
+pub const CAPTION_CLOSE: u16 = 1;
+
+/// Sent while a splitter is dragged: `WPARAM` its id, `LPARAM` how many device pixels it moved
+/// since the last one - right or down positive.
+pub const WM_SPLIT: u32 = wm::WM_APP + 0x3A20;
+
+struct Caption {
+    font: HFONT,
+    hot: bool,
+}
+
+/// A pane's caption: its name on the left in the muted colour, a close glyph on the right.
+pub fn caption(parent: HWND, title: &str, id: i32, f: HFONT) -> HWND {
+    let h = create(parent, "PhaiCaption", Some(caption_proc), title, id, f, WINDOW_EX_STYLE(0));
+    win::set_state(h, Box::new(Caption { font: f, hot: false }));
+    mark(h, Kind::Label);
+    h
+}
+
+fn close_box(h: HWND) -> RECT {
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut r);
+    }
+    let s = r.bottom - r.top;
+    RECT { left: r.right - s, ..r }
+}
+
+extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
+    unsafe {
+        let Some(s) = win::state::<Caption>(h) else { return wm::DefWindowProcW(h, msg, w, l) };
+        if let Some(r) = common_messages(h, msg, w, l, &mut s.font) {
+            return r;
+        }
+        match msg {
+            wm::WM_ERASEBKGND => LRESULT(1),
+            wm::WM_PAINT => {
+                let mut ps = Gdi::PAINTSTRUCT::default();
+                let dc = Gdi::BeginPaint(h, &mut ps);
+                let mut r = RECT::default();
+                let _ = wm::GetClientRect(h, &mut r);
+                let base = win::style_of(h, Kind::Tabs, State::default());
+                win::fill(dc, &r, base.background_or(win::window_background()));
+                let rule = RECT { top: r.bottom - 1, ..r };
+                win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
+                let muted = crate::theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
+                let mut tr = RECT { left: px(h, 10), right: close_box(h).left, ..r };
+                win::draw_text(dc, h, &win::text_of(h), &mut tr, muted, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+                // The close glyph, shaded under the pointer.
+                let cb = close_box(h);
+                if s.hot {
+                    let hover = crate::theme::style("button", State { hover: true, ..Default::default() });
+                    win::fill(dc, &cb, hover.background_or(Color::rgb(0xe7, 0xf3, 0xef)));
+                }
+                let mut lf = Gdi::LOGFONTW { lfHeight: -px(h, 9), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::ANTIALIASED_QUALITY, ..Default::default() };
+                for (i, u) in "Segoe Fluent Icons".encode_utf16().enumerate() {
+                    lf.lfFaceName[i] = u;
+                }
+                let icons = Gdi::CreateFontIndirectW(&lf);
+                let old = Gdi::SelectObject(dc, icons.into());
+                Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
+                let mut one = [0xE8BBu16];
+                let mut gr = cb;
+                Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                Gdi::SelectObject(dc, old);
+                let _ = Gdi::DeleteObject(icons.into());
+                let _ = Gdi::EndPaint(h, &ps);
+                LRESULT(0)
+            }
+            wm::WM_MOUSEMOVE => {
+                let (x, y) = win::point_of(l);
+                let cb = close_box(h);
+                let hot = x >= cb.left && x < cb.right && y >= cb.top && y < cb.bottom;
+                if hot != s.hot {
+                    s.hot = hot;
+                    let mut t = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: h, dwHoverTime: 0 };
+                    let _ = TrackMouseEvent(&mut t);
+                    let _ = Gdi::InvalidateRect(Some(h), None, false);
+                }
+                LRESULT(0)
+            }
+            0x02A3 => {
+                // WM_MOUSELEAVE
+                s.hot = false;
+                let _ = Gdi::InvalidateRect(Some(h), None, false);
+                LRESULT(0)
+            }
+            wm::WM_LBUTTONUP if s.hot => {
+                let id = wm::GetDlgCtrlID(h) as usize;
+                if let Ok(p) = wm::GetParent(h) {
+                    wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((CAPTION_CLOSE as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
+                }
+                LRESULT(0)
+            }
+            wm::WM_NCDESTROY => {
+                win::forget_kind(h);
+                drop(win::take_state::<Caption>(h));
+                LRESULT(0)
+            }
+            _ => wm::DefWindowProcW(h, msg, w, l),
+        }
+    }
+}
+
+struct Splitter {
+    font: HFONT,
+    across: bool,
+    last: Option<i32>,
+}
+
+/// A bar to drag: `across` sizes things left and right (a vertical bar), else up and down. The
+/// parent hears [`WM_SPLIT`] as it moves.
+pub fn splitter(parent: HWND, id: i32, across: bool) -> HWND {
+    let h = create(parent, "PhaiSplitter", Some(splitter_proc), "", id, HFONT::default(), WINDOW_EX_STYLE(0));
+    win::set_state(h, Box::new(Splitter { font: HFONT::default(), across, last: None }));
+    h
+}
+
+extern "system" fn splitter_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+    unsafe {
+        let Some(s) = win::state::<Splitter>(h) else { return wm::DefWindowProcW(h, msg, w, l) };
+        if let Some(r) = common_messages(h, msg, w, l, &mut s.font) {
+            return r;
+        }
+        let across = s.across;
+        let screen = |l: LPARAM| {
+            let (x, y) = win::point_of(l);
+            let mut pt = windows::Win32::Foundation::POINT { x, y };
+            let _ = Gdi::ClientToScreen(h, &mut pt);
+            if across {
+                pt.x
+            } else {
+                pt.y
+            }
+        };
+        match msg {
+            wm::WM_ERASEBKGND => {
+                let dc = Gdi::HDC(w.0 as *mut _);
+                let mut r = RECT::default();
+                let _ = wm::GetClientRect(h, &mut r);
+                win::fill(dc, &r, win::window_background());
+                // A hairline in the middle, as a divider.
+                let rule = if across { RECT { left: r.right / 2, right: r.right / 2 + 1, ..r } } else { RECT { top: r.bottom / 2, bottom: r.bottom / 2 + 1, ..r } };
+                win::fill(dc, &rule, win::style_of(h, Kind::Tabs, State::default()).border_or(Color::rgb(229, 229, 229)));
+                LRESULT(1)
+            }
+            wm::WM_SETCURSOR => {
+                wm::SetCursor(wm::LoadCursorW(None, if across { wm::IDC_SIZEWE } else { wm::IDC_SIZENS }).ok());
+                LRESULT(1)
+            }
+            wm::WM_LBUTTONDOWN => {
+                SetCapture(h);
+                s.last = Some(screen(l));
+                LRESULT(0)
+            }
+            wm::WM_MOUSEMOVE => {
+                if let Some(last) = s.last {
+                    let now = screen(l);
+                    if now != last {
+                        s.last = Some(now);
+                        let id = wm::GetDlgCtrlID(h) as usize;
+                        if let Ok(p) = wm::GetParent(h) {
+                            wm::SendMessageW(p, WM_SPLIT, Some(WPARAM(id)), Some(LPARAM((now - last) as isize)));
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
+            wm::WM_LBUTTONUP => {
+                s.last = None;
+                let _ = ReleaseCapture();
+                LRESULT(0)
+            }
+            wm::WM_NCDESTROY => {
+                drop(win::take_state::<Splitter>(h));
+                LRESULT(0)
+            }
+            _ => wm::DefWindowProcW(h, msg, w, l),
+        }
+    }
+}

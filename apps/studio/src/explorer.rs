@@ -35,8 +35,68 @@ pub struct Explorer {
     entries: Vec<PathBuf>,
 }
 
+const ID_EXPLORER_CAPTION: i32 = 410;
+const ID_PROPS_CAPTION: i32 = 411;
+const ID_SIDE_SPLIT: i32 = 412;
+
+/// The right-hand side: two docked panes, the project explorer above the properties, each with
+/// its caption and close button, a splitter between them.
 struct Side {
     layout: Layout,
+    parts: Option<SideParts>,
+    /// The explorer pane's height, design pixels.
+    explorer_h: i32,
+    pub explorer_on: bool,
+    pub props_on: bool,
+}
+
+#[derive(Clone, Copy)]
+struct SideParts {
+    explorer_caption: HWND,
+    tree: HWND,
+    split: HWND,
+    props_caption: HWND,
+    props: HWND,
+}
+
+impl Side {
+    /// The panes again: those shown take their room, the last one shown fills the rest.
+    fn arrange(&mut self, side: HWND) {
+        let Some(p) = self.parts else { return };
+        let mut l = Layout::new((280, 600));
+        let item = |h: i32, dock: Dock| Item { bounds: Rect::new(0, 0, 0, h), dock, anchor: Anchor::default() };
+        for (h, on) in [(p.explorer_caption, self.explorer_on), (p.tree, self.explorer_on), (p.split, self.explorer_on && self.props_on), (p.props_caption, self.props_on), (p.props, self.props_on)] {
+            win::show(h, on);
+        }
+        if self.explorer_on {
+            l.add(p.explorer_caption, item(28, Dock::Top));
+            l.add(p.tree, if self.props_on { item(self.explorer_h, Dock::Top) } else { item(0, Dock::Fill) });
+        }
+        if self.explorer_on && self.props_on {
+            l.add(p.split, item(6, Dock::Top));
+        }
+        if self.props_on {
+            l.add(p.props_caption, item(28, Dock::Top));
+            l.add(p.props, item(0, Dock::Fill));
+        }
+        self.layout = l;
+        self.layout.apply(side);
+    }
+}
+
+/// Shows or hides the explorer and properties panes; returns whether either is still shown.
+pub fn show_side_panes(side: HWND, explorer: bool, props: bool) -> bool {
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        s.explorer_on = explorer;
+        s.props_on = props;
+        s.arrange(side);
+    }
+    explorer || props
+}
+
+/// Whether the explorer and properties panes are shown.
+pub fn side_panes(side: HWND) -> (bool, bool) {
+    unsafe { win::state::<Side>(side) }.map(|s| (s.explorer_on, s.props_on)).unwrap_or((true, true))
 }
 
 /// The right-hand panel that holds the explorer and the properties.
@@ -44,18 +104,26 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)) }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 240, explorer_on: true, props_on: true }));
         h
     }
 }
 
-/// Stacks the panel: the heading, the tree, then the properties filling the rest.
-pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND) {
+/// Makes the panes of the side: the explorer's caption and tree, a splitter, the properties'
+/// caption and the properties.
+pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, font: HFONT) {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
-        s.layout.add(heading, Item { bounds: Rect::new(0, 0, 0, 30), dock: Dock::Top, anchor: Anchor::default() });
-        s.layout.add(tree, Item { bounds: Rect::new(0, 0, 0, 240), dock: Dock::Top, anchor: Anchor::default() });
-        s.layout.add(props, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
-        s.layout.apply(side);
+        let split = phai_ui::controls::splitter(side, ID_SIDE_SPLIT, false);
+        let props_caption = phai_ui::controls::caption(side, t("Properties"), ID_PROPS_CAPTION, font);
+        s.parts = Some(SideParts { explorer_caption: heading, tree, split, props_caption, props });
+        s.arrange(side);
+    }
+}
+
+/// New words on the captions, after a language switch.
+pub fn relabel_side(side: HWND) {
+    if let Some(p) = unsafe { win::state::<Side>(side) }.and_then(|s| s.parts) {
+        win::set_text(p.props_caption, t("Properties"));
     }
 }
 
@@ -64,6 +132,26 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         wm::WM_SIZE => {
             if let Some(s) = unsafe { win::state::<Side>(h) } {
                 s.layout.apply(h);
+            }
+            LRESULT(0)
+        }
+        // A pane's close button: hide it; the studio's View menu shows it again.
+        wm::WM_COMMAND if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE => {
+            let id = win::loword(w.0) as i32;
+            if let Some(st) = studio() {
+                match id {
+                    ID_EXPLORER_CAPTION => st.show_pane(crate::Pane::Explorer, false),
+                    ID_PROPS_CAPTION => st.show_pane(crate::Pane::Properties, false),
+                    _ => {}
+                }
+            }
+            LRESULT(0)
+        }
+        phai_ui::controls::WM_SPLIT => {
+            if let Some(s) = unsafe { win::state::<Side>(h) } {
+                let d = phai_ui::layout::unscale(l.0 as i32, win::dpi(h));
+                s.explorer_h = (s.explorer_h + d).clamp(60, 900);
+                s.arrange(h);
             }
             LRESULT(0)
         }
@@ -97,8 +185,7 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
 
 impl Explorer {
     pub fn new(side: HWND, font: HFONT) -> Explorer {
-        let hwnd = win::label(side, t("Project"), 0, font);
-        win::set_css(hwnd, "muted", "");
+        let hwnd = phai_ui::controls::caption(side, t("Project"), ID_EXPLORER_CAPTION, font);
         let tree = win::tree(side, ID_TREE, font);
         win::tree_icons(tree, &ICONS);
         Explorer { hwnd, tree, root: None, entries: vec![] }
