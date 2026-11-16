@@ -22,6 +22,73 @@ pub enum Op {
     SameSize,
     SpaceAcross,
     SpaceDown,
+    /// Each one's corner onto the grid.
+    AlignToGrid,
+    /// Each one's size onto the grid.
+    SizeToGrid,
+    /// The gaps across one grid step wider, narrower, or gone - the first stays.
+    MoreAcross,
+    LessAcross,
+    NoneAcross,
+    MoreDown,
+    LessDown,
+    NoneDown,
+    /// The group moved to the middle of the form, across or down.
+    CenterAcross,
+    CenterDown,
+}
+
+impl Op {
+    /// Whether it does anything to one control alone - the others need two or more.
+    pub fn works_alone(self) -> bool {
+        matches!(self, Op::AlignToGrid | Op::SizeToGrid | Op::CenterAcross | Op::CenterDown)
+    }
+}
+
+/// Moves and sizes `rects` by `op` within a form of `form` size, on a grid of `grid` pixels;
+/// `primary` is the index of the one the others follow.
+pub fn arrange_in(rects: &mut [[i32; 4]], primary: usize, op: Op, form: [i32; 2], grid: i32) {
+    let grid = grid.max(1);
+    let snap = |v: i32| (v + grid / 2).div_euclid(grid) * grid;
+    match op {
+        Op::AlignToGrid => rects.iter_mut().for_each(|r| {
+            r[0] = snap(r[0]);
+            r[1] = snap(r[1]);
+        }),
+        Op::SizeToGrid => rects.iter_mut().for_each(|r| {
+            r[2] = snap(r[2]).max(grid);
+            r[3] = snap(r[3]).max(grid);
+        }),
+        Op::CenterAcross | Op::CenterDown if !rects.is_empty() => {
+            let (pos, len, room) = if op == Op::CenterAcross { (0, 2, form[0]) } else { (1, 3, form[1]) };
+            let lo = rects.iter().map(|r| r[pos]).min().unwrap_or(0);
+            let hi = rects.iter().map(|r| r[pos] + r[len]).max().unwrap_or(0);
+            let d = (room - (hi - lo)) / 2 - lo;
+            rects.iter_mut().for_each(|r| r[pos] += d);
+        }
+        Op::MoreAcross | Op::LessAcross | Op::NoneAcross | Op::MoreDown | Op::LessDown | Op::NoneDown if rects.len() >= 2 => {
+            let down = matches!(op, Op::MoreDown | Op::LessDown | Op::NoneDown);
+            let (pos, len) = if down { (1, 3) } else { (0, 2) };
+            let mut order: Vec<usize> = (0..rects.len()).collect();
+            order.sort_by_key(|i| rects[*i][pos]);
+            if matches!(op, Op::NoneAcross | Op::NoneDown) {
+                // Side by side from the first, no room between.
+                let mut at = rects[order[0]][pos];
+                for i in order {
+                    rects[i][pos] = at;
+                    at += rects[i][len];
+                }
+            } else {
+                // Each gap a step wider or narrower; the primary stays where it is.
+                let step = if matches!(op, Op::MoreAcross | Op::MoreDown) { grid } else { -grid };
+                let p = order.iter().position(|i| *i == primary).unwrap_or(0) as i32;
+                for (k, i) in order.into_iter().enumerate() {
+                    rects[i][pos] += (k as i32 - p) * step;
+                }
+            }
+        }
+        _ => arrange(rects, primary, op),
+    }
 }
 
 /// Moves and sizes `rects` by `op`; `primary` is the index of the one the others follow.
@@ -65,6 +132,7 @@ pub fn arrange(rects: &mut [[i32; 4]], primary: usize, op: Op) {
                 at += rects[*i][len] + room / gaps + if (k as i32) < room % gaps { 1 } else { 0 };
             }
         }
+        _ => arrange_in(rects, primary, op, [0, 0], 8),
     }
 }
 
@@ -253,5 +321,29 @@ mod tests {
         assert_eq!(pasted[0].bounds, Some([18, 18, 75, 23]));
         assert!(from_clipboard("hello", &f, 8).is_none());
         assert!(from_clipboard("", &f, 8).is_none());
+    }
+
+    #[test]
+    fn grid_spacing_and_centring_as_visual_studios_layout_bar() {
+        let mut v = vec![[13, 18, 75, 21], [100, 18, 75, 23], [200, 18, 75, 23]];
+        arrange_in(&mut v, 0, Op::AlignToGrid, [480, 360], 8);
+        assert_eq!((v[0][0], v[0][1]), (16, 16));
+        arrange_in(&mut v, 0, Op::SizeToGrid, [480, 360], 8);
+        assert_eq!((v[0][2], v[0][3]), (72, 24));
+        let mut v = vec![[10, 0, 50, 20], [70, 0, 50, 20], [130, 0, 50, 20]];
+        arrange_in(&mut v, 0, Op::MoreAcross, [480, 360], 8);
+        assert_eq!([v[0][0], v[1][0], v[2][0]], [10, 78, 146]);
+        arrange_in(&mut v, 1, Op::LessAcross, [480, 360], 8);
+        assert_eq!([v[0][0], v[1][0], v[2][0]], [18, 78, 138]);
+        arrange_in(&mut v, 0, Op::NoneAcross, [480, 360], 8);
+        assert_eq!([v[0][0], v[1][0], v[2][0]], [18, 68, 118]);
+        // The group's span (18..168) put in the middle of 480.
+        arrange_in(&mut v, 0, Op::CenterAcross, [480, 360], 8);
+        assert_eq!(v[0][0], 165);
+        assert_eq!(v[2][0] + v[2][2] - v[0][0], 150);
+        let mut one = vec![[0, 100, 40, 20]];
+        arrange_in(&mut one, 0, Op::CenterDown, [480, 360], 8);
+        assert_eq!(one[0][1], 170);
+        assert!(Op::CenterDown.works_alone() && !Op::Lefts.works_alone());
     }
 }

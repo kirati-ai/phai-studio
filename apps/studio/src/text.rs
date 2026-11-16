@@ -233,6 +233,21 @@ pub static THAI: &[(&str, &str)] = &[
     ("Float", "ลอย"),
     ("Auto Hide", "ซ่อนอัตโนมัติ"),
     ("Hide", "ซ่อน"),
+    ("Navigate backward", "ย้อนกลับ"),
+    ("Navigate forward", "ไปข้างหน้า"),
+    ("New project", "โปรเจกต์ใหม่"),
+    ("Save all", "บันทึกทั้งหมด"),
+    ("Start", "เริ่ม"),
+    ("Align to grid", "จัดตามเส้นตาราง"),
+    ("Size to grid", "ขนาดตามเส้นตาราง"),
+    ("More space across", "เพิ่มระยะแนวนอน"),
+    ("Less space across", "ลดระยะแนวนอน"),
+    ("No space across", "ชิดกันแนวนอน"),
+    ("More space down", "เพิ่มระยะแนวตั้ง"),
+    ("Less space down", "ลดระยะแนวตั้ง"),
+    ("No space down", "ชิดกันแนวตั้ง"),
+    ("Center across", "กึ่งกลางแนวนอน"),
+    ("Center down", "กึ่งกลางแนวตั้ง"),
 ];
 
 #[cfg(test)]

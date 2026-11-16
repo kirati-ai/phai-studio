@@ -1496,7 +1496,24 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         if old != 0 {
             let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
         }
-        // Toggles pressed in stay pressed in across the rebuild.
+        // Greyed buttons get their icons in the muted colour, not Windows' dithering.
+        let muted = theme::current().var_color("--muted").unwrap_or(Color::rgb(0xa0, 0xa0, 0xa0));
+        let grey = Color::rgb(((muted.r as u16 + 2 * window_background().r as u16) / 3) as u8, ((muted.g as u16 + 2 * window_background().g as u16) / 3) as u8, ((muted.b as u16 + 2 * window_background().b as u16) / 3) as u8);
+        let dim = cc::ImageList_Create(icon, icon, cc::ILC_COLOR32 | cc::ILC_MASK, items.len() as i32, 0);
+        for (cmd, _, g) in items {
+            if *cmd != 0 {
+                if let Some(i) = crate::icon::glyph_icon(*g, icon, grey) {
+                    cc::ImageList_ReplaceIcon(dim, -1, i);
+                    let _ = wm::DestroyIcon(i);
+                }
+            }
+        }
+        let old_dim = wm::SendMessageW(h, 0x0436 /* TB_SETDISABLEDIMAGELIST */, Some(WPARAM(0)), Some(LPARAM(dim.0 as isize))).0;
+        if old_dim != 0 {
+            let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old_dim as _)));
+        }
+        // Greyed buttons stay greyed across the rebuild, as toggles pressed in stay pressed in.
+        let greyed: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && wm::SendMessageW(h, 0x0409 /* TB_ISBUTTONENABLED */, Some(WPARAM(*c as usize)), None).0 == 0 && wm::SendMessageW(h, 0x0419 /* TB_COMMANDTOINDEX */, Some(WPARAM(*c as usize)), None).0 >= 0).collect();
         let pressed: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && wm::SendMessageW(h, 0x040A /* TB_ISBUTTONCHECKED */, Some(WPARAM(*c as usize)), None).0 != 0).collect();
         let toggles: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && {
             let mut info = windows::Win32::UI::Controls::TBBUTTONINFOW { cbSize: std::mem::size_of::<windows::Win32::UI::Controls::TBBUTTONINFOW>() as u32, dwMask: windows::Win32::UI::Controls::TBBUTTONINFOW_MASK(0x0008), ..Default::default() };
@@ -1513,7 +1530,10 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
             .zip(&labels)
             .map(|((cmd, _, _), label)| {
                 if *cmd == 0 {
-                    TBBUTTON { iBitmap: px(h, 6), idCommand: 0, fsState: 0, fsStyle: BTNS_SEP, ..Default::default() }
+                    // `gap:N` - room N design pixels wide for a box the owner lays over it.
+                    let lbl = String::from_utf16_lossy(&label[..label.len().saturating_sub(1)]);
+                    let wide_gap = lbl.strip_prefix("gap:").and_then(|n| n.parse::<i32>().ok()).unwrap_or(6);
+                    TBBUTTON { iBitmap: px(h, wide_gap), idCommand: 0, fsState: 0, fsStyle: BTNS_SEP, ..Default::default() }
                 } else {
                     image += 1;
                     TBBUTTON { iBitmap: image - 1, idCommand: *cmd, fsState: TBSTATE_ENABLED, iString: label.as_ptr() as isize, ..Default::default() }
@@ -1523,6 +1543,9 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         wm::SendMessageW(h, TB_ADDBUTTONSW, Some(WPARAM(buttons.len())), Some(LPARAM(buttons.as_ptr() as isize)));
         for c in toggles {
             toolbar_check(h, c, pressed.contains(&c));
+        }
+        for c in greyed {
+            wm::SendMessageW(h, 0x0401 /* TB_ENABLEBUTTON */, Some(WPARAM(c as usize)), Some(LPARAM(0)));
         }
         // A column: every button on a row of its own, one of the group chosen at a time.
         if COLUMNS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.contains(&(h.0 as isize))) {
@@ -1551,6 +1574,58 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         wm::SendMessageW(h, TB_SETBUTTONWIDTH, None, Some(LPARAM((b << 16) | (b & 0xFFFF))));
         wm::SendMessageW(h, 0x041F /* TB_SETBUTTONSIZE */, None, Some(LPARAM((b << 16) | (b & 0xFFFF))));
         wm::SendMessageW(h, TB_AUTOSIZE, None, None);
+    }
+    // Buttons that show their words keep them across a rebuild.
+    let shown: Vec<(i32, String)> = SHOWN.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|m| m.iter().filter(|((t, _), _)| *t == h.0 as isize).map(|((_, c), s)| (*c, s.clone())).collect()).unwrap_or_default();
+    for (c, text) in shown {
+        apply_text(h, c, &text);
+    }
+}
+
+/// Words shown on toolbar buttons beside their icons, by toolbar and command.
+static SHOWN: Mutex<Option<HashMap<(isize, i32), String>>> = Mutex::new(None);
+
+/// Shows `text` on a toolbar button beside its icon - Visual Studio's "▶ Project" Start button.
+pub fn toolbar_text(h: HWND, command: i32, text: &str) {
+    SHOWN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert((h.0 as isize, command), text.to_string());
+    apply_text(h, command, text);
+}
+
+fn apply_text(h: HWND, command: i32, text: &str) {
+    const BTNS_SHOWTEXT: u8 = 0x40;
+    const BTNS_AUTOSIZE: u8 = 0x10;
+    const TBIF_TEXT: u32 = 0x0002;
+    const TBIF_STYLE: u32 = 0x0008;
+    const TBIF_SIZE: u32 = 0x0040;
+    let mut w = wide(text);
+    let font = unsafe { HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _) };
+    let (tw, _) = measure(h, font, text);
+    let info = windows::Win32::UI::Controls::TBBUTTONINFOW {
+        cbSize: std::mem::size_of::<windows::Win32::UI::Controls::TBBUTTONINFOW>() as u32,
+        dwMask: windows::Win32::UI::Controls::TBBUTTONINFOW_MASK(TBIF_TEXT | TBIF_STYLE | TBIF_SIZE),
+        fsStyle: BTNS_SHOWTEXT | BTNS_AUTOSIZE,
+        cx: (px(h, TOOL_BUTTON) + tw + px(h, 10)) as u16,
+        pszText: windows::core::PWSTR(w.as_mut_ptr()),
+        ..Default::default()
+    };
+    unsafe {
+        wm::SendMessageW(h, 0x0440 /* TB_SETBUTTONINFOW */, Some(WPARAM(command as usize)), Some(LPARAM(&info as *const _ as isize)));
+    }
+}
+
+/// Where a toolbar's item `index` is, in its client pixels.
+pub fn toolbar_item_rect(h: HWND, index: usize) -> RECT {
+    let mut r = RECT::default();
+    unsafe {
+        wm::SendMessageW(h, 0x041D /* TB_GETITEMRECT */, Some(WPARAM(index)), Some(LPARAM(&mut r as *mut _ as isize)));
+    }
+    r
+}
+
+/// A toolbar button usable or greyed.
+pub fn toolbar_enable(h: HWND, command: i32, on: bool) {
+    unsafe {
+        wm::SendMessageW(h, 0x0401 /* TB_ENABLEBUTTON */, Some(WPARAM(command as usize)), Some(LPARAM(on as isize)));
     }
 }
 
