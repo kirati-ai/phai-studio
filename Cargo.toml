@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/phai-ui", "apps/gallery"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# One `windows` for every crate, as in PhaiDesk: crates written apart do not each pin another.
+[workspace.dependencies]
+windows = "0.62"
+png = "0.17"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

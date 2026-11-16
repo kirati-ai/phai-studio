@@ -1,0 +1,62 @@
+/* Phai dark: the same shapes on Windows 11's dark grey, the green lifted so it reads on it. */
+
+:root {
+  --accent: #2fb487;
+  --accent-hover: #3cc596;
+  --accent-pressed: #27996f;
+  --accent-tint: #1f3a31;
+  --accent-tint-pressed: #24473b;
+  --surface: #202020;
+  --raised: #2b2b2b;
+  --text: #f0f0f0;
+  --muted: #a8a8a8;
+  --border: #3f3f3f;
+  --rule: #333333;
+  --disabled-bg: #262626;
+  --disabled-border: #333333;
+  --disabled-text: #6e6e6e;
+  --icon: #d6d6d6;
+}
+
+window    { background: var(--surface); color: var(--text); }
+label     { color: var(--text); }
+label.muted { color: var(--muted); }
+label:disabled { color: var(--disabled-text); }
+
+button          { background: var(--raised); color: var(--text); border-color: var(--border); border-radius: 4px; border-width: 1px; }
+button:hover    { background: var(--accent-tint); border-color: var(--accent); color: #ffffff; }
+button:pressed  { background: var(--accent-tint-pressed); border-color: var(--accent); color: #ffffff; }
+button:focus    { border-color: var(--accent); }
+button:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-text); }
+
+button.primary          { background: var(--accent); border-color: var(--accent); color: #0b1f18; }
+button.primary:hover    { background: var(--accent-hover); border-color: var(--accent-hover); color: #0b1f18; }
+button.primary:pressed  { background: var(--accent-pressed); border-color: var(--accent-pressed); color: #0b1f18; }
+button.primary:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-text); }
+
+checkbox, radio                 { background: var(--raised); color: var(--text); border-color: #9a9a9a; accent-color: #0b1f18; border-radius: 3px; }
+checkbox:hover, radio:hover     { border-color: var(--accent); background: var(--accent-tint); }
+checkbox:checked, radio:checked { background: var(--accent); border-color: var(--accent); }
+checkbox:checked:hover, radio:checked:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+checkbox:disabled, radio:disabled { border-color: var(--disabled-border); color: var(--disabled-text); background: var(--disabled-bg); }
+
+edit          { background: var(--raised); color: var(--text); border-color: var(--border); }
+edit:hover    { border-color: #6a6a6a; }
+edit:focus    { border-color: var(--accent); }
+edit:disabled { background: var(--disabled-bg); color: var(--disabled-text); border-color: var(--disabled-border); }
+
+combo         { background: var(--raised); color: var(--text); border-color: var(--border); }
+
+list          { background: var(--surface); color: var(--text); border-color: var(--rule); }
+list:selected { background: var(--accent-tint); color: #ffffff; }
+
+group         { color: var(--muted); border-color: var(--border); border-radius: 6px; }
+
+tabs          { background: var(--surface); color: var(--muted); border-color: var(--rule); accent-color: var(--accent); }
+tabs:selected { color: var(--text); }
+
+toolbar       { icon-color: var(--icon); border-color: var(--rule); }
+statusbar     { background: #1c1c1c; color: var(--muted); border-color: var(--rule); }
+menubar       { background: var(--surface); color: var(--text); }
+menubar:hover { background: #2d2d2d; }
+menubar:disabled { color: var(--disabled-text); }
