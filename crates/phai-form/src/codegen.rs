@@ -238,9 +238,17 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Group => format!("controls::group(hwnd, {text}, {id}, {font})"),
             Kind::Tabs => format!("controls::tabs(hwnd, {id}, {font}, &[{}])", c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
             Kind::Statusbar => format!("controls::status_bar(hwnd, {id}, {font})"),
+            Kind::Textarea => format!("win::textarea(hwnd, {}, {id}, {font})", lit(&text_of(c))),
+            Kind::Date => format!("win::date(hwnd, {id}, {font})"),
+            Kind::Number => format!("win::number(hwnd, {id}, {font}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
+            Kind::Progress => format!("win::progress(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
+            Kind::Slider => format!("win::slider(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
         };
         let _ = writeln!(w, "        let {} = {make};", c.id);
         let _ = writeln!(w, "        win::set_css({}, {}, {});", c.id, lit(c.class.as_deref().unwrap_or("")), lit(&c.id));
+        if let Some(own) = c.own_css() {
+            let _ = writeln!(w, "        let _ = win::set_own_style({}, {});", c.id, lit(&own));
+        }
         if c.kind == Kind::Statusbar {
             if !c.parts.is_empty() {
                 let _ = writeln!(w, "        controls::status_parts({}, &[{}]);", c.id, c.parts.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "));
@@ -352,9 +360,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                     let _ = writeln!(w, "                {id} if code == 0 => {call},");
                 }
             }
-            Kind::Edit => {
+            Kind::Edit | Kind::Textarea | Kind::Number | Kind::Date | Kind::Slider => {
                 if let Some(call) = call {
-                    let _ = writeln!(w, "                {id} if code == 0x0300 => {call}, // EN_CHANGE");
+                    let _ = writeln!(w, "                {id} if code == 0x0300 => {call}, // EN_CHANGE, win::VALUE_CHANGED");
                 }
             }
             Kind::Combo => {

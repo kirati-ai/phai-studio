@@ -108,6 +108,35 @@ impl Style {
     pub fn accent_or(&self, c: Color) -> Color {
         self.accent_color.unwrap_or(c)
     }
+
+    /// This style with what `top` says laid over it - a control's own properties over the theme.
+    pub fn under(mut self, top: &Style) -> Style {
+        macro_rules! over {
+            ($($f:ident),*) => { $( if top.$f.is_some() { self.$f = top.$f; } )* };
+        }
+        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        *self == Style::default()
+    }
+}
+
+/// One control's own declarations - `background: #12855f; color: white` - as a style, checked as
+/// a sheet's are; the theme's `var(--name)` may be used.
+pub fn declarations_style(decls: &str) -> Result<Style, ThemeError> {
+    if decls.trim().is_empty() {
+        return Ok(Style::default());
+    }
+    let vars = current().vars.clone();
+    let mut css = String::from(":root {");
+    for (k, v) in &vars {
+        css.push_str(&format!(" {k}: {v};"));
+    }
+    css.push_str(&format!(" }}\nown {{ {decls} }}"));
+    let t = Theme::parse(&css).map_err(|e| ThemeError { line: 0, message: e.message })?;
+    Ok(t.style(&Query::kind("own")))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -583,6 +612,30 @@ pub fn parse_color(t: &str) -> Option<Color> {
         "black" => return Some(Color::rgb(0, 0, 0)),
         _ => {}
     }
+    // CSS's basic colour names.
+    let named = match t.as_str() {
+        "red" => Some((0xff, 0, 0)),
+        "green" => Some((0, 0x80, 0)),
+        "blue" => Some((0, 0, 0xff)),
+        "yellow" => Some((0xff, 0xff, 0)),
+        "orange" => Some((0xff, 0xa5, 0)),
+        "purple" => Some((0x80, 0, 0x80)),
+        "gray" | "grey" => Some((0x80, 0x80, 0x80)),
+        "silver" => Some((0xc0, 0xc0, 0xc0)),
+        "navy" => Some((0, 0, 0x80)),
+        "teal" => Some((0, 0x80, 0x80)),
+        "maroon" => Some((0x80, 0, 0)),
+        "olive" => Some((0x80, 0x80, 0)),
+        "lime" => Some((0, 0xff, 0)),
+        "aqua" | "cyan" => Some((0, 0xff, 0xff)),
+        "fuchsia" | "magenta" => Some((0xff, 0, 0xff)),
+        "pink" => Some((0xff, 0xc0, 0xcb)),
+        "brown" => Some((0xa5, 0x2a, 0x2a)),
+        _ => None,
+    };
+    if let Some((r, g, b)) = named {
+        return Some(Color::rgb(r, g, b));
+    }
     if let Some(hex) = t.strip_prefix('#') {
         let d = |s: &str| u8::from_str_radix(s, 16).ok();
         return match hex.len() {
@@ -620,7 +673,8 @@ mod tests {
         assert_eq!(parse_color("#00000080").map(|c| c.a), Some(0x80));
         assert_eq!(parse_color("transparent"), Some(Color::TRANSPARENT));
         assert_eq!(parse_color("#12"), None);
-        assert_eq!(parse_color("green"), None, "only the few names listed, so a typo is an error");
+        assert_eq!(parse_color("green"), Some(Color::rgb(0, 0x80, 0)), "CSS's basic names");
+        assert_eq!(parse_color("grean"), None, "a typo is an error");
     }
 
     #[test]
@@ -693,7 +747,7 @@ mod tests {
         assert!(!light.is_dark());
         assert!(dark.is_dark());
         // Every control the library draws is styled by both, so neither falls back to a guess.
-        for kind in ["window", "button", "checkbox", "radio", "edit", "label", "list", "group", "statusbar", "toolbar", "tabs", "combo"] {
+        for kind in ["window", "button", "checkbox", "radio", "edit", "label", "list", "group", "statusbar", "toolbar", "tabs", "combo", "date", "progress", "slider"] {
             for t in [&light, &dark] {
                 let s = t.style(&Query::kind(kind));
                 assert!(s.background.is_some() || s.color.is_some() || s.border_color.is_some() || s.icon_color.is_some(), "{kind} has no style");
@@ -719,8 +773,22 @@ mod tests {
     }
 
     #[test]
+    fn a_controls_own_declarations_lie_over_the_theme() {
+        let own = declarations_style("background: #12855f; color: white; border-radius: 6px; font-weight: bold").unwrap();
+        assert_eq!(own.background, Some(Color::rgb(0x12, 0x85, 0x5f)));
+        assert_eq!(own.font_weight, Some(700));
+        let base = Theme::light().style(&Query::kind("button"));
+        let s = base.clone().under(&own);
+        assert_eq!(s.color, Some(Color::rgb(255, 255, 255)));
+        assert_eq!(s.border_color, base.border_color, "what it does not say stays the theme's");
+        assert!(declarations_style("background: blurple").is_err());
+        assert_eq!(declarations_style("color: var(--accent)").unwrap().color, Some(Color::rgb(0x12, 0x85, 0x5f)));
+        assert_eq!(parse_color("Orange"), Some(Color::rgb(0xff, 0xa5, 0)));
+    }
+
+    #[test]
     fn the_standard_sheet_names_every_kind_and_every_property() {
-        for word in ["window", "label", "button", "checkbox", "radio", "edit", "combo", "list", "group", "tabs", "toolbar", "statusbar", "menubar", "canvas", ":hover", ":pressed", ":focus", ":disabled", ":selected", ":checked", "background", "border-radius", "accent-color", "icon-color", "@import"] {
+        for word in ["window", "label", "button", "checkbox", "radio", "edit", "combo", "list", "group", "tabs", "toolbar", "statusbar", "date", "progress", "slider", "menubar", "canvas", ":hover", ":pressed", ":focus", ":disabled", ":selected", ":checked", "background", "border-radius", "accent-color", "icon-color", "@import"] {
             assert!(STANDARD_CSS.contains(word), "the standard sheet should say {word}");
         }
         assert!(!Theme::parse(STANDARD_CSS).unwrap().is_dark());

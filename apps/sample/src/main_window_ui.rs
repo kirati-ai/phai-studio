@@ -228,7 +228,7 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
                 ID_NEW_CUSTOMER => events.new_customer(ui),
                 ID_EXIT => events.exit(ui),
                 ID_SAVE => events.save(ui),
-                CONTROL_NAME if code == 0x0300 => events.name_changed(ui), // EN_CHANGE
+                CONTROL_NAME if code == 0x0300 => events.name_changed(ui), // EN_CHANGE, win::VALUE_CHANGED
                 CONTROL_SAVE_BUTTON if code == 0 => events.save(ui),
                 CONTROL_CLOSE if code == 0 => events.exit(ui),
                 _ => {}

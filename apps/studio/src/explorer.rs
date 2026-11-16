@@ -104,7 +104,7 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 240, explorer_on: true, props_on: true }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 180, explorer_on: true, props_on: true }));
         h
     }
 }

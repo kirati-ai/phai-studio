@@ -37,7 +37,7 @@ pub fn init() {
         let _ = HiDpi::SetProcessDpiAwarenessContext(HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let icc = windows::Win32::UI::Controls::INITCOMMONCONTROLSEX {
             dwSize: std::mem::size_of::<windows::Win32::UI::Controls::INITCOMMONCONTROLSEX>() as u32,
-            dwICC: windows::Win32::UI::Controls::ICC_LISTVIEW_CLASSES | windows::Win32::UI::Controls::ICC_BAR_CLASSES | windows::Win32::UI::Controls::ICC_STANDARD_CLASSES,
+            dwICC: windows::Win32::UI::Controls::ICC_LISTVIEW_CLASSES | windows::Win32::UI::Controls::ICC_BAR_CLASSES | windows::Win32::UI::Controls::ICC_STANDARD_CLASSES | windows::Win32::UI::Controls::ICC_DATE_CLASSES | windows::Win32::UI::Controls::ICC_UPDOWN_CLASS,
         };
         let _ = windows::Win32::UI::Controls::InitCommonControlsEx(&icc);
     });
@@ -194,6 +194,9 @@ pub enum Kind {
     StatusBar,
     Toolbar,
     Tree,
+    Date,
+    Progress,
+    Slider,
 }
 
 impl Kind {
@@ -211,6 +214,9 @@ impl Kind {
             Kind::StatusBar => "statusbar",
             Kind::Toolbar => "toolbar",
             Kind::Tree => "tree",
+            Kind::Date => "date",
+            Kind::Progress => "progress",
+            Kind::Slider => "slider",
         }
     }
 }
@@ -224,6 +230,8 @@ struct Css {
     group: i32,
     checked: bool,
     hot: bool,
+    /// The control's own look, over the theme's: [`set_own_style`].
+    own: Style,
 }
 
 static CSS: Mutex<Option<HashMap<isize, Css>>> = Mutex::new(None);
@@ -235,7 +243,7 @@ fn with_css<R>(h: HWND, f: impl FnOnce(&mut Css) -> R) -> Option<R> {
 
 fn mark(h: HWND, kind: Kind) {
     let mut map = CSS.lock().unwrap_or_else(|e| e.into_inner());
-    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false });
+    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default() });
 }
 
 fn forget(h: HWND) {
@@ -277,9 +285,9 @@ pub fn set_css(h: HWND, classes: &str, id: &str) {
 
 /// What the theme says about control `h` in `state`.
 pub fn style_of(h: HWND, kind: Kind, state: State) -> Style {
-    let (classes, id) = with_css(h, |c| (c.classes.clone(), c.id.clone())).unwrap_or_default();
+    let (classes, id, own) = with_css(h, |c| (c.classes.clone(), c.id.clone(), c.own.clone())).unwrap_or_default();
     let refs: Vec<&str> = classes.iter().map(String::as_str).collect();
-    theme::current().style(&Query { kind: kind.css(), classes: &refs, id: id.as_deref(), state })
+    theme::current().style(&Query { kind: kind.css(), classes: &refs, id: id.as_deref(), state }).under(&own)
 }
 
 fn window_style() -> Style {
@@ -337,12 +345,29 @@ pub fn css_font(h: HWND, s: &Style) -> Option<HFONT> {
         return None;
     }
     let d = dpi(h);
-    let key = (s.font_size.unwrap_or(0), s.font_weight.unwrap_or(0), d);
+    // A weight alone keeps the size the control has - a 14 pt label made bold stays 14 pt.
+    let own_height = if s.font_size.is_none() {
+        unsafe {
+            let f = HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
+            let mut lf = Gdi::LOGFONTW::default();
+            if !f.is_invalid() && Gdi::GetObjectW(f.into(), std::mem::size_of::<Gdi::LOGFONTW>() as i32, Some(&mut lf as *mut _ as *mut _)) > 0 {
+                Some(lf.lfHeight)
+            } else {
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let key = (s.font_size.unwrap_or(0), s.font_weight.unwrap_or(0), d * 1000 + own_height.unwrap_or(0));
     let mut map = FONTS.lock().unwrap_or_else(|e| e.into_inner());
     let f = map.get_or_insert_with(HashMap::new).entry(key).or_insert_with(|| unsafe {
         let mut metrics = wm::NONCLIENTMETRICSW { cbSize: std::mem::size_of::<wm::NONCLIENTMETRICSW>() as u32, ..Default::default() };
         let _ = HiDpi::SystemParametersInfoForDpi(wm::SPI_GETNONCLIENTMETRICS.0, metrics.cbSize, Some(&mut metrics as *mut _ as *mut _), 0, d as u32);
         let mut lf = metrics.lfMessageFont;
+        if let Some(height) = own_height {
+            lf.lfHeight = height;
+        }
         if let Some(pt) = s.font_size {
             lf.lfHeight = -(pt * d / 72);
         }
@@ -585,7 +610,7 @@ pub fn draw_item(l: LPARAM) -> bool {
                     }
                 }
             }
-            let label_fg = if state.disabled { fg } else { theme::style(kind.css(), State::default()).color_or(window_text()) };
+            let label_fg = if state.disabled { fg } else { style_of(h, kind, State::default()).color_or(window_text()) };
             let mut tr = RECT { left: bx.right + px(h, 8), ..r };
             draw_text_styled(dc, h, &text, &mut tr, label_fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
             if state.focus {
@@ -740,8 +765,10 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
     let disabled = !unsafe { windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h) }.as_bool();
     let s = style_of(h, kind, State { disabled, ..Default::default() });
     // A read-only or disabled edit comes as STATIC; it is still an edit.
+    // A label stands on the window, unless it was given a background of its own.
+    let own_bg = with_css(h, |c| c.own.background).flatten();
     let bg = match kind {
-        Kind::Label => window_background(),
+        Kind::Label => own_bg.unwrap_or(window_background()),
         _ => s.background_or(window_background()),
     };
     unsafe {
@@ -974,9 +1001,382 @@ pub fn theme_native(h: HWND) {
             Some(Kind::Combo) => {
                 let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_CFD") } else { PCWSTR::null() }, PCWSTR::null());
             }
+            Some(Kind::Date) => {
+                if let Some(f) = css_font(h, &style_of(h, Kind::Date, State::default())) {
+                    set_font(h, f);
+                }
+                // The calendar that drops down: the theme's colours, its chosen day in the accent.
+                let s = style_of(h, Kind::Date, State::default());
+                let bg = s.background_or(window_background());
+                let set = |part: usize, c: Color| {
+                    wm::SendMessageW(h, 0x1006 /* DTM_SETMCCOLOR */, Some(WPARAM(part)), Some(LPARAM(c.colorref() as isize)));
+                };
+                set(0 /* MCSC_BACKGROUND */, bg);
+                set(4 /* MCSC_MONTHBK */, bg);
+                set(1 /* MCSC_TEXT */, s.color_or(window_text()));
+                set(2 /* MCSC_TITLEBK */, s.accent_or(Color::rgb(0x12, 0x85, 0x5f)));
+                set(3 /* MCSC_TITLETEXT */, Color::rgb(255, 255, 255));
+                let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_CFD") } else { PCWSTR::null() }, PCWSTR::null());
+            }
+            Some(Kind::Progress) | Some(Kind::Slider) => {
+                let _ = Gdi::InvalidateRect(Some(h), None, false);
+            }
             _ => {}
         }
     }
+}
+
+// --- dates, numbers, progress, sliders -------------------------------------------------------
+//
+// A date is Windows' own date picker. A number is an edit with Windows' up-down arrows inside it.
+// A progress bar and a slider are drawn here, so the theme reaches every pixel of them:
+// `background` the track, `accent-color` what is done or chosen.
+
+const DTN_DATETIMECHANGE: u32 = (-759i32) as u32;
+/// What a date, number or slider tells its parent when its value changes: `WM_COMMAND` with this
+/// code, as an edit's `EN_CHANGE`.
+pub const VALUE_CHANGED: u16 = 0x0300;
+
+/// A date, today unless set with [`set_date`]; the parent hears [`VALUE_CHANGED`].
+pub fn date(parent: HWND, id: i32, f: HFONT) -> HWND {
+    const DTS_SHORTDATECENTURYFORMAT: u32 = 0x000C;
+    let h = child(parent, "SysDateTimePick32", "", WINDOW_STYLE(DTS_SHORTDATECENTURYFORMAT) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
+    mark(h, Kind::Date);
+    theme_native(h);
+    h
+}
+
+/// The date shown, as `(year, month, day)`.
+pub fn date_value(h: HWND) -> (i32, i32, i32) {
+    let mut st = windows::Win32::Foundation::SYSTEMTIME::default();
+    unsafe {
+        wm::SendMessageW(h, 0x1001 /* DTM_GETSYSTEMTIME */, None, Some(LPARAM(&mut st as *mut _ as isize)));
+    }
+    (st.wYear as i32, st.wMonth as i32, st.wDay as i32)
+}
+
+pub fn set_date(h: HWND, year: i32, month: i32, day: i32) {
+    let st = windows::Win32::Foundation::SYSTEMTIME { wYear: year as u16, wMonth: month as u16, wDay: day as u16, ..Default::default() };
+    unsafe {
+        wm::SendMessageW(h, 0x1002 /* DTM_SETSYSTEMTIME */, Some(WPARAM(0 /* GDT_VALID */)), Some(LPARAM(&st as *const _ as isize)));
+    }
+}
+
+/// A box for a whole number from `min` to `max`, with arrows; the parent hears `EN_CHANGE`.
+pub fn number(parent: HWND, id: i32, f: HFONT, min: i32, max: i32, value: i32) -> HWND {
+    const ES_NUMBER: u32 = 0x2000;
+    const UDS_SETBUDDYINT: u32 = 0x0002;
+    const UDS_ARROWKEYS: u32 = 0x0020;
+    const UDS_NOTHOUSANDS: u32 = 0x0080;
+    const UDS_HOTTRACK: u32 = 0x0100;
+    const EM_SETMARGINS: u32 = 0x00D3;
+    let h = edit(parent, &value.to_string(), id, f, false);
+    unsafe {
+        let style = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32;
+        // A negative range needs the minus sign, which ES_NUMBER refuses.
+        let numeric = if min >= 0 { ES_NUMBER } else { 0 };
+        wm::SetWindowLongW(h, wm::GWL_STYLE, (style | numeric | wm::WS_CLIPCHILDREN.0) as i32);
+        // The arrows live inside the box, so they move, hide and ghost with it.
+        let ud = child(h, "msctls_updown32", "", WINDOW_STYLE(UDS_SETBUDDYINT | UDS_ARROWKEYS | UDS_NOTHOUSANDS | UDS_HOTTRACK), WINDOW_EX_STYLE(0), 0, HFONT::default());
+        wm::SendMessageW(ud, 0x0469 /* UDM_SETBUDDY */, Some(WPARAM(h.0 as usize)), None);
+        wm::SendMessageW(ud, 0x046F /* UDM_SETRANGE32 */, Some(WPARAM(min as isize as usize)), Some(LPARAM(max as isize)));
+        wm::SendMessageW(ud, 0x0471 /* UDM_SETPOS32 */, None, Some(LPARAM(value as isize)));
+        let m = px(parent, 6) as isize;
+        let right = px(parent, 22) as isize;
+        wm::SendMessageW(h, EM_SETMARGINS, Some(WPARAM(3)), Some(LPARAM((right << 16) | m)));
+        let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(number_proc), 3, ud.0 as usize);
+        place_arrows(h, ud);
+    }
+    h
+}
+
+fn place_arrows(edit: HWND, ud: HWND) {
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(edit, &mut r);
+    }
+    let w = px(edit, 18);
+    move_to(ud, r.right - w, 0, w, r.bottom);
+}
+
+unsafe extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id: usize, ud: usize) -> LRESULT {
+    let r = unsafe { windows::Win32::UI::Shell::DefSubclassProc(h, msg, w, l) };
+    match msg {
+        wm::WM_SIZE => place_arrows(h, HWND(ud as *mut _)),
+        wm::WM_ENABLE => unsafe {
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(HWND(ud as *mut _), w.0 != 0);
+        },
+        wm::WM_NCDESTROY => unsafe {
+            let _ = windows::Win32::UI::Shell::RemoveWindowSubclass(h, Some(number_proc), 3);
+        },
+        _ => {}
+    }
+    r
+}
+
+struct Range {
+    min: i32,
+    max: i32,
+    value: i32,
+    drag: bool,
+}
+
+fn range_class(name: &str, proc_: wm::WNDPROC) -> Vec<u16> {
+    register(name, proc_, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_range(parent: HWND, class: &str, proc_: wm::WNDPROC, id: i32, kind: Kind, min: i32, max: i32, value: i32, tab: bool) -> HWND {
+    let class = range_class(class, proc_);
+    let h = unsafe {
+        wm::CreateWindowExW(WINDOW_EX_STYLE(0), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPSIBLINGS | if tab { wm::WS_TABSTOP } else { WINDOW_STYLE(0) }, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(instance()), None).unwrap_or_default()
+    };
+    let (lo, hi) = (min.min(max), max.max(min));
+    set_state(h, Box::new(Range { min: lo, max: hi, value: value.clamp(lo, hi), drag: false }));
+    mark(h, kind);
+    h
+}
+
+/// A bar that fills from `min` to `max` as work is done.
+pub fn progress(parent: HWND, id: i32, min: i32, max: i32, value: i32) -> HWND {
+    make_range(parent, "PhaiProgress", Some(progress_proc), id, Kind::Progress, min, max, value, false)
+}
+
+/// A slider from `min` to `max`, by mouse or arrow keys; the parent hears [`VALUE_CHANGED`].
+pub fn slider(parent: HWND, id: i32, min: i32, max: i32, value: i32) -> HWND {
+    make_range(parent, "PhaiSlider", Some(slider_proc), id, Kind::Slider, min, max, value, true)
+}
+
+/// The value of a number box, slider or progress bar.
+pub fn value(h: HWND) -> i32 {
+    match kind_of(h) {
+        Some(Kind::Edit) => text_of(h).trim().parse().unwrap_or(0),
+        _ => unsafe { state::<Range>(h) }.map(|r| r.value).unwrap_or(0),
+    }
+}
+
+/// Sets a number box's, slider's or progress bar's value, kept within its range.
+pub fn set_value(h: HWND, v: i32) {
+    match kind_of(h) {
+        Some(Kind::Edit) => set_text(h, &v.to_string()),
+        _ => {
+            if let Some(r) = unsafe { state::<Range>(h) } {
+                r.value = v.clamp(r.min, r.max);
+            }
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(h), None, false);
+            }
+        }
+    }
+}
+
+fn range_paint(h: HWND, slider: bool) {
+    let Some(r) = (unsafe { state::<Range>(h) }) else { return };
+    let (min, max, value) = (r.min, r.max, r.value);
+    unsafe {
+        let mut ps = Gdi::PAINTSTRUCT::default();
+        let dc = Gdi::BeginPaint(h, &mut ps);
+        let mut rc = RECT::default();
+        let _ = wm::GetClientRect(h, &mut rc);
+        let enabled = windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h).as_bool();
+        let hot = with_css(h, |c| c.hot).unwrap_or(false);
+        let focus = windows::Win32::UI::Input::KeyboardAndMouse::GetFocus() == h;
+        let kind = if slider { Kind::Slider } else { Kind::Progress };
+        let s = style_of(h, kind, State { hover: hot, focus, disabled: !enabled, ..Default::default() });
+        // Drawn off screen and copied once, so dragging does not flicker.
+        let mem = Gdi::CreateCompatibleDC(Some(dc));
+        let bmp = Gdi::CreateCompatibleBitmap(dc, rc.right.max(1), rc.bottom.max(1));
+        let old = Gdi::SelectObject(mem, bmp.into());
+        fill(mem, &rc, window_background());
+        let accent = s.accent_or(theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f)));
+        let track = s.background_or(Color::rgb(0xe5, 0xe5, 0xe5));
+        let span = (max - min).max(1) as i64;
+        let frac = |w: i32| ((value - min) as i64 * w as i64 / span) as i32;
+        if slider {
+            let thumb = px(h, 18);
+            let th = px(h, 4);
+            let cy = rc.bottom / 2;
+            let (x0, x1) = (thumb / 2, rc.right - thumb / 2);
+            let at = x0 + frac(x1 - x0);
+            round_rect(mem, RECT { left: x0, top: cy - th / 2, right: x1, bottom: cy - th / 2 + th }, track, track, th);
+            round_rect(mem, RECT { left: x0, top: cy - th / 2, right: at.max(x0 + 1), bottom: cy - th / 2 + th }, accent, accent, th);
+            // The thumb: a ring in the border colour around a dot in the accent, as Windows 11's.
+            let ring = RECT { left: at - thumb / 2, top: cy - thumb / 2, right: at - thumb / 2 + thumb, bottom: cy - thumb / 2 + thumb };
+            round_rect(mem, ring, window_background(), s.border_or(Color::rgb(0x8a, 0x8a, 0x8a)), thumb);
+            let dot = thumb * if hot || r.drag { 5 } else { 4 } / 10;
+            round_rect(mem, RECT { left: at - dot / 2, top: cy - dot / 2, right: at - dot / 2 + dot, bottom: cy - dot / 2 + dot }, accent, accent, dot);
+            if focus {
+                let fr = RECT { left: 0, top: 0, right: rc.right, bottom: rc.bottom };
+                let _ = Gdi::DrawFocusRect(mem, &fr);
+            }
+        } else {
+            let radius = px(h, s.border_radius.unwrap_or(3) * 2);
+            round_rect(mem, rc, track, track, radius);
+            let done = frac(rc.right);
+            if done > 0 {
+                round_rect(mem, RECT { right: done.max(radius), ..rc }, accent, accent, radius);
+            }
+        }
+        let _ = Gdi::BitBlt(dc, 0, 0, rc.right, rc.bottom, Some(mem), 0, 0, Gdi::SRCCOPY);
+        Gdi::SelectObject(mem, old);
+        let _ = Gdi::DeleteObject(bmp.into());
+        let _ = Gdi::DeleteDC(mem);
+        let _ = Gdi::EndPaint(h, &ps);
+    }
+}
+
+extern "system" fn progress_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_PAINT => {
+            range_paint(h, false);
+            LRESULT(0)
+        }
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_NCDESTROY => {
+            forget(h);
+            drop(unsafe { take_state::<Range>(h) });
+            unsafe { wm::DefWindowProcW(h, msg, w, l) }
+        }
+        _ => unsafe { wm::DefWindowProcW(h, msg, w, l) },
+    }
+}
+
+/// Moves a slider to `v` and, when that is a change, tells its parent.
+fn slide_to(h: HWND, v: i32) {
+    let Some(r) = (unsafe { state::<Range>(h) }) else { return };
+    let v = v.clamp(r.min, r.max);
+    if v == r.value {
+        return;
+    }
+    r.value = v;
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+        let id = wm::GetDlgCtrlID(h) as usize;
+        if let Ok(parent) = wm::GetParent(h) {
+            wm::SendMessageW(parent, wm::WM_COMMAND, Some(WPARAM(id | (VALUE_CHANGED as usize) << 16)), Some(LPARAM(h.0 as isize)));
+        }
+    }
+}
+
+fn slider_value_at(h: HWND, x: i32) -> i32 {
+    let Some(r) = (unsafe { state::<Range>(h) }) else { return 0 };
+    let mut rc = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut rc);
+    }
+    let thumb = px(h, 18);
+    let (x0, x1) = (thumb / 2, rc.right - thumb / 2);
+    let span = (x1 - x0).max(1) as i64;
+    r.min + (((x - x0).clamp(0, x1 - x0) as i64 * (r.max - r.min) as i64 + span / 2) / span) as i32
+}
+
+extern "system" fn slider_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
+    let redraw = || unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    };
+    match msg {
+        wm::WM_PAINT => {
+            range_paint(h, true);
+            LRESULT(0)
+        }
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_GETDLGCODE => LRESULT(0x0001 /* DLGC_WANTARROWS */),
+        wm::WM_SETFOCUS | wm::WM_KILLFOCUS | wm::WM_ENABLE => {
+            redraw();
+            LRESULT(0)
+        }
+        wm::WM_LBUTTONDOWN => {
+            unsafe {
+                let _ = SetFocus(Some(h));
+                SetCapture(h);
+            }
+            if let Some(r) = unsafe { state::<Range>(h) } {
+                r.drag = true;
+            }
+            slide_to(h, slider_value_at(h, point_of(l).0));
+            redraw();
+            LRESULT(0)
+        }
+        wm::WM_MOUSEMOVE => {
+            if with_css(h, |c| !std::mem::replace(&mut c.hot, true)).unwrap_or(false) {
+                let mut t = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: h, dwHoverTime: 0 };
+                let _ = unsafe { TrackMouseEvent(&mut t) };
+                redraw();
+            }
+            if unsafe { state::<Range>(h) }.is_some_and(|r| r.drag) {
+                slide_to(h, slider_value_at(h, point_of(l).0));
+            }
+            LRESULT(0)
+        }
+        WM_MOUSELEAVE => {
+            with_css(h, |c| c.hot = false);
+            redraw();
+            LRESULT(0)
+        }
+        wm::WM_LBUTTONUP | wm::WM_CAPTURECHANGED => {
+            if let Some(r) = unsafe { state::<Range>(h) } {
+                if std::mem::replace(&mut r.drag, false) && msg == wm::WM_LBUTTONUP {
+                    let _ = unsafe { ReleaseCapture() };
+                }
+            }
+            redraw();
+            LRESULT(0)
+        }
+        wm::WM_KEYDOWN => {
+            let Some(r) = (unsafe { state::<Range>(h) }) else { return LRESULT(0) };
+            let page = ((r.max - r.min) / 10).max(1);
+            let v = r.value;
+            let to = match w.0 as u16 {
+                0x25 | 0x28 => v - 1, // left, down
+                0x27 | 0x26 => v + 1, // right, up
+                0x21 => v + page,     // page up
+                0x22 => v - page,     // page down
+                0x24 => r.min,        // home
+                0x23 => r.max,        // end
+                _ => return unsafe { wm::DefWindowProcW(h, msg, w, l) },
+            };
+            slide_to(h, to);
+            LRESULT(0)
+        }
+        wm::WM_NCDESTROY => {
+            forget(h);
+            drop(unsafe { take_state::<Range>(h) });
+            unsafe { wm::DefWindowProcW(h, msg, w, l) }
+        }
+        _ => unsafe { wm::DefWindowProcW(h, msg, w, l) },
+    }
+}
+
+/// A box of several lines in the control font, wrapping words - a form's text area.
+pub fn textarea(parent: HWND, text: &str, id: i32, f: HFONT) -> HWND {
+    const ES_MULTILINE: u32 = 0x0004;
+    const ES_AUTOVSCROLL: u32 = 0x0040;
+    const ES_WANTRETURN: u32 = 0x1000;
+    const EM_SETMARGINS: u32 = 0x00D3;
+    let style = WINDOW_STYLE(ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN) | wm::WS_TABSTOP | wm::WS_BORDER | wm::WS_VSCROLL;
+    let h = child(parent, "EDIT", text, style, WINDOW_EX_STYLE(0), id, f);
+    mark(h, Kind::Edit);
+    unsafe {
+        let m = px(parent, 6) as isize;
+        wm::SendMessageW(h, EM_SETMARGINS, Some(WPARAM(3)), Some(LPARAM((m << 16) | m)));
+        let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(edit_proc), 2, 0);
+    }
+    theme_native(h);
+    h
+}
+
+/// A control's own look over the theme - `background: #12855f; color: white`, what a `#id { }`
+/// rule would say. Phai Studio writes it from a control's colour properties.
+pub fn set_own_style(h: HWND, decls: &str) -> Result<(), theme::ThemeError> {
+    let own = theme::declarations_style(decls)?;
+    with_css(h, |c| c.own = own);
+    theme_native(h);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, true);
+        let _ = Gdi::RedrawWindow(Some(h), None, None, Gdi::RDW_FRAME | Gdi::RDW_INVALIDATE);
+    }
+    Ok(())
 }
 
 // --- toolbar --------------------------------------------------------------------------------------
@@ -1563,6 +1963,13 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_NOTIFY => {
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            // A date that changed speaks as an edit does, so one `WM_COMMAND` arm hears both.
+            if hdr.code == DTN_DATETIMECHANGE && kind_of(hdr.hwndFrom) == Some(Kind::Date) {
+                unsafe {
+                    wm::SendMessageW(hwnd, wm::WM_COMMAND, Some(WPARAM(hdr.idFrom | (VALUE_CHANGED as usize) << 16)), Some(LPARAM(hdr.hwndFrom.0 as isize)));
+                }
+                return LRESULT(0);
+            }
             if hdr.code == cc::NM_CUSTOMDRAW {
                 match kind_of(hdr.hwndFrom) {
                     Some(Kind::List) => return list_custom_draw(l),

@@ -88,6 +88,8 @@ const ID_EDIT_TOOLBAR: i32 = 114;
 const ID_TOOL: i32 = 300;
 const ID_THEME_NEW: i32 = 130;
 const ID_THEME_IMPORT: i32 = 131;
+/// For the properties pane's Theme "…".
+pub const ID_THEME_IMPORT_PUB: i32 = ID_THEME_IMPORT;
 const ID_THEME_NONE: i32 = 132;
 
 const ID_TOOLBAR: i32 = 200;
@@ -211,6 +213,11 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Group => t("Group"),
         Kind::Tabs => t("Tabs"),
         Kind::Statusbar => t("Status bar"),
+        Kind::Textarea => t("Text area"),
+        Kind::Date => t("Date"),
+        Kind::Number => t("Number"),
+        Kind::Progress => t("Progress bar"),
+        Kind::Slider => t("Slider"),
     }
 }
 
@@ -229,6 +236,11 @@ fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Group => glyph::GROUP,
             Kind::Tabs => glyph::TABS,
             Kind::Statusbar => glyph::STATUS,
+            Kind::Textarea => glyph::TEXTAREA,
+            Kind::Date => glyph::CALENDAR,
+            Kind::Number => glyph::NUMBER,
+            Kind::Progress => glyph::PROGRESS,
+            Kind::Slider => glyph::SLIDER,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -401,7 +413,20 @@ impl Studio {
     pub fn apply(&mut self, key: Key, text: &str) {
         let f = &mut self.doc.form;
         let num = text.trim().parse::<i32>().ok();
-        let list = || text.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>();
+        // A list is one item a line, as the "…" dialog writes it; commas also part, as typed in a box.
+        let list = || text.split(['\n', ',']).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>();
+        let yes = text.trim().eq_ignore_ascii_case("true");
+        // A colour as CSS writes it, or nothing; a word that is not one changes nothing.
+        let colour = || -> Result<Option<String>, ()> {
+            let t = text.trim();
+            if t.is_empty() {
+                Ok(None)
+            } else if phai_ui::theme::parse_color(t).is_some() {
+                Ok(Some(t.to_string()))
+            } else {
+                Err(())
+            }
+        };
         match (key, self.selected) {
             (Key::FormName, _) => f.form.name = text.trim().to_string(),
             (Key::FormTitle, _) => f.form.title = text.to_string(),
@@ -444,6 +469,56 @@ impl Studio {
                         }
                     }
                     Key::Event => c.set_handler((!text.trim().is_empty()).then(|| text.trim().to_string())),
+                    Key::Bold => c.bold = yes.then_some(true),
+                    Key::BackColor | Key::ForeColor | Key::BorderColor => {
+                        let Ok(v) = colour() else { return };
+                        match k {
+                            Key::BackColor => c.back_color = v,
+                            Key::ForeColor => c.fore_color = v,
+                            _ => c.border_color = v,
+                        }
+                    }
+                    Key::Radius => match num {
+                        Some(n) if (0..=50).contains(&n) => c.radius = Some(n),
+                        None if text.trim().is_empty() => c.radius = None,
+                        _ => return,
+                    },
+                    Key::Enabled => c.enabled = (!yes).then_some(false),
+                    Key::Visible => c.visible = (!yes).then_some(false),
+                    Key::Checked => c.checked = yes.then_some(true),
+                    Key::Password => c.password = yes.then_some(true),
+                    Key::Group => c.group = num.filter(|n| *n != 0),
+                    Key::Dock => {
+                        let d = text.trim();
+                        if !phai_form::DOCKS.contains(&d) {
+                            return;
+                        }
+                        c.dock = (d != "none").then(|| d.to_string());
+                        if c.dock.is_none() && c.bounds.is_none() {
+                            let (dw, dh) = c.kind.default_size();
+                            c.bounds = Some([11, 11, dw.max(20), dh]);
+                        }
+                    }
+                    Key::Anchor => match phai_form::parse_anchor(Some(text.trim())) {
+                        Ok(a) => c.anchor = phai_form::anchor_text(a),
+                        Err(_) => return,
+                    },
+                    Key::Min | Key::Max | Key::Value => {
+                        let Some(n) = num else { return };
+                        let (mut lo, mut hi, mut v) = (c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0));
+                        match k {
+                            Key::Min => lo = n,
+                            Key::Max => hi = n,
+                            _ => v = n,
+                        }
+                        if lo > hi {
+                            return;
+                        }
+                        v = v.clamp(lo, hi);
+                        c.min = (lo != 0).then_some(lo);
+                        c.max = (hi != 100).then_some(hi);
+                        c.value = (v != 0).then_some(v);
+                    }
                     Key::Items => match c.kind {
                         Kind::Combo => c.items = list(),
                         Kind::Tabs => c.tabs = list(),
