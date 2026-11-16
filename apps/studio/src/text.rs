@@ -84,6 +84,16 @@ pub static THAI: &[(&str, &str)] = &[
     ("Choose an empty folder for the new project", "เลือกโฟลเดอร์ว่างสำหรับโปรเจกต์ใหม่"),
     ("New project in {0}", "สร้างโปรเจกต์ใหม่ใน {0} แล้ว"),
     ("{0} cannot be made", "สร้าง {0} ไม่ได้"),
+    ("Close", "ปิด"),
+    ("Project", "โปรเจกต์"),
+    ("No project", "ไม่มีโปรเจกต์"),
+    ("New form...", "ฟอร์มใหม่..."),
+    ("Show in Explorer", "แสดงใน Explorer"),
+    ("Refresh", "รีเฟรช"),
+    ("New form", "ฟอร์มใหม่"),
+    ("Name of the new form, like CustomerWindow", "ชื่อฟอร์มใหม่ เช่น CustomerWindow"),
+    ("{0} is not a form name - PascalCase letters and digits, like CustomerWindow", "{0} ใช้เป็นชื่อฟอร์มไม่ได้ - ใช้ตัวอักษรอังกฤษแบบ PascalCase เช่น CustomerWindow"),
+    ("{0} already exists", "มี {0} อยู่แล้ว"),
 ];
 
 #[cfg(test)]

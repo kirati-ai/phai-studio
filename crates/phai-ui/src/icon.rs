@@ -33,6 +33,19 @@ pub mod glyph {
     pub const RENAME: u16 = 0xE8AC;
     pub const BRIGHTNESS: u16 = 0xE706;
     pub const LANGUAGE: u16 = 0xF2B7; // LocaleLanguage
+    pub const CODE: u16 = 0xE943;
+    pub const LIBRARY: u16 = 0xE8F1;
+    pub const POINTER: u16 = 0xE7C9; // TouchPointer
+    pub const FONT: u16 = 0xE8D2; // a label: words
+    pub const CHECKBOX: u16 = 0xE73A; // CheckboxComposite
+    pub const RADIO: u16 = 0xECCB; // RadioBtnOn
+    pub const DROPDOWN: u16 = 0xE70D; // ChevronDown
+    pub const LIST: u16 = 0xE8FD; // BulletedList
+    pub const GROUP: u16 = 0xE8A9; // ViewAll
+    pub const TABS: u16 = 0xE7C4; // TaskView
+    pub const STATUS: u16 = 0xE8A1; // PreviewLink
+    pub const BUTTON: u16 = 0xE815; // a button
+    pub const FORM: u16 = 0xE737; // a window
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).
     pub const NAMES: &[(&str, u16)] = &[
@@ -41,7 +54,10 @@ pub mod glyph {
         ("SETTINGS", SETTINGS), ("REFRESH", REFRESH), ("SEARCH", SEARCH), ("FOLDER", FOLDER),
         ("DOCUMENT", DOCUMENT), ("MONITOR", MONITOR), ("CHAT", CHAT), ("APPS", APPS), ("UP", UP),
         ("DOWNLOAD", DOWNLOAD), ("UPLOAD", UPLOAD), ("RENAME", RENAME), ("BRIGHTNESS", BRIGHTNESS),
-        ("LANGUAGE", LANGUAGE),
+        ("LANGUAGE", LANGUAGE), ("CODE", CODE), ("LIBRARY", LIBRARY), ("POINTER", POINTER),
+        ("FONT", FONT), ("CHECKBOX", CHECKBOX), ("RADIO", RADIO), ("DROPDOWN", DROPDOWN),
+        ("LIST", LIST), ("GROUP", GROUP), ("TABS", TABS), ("STATUS", STATUS), ("BUTTON", BUTTON),
+        ("FORM", FORM),
     ];
 
     pub fn by_name(name: &str) -> Option<u16> {
@@ -176,6 +192,19 @@ pub fn glyph_icon(glyph: u16, size: i32, colour: Color) -> Option<HICON> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every named glyph is one the icon font has: a missing one would draw an empty square.
+    #[test]
+    fn every_named_glyph_draws_something() {
+        if glyph_pixels(glyph::SAVE, 32, Color::rgb(0, 0, 0)).is_none() {
+            return; // no icon font here
+        }
+        for (name, g) in glyph::NAMES {
+            let px = glyph_pixels(*g, 32, Color::rgb(0, 0, 0)).unwrap();
+            let solid = px.as_chunks::<4>().0.iter().filter(|p| p[3] > 128).count();
+            assert!(solid > 12, "{name} ({g:#X}) draws almost nothing - not in the font?");
+        }
+    }
 
     #[test]
     fn a_glyph_is_drawn_in_the_colour_asked_with_clear_corners() {
