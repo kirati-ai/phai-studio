@@ -586,6 +586,29 @@ pub fn edit(parent: HWND, text: &str, id: i32, f: HFONT, password: bool) -> HWND
     h
 }
 
+/// A box of several lines, in a fixed-width font so columns of text line up, scrolling down.
+pub fn edit_lines(parent: HWND, text: &str, id: i32, f: HFONT) -> HWND {
+    const ES_MULTILINE: u32 = 0x0004;
+    const ES_AUTOVSCROLL: u32 = 0x0040;
+    const ES_WANTRETURN: u32 = 0x1000;
+    const EM_SETMARGINS: u32 = 0x00D3;
+    let style = WINDOW_STYLE(ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN) | wm::WS_TABSTOP | wm::WS_BORDER | wm::WS_VSCROLL;
+    let h = child(parent, "EDIT", text, style, WINDOW_EX_STYLE(0), id, f);
+    mark(h, Kind::Edit);
+    unsafe {
+        let mut lf = Gdi::LOGFONTW { lfHeight: -(10 * dpi(parent) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
+        for (i, u) in "Cascadia Mono".encode_utf16().enumerate() {
+            lf.lfFaceName[i] = u;
+        }
+        let _ = f;
+        set_font(h, Gdi::CreateFontIndirectW(&lf));
+        let m = px(parent, 6) as isize;
+        wm::SendMessageW(h, EM_SETMARGINS, Some(WPARAM(3)), Some(LPARAM((m << 16) | m)));
+        let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(edit_proc), 2, 0);
+    }
+    h
+}
+
 unsafe extern "system" fn edit_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id: usize, _data: usize) -> LRESULT {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
     match msg {
@@ -1270,7 +1293,14 @@ pub fn run_loop(dialog: Option<HWND>) {
                 let _ = wm::KillTimer(None, id);
             }
             if let Some((h, path)) = TARGET.lock().unwrap_or_else(|e| e.into_inner()).take() {
-                if let Err(e) = crate::shot::save(HWND(h as *mut _), std::path::Path::new(&path)) {
+                // A dialog of ours in front - a modal one open - is what is on screen: take that.
+                let front = unsafe { wm::GetForegroundWindow() };
+                let mut pid = 0u32;
+                unsafe {
+                    wm::GetWindowThreadProcessId(front, Some(&mut pid));
+                }
+                let h = if !front.is_invalid() && pid == std::process::id() { front } else { HWND(h as *mut _) };
+                if let Err(e) = crate::shot::save(h, std::path::Path::new(&path)) {
                     eprintln!("{e}");
                 }
             }

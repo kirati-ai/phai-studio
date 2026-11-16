@@ -57,6 +57,8 @@ const ID_BUILD: i32 = 140;
 const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
 const ID_CLOSE: i32 = 106;
+const ID_EDIT_MENUS: i32 = 113;
+const ID_EDIT_TOOLBAR: i32 = 114;
 /// Toolbox buttons: the pointer, then each kind in `Kind::ALL` order.
 const ID_TOOL: i32 = 300;
 const ID_THEME_NEW: i32 = 130;
@@ -222,6 +224,9 @@ fn build_menu() -> HMENU {
         add(edit, ID_REDO, t("Redo"), "Ctrl+Y");
         sep(edit);
         add(edit, ID_DELETE, t("Delete"), "Del");
+        sep(edit);
+        add(edit, ID_EDIT_MENUS, t("Menus..."), "");
+        add(edit, ID_EDIT_TOOLBAR, t("Toolbar..."), "");
         sub(t("&Edit"), edit);
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
@@ -411,6 +416,57 @@ impl Studio {
 
     pub fn toolbox_reset(&mut self) {
         win::toolbar_choose(self.toolbox, ID_TOOL);
+    }
+
+    /// The form's size as the canvas shows it now.
+    pub fn drag_size(&self) -> [i32; 2] {
+        self.canvas.as_ref().and_then(|c| c.shown_size()).unwrap_or(self.doc.form.form.size)
+    }
+
+    // --- menus and toolbar -----------------------------------------------------------------------
+
+    /// The form's menus as text in one box; asked again until it reads or is cancelled.
+    pub fn edit_menus(&mut self) {
+        let mut text = phai_form::bars::menus_to_text(&self.doc.form.menu);
+        if text.is_empty() {
+            text = "&File\n  exit | Exit\n".into();
+        }
+        loop {
+            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Menus"), t("A menu at the left; its items indented: id | label | key. A line of - separates."), &text) else { return };
+            match phai_form::bars::menus_from_text(&answer) {
+                Ok(menus) => {
+                    self.edit(|f| f.menu = menus);
+                    self.rebuild();
+                    return;
+                }
+                Err(e) => {
+                    win::message(Some(self.hwnd), &e, t("Menus"), wm::MB_ICONWARNING);
+                    text = answer;
+                }
+            }
+        }
+    }
+
+    /// The form's toolbar as text: one button a line, id | label | GLYPH.
+    pub fn edit_toolbar(&mut self) {
+        let mut text = phai_form::bars::toolbar_to_text(&self.doc.form.toolbar);
+        if text.is_empty() {
+            text = "save | Save | SAVE\n".into();
+        }
+        loop {
+            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Toolbar"), t("One button a line: id | label | GLYPH. The label is the tooltip."), &text) else { return };
+            match phai_form::bars::toolbar_from_text(&answer) {
+                Ok(tools) => {
+                    self.edit(|f| f.toolbar = tools);
+                    self.rebuild();
+                    return;
+                }
+                Err(e) => {
+                    win::message(Some(self.hwnd), &e, t("Toolbar"), wm::MB_ICONWARNING);
+                    text = answer;
+                }
+            }
+        }
     }
 
     // --- tabs -----------------------------------------------------------------------------------
@@ -796,6 +852,8 @@ impl Studio {
                     self.open_path(&p);
                 }
             }
+            ID_EDIT_MENUS => self.edit_menus(),
+            ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_CLOSE => {
                 self.close_tab();
             }
@@ -1148,6 +1206,10 @@ fn main() {
         }
         if forms.len() > 1 {
             s.activate(0);
+        }
+        // `--menus` opens the menu editor at once - for checking it by its picture.
+        if args.iter().any(|a| a == "--menus") {
+            let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_EDIT_MENUS as usize), LPARAM(0));
         }
         // `--tab N` shows tab N, the way a click on it does - for checking the switch.
         if let Some(n) = args.iter().position(|a| a == "--tab").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {

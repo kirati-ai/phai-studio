@@ -1,4 +1,4 @@
-//! Two small modal windows: a line of text, and "waiting" with a Cancel button. From PhaiDesk's
+//! Small modal windows: a line of text, several lines of text, and "waiting" with a Cancel button. From PhaiDesk's
 //! console (`console/dialogs.rs`). Modal the way a dialog is: the owner is switched off and a loop
 //! of their own runs until they close.
 
@@ -30,6 +30,8 @@ struct Ask {
     cancelled: Option<Arc<AtomicBool>>,
     font: Gdi::HFONT,
     small: Gdi::HFONT,
+    /// The box holds several lines and takes the window's height.
+    lines: bool,
 }
 
 extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -38,18 +40,24 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_SIZE => {
             let (cw, ch) = (win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
             let m = win::px(hwnd, 11);
-            let bw = win::px(hwnd, 88);
-            let bh = win::px(hwnd, 30);
-            let eh = win::px(hwnd, 28);
+            // Windows' own sizes: buttons 75 x 23, boxes 23 high.
+            let bw = win::px(hwnd, 75);
+            let bh = win::px(hwnd, 23);
             let has_edit = !s.edit.is_invalid();
-            let label_h = ch - m * 3 - bh - if has_edit { eh + m } else { 0 };
+            let (label_h, eh) = if s.lines {
+                let lh = win::px(hwnd, 20);
+                (lh, ch - m * 4 - bh - lh)
+            } else {
+                let eh = win::px(hwnd, 23);
+                (ch - m * 3 - bh - if has_edit { eh + m } else { 0 }, eh)
+            };
             win::move_to(s.label, m, m, cw - 2 * m, label_h);
             if has_edit {
                 win::move_to(s.edit, m, m + label_h + m, cw - 2 * m, eh);
             }
             win::move_to(s.cancel, cw - m - bw, ch - m - bh, bw, bh);
             if !s.ok.is_invalid() {
-                win::move_to(s.ok, cw - 2 * m - 2 * bw + m / 2, ch - m - bh, bw, bh);
+                win::move_to(s.ok, cw - m - 2 * bw - win::px(hwnd, 7), ch - m - bh, bw, bh);
             }
             LRESULT(0)
         }
@@ -99,6 +107,7 @@ struct Spec<'a> {
     initial: Option<&'a str>,
     password: bool,
     ok_label: &'a str,
+    lines: bool,
     cancel_label: &'a str,
     size: (i32, i32),
 }
@@ -129,8 +138,8 @@ fn make(owner: Option<HWND>, spec: &Spec) -> HWND {
         win::register_kind(label, win::Kind::Label);
         let edit = match spec.initial {
             Some(initial) => {
-                let e = win::edit(hwnd, initial, ID_EDIT, font, spec.password);
-                wm::SendMessageW(e, EM_LIMITTEXT, Some(WPARAM(500)), None);
+                let e = if spec.lines { win::edit_lines(hwnd, &initial.replace('\n', "\r\n"), ID_EDIT, font) } else { win::edit(hwnd, initial, ID_EDIT, font, spec.password) };
+                wm::SendMessageW(e, EM_LIMITTEXT, Some(WPARAM(if spec.lines { 64000 } else { 500 })), None);
                 e
             }
             None => HWND::default(),
@@ -141,7 +150,7 @@ fn make(owner: Option<HWND>, spec: &Spec) -> HWND {
             HWND::default()
         };
         let cancel = win::button(hwnd, spec.cancel_label, ID_CANCEL, small, false);
-        win::set_state(hwnd, Box::new(Ask { edit, label, ok, cancel, answer: None, done: false, cancelled: None, font, small }));
+        win::set_state(hwnd, Box::new(Ask { edit, label, ok, cancel, answer: None, done: false, cancelled: None, font, small, lines: spec.lines }));
         // Size in design pixels at this monitor's scale, centred on the owner.
         let (w, h) = (win::px(hwnd, spec.size.0), win::px(hwnd, spec.size.1));
         let mut r = Default::default();
@@ -196,16 +205,25 @@ fn modal(owner: Option<HWND>, hwnd: HWND, focus: HWND) -> Option<String> {
 
 /// Asks for one line of text. `None` when cancelled.
 pub fn ask(owner: Option<HWND>, title: &str, prompt: &str, initial: &str, password: bool) -> Option<String> {
-    let spec = Spec { title, prompt, initial: Some(initial), password, ok_label: t("OK"), cancel_label: t("Cancel"), size: (420, 190) };
+    let spec = Spec { title, prompt, initial: Some(initial), password, ok_label: t("OK"), lines: false, cancel_label: t("Cancel"), size: (360, 140) };
     let hwnd = make(owner, &spec);
     let edit = unsafe { win::state::<Ask>(hwnd).map(|s| s.edit).unwrap_or_default() };
     modal(owner, hwnd, edit)
 }
 
+/// Asks for several lines of text, `initial` to start from. `None` when cancelled. Lines come
+/// back joined by `\n`.
+pub fn ask_lines(owner: Option<HWND>, title: &str, prompt: &str, initial: &str) -> Option<String> {
+    let spec = Spec { title, prompt, initial: Some(initial), password: false, ok_label: t("OK"), lines: true, cancel_label: t("Cancel"), size: (460, 380) };
+    let hwnd = make(owner, &spec);
+    let edit = unsafe { win::state::<Ask>(hwnd).map(|s| s.edit).unwrap_or_default() };
+    modal(owner, hwnd, edit).map(|s| s.replace("\r\n", "\n"))
+}
+
 /// Shows `text` with a Cancel button while `work` runs on another thread. `work` is handed a flag
 /// that Cancel sets, and should give up soon after. `None` when cancelled.
 pub fn wait_for<T: Send + 'static>(owner: Option<HWND>, title: &str, text: &str, work: impl FnOnce(Arc<AtomicBool>) -> T + Send + 'static) -> Option<T> {
-    let spec = Spec { title, prompt: text, initial: None, password: false, ok_label: "", cancel_label: t("Cancel"), size: (400, 160) };
+    let spec = Spec { title, prompt: text, initial: None, password: false, ok_label: "", lines: false, cancel_label: t("Cancel"), size: (360, 130) };
     let hwnd = make(owner, &spec);
     let cancelled = Arc::new(AtomicBool::new(false));
     unsafe {

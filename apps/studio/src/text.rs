@@ -94,6 +94,12 @@ pub static THAI: &[(&str, &str)] = &[
     ("Name of the new form, like CustomerWindow", "ชื่อฟอร์มใหม่ เช่น CustomerWindow"),
     ("{0} is not a form name - PascalCase letters and digits, like CustomerWindow", "{0} ใช้เป็นชื่อฟอร์มไม่ได้ - ใช้ตัวอักษรอังกฤษแบบ PascalCase เช่น CustomerWindow"),
     ("{0} already exists", "มี {0} อยู่แล้ว"),
+    ("Menus...", "เมนู..."),
+    ("Toolbar...", "แถบเครื่องมือ..."),
+    ("Menus", "เมนู"),
+    ("Toolbar", "แถบเครื่องมือ"),
+    ("A menu at the left; its items indented: id | label | key. A line of - separates.", "ชื่อเมนูชิดซ้าย รายการย่อหน้าเข้าไป: id | ข้อความ | ปุ่มลัด  บรรทัด - คือเส้นคั่น"),
+    ("One button a line: id | label | GLYPH. The label is the tooltip.", "บรรทัดละปุ่ม: id | ข้อความ | ไอคอน  ข้อความจะเป็น tooltip"),
 ];
 
 #[cfg(test)]

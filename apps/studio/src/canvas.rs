@@ -21,6 +21,20 @@ use crate::studio;
 
 /// The form's top-left corner inside the canvas, design pixels.
 pub const MARGIN: i32 = 16;
+/// The form's title bar on the canvas, design pixels - Windows 11's.
+pub const TITLE: i32 = 31;
+/// The form's menu bar on the canvas, when it has menus.
+pub const MENU: i32 = 22;
+
+/// The height of the window frame drawn above the form: its title bar, and its menu bar.
+pub fn chrome(f: &phai_form::FormFile) -> i32 {
+    TITLE + if f.menu.is_empty() { 0 } else { MENU }
+}
+
+/// Where the form's client area starts on the canvas, design pixels.
+pub fn origin(f: &phai_form::FormFile) -> (i32, i32) {
+    (MARGIN, MARGIN + chrome(f))
+}
 /// Positions snap to this many design pixels.
 pub const GRID: i32 = 4;
 const HANDLE: i32 = 7;
@@ -83,8 +97,8 @@ impl Canvas {
         }
         let f = &s.doc.form;
         let (w, h) = (win::px(self.hwnd, f.form.size[0]), win::px(self.hwnd, f.form.size[1]));
-        let m = win::px(self.hwnd, MARGIN);
-        win::move_to(self.surface, m, m, w, h);
+        let (ox, oy) = origin(f);
+        win::move_to(self.surface, win::px(self.hwnd, ox), win::px(self.hwnd, oy), w, h);
         let built = live::build(self.surface, f, s.font, 0);
         built.layout.apply(self.surface);
         for h in built.controls.iter().copied().chain(built.toolbar) {
@@ -97,7 +111,7 @@ impl Canvas {
         self.form_handles = (0..3).map(|_| create_child(&handle_class, self.hwnd, WINDOW_EX_STYLE(0))).collect();
         unsafe {
             wm::SendMessageW(self.surface, wm::WM_SETREDRAW, Some(WPARAM(1)), None);
-            let _ = Gdi::RedrawWindow(Some(self.hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_ERASE | Gdi::RDW_ALLCHILDREN);
+            let _ = Gdi::RedrawWindow(Some(self.hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_ERASE | Gdi::RDW_ALLCHILDREN | Gdi::RDW_FRAME);
         }
         self.place_handles();
     }
@@ -147,11 +161,19 @@ impl Canvas {
             Drag::Form { now, .. } => now,
             _ => s.doc.form.form.size,
         };
-        let m = MARGIN;
-        let pts = [(m + size[0], m + size[1] / 2), (m + size[0], m + size[1]), (m + size[0] / 2, m + size[1])];
+        let (m, top) = origin(&s.doc.form);
+        let pts = [(m + size[0], top + size[1] / 2), (m + size[0], top + size[1]), (m + size[0] / 2, top + size[1])];
         for (h, (x, y)) in self.form_handles.iter().zip(pts) {
             win::move_to(*h, scale(x, dpi) - hs / 2 + hs / 2, scale(y, dpi) - hs / 2 + hs / 2, hs, hs);
             win::show(*h, s.selected.is_none());
+        }
+    }
+
+    /// The form's size as shown now - while its edge is dragged, the dragged size.
+    pub fn shown_size(&self) -> Option<[i32; 2]> {
+        match self.drag {
+            Drag::Form { now, .. } => Some(now),
+            _ => None,
         }
     }
 
@@ -350,10 +372,18 @@ impl Canvas {
         let Some(s) = studio() else { return };
         let p = self.design_point(self.hwnd, l);
         let size = s.doc.form.form.size;
-        let m = MARGIN;
-        let pts = [(m + size[0], m + size[1] / 2), (m + size[0], m + size[1]), (m + size[0] / 2, m + size[1])];
+        let (m, top) = origin(&s.doc.form);
+        let pts = [(m + size[0], top + size[1] / 2), (m + size[0], top + size[1]), (m + size[0] / 2, top + size[1])];
         unsafe {
             let _ = km::SetFocus(Some(self.surface));
+        }
+        // The frame above the form: its menu bar opens the menus to edit, its title bar chooses the form.
+        let inside_x = p.0 >= MARGIN && p.0 < MARGIN + size[0];
+        if inside_x && p.1 >= MARGIN + TITLE && p.1 < top {
+            s.select(None);
+            self.place_handles();
+            s.edit_menus();
+            return;
         }
         if s.selected.is_none() {
             if let Some(handle) = pts.iter().position(|(x, y)| (p.0 - x).abs() <= HANDLE && (p.1 - y).abs() <= HANDLE) {
@@ -376,18 +406,20 @@ impl Canvas {
             *now = [w.max(120), h.max(80)];
             let dpi = win::dpi(self.hwnd);
             let n = *now;
-            win::move_to(self.surface, scale(MARGIN, dpi), scale(MARGIN, dpi), scale(n[0], dpi), scale(n[1], dpi));
+            let (ox, oy) = studio().map(|s| origin(&s.doc.form)).unwrap_or((MARGIN, MARGIN));
+            win::move_to(self.surface, scale(ox, dpi), scale(oy, dpi), scale(n[0], dpi), scale(n[1], dpi));
+            let _ = unsafe { Gdi::InvalidateRect(Some(self.hwnd), None, true) };
             self.say_drag();
             self.place_handles();
         } else {
             let Some(s) = studio() else { return };
             let size = s.doc.form.form.size;
-            let m = MARGIN;
-            let c = if s.selected.is_none() && (p.0 - (m + size[0])).abs() <= HANDLE && (p.1 - (m + size[1])).abs() <= HANDLE {
+            let (m, top) = origin(&s.doc.form);
+            let c = if s.selected.is_none() && (p.0 - (m + size[0])).abs() <= HANDLE && (p.1 - (top + size[1])).abs() <= HANDLE {
                 wm::IDC_SIZENWSE
-            } else if s.selected.is_none() && (p.0 - (m + size[0])).abs() <= HANDLE && (p.1 - (m + size[1] / 2)).abs() <= HANDLE {
+            } else if s.selected.is_none() && (p.0 - (m + size[0])).abs() <= HANDLE && (p.1 - (top + size[1] / 2)).abs() <= HANDLE {
                 wm::IDC_SIZEWE
-            } else if s.selected.is_none() && (p.1 - (m + size[1])).abs() <= HANDLE && (p.0 - (m + size[0] / 2)).abs() <= HANDLE {
+            } else if s.selected.is_none() && (p.1 - (top + size[1])).abs() <= HANDLE && (p.0 - (m + size[0] / 2)).abs() <= HANDLE {
                 wm::IDC_SIZENS
             } else {
                 wm::IDC_ARROW
@@ -457,6 +489,82 @@ fn ghost(h: HWND) {
     }
 }
 
+/// The window around the form, as Windows 11 draws one: a border, the title with the minimise,
+/// maximise and close glyphs, and the menu bar with the form's menus.
+fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
+    let dpi = win::dpi(h);
+    let p = |v: i32| scale(v, dpi);
+    let (ox, _) = origin(f);
+    let top = MARGIN;
+    let width = size[0];
+    let bottom = origin(f).1 + size[1];
+    let window = win::window_background();
+    let text = win::window_text();
+    let border = theme::style("group", State::default()).border_or(Color::rgb(229, 229, 229));
+    // Border, one pixel outside.
+    let outer = RECT { left: p(ox) - 1, top: p(top) - 1, right: p(ox + width) + 1, bottom: p(bottom) + 1 };
+    win::fill(dc, &outer, border);
+    // Title bar: a shade off the window, as Windows 11's is.
+    let title_bg = if window.is_dark() { Color::rgb(32, 32, 32) } else { Color::rgb(238, 242, 246) };
+    let title = RECT { left: p(ox), top: p(top), right: p(ox + width), bottom: p(top + TITLE) };
+    win::fill(dc, &title, title_bg);
+    let font = win::font(h, 0, false);
+    let old = unsafe { Gdi::SelectObject(dc, font.into()) };
+    unsafe {
+        Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
+    }
+    let mut tr = RECT { left: p(ox + 12), ..title };
+    let mut words: Vec<u16> = f.form.title.encode_utf16().collect();
+    if !words.is_empty() {
+        unsafe {
+            Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+        }
+    }
+    // Caption glyphs from the icon font: minimise, maximise, close.
+    let mut lf = Gdi::LOGFONTW { lfHeight: -p(10), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::ANTIALIASED_QUALITY, ..Default::default() };
+    for (i, u) in "Segoe Fluent Icons".encode_utf16().enumerate() {
+        lf.lfFaceName[i] = u;
+    }
+    let icons = unsafe { Gdi::CreateFontIndirectW(&lf) };
+    unsafe {
+        Gdi::SelectObject(dc, icons.into());
+    }
+    for (k, g) in [0xE8BBu16, 0xE922, 0xE921].iter().enumerate() {
+        let right = ox + width - 46 * k as i32;
+        let mut gr = RECT { left: p(right - 46), top: p(top), right: p(right), bottom: p(top + TITLE) };
+        let mut one = [*g];
+        unsafe {
+            Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+        }
+    }
+    unsafe {
+        Gdi::SelectObject(dc, font.into());
+    }
+    // The menu bar, on the window's own colour.
+    if !f.menu.is_empty() {
+        let bar = RECT { left: p(ox), top: p(top + TITLE), right: p(ox + width), bottom: p(top + TITLE + MENU) };
+        win::fill(dc, &bar, window);
+        let mut x = ox + 8;
+        for m in &f.menu {
+            let label = phai_form::bars::shown(&m.label);
+            let (w, _) = win::measure(h, font, &label);
+            let lw = phai_ui::layout::unscale(w, dpi) + 16;
+            let mut mr = RECT { left: p(x), top: bar.top, right: p(x + lw), bottom: bar.bottom };
+            let mut words: Vec<u16> = m.label.encode_utf16().collect();
+            unsafe {
+                Gdi::DrawTextW(dc, &mut words, &mut mr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            }
+            x += lw;
+        }
+    }
+    unsafe {
+        Gdi::SelectObject(dc, old);
+        let _ = Gdi::DeleteObject(icons.into());
+        let _ = Gdi::DeleteObject(font.into());
+    }
+}
+
 fn canvas_of(h: HWND) -> Option<&'static mut Canvas> {
     let s = studio()?;
     let c = s.canvas.as_mut()?;
@@ -473,6 +581,9 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             let bg = theme::style("canvas", State::default()).background_or(Color::rgb(243, 243, 243));
             win::fill(dc, &r, bg);
+            if let Some(s) = studio() {
+                paint_frame(dc, h, &s.doc.form, s.drag_size());
+            }
             LRESULT(1)
         }
         wm::WM_LBUTTONDOWN => {
@@ -518,7 +629,12 @@ extern "system" fn surface_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
         }
         wm::WM_LBUTTONDBLCLK => {
             if let Some(s) = studio() {
-                s.add_handler_for_selected();
+                let y = phai_ui::layout::unscale(win::point_of(l).1, win::dpi(h));
+                if !s.doc.form.toolbar.is_empty() && y < win::TOOLBAR_HEIGHT && s.selected.is_none() {
+                    s.edit_toolbar();
+                } else {
+                    s.add_handler_for_selected();
+                }
             }
             LRESULT(0)
         }

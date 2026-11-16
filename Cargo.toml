@@ -6,6 +6,8 @@ members = ["crates/phai-ui", "crates/phai-form", "apps/gallery", "apps/studio", 
 version = "0.1.0"
 edition = "2021"
 publish = false
+license = "MIT"
+authors = ["Monrak Net"]
 
 # One `windows` for every crate, as in PhaiDesk: crates written apart do not each pin another.
 [workspace.dependencies]
