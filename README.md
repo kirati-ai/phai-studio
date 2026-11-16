@@ -20,7 +20,9 @@ Phai Studio itself is built with what it makes - a single 1 MB exe.
   for your handlers. A handler added in the designer never breaks your code; double-click a
   control to get its empty method.
 - **Build and run** - New project, Build (Ctrl+B), Run (F5), Stop, Debug / Release, an error list
-  and Cargo's output.
+  and Cargo's output as it comes.
+- **Templates** - a dialog with OK and Cancel, a main window with menu, toolbar and status bar, a
+  form of labelled fields - laid out with Windows' own spacing.
 - **Themes are CSS** - drop a `theme.css` into the project and every control follows; save the
   file and the running program changes at once.
 
@@ -55,6 +57,7 @@ sample: `cargo run -p phai-studio -- apps/sample/src/main_window.phaiform`.
 |---|---|
 | `crates/phai-ui` | the Win32 controls, CSS themes, dock/anchor layout, Thai/English, window photos |
 | `crates/phai-form` | the `.phaiform` file, code generation, building a form live |
+| `crates/phai-design` | the Phai family's spacing, and ready-made windows (File > New from template) |
 | `apps/studio` | Phai Studio |
 | `apps/sample` | a program built from generated code - its test checks the generator |
 | `apps/gallery` | every control, every theme, at any scale |

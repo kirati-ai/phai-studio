@@ -61,6 +61,8 @@ const ID_CLOSE: i32 = 106;
 const ID_DEBUG: i32 = 143;
 /// File > Recent: `ID_RECENT + n`, newest first.
 const ID_RECENT: i32 = 160;
+/// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
+const ID_TEMPLATE: i32 = 170;
 const RECENT_MAX: usize = 9;
 const ID_RELEASE: i32 = 144;
 const ID_EDIT_MENUS: i32 = 113;
@@ -240,6 +242,11 @@ fn build_menu() -> HMENU {
         };
         let file = wm::CreatePopupMenu().unwrap_or_default();
         add(file, ID_NEW, t("New"), "Ctrl+N");
+        let tm = wm::CreatePopupMenu().unwrap_or_default();
+        for (k, tpl) in phai_design::templates::Template::ALL.iter().enumerate() {
+            add(tm, ID_TEMPLATE + k as i32, t(tpl.name()), "");
+        }
+        sub_of(file, t("New from template"), tm);
         add(file, ID_OPEN, t("Open..."), "Ctrl+O");
         add(file, ID_SAVE, t("Save"), "Ctrl+S");
         add(file, ID_SAVE_AS, t("Save as..."), "");
@@ -1085,6 +1092,15 @@ impl Studio {
             ID_BUILD => self.start_build(false),
             ID_RUN => self.start_build(true),
             ID_STOP => self.stop(),
+            n if (ID_TEMPLATE..ID_TEMPLATE + phai_design::templates::Template::ALL.len() as i32).contains(&n) => {
+                let tpl = phai_design::templates::Template::ALL[(n - ID_TEMPLATE) as usize];
+                let name = match tpl {
+                    phai_design::templates::Template::Dialog => "AskDialog",
+                    phai_design::templates::Template::MainWindow => "MainWindow",
+                    phai_design::templates::Template::DataEntry => "DetailsWindow",
+                };
+                self.open_in_tab(tpl.make(name), None);
+            }
             r if (ID_RECENT..ID_RECENT + RECENT_MAX as i32).contains(&r) => {
                 if let Some(p) = recent_files().get((r - ID_RECENT) as usize).cloned() {
                     self.open_path(&p);
