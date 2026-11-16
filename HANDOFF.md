@@ -12,7 +12,21 @@
     Undo/Redo, บันทึก+สร้างโค้ด, ดับเบิลคลิก = เพิ่ม handler ในไฟล์ผู้ใช้, F5 ดูตัวอย่าง, ธีม: สร้างจากมาตรฐาน/นำเข้า CSS
   - `apps/sample` — โปรแกรมที่ build จากโค้ดที่ generate จริง; เทสต์ตรวจว่าไฟล์ตรงกับตัวสร้างโค้ด
     (เปลี่ยนตัวสร้างโค้ดแล้ว: `cargo test -p phai-form -- --ignored regenerate`)
-- **ต่อไป**: ใช้จริงแล้วเก็บ: เลือกหลายตัว, คัดลอก/วาง, เส้นช่วยจัดแนว, แก้ menu/toolbar ใน designer, ขั้น 3 (Build/Run ผ่าน cargo)
+- ขั้น 3 ใช้งานได้: โปรเจกต์ใหม่ (โฟลเดอร์ว่าง → Cargo.toml, build.rs, ฟอร์มแรก, ธีม, ตารางไทย), Build Ctrl+B / Run F5 /
+  Stop Shift+F5 ผ่าน `cargo --message-format=json`, รายการ error (ดับเบิลคลิกเปิดไฟล์), ไม่มี Rust → ชวนเปิด rustup.rs
+- เทียบ Visual Studio ทำแล้ว: Project explorer (ต้นไม้ไฟล์ + ไอคอน, คลิกขวา ฟอร์มใหม่), แท็บเอกสาร (Undo แยกแท็บ, Ctrl+W),
+  กล่องเครื่องมือเป็นไอคอนล้วน, ฟอร์มบน canvas มีแถบชื่อ + menu bar, แก้เมนู/toolbar เป็นข้อความ (Edit > เมนู..., คลิก menu bar)
+- MIT license ใส่แล้ว (Monrak Net เหมือน PhaiDesk) — ยังไม่สร้าง repo บน GitHub: รอเจ้านายสั่ง
+  ก่อนเปิดสาธารณะ: โปรเจกต์ใหม่อ้าง phai-ui ด้วย path ในเครื่อง → ต้องเปลี่ยนเป็น git/crates.io
+- **เจ้านายบอกพอแค่นี้ (2026-11-16)** — งานที่เหลือถ้าจะทำต่อ ตามลำดับ:
+  1. เลือกหลายตัว, คัดลอก/วาง, toolbar จัดแนว (ชิดซ้าย/เท่ากัน/ระยะเท่ากัน), เส้นช่วยจัดแนว
+  2. Debug/Release + Output window (บันทึก cargo)
+  3. Toolbox ค้นหา, ไฟล์ล่าสุด, Start window
+  4. font จาก CSS, scrollbar/เมนู popup โหมดมืด
+  5. `phai-design` crate (ดู PLAN.md)
+  6. สาย E: แปลง Monaco (PLAN.md) — ตัวแก้โค้ด, debugger, Git
+- self-test: `--selftest out.phaiform` (ลากสร้าง/ย้าย/ย่อขยาย), `--buildtest` (Build จริง), `--tab N`, `--menus`;
+  `PHAI_SHOT=out.png` ถ่ายหน้าต่างหน้าสุดของโปรแกรม (รวม dialog)
 - debug build ของ studio เป็น console + พิมพ์ backtrace ตอนพัง (`report_crashes`)
 - `phai-studio form.phaiform --selftest out.phaiform` ลากสร้าง/ย้าย/ย่อขยายด้วยข้อความเมาส์จริงแล้วบันทึก
 
