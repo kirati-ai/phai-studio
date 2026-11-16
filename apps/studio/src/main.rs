@@ -58,6 +58,17 @@ const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
 const ID_CLOSE: i32 = 106;
 const ID_EDIT_MENUS: i32 = 113;
+const ID_CUT: i32 = 115;
+const ID_COPY: i32 = 116;
+const ID_PASTE: i32 = 117;
+const ID_DUPLICATE: i32 = 118;
+const ID_SELECT_ALL: i32 = 119;
+/// Format menu: `ID_FORMAT + Op as index` in `FORMATS` order.
+const ID_FORMAT: i32 = 150;
+const FORMATS: [phai_form::arrange::Op; 11] = {
+    use phai_form::arrange::Op::*;
+    [Lefts, Centers, Rights, Tops, Middles, Bottoms, SameWidth, SameHeight, SameSize, SpaceAcross, SpaceDown]
+};
 const ID_EDIT_TOOLBAR: i32 = 114;
 /// Toolbox buttons: the pointer, then each kind in `Kind::ALL` order.
 const ID_TOOL: i32 = 300;
@@ -126,6 +137,8 @@ pub struct Studio {
     undo: Vec<FormFile>,
     redo: Vec<FormFile>,
     pub selected: Option<usize>,
+    /// Chosen besides `selected`, in the order chosen.
+    pub also: Vec<usize>,
     pub tool: Option<Kind>,
 }
 
@@ -184,6 +197,10 @@ fn toolbar_items() -> Vec<(i32, &'static str, u16)> {
         (ID_REDO, t("Redo"), glyph::REDO),
         (ID_DELETE, t("Delete"), glyph::DELETE),
         (0, "", 0),
+        (ID_FORMAT, t("Align lefts"), glyph::ALIGN_LEFT),
+        (ID_FORMAT + 1, t("Align centers"), glyph::ALIGN_CENTER),
+        (ID_FORMAT + 2, t("Align rights"), glyph::ALIGN_RIGHT),
+        (0, "", 0),
         (ID_BUILD, t("Build"), glyph::BUILD),
         (ID_RUN, t("Run"), glyph::PLAY),
         (ID_PREVIEW, t("Preview"), glyph::MONITOR),
@@ -223,7 +240,13 @@ fn build_menu() -> HMENU {
         add(edit, ID_UNDO, t("Undo"), "Ctrl+Z");
         add(edit, ID_REDO, t("Redo"), "Ctrl+Y");
         sep(edit);
+        add(edit, ID_CUT, t("Cut"), "Ctrl+X");
+        add(edit, ID_COPY, t("Copy"), "Ctrl+C");
+        add(edit, ID_PASTE, t("Paste"), "Ctrl+V");
+        add(edit, ID_DUPLICATE, t("Duplicate"), "Ctrl+D");
         add(edit, ID_DELETE, t("Delete"), "Del");
+        sep(edit);
+        add(edit, ID_SELECT_ALL, t("Select all"), "Ctrl+A");
         sep(edit);
         add(edit, ID_EDIT_MENUS, t("Menus..."), "");
         add(edit, ID_EDIT_TOOLBAR, t("Toolbar..."), "");
@@ -239,6 +262,15 @@ fn build_menu() -> HMENU {
         wm::CheckMenuItem(view, if theme::current().is_dark() { ID_DARK } else { ID_LIGHT } as u32, wm::MF_CHECKED.0);
         wm::CheckMenuItem(view, if words::is_thai() { ID_THAI } else { ID_ENGLISH } as u32, wm::MF_CHECKED.0);
         sub(t("&View"), view);
+        let fmt = wm::CreatePopupMenu().unwrap_or_default();
+        let names = [t("Align lefts"), t("Align centers"), t("Align rights"), t("Align tops"), t("Align middles"), t("Align bottoms"), t("Same width"), t("Same height"), t("Same size"), t("Space evenly across"), t("Space evenly down")];
+        for (k, name) in names.iter().enumerate() {
+            if k == 6 || k == 9 {
+                sep(fmt);
+            }
+            add(fmt, ID_FORMAT + k as i32, name, "");
+        }
+        sub(t("F&ormat"), fmt);
         let proj = wm::CreatePopupMenu().unwrap_or_default();
         add(proj, ID_BUILD, t("Build"), "Ctrl+B");
         add(proj, ID_RUN, t("Run"), "F5");
@@ -349,7 +381,48 @@ impl Studio {
         }
     }
 
+    /// Everything chosen, the first one first.
+    pub fn selection(&self) -> Vec<usize> {
+        self.selected.into_iter().chain(self.also.iter().copied()).collect()
+    }
+
+    /// Ctrl+click: in or out of the choice.
+    pub fn toggle(&mut self, i: usize) {
+        if self.selected == Some(i) {
+            self.selected = if self.also.is_empty() { None } else { Some(self.also.remove(0)) };
+        } else if let Some(k) = self.also.iter().position(|x| *x == i) {
+            self.also.remove(k);
+        } else if self.selected.is_none() {
+            self.selected = Some(i);
+        } else {
+            self.also.push(i);
+        }
+        self.refresh_props();
+        self.say_selection();
+    }
+
+    pub fn make_primary(&mut self, i: usize) {
+        if let Some(k) = self.also.iter().position(|x| *x == i) {
+            self.also.remove(k);
+            if let Some(old) = self.selected.replace(i) {
+                self.also.insert(0, old);
+            }
+            self.refresh_props();
+        }
+    }
+
+    pub fn select_many(&mut self, all: &[usize]) {
+        self.selected = all.first().copied();
+        self.also = all.iter().skip(1).copied().collect();
+        self.refresh_props();
+        if let Some(c) = self.canvas.as_ref() {
+            c.place_handles();
+        }
+        self.say_selection();
+    }
+
     pub fn select(&mut self, i: Option<usize>) {
+        self.also.clear();
         if self.selected != i {
             self.selected = i;
             self.refresh_props();
@@ -361,11 +434,18 @@ impl Studio {
     }
 
     pub fn delete_selected(&mut self) {
-        let Some(i) = self.selected else { return };
+        let mut chosen = self.selection();
+        if chosen.is_empty() {
+            return;
+        }
+        chosen.sort_unstable();
         self.edit(|f| {
-            f.control.remove(i);
+            for i in chosen.iter().rev() {
+                f.control.remove(*i);
+            }
         });
         self.selected = None;
+        self.also.clear();
         self.rebuild();
         self.refresh_props();
         self.say_selection();
@@ -378,6 +458,8 @@ impl Studio {
         if self.selected.is_some_and(|i| i >= self.doc.form.control.len()) {
             self.selected = None;
         }
+        let n = self.doc.form.control.len();
+        self.also.retain(|i| *i < n);
         self.changed();
         self.rebuild();
         self.refresh_props();
@@ -421,6 +503,60 @@ impl Studio {
     /// The form's size as the canvas shows it now.
     pub fn drag_size(&self) -> [i32; 2] {
         self.canvas.as_ref().and_then(|c| c.shown_size()).unwrap_or(self.doc.form.form.size)
+    }
+
+    // --- clipboard and format ---------------------------------------------------------------------
+
+    fn chosen_controls(&self) -> Vec<phai_form::Control> {
+        self.selection().into_iter().filter_map(|i| self.doc.form.control.get(i).cloned()).collect()
+    }
+
+    fn copy(&mut self) {
+        let chosen = self.chosen_controls();
+        if !chosen.is_empty() {
+            set_clipboard(self.hwnd, &phai_form::arrange::to_clipboard(&chosen));
+        }
+    }
+
+    /// Adds controls read from `text` and chooses them.
+    fn add_controls(&mut self, text: &str) {
+        let Some(new) = phai_form::arrange::from_clipboard(text, &self.doc.form, canvas::GRID * 2) else { return };
+        let first = self.doc.form.control.len();
+        let count = new.len();
+        self.edit(|f| f.control.extend(new));
+        self.rebuild();
+        self.select_many(&(first..first + count).collect::<Vec<_>>());
+    }
+
+    fn paste(&mut self) {
+        if let Some(text) = get_clipboard(self.hwnd) {
+            self.add_controls(&text);
+        }
+    }
+
+    fn duplicate(&mut self) {
+        let chosen = self.chosen_controls();
+        if !chosen.is_empty() {
+            self.add_controls(&phai_form::arrange::to_clipboard(&chosen));
+        }
+    }
+
+    /// Lines the chosen controls up against the first one chosen.
+    fn format(&mut self, op: phai_form::arrange::Op) {
+        let chosen: Vec<usize> = self.selection().into_iter().filter(|i| self.doc.form.control[*i].dock.as_deref().is_none_or(|d| d == "none")).collect();
+        if chosen.len() < 2 {
+            return;
+        }
+        let mut rects: Vec<[i32; 4]> = chosen.iter().map(|i| self.doc.form.control[*i].rect()).collect();
+        phai_form::arrange::arrange(&mut rects, 0, op);
+        self.edit(|f| {
+            for (i, r) in chosen.iter().zip(&rects) {
+                f.control[*i].bounds = Some(*r);
+            }
+        });
+        self.rebuild();
+        self.refresh_props();
+        self.say_selection();
     }
 
     // --- menus and toolbar -----------------------------------------------------------------------
@@ -853,6 +989,18 @@ impl Studio {
                 }
             }
             ID_EDIT_MENUS => self.edit_menus(),
+            ID_CUT => {
+                self.copy();
+                self.delete_selected();
+            }
+            ID_COPY => self.copy(),
+            ID_PASTE => self.paste(),
+            ID_DUPLICATE => self.duplicate(),
+            ID_SELECT_ALL => {
+                let all: Vec<usize> = (0..self.doc.form.control.len()).collect();
+                self.select_many(&all);
+            }
+            f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_CLOSE => {
                 self.close_tab();
@@ -932,6 +1080,55 @@ pub fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options 
     let dir = form.with_file_name("");
     let watch = dir.ancestors().find(|d| d.join("Cargo.toml").exists()).and_then(|root| dir.join(th).strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")));
     codegen::Options { theme_include: Some(th.replace('\\', "/")), theme_watch: watch }
+}
+
+/// Puts `text` on the clipboard.
+fn set_clipboard(owner: HWND, text: &str) {
+    use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    let w: Vec<u16> = text.replace('\n', "\r\n").encode_utf16().chain(Some(0)).collect();
+    unsafe {
+        if OpenClipboard(Some(owner)).is_err() {
+            return;
+        }
+        let _ = EmptyClipboard();
+        if let Ok(mem) = GlobalAlloc(GMEM_MOVEABLE, w.len() * 2) {
+            let p = GlobalLock(mem) as *mut u16;
+            if !p.is_null() {
+                std::ptr::copy_nonoverlapping(w.as_ptr(), p, w.len());
+                let _ = GlobalUnlock(mem);
+                let _ = SetClipboardData(13 /* CF_UNICODETEXT */, Some(windows::Win32::Foundation::HANDLE(mem.0)));
+            }
+        }
+        let _ = CloseClipboard();
+    }
+}
+
+/// The clipboard's text, if it holds some.
+fn get_clipboard(owner: HWND) -> Option<String> {
+    use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    unsafe {
+        OpenClipboard(Some(owner)).ok()?;
+        let out = (|| {
+            let h = GetClipboardData(13).ok()?;
+            let mem = HGLOBAL(h.0);
+            let p = GlobalLock(mem) as *const u16;
+            if p.is_null() {
+                return None;
+            }
+            let mut n = 0;
+            while *p.add(n) != 0 {
+                n += 1;
+            }
+            let s = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+            let _ = GlobalUnlock(mem);
+            Some(s.replace("\r\n", "\n"))
+        })();
+        let _ = CloseClipboard();
+        out
+    }
 }
 
 /// A file or web address, opened by whatever Windows opens it with.
@@ -1062,6 +1259,11 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         // In a box Ctrl+Z is the box's own undo.
         (b'Z', true) if !in_box => Some(ID_UNDO),
         (b'Y', true) if !in_box => Some(ID_REDO),
+        (b'C', true) if !in_box => Some(ID_COPY),
+        (b'X', true) if !in_box => Some(ID_CUT),
+        (b'V', true) if !in_box => Some(ID_PASTE),
+        (b'D', true) if !in_box => Some(ID_DUPLICATE),
+        (b'A', true) if !in_box => Some(ID_SELECT_ALL),
         (b'B', true) => Some(ID_BUILD),
         (0x73, _) => Some(ID_PREVIEW),
         (0x74, _) if unsafe { km::GetKeyState(0x10) } < 0 => Some(ID_STOP),
@@ -1087,6 +1289,27 @@ fn report_crashes() {
     unsafe {
         AddVectoredExceptionHandler(1, Some(handler));
     }
+}
+
+/// `--selftest-multi out.phaiform`: chooses several controls with a band, lines them up, makes
+/// a copy and saves - checked by what lands in the file.
+fn selftest_multi(out: &Path) {
+    let Some(s) = studio() else { return };
+    let Some(surface) = s.canvas.as_ref().map(|c| c.surface) else { return };
+    let at = |x: i32, y: i32| LPARAM(((win::px(surface, y) as isize) << 16) | (win::px(surface, x) as isize & 0xFFFF));
+    let send = |msg: u32, l: LPARAM| unsafe {
+        wm::SendMessageW(surface, msg, Some(WPARAM(1)), Some(l));
+    };
+    // A band over the two buttons at the bottom right of the sample form.
+    send(wm::WM_LBUTTONDOWN, at(300, 298));
+    send(wm::WM_MOUSEMOVE, at(470, 330));
+    send(wm::WM_LBUTTONUP, at(470, 330));
+    println!("chosen: {:?}", s.selection().iter().map(|i| s.doc.form.control[*i].id.clone()).collect::<Vec<_>>());
+    s.format(phai_form::arrange::Op::SameWidth);
+    s.duplicate();
+    println!("after duplicate: {:?}", s.selection().iter().map(|i| s.doc.form.control[*i].id.clone()).collect::<Vec<_>>());
+    s.doc.path = Some(out.to_path_buf());
+    s.save(false);
 }
 
 /// See `--selftest` in `main`.
@@ -1173,6 +1396,7 @@ fn main() {
             undo: vec![],
             redo: vec![],
             selected: None,
+            also: vec![],
             tool: None,
         });
         STUDIO.store(Box::into_raw(studio_box), Ordering::Relaxed);
@@ -1197,7 +1421,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && args[i - 1] != "--selftest" && args[i - 1] != "--tab").map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && args[i - 1] != "--selftest" && args[i - 1] != "--selftest-multi" && args[i - 1] != "--tab").map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -1223,6 +1447,9 @@ fn main() {
         // person's hand would send, then saves - the designer checked end to end.
         if let Some(i) = args.iter().position(|a| a == "--selftest") {
             selftest(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("selftest.phaiform")));
+        }
+        if let Some(i) = args.iter().position(|a| a == "--selftest-multi") {
+            selftest_multi(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("multi.phaiform")));
         }
         // `--buildtest`: builds the open form's project the way Build does, prints what came of
         // it and ends - the Build command checked end to end.

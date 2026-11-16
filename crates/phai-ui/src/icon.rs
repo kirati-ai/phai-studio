@@ -46,6 +46,9 @@ pub mod glyph {
     pub const STATUS: u16 = 0xE8A1; // PreviewLink
     pub const BUTTON: u16 = 0xE815; // a button
     pub const FORM: u16 = 0xE737; // a window
+    pub const ALIGN_LEFT: u16 = 0xE8E4;
+    pub const ALIGN_CENTER: u16 = 0xE8E3;
+    pub const ALIGN_RIGHT: u16 = 0xE8E2;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).
     pub const NAMES: &[(&str, u16)] = &[
@@ -57,7 +60,7 @@ pub mod glyph {
         ("LANGUAGE", LANGUAGE), ("CODE", CODE), ("LIBRARY", LIBRARY), ("POINTER", POINTER),
         ("FONT", FONT), ("CHECKBOX", CHECKBOX), ("RADIO", RADIO), ("DROPDOWN", DROPDOWN),
         ("LIST", LIST), ("GROUP", GROUP), ("TABS", TABS), ("STATUS", STATUS), ("BUTTON", BUTTON),
-        ("FORM", FORM),
+        ("FORM", FORM), ("ALIGN_LEFT", ALIGN_LEFT), ("ALIGN_CENTER", ALIGN_CENTER), ("ALIGN_RIGHT", ALIGN_RIGHT),
     ];
 
     pub fn by_name(name: &str) -> Option<u16> {
