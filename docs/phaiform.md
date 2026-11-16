@@ -36,6 +36,7 @@ title = "Customers"            # คีย์อังกฤษ → t("Customers
 size = [480, 320]              # พื้นที่ client ตอนออกแบบ
 min_size = [360, 240]
 theme = "theme.css"            # ไม่ใส่ = ธีมในตัว; ตอนพัฒนา phai-ui เฝ้าไฟล์ แก้แล้วเห็นทันที
+font_size = 10                 # pt ของทุก control; ไม่ใส่ = ฟอนต์ระบบ 9 pt (control ตั้ง font_size ของตัวเองทับได้)
 
 [[menu]]
 label = "&File"

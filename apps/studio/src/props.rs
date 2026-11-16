@@ -18,6 +18,7 @@ pub enum Key {
     FormWidth,
     FormHeight,
     FormTheme,
+    FormFont,
     Id,
     Text,
     X,
@@ -27,10 +28,11 @@ pub enum Key {
     Class,
     Event,
     Items,
+    Font,
 }
 
 impl Key {
-    const ALL: [Key; 14] = [Key::FormName, Key::FormTitle, Key::FormWidth, Key::FormHeight, Key::FormTheme, Key::Id, Key::Text, Key::X, Key::Y, Key::W, Key::H, Key::Class, Key::Event, Key::Items];
+    const ALL: [Key; 16] = [Key::FormName, Key::FormTitle, Key::FormWidth, Key::FormHeight, Key::FormTheme, Key::FormFont, Key::Id, Key::Text, Key::X, Key::Y, Key::W, Key::H, Key::Font, Key::Class, Key::Event, Key::Items];
 
     fn label(self) -> &'static str {
         match self {
@@ -46,11 +48,12 @@ impl Key {
             Key::Class => t("Class"),
             Key::Event => t("Event"),
             Key::Items => t("Items"),
+            Key::FormFont | Key::Font => t("Font size"),
         }
     }
 
     fn for_form(self) -> bool {
-        matches!(self, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormTheme)
+        matches!(self, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormTheme | Key::FormFont)
     }
 }
 
@@ -125,6 +128,7 @@ impl Props {
                         Key::FormTitle => f.form.title.clone(),
                         Key::FormWidth => f.form.size[0].to_string(),
                         Key::FormHeight => f.form.size[1].to_string(),
+                        Key::FormFont => f.form.font_size.map(|n| n.to_string()).unwrap_or_default(),
                         _ => f.form.theme.clone().unwrap_or_default(),
                     },
                 ),
@@ -138,6 +142,7 @@ impl Props {
                         Key::W => (c.dock.is_none() || c.dock.as_deref() == Some("left") || c.dock.as_deref() == Some("right"), w.to_string()),
                         Key::H => (c.dock.is_none() || c.dock.as_deref() == Some("top") || c.dock.as_deref() == Some("bottom"), h.to_string()),
                         Key::Class => (true, c.class.clone().unwrap_or_default()),
+                        Key::Font => (c.kind.has_text() || matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Statusbar), c.font_size.map(|n| n.to_string()).unwrap_or_default()),
                         Key::Event => (c.kind.event().is_some(), c.handler().unwrap_or_default().to_string()),
                         _ => match c.kind {
                             Kind::Combo => (true, c.items.join(", ")),

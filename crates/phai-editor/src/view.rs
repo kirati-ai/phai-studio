@@ -32,7 +32,22 @@ struct Mark {
     message: String,
 }
 
+/// Points of every editor's text; Ctrl+wheel, Ctrl+= and Ctrl+- change it for all of them.
+static FONT_PT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(10);
+
+/// The editors' text size, points.
+pub fn font_size() -> i32 {
+    FONT_PT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Sets every editor's text size, 6 to 40 points; open editors follow when they next paint.
+pub fn set_font_size(pt: i32) {
+    FONT_PT.store(pt.clamp(6, 40), std::sync::atomic::Ordering::Relaxed);
+}
+
 struct View {
+    /// The size `font` was made at - behind [`font_size`] after a zoom elsewhere.
+    pt: i32,
     model: Model,
     lang: Language,
     font: HFONT,
@@ -162,7 +177,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1 }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1 }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -172,7 +187,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
 }
 
 fn code_font(h: HWND) -> HFONT {
-    let mut lf = Gdi::LOGFONTW { lfHeight: -(10 * win::dpi(h) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
+    let mut lf = Gdi::LOGFONTW { lfHeight: -(font_size() * win::dpi(h) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
     for (i, u) in "Cascadia Mono".encode_utf16().enumerate() {
         lf.lfFaceName[i] = u;
     }
@@ -441,7 +456,41 @@ fn moved(h: HWND) {
     }
 }
 
+/// Makes the font again at the size now asked for.
+fn refont(h: HWND, v: &mut View) {
+    if v.pt == font_size() {
+        return;
+    }
+    unsafe {
+        let _ = Gdi::DeleteObject(v.font.into());
+    }
+    v.font = code_font(h);
+    (v.line_h, v.char_w) = metrics(h, v.font);
+    v.pt = font_size();
+    unsafe {
+        let _ = wm::DestroyCaret();
+        if km::GetFocus() == h {
+            let _ = wm::CreateCaret(h, None, win::px(h, 2), v.line_h);
+            let _ = wm::ShowCaret(Some(h));
+        }
+    }
+    update_scroll(h);
+    place_caret(h);
+}
+
+/// Text larger (`by` > 0), smaller, or back to 10 points (`by` 0).
+pub fn zoom(h: HWND, by: i32) {
+    set_font_size(if by == 0 { 10 } else { font_size() + by });
+    if let Some(v) = view(h) {
+        refont(h, v);
+    }
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
 fn paint(h: HWND, v: &mut View) {
+    refont(h, v);
     v.refresh_comments();
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
@@ -605,6 +654,15 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
     }
     if vk == 0x20 && ctrl {
         notify(h, COMPLETE);
+        return true;
+    }
+    // Ctrl+= / Ctrl++ larger, Ctrl+- smaller, Ctrl+0 back to the usual size.
+    if ctrl && matches!(vk, 0xBB | 0x6B | 0xBD | 0x6D | 0x30 | 0x60) {
+        zoom(h, match vk {
+            0xBB | 0x6B => 1,
+            0xBD | 0x6D => -1,
+            _ => 0,
+        });
         return true;
     }
     let page = v.visible_lines(h).saturating_sub(1).max(1);
@@ -841,6 +899,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 v.model.select_word(at);
             }
             moved(h);
+            LRESULT(0)
+        }
+        wm::WM_MOUSEWHEEL if unsafe { km::GetKeyState(0x11) } < 0 => {
+            let delta = (w.0 >> 16) as i16 as i32;
+            zoom(h, delta.signum());
             LRESULT(0)
         }
         wm::WM_MOUSEWHEEL => {

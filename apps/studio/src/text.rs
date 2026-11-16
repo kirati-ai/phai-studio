@@ -97,6 +97,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Menus...", "เมนู..."),
     ("Cut", "ตัด"),
     ("Recent", "ล่าสุด"),
+    ("Font size", "ขนาดฟอนต์"),
     ("rust-analyzer is not installed: rustup component add rust-analyzer", "ยังไม่ได้ติดตั้ง rust-analyzer: rustup component add rust-analyzer"),
     ("{0} errors, {1} warnings", "ข้อผิดพลาด {0} คำเตือน {1}"),
     ("Line {0}, column {1}", "บรรทัด {0} คอลัมน์ {1}"),
