@@ -19,7 +19,8 @@ menubar:hover   { background: var(--tint); }
 button          { background: #ffffff; color: var(--text); border-color: var(--border); border-radius: 10px; }
 button:hover    { background: var(--tint); border-color: var(--accent); color: var(--accent-dark); }
 button:pressed  { background: #dbe7ff; border-color: var(--accent-dark); }
-button.primary  { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+button.primary  { background: var(--accent); border-color: var(--accent); color: #ffffff; font-weight: 600; }
+group           { font-weight: 600; }
 button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); color: #ffffff; }
 button:disabled { background: #eef2f7; color: #94a3b8; border-color: #e2e8f0; }
 
