@@ -228,6 +228,8 @@ impl Props {
         let chooser = win::child(hwnd, "COMBOBOX", "", wm::WINDOW_STYLE(CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS) | wm::WS_TABSTOP | wm::WS_VSCROLL, Default::default(), ID_CHOOSER, font);
         win::register_kind(chooser, win::Kind::Combo);
         let bar = win::toolbar(hwnd, ID_BAR, &bar_items());
+        // Small icons with room above and below, as Visual Studio's Properties row.
+        win::toolbar_compact(bar, 14, 22, &bar_items());
         let heading = win::label(hwnd, "", 0, font);
         let grid_class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiPropGrid", Some(grid_proc), None);
         let grid = unsafe {
@@ -489,8 +491,8 @@ impl Props {
         if unsafe { wm::IsWindowVisible(self.chooser) }.as_bool() {
             win::move_to(self.chooser, m / 2, y, width - m, px(300));
             y += row + px(2);
-            win::move_to(self.bar, 0, y, width, win::toolbar_height(self.bar));
-            y += win::toolbar_height(self.bar);
+            win::move_to(self.bar, 0, y + px(2), width, win::toolbar_height(self.bar));
+            y += win::toolbar_height(self.bar) + px(4);
         } else {
             win::move_to(self.heading, m, y, width - 2 * m, row);
             y += row + gap;

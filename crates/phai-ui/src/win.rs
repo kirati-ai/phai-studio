@@ -1474,13 +1474,29 @@ static TOOLBARS: Mutex<Option<HashMap<isize, ToolItems>>> = Mutex::new(None);
 const TOOL_ICON: i32 = 16;
 const TOOL_BUTTON: i32 = 28;
 
+/// Toolbars made smaller than Windows' small toolbar: their icon and button, design pixels.
+static COMPACT: Mutex<Option<HashMap<isize, (i32, i32)>>> = Mutex::new(None);
+
+/// A toolbar's icon and button size, design pixels: Windows' small toolbar unless made compact.
+fn tool_sizes(h: HWND) -> (i32, i32) {
+    COMPACT.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).copied()).unwrap_or((TOOL_ICON, TOOL_BUTTON))
+}
+
+/// Makes a toolbar's icons and buttons smaller - a pane's own row of icons, as Visual Studio's
+/// Properties has - and draws them again.
+pub fn toolbar_compact(h: HWND, icon: i32, button: i32, items: &[(i32, &str, u16)]) {
+    COMPACT.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(h.0 as isize, (icon, button));
+    set_toolbar(h, items);
+}
+
 /// Replaces every button - for a language switch, a theme switch or a DPI change. The icons are
 /// drawn again in the theme's colour at the toolbar's scale.
 pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
     use windows::Win32::UI::Controls::{self as cc, TBBUTTON};
     TOOLBARS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(h.0 as isize, items.iter().map(|(c, l, g)| (*c, l.to_string(), *g)).collect());
     unsafe {
-        let icon = px(h, TOOL_ICON);
+        let (icon_dp, button_dp) = tool_sizes(h);
+        let icon = px(h, icon_dp);
         let colour = theme::style("toolbar", State::default()).icon_color.unwrap_or(window_text());
         let list = cc::ImageList_Create(icon, icon, cc::ILC_COLOR32 | cc::ILC_MASK, items.len() as i32, 0);
         for (cmd, _, g) in items {
@@ -1568,8 +1584,8 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
                 wm::SendMessageW(h, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(c as usize)), Some(LPARAM(1)));
             }
         }
-        let b = px(h, TOOL_BUTTON) as isize;
-        let pad = (px(h, TOOL_BUTTON) - icon) as isize;
+        let b = px(h, button_dp) as isize;
+        let pad = (px(h, button_dp) - icon) as isize;
         wm::SendMessageW(h, TB_SETPADDING, None, Some(LPARAM((pad << 16) | (pad & 0xFFFF))));
         wm::SendMessageW(h, TB_SETBUTTONWIDTH, None, Some(LPARAM((b << 16) | (b & 0xFFFF))));
         wm::SendMessageW(h, 0x041F /* TB_SETBUTTONSIZE */, None, Some(LPARAM((b << 16) | (b & 0xFFFF))));
@@ -1634,7 +1650,7 @@ pub const TOOLBAR_HEIGHT: i32 = TOOL_BUTTON + 6;
 
 /// The toolbar's height at its scale, for docking.
 pub fn toolbar_height(h: HWND) -> i32 {
-    px(h, TOOLBAR_HEIGHT)
+    px(h, tool_sizes(h).1 + 6)
 }
 
 /// `NM_CUSTOMDRAW` from a toolbar: the button under the pointer in the theme's hover colour.
