@@ -36,8 +36,18 @@
 | `../../build.rs` | manifest Common Controls 6 (ไม่มีแล้ว image list ไม่รองรับ alpha, ปุ่มเป็นแบบเก่า) |
 | `crates/ui/src/tray.rs` | `icon_from_bgra` (ไอคอนพร้อม mask จริง) |
 
+ตรวจโค้ดจริงแล้ว (2026-11-16) ตรงตามตาราง ตอนก๊อปปี้:
+- ตัด `phaidesk_ui::app_icon` ออกจาก `register_on` (ให้ผู้ใช้ส่งไอคอนเอง) และตัดประโยคของ PhaiDesk ออกจาก `text.rs`
+  (เหลือแค่กลไก `t()`/`tf()` + เทสต์)
+- ไม่เอา `viewer`, `picture`, `input`, `link`, `local` — เป็นงานรีโมตของ PhaiDesk
+
 แล้วเพิ่มสิ่งที่ console ยังไม่มี: **ระบบจัดวาง anchor/dock** (ตอนนี้แต่ละหน้าต่างคำนวณตำแหน่งเองใน `layout()`),
 control มาตรฐานที่ยังขาด (checkbox, radio, combobox, tab, group box), ทุกอย่างวัดขนาดจากข้อความจริง (บทเรียนภาษาไทย)
+
+**`Theme`** (รายละเอียดใน `PLAN.md` "ธีมและหน้าตา"): `win.rs` มีสี `rgb(...)` ตายตัว 12 ค่ากระจายอยู่
+(`draw_button`, `list_custom_draw`, `toolbar_rule`, `glyph_icon` สี `#3c3c3c`) → รวมเป็น struct สีมีชื่อ
+แบบ `phai-desk/UI/ModernUi.cs` แล้วทุกฟังก์ชันอ่านจากธีม; เพิ่มสว่าง/มืด และ DWM (แถบชื่อ, มุมมน, Mica) บน Windows 11
+แนวหน้าตา: Fluent ของ Windows 11 แบบ WPF UI — เอาแค่ภาษาออกแบบ ไม่ก๊อปปี้โค้ด
 
 ### บทเรียนจาก PhaiDesk ที่ต้องพกมา
 - ถ่ายภาพหน้าต่างจริงเพื่อตรวจทุกครั้ง (`PrintWindow`) — บั๊กหน้าตาไม่เห็นจากโค้ด
