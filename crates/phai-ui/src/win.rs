@@ -330,7 +330,9 @@ pub fn fill(dc: HDC, r: &RECT, c: Color) {
 /// for neither, and the control keeps its own. Kept for the life of the process, one per size,
 /// weight and scale.
 pub fn css_font(h: HWND, s: &Style) -> Option<HFONT> {
-    static FONTS: Mutex<Option<HashMap<(i32, i32, i32), isize>>> = Mutex::new(None);
+    /// (points, weight, DPI) to the font.
+    type Fonts = HashMap<(i32, i32, i32), isize>;
+    static FONTS: Mutex<Option<Fonts>> = Mutex::new(None);
     if s.font_size.is_none() && s.font_weight.is_none() {
         return None;
     }
