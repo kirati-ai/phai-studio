@@ -176,7 +176,7 @@ fn modal(owner: Option<HWND>, hwnd: HWND, focus: HWND) -> Option<String> {
         if let Some(o) = owner {
             win::enable(o, false);
         }
-        let _ = wm::ShowWindow(hwnd, wm::SW_SHOW);
+        win::show_top(hwnd);
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(if focus.is_invalid() { hwnd } else { focus }));
         let mut msg = wm::MSG::default();
         loop {

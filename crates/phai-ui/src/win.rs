@@ -1324,6 +1324,16 @@ pub fn enable(h: HWND, on: bool) {
     }
 }
 
+/// Shows a top-level window the first time. While a program is being photographed (`PHAI_SHOT`)
+/// it shows without taking the foreground: a test must never catch what a person is typing into
+/// another window.
+pub fn show_top(h: HWND) {
+    let quiet = std::env::var_os("PHAI_SHOT").is_some();
+    unsafe {
+        let _ = wm::ShowWindow(h, if quiet { wm::SW_SHOWNOACTIVATE } else { wm::SW_SHOW });
+    }
+}
+
 pub fn show(h: HWND, on: bool) {
     unsafe {
         let _ = wm::ShowWindow(h, if on { wm::SW_SHOWNA } else { wm::SW_HIDE });
@@ -1392,8 +1402,14 @@ pub fn run_loop(dialog: Option<HWND>) {
         }
     }
     unsafe {
+        let quiet = std::env::var_os("PHAI_SHOT").is_some();
         let mut msg = wm::MSG::default();
         while wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            // Being photographed, a program takes no keys from the keyboard: a person typing elsewhere
+            // must not type into it. Tests send their keys straight to the window, past this queue.
+            if quiet && (wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) {
+                continue;
+            }
             if let Some(d) = dialog {
                 if wm::IsDialogMessageW(d, &msg).as_bool() {
                     continue;

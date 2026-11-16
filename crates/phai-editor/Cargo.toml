@@ -12,6 +12,7 @@ name = "phai_editor"
 path = "src/lib.rs"
 
 [dependencies]
+serde_json = "1"
 phai-ui = { path = "../phai-ui" }
 windows = { workspace = true, features = [
     "Win32_Foundation",

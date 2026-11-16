@@ -146,6 +146,10 @@ pub struct Studio {
     diagnostics: Vec<cargo::Diagnostic>,
     building: bool,
     running: Option<std::process::Child>,
+    /// rust-analyzer for the project of the code being edited.
+    lsp: Option<phai_editor::lsp::Lsp>,
+    /// Requests sent to it, by id: which editor asked, and whether for a hover (else completions).
+    asked: std::collections::HashMap<i64, (HWND, bool)>,
     pub canvas: Option<Canvas>,
     pub props: Option<Props>,
     pub explorer: Option<explorer::Explorer>,
@@ -723,14 +727,102 @@ impl Studio {
             self.active = self.tabs.len() - 1;
         }
         self.doc = Doc { code: Some(h), crlf, ..Doc::new(FormFile::new("Code"), Some(path.to_path_buf())) };
+        if path.extension().is_some_and(|e| e == "rs") {
+            if let Some(l) = self.lsp_for(path) {
+                l.did_open(path, &text);
+            }
+        }
         self.undo.clear();
         self.redo.clear();
         self.selected = None;
         self.after_switch();
     }
 
+    /// rust-analyzer for the project holding `path`, started if it is not running for it already.
+    fn lsp_for(&mut self, path: &Path) -> Option<&mut phai_editor::lsp::Lsp> {
+        let root = cargo::project_of(path)?;
+        if self.lsp.as_ref().is_none_or(|l| !phai_editor::lsp::same_path(&l.root, &root)) {
+            self.lsp = phai_editor::lsp::Lsp::start(&root, self.hwnd);
+            if self.lsp.is_none() {
+                controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer"));
+            }
+        }
+        self.lsp.as_mut()
+    }
+
+    /// The editor of the open file at `path`, in any tab.
+    fn editor_of(&self, path: &Path) -> Option<HWND> {
+        let same = |p: &Option<PathBuf>| p.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+        if same(&self.doc.path) {
+            return self.doc.code;
+        }
+        self.tabs.iter().find(|t| same(&t.doc.path)).and_then(|t| t.doc.code)
+    }
+
+    /// A message from rust-analyzer.
+    fn lsp_message(&mut self, msg: serde_json::Value) {
+        // A request of ours answered.
+        if let (Some(id), None) = (msg.get("id").and_then(|i| i.as_i64()), msg.get("method")) {
+            if let Some((h, hover)) = self.asked.remove(&id) {
+                let result = msg.get("result").cloned().unwrap_or_default();
+                if hover {
+                    if let Some(text) = phai_editor::lsp::hover_text(&result) {
+                        phai_editor::view::show_tip(h, &text);
+                    }
+                } else {
+                    phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300));
+                }
+            }
+            return;
+        }
+        // The server asking something of us: it waits for an answer.
+        if let (Some(id), Some(_)) = (msg.get("id"), msg.get("method")) {
+            if let Some(l) = self.lsp.as_ref() {
+                l.respond(id);
+            }
+            return;
+        }
+        if let Some((path, diags)) = phai_editor::lsp::diagnostics_of(&msg) {
+            if let Some(h) = self.editor_of(&path) {
+                phai_editor::view::set_diagnostics(h, &diags);
+                if Some(h) == self.doc.code {
+                    let (e, w) = phai_editor::view::diagnostic_counts(h);
+                    controls::status_text(self.status, 0, &tf("{0} errors, {1} warnings", &[&e, &w]));
+                }
+            }
+        }
+    }
+
+    /// The pointer rested in an editor: ask what is under it.
+    pub fn lsp_hover(&mut self, h: HWND) {
+        let (Some(path), Some(pos)) = (self.doc.path.clone(), phai_editor::view::hover_position(h)) else { return };
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.hover(&path, pos.0, pos.1);
+            self.asked.insert(id, (h, true));
+        }
+    }
+
+    /// Completions were asked for at the caret.
+    pub fn lsp_complete(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let pos = phai_editor::view::caret_lsp(h);
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.completion(&path, pos.0, pos.1);
+            self.asked.insert(id, (h, false));
+        }
+    }
+
     /// The editor said its text changed.
     pub fn code_changed(&mut self) {
+        if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
+            if path.extension().is_some_and(|e| e == "rs") {
+                let text = phai_editor::view::text(h);
+                let version = phai_editor::view::version(h);
+                if let Some(l) = self.lsp_for(&path) {
+                    l.did_change(&path, version, &text);
+                }
+            }
+        }
         if let Some(h) = self.doc.code {
             let dirty = phai_editor::view::is_dirty(h);
             if dirty != self.doc.dirty {
@@ -802,6 +894,9 @@ impl Studio {
             return false;
         }
         if let Some(h) = self.doc.code.take() {
+            if let (Some(l), Some(p)) = (self.lsp.as_ref(), self.doc.path.as_ref()) {
+                l.did_close(p);
+            }
             unsafe {
                 let _ = wm::DestroyWindow(h);
             }
@@ -908,6 +1003,9 @@ impl Studio {
             let text = if self.doc.crlf { text.replace('\n', "\r\n") } else { text };
             return match std::fs::write(&path, text) {
                 Ok(()) => {
+                    if let Some(l) = self.lsp.as_ref() {
+                        l.did_save(&path);
+                    }
                     phai_editor::view::set_clean(h);
                     self.doc.dirty = false;
                     self.say_title();
@@ -1421,6 +1519,11 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             }
             win::def(hwnd, msg, w, l)
         }
+        phai_editor::lsp::WM_LSP => {
+            let msg = unsafe { Box::from_raw(l.0 as *mut serde_json::Value) };
+            s.lsp_message(*msg);
+            LRESULT(0)
+        }
         cargo::WM_BUILD_LINE => {
             let line = unsafe { Box::from_raw(l.0 as *mut String) };
             if let Some(b) = s.bottom.as_ref() {
@@ -1625,6 +1728,8 @@ fn main() {
             diagnostics: vec![],
             building: false,
             running: None,
+            lsp: None,
+            asked: std::collections::HashMap::new(),
             canvas: None,
             props: None,
             explorer: None,
@@ -1658,7 +1763,7 @@ fn main() {
         let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 1100), bottom: win::px(hwnd, 700) };
         let st = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;
         let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(st), true, Default::default(), dpi as u32);
-        let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER);
+        let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
         let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && args[i - 1] != "--selftest" && args[i - 1] != "--selftest-multi" && args[i - 1] != "--tab").map(|(_, a)| a).collect();
@@ -1683,7 +1788,7 @@ fn main() {
         if let Some(n) = args.iter().position(|a| a == "--tab").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
             wm::SendMessageW(hwnd, wm::WM_COMMAND, Some(WPARAM((n << 16) | ID_TABS as usize)), Some(LPARAM(0)));
         }
-        let _ = wm::ShowWindow(hwnd, wm::SW_SHOW);
+        win::show_top(hwnd);
         s.layout.apply(hwnd);
         s.rebuild();
         s.refresh_props();
@@ -1718,8 +1823,14 @@ fn main() {
             win::run_loop(Some(hwnd));
             return;
         }
+        let quiet = std::env::var_os("PHAI_SHOT").is_some();
         let mut msg = wm::MSG::default();
         while wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            // Being photographed, a program takes no keys from the keyboard: a person typing elsewhere
+            // must not type into it. Tests send their keys straight to the window, past this queue.
+            if quiet && (wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) {
+                continue;
+            }
             if let Some(cmd) = shortcut(&msg) {
                 if let Some(s) = studio() {
                     s.command(cmd);
