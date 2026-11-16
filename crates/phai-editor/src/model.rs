@@ -371,6 +371,97 @@ impl Model {
     }
 }
 
+/// Every place `query` is in `text`, as byte ranges; `case` false finds it in any case.
+pub fn find_all(text: &str, query: &str, case: bool) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return vec![];
+    }
+    let mut out = Vec::new();
+    if case {
+        let mut from = 0;
+        while let Some(i) = text[from..].find(query) {
+            out.push((from + i, from + i + query.len()));
+            from += i + query.len().max(1);
+        }
+    } else {
+        // Compare character by character, so offsets stay those of the text itself.
+        let q: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
+        let chars: Vec<(usize, char)> = text.char_indices().collect();
+        let mut k = 0;
+        while k < chars.len() {
+            let mut j = k;
+            let mut m = 0;
+            let mut low = Vec::new();
+            while j < chars.len() && low.len() < q.len() {
+                low.extend(chars[j].1.to_lowercase());
+                j += 1;
+            }
+            while m < q.len() && m < low.len() && low[m] == q[m] {
+                m += 1;
+            }
+            if m == q.len() && low.len() == q.len() {
+                let end = chars.get(j).map(|c| c.0).unwrap_or(text.len());
+                out.push((chars[k].0, end));
+                k = j;
+            } else {
+                k += 1;
+            }
+        }
+    }
+    out
+}
+
+impl Model {
+    /// Chooses the next place `query` is after the caret (or before it, `forward` false),
+    /// going round the end. False when it is nowhere.
+    pub fn find(&mut self, query: &str, case: bool, forward: bool) -> bool {
+        let text = self.buf.text();
+        let hits = find_all(&text, query, case);
+        if hits.is_empty() {
+            return false;
+        }
+        let (a, b) = self.selection();
+        let hit = if forward { hits.iter().find(|h| h.0 >= b).or(hits.first()) } else { hits.iter().rev().find(|h| h.1 <= a).or(hits.last()) };
+        let &(s, e) = hit.unwrap();
+        self.anchor = s;
+        self.caret = e;
+        true
+    }
+
+    /// Replaces the chosen text if it is `query`, then finds the next.
+    pub fn replace_one(&mut self, query: &str, with: &str, case: bool) -> bool {
+        let sel = self.selected_text();
+        let same = if case { sel == query } else { sel.to_lowercase() == query.to_lowercase() };
+        if same && !sel.is_empty() {
+            self.insert(with);
+        }
+        self.find(query, case, true)
+    }
+
+    /// Replaces every `query` with `with` in one undo step; returns how many.
+    pub fn replace_all(&mut self, query: &str, with: &str, case: bool) -> usize {
+        let text = self.buf.text();
+        let hits = find_all(&text, query, case);
+        if hits.is_empty() {
+            return 0;
+        }
+        let mut out = String::with_capacity(text.len());
+        let mut at = 0;
+        for (s, e) in &hits {
+            out.push_str(&text[at..*s]);
+            out.push_str(with);
+            at = *e;
+        }
+        out.push_str(&text[at..]);
+        self.anchor = 0;
+        self.caret = self.buf.len();
+        self.insert(&out);
+        self.caret = 0;
+        self.anchor = 0;
+        hits.len()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -466,6 +557,35 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert_eq!(m.buf.text(), "    a\n    b\n    c");
         m.indent_lines(true);
         assert_eq!(m.buf.text(), "a\nb\nc");
+    }
+
+    #[test]
+    fn find_goes_round_and_ignores_case_when_asked() {
+        assert_eq!(find_all("Ab ab AB", "ab", false).len(), 3);
+        assert_eq!(find_all("Ab ab AB", "ab", true), vec![(3, 5)]);
+        assert_eq!(find_all("ไทย ไทย", "ไทย", true).len(), 2);
+        let mut m = Model::new("one two one");
+        assert!(m.find("one", true, true));
+        assert_eq!(m.selection(), (0, 3));
+        assert!(m.find("one", true, true));
+        assert_eq!(m.selection(), (8, 11));
+        assert!(m.find("one", true, true), "and round again");
+        assert_eq!(m.selection(), (0, 3));
+        assert!(!m.find("three", true, true));
+    }
+
+    #[test]
+    fn replace_one_and_all_with_one_undo() {
+        let mut m = Model::new("let a = a + a;");
+        assert_eq!(m.replace_all("a", "b", true), 3);
+        assert_eq!(m.buf.text(), "let b = b + b;");
+        m.undo();
+        assert_eq!(m.buf.text(), "let a = a + a;", "all of it back at once");
+        let mut m = Model::new("x x");
+        m.find("x", true, true);
+        m.replace_one("x", "yy", true);
+        assert_eq!(m.buf.text(), "yy x");
+        assert_eq!(m.selected_text(), "x", "and the next one chosen");
     }
 
     #[test]

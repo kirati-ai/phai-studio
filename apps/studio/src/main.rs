@@ -1929,7 +1929,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -1959,6 +1959,10 @@ fn main() {
             if let Some(p) = s.props.as_mut() {
                 p.set_mode(1);
             }
+        }
+        // `--find WORD` opens the code editor's find bar on it (with replace when `--replace`).
+        if let (Some(q), Some(h)) = (args.iter().position(|a| a == "--find").and_then(|i| args.get(i + 1)), s.doc.code) {
+            phai_editor::view::find_text(h, q, args.iter().any(|a| a == "--replace"));
         }
         // `--menus` opens the menu editor at once - for checking it by its picture.
         if args.iter().any(|a| a == "--menus") {
