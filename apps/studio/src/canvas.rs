@@ -43,7 +43,10 @@ const HANDLE: i32 = 7;
 enum Drag {
     None,
     Create { kind: Kind, from: (i32, i32), to: (i32, i32) },
-    Move { index: usize, from: (i32, i32), rect: [i32; 4], now: [i32; 4] },
+    /// Every chosen control moving together; where each started is in `Canvas::group`.
+    Move { from: (i32, i32), d: (i32, i32) },
+    /// A rectangle drawn on empty form: what it touches is chosen.
+    Band { from: (i32, i32), to: (i32, i32) },
     Resize { index: usize, handle: usize, from: (i32, i32), rect: [i32; 4], now: [i32; 4] },
     Form { handle: usize, from: (i32, i32), size: [i32; 2], now: [i32; 2] },
 }
@@ -55,12 +58,20 @@ pub struct Canvas {
     toolbar: Option<HWND>,
     handles: Vec<HWND>,
     form_handles: Vec<HWND>,
+    /// Corner marks on the chosen controls other than the first.
+    marks: Vec<HWND>,
+    /// The chosen controls and where each was when a move began.
+    group: Vec<(usize, [i32; 4])>,
     drag: Drag,
     cursor: PCWSTR,
 }
 
 fn snap(v: i32) -> i32 {
     (v as f32 / GRID as f32).round() as i32 * GRID
+}
+
+fn register_mark() -> Vec<u16> {
+    win::register("PhaiStudioMark", Some(mark_proc), None)
 }
 
 fn register_classes() -> (Vec<u16>, Vec<u16>, Vec<u16>) {
@@ -80,7 +91,7 @@ impl Canvas {
             wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
-        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], drag: Drag::None, cursor: wm::IDC_ARROW }
+        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], marks: vec![], group: vec![], drag: Drag::None, cursor: wm::IDC_ARROW }
     }
 
     /// Builds the form again from the model: size, controls, handles.
@@ -89,6 +100,9 @@ impl Canvas {
         unsafe {
             wm::SendMessageW(self.surface, wm::WM_SETREDRAW, Some(WPARAM(0)), None);
             for h in self.live.drain(..).chain(self.toolbar.take()).chain(self.handles.drain(..)) {
+                let _ = wm::DestroyWindow(h);
+            }
+            for h in self.marks.drain(..) {
                 let _ = wm::DestroyWindow(h);
             }
             for h in self.form_handles.drain(..) {
@@ -139,11 +153,41 @@ impl Canvas {
         let Some(s) = studio() else { return };
         let dpi = win::dpi(self.surface);
         let hs = scale(HANDLE, dpi);
-        let shown = match self.drag {
-            Drag::Create { from, to, .. } => Some(norm(from, to)),
-            Drag::Move { now, .. } | Drag::Resize { now, .. } => Some(now),
-            _ => s.selected.map(|i| self.rect_of(i)),
+        let moved = |r: [i32; 4]| match self.drag {
+            Drag::Move { d, .. } => [r[0] + d.0, r[1] + d.1, r[2], r[3]],
+            _ => r,
         };
+        let shown = match self.drag {
+            Drag::Create { from, to, .. } | Drag::Band { from, to } => Some(norm(from, to)),
+            Drag::Resize { now, .. } => Some(now),
+            _ => s.selected.map(|i| moved(self.rect_of(i))),
+        };
+        // The others chosen: a small mark at each corner, as Visual Studio shows them.
+        for h in self.marks.iter() {
+            unsafe {
+                let _ = wm::DestroyWindow(*h);
+            }
+        }
+        let class = register_mark();
+        let mut marks = Vec::new();
+        if !matches!(self.drag, Drag::Band { .. } | Drag::Create { .. }) {
+            for i in s.also.iter().copied().filter(|i| *i < self.live.len()) {
+                let [x, y, w, h] = moved(self.rect_of(i));
+                for (cx, cy) in [(x, y), (x + w, y), (x, y + h), (x + w, y + h)] {
+                    let m = create_child(&class, self.surface, WINDOW_EX_STYLE(0));
+                    win::move_to(m, scale(cx, dpi) - hs / 2, scale(cy, dpi) - hs / 2, hs, hs);
+                    unsafe {
+                        let _ = wm::SetWindowPos(m, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+                    }
+                    marks.push(m);
+                }
+            }
+        }
+        // Interior mutability through a raw pointer: the marks are this canvas's own windows.
+        unsafe {
+            let me = self as *const Canvas as *mut Canvas;
+            (*me).marks = marks;
+        }
         for (i, h) in self.handles.iter().enumerate() {
             match shown {
                 Some(r) => {
@@ -239,14 +283,35 @@ impl Canvas {
             let r = self.rect_of(i);
             self.drag = Drag::Resize { index: i, handle, from: p, rect: r, now: r };
         } else if let Some(i) = self.hit(p) {
-            s.select(Some(i));
-            let docked = s.doc.form.control[i].dock.as_deref().is_some_and(|d| d != "none");
-            if !docked {
-                let r = self.rect_of(i);
-                self.drag = Drag::Move { index: i, from: p, rect: r, now: r };
+            let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+            if ctrl {
+                // Ctrl+click adds a control to the choice, or takes it out.
+                s.toggle(i);
+                unsafe {
+                    let _ = km::ReleaseCapture();
+                }
+                self.place_handles();
+                return;
+            }
+            if !s.selection().contains(&i) {
+                s.select(Some(i));
+            } else if s.selected != Some(i) {
+                // A click on one of several chosen makes it the one the others follow.
+                s.make_primary(i);
+            }
+            self.group = s
+                .selection()
+                .into_iter()
+                .filter(|j| s.doc.form.control[*j].dock.as_deref().is_none_or(|d| d == "none"))
+                .map(|j| (j, self.rect_of(j)))
+                .collect();
+            if !self.group.is_empty() {
+                self.drag = Drag::Move { from: p, d: (0, 0) };
             }
         } else {
+            // Empty form: draw a band to choose what it touches.
             s.select(None);
+            self.drag = Drag::Band { from: p, to: p };
         }
         self.place_handles();
     }
@@ -257,11 +322,16 @@ impl Canvas {
         let dpi = win::dpi(self.surface);
         match &mut self.drag {
             Drag::Create { to, .. } => *to = (snap(p.0), snap(p.1)),
-            Drag::Move { index, from, rect, now } => {
-                *now = [snap(rect[0] + p.0 - from.0), snap(rect[1] + p.1 - from.1), rect[2], rect[3]];
-                let n = *now;
-                win::move_to(self.live[*index], scale(n[0], dpi), scale(n[1], dpi), scale(n[2], dpi), scale(n[3], dpi));
+            Drag::Move { from, d } => {
+                // The first one snaps to the grid; the rest keep their places beside it.
+                let first = self.group[0].1;
+                *d = (snap(first[0] + p.0 - from.0) - first[0], snap(first[1] + p.1 - from.1) - first[1]);
+                let d = *d;
+                for (i, r) in &self.group {
+                    win::move_to(self.live[*i], scale(r[0] + d.0, dpi), scale(r[1] + d.1, dpi), scale(r[2], dpi), scale(r[3], dpi));
+                }
             }
+            Drag::Band { to, .. } => *to = p,
             Drag::Resize { index, handle, from, rect, now } => {
                 let (dx, dy) = (p.0 - from.0, p.1 - from.1);
                 let [mut x, mut y, mut w, mut h] = *rect;
@@ -332,7 +402,32 @@ impl Canvas {
                 s.select(Some(last));
                 self.rebuild();
             }
-            Drag::Move { index, rect, now, .. } | Drag::Resize { index, rect, now, .. } => {
+            Drag::Move { d, .. } => {
+                if d != (0, 0) {
+                    let group = std::mem::take(&mut self.group);
+                    s.edit(|f| {
+                        for (i, r) in &group {
+                            f.control[*i].bounds = Some([r[0] + d.0, r[1] + d.1, r[2], r[3]]);
+                        }
+                    });
+                    self.rebuild();
+                    s.refresh_props();
+                }
+            }
+            Drag::Band { from, to } => {
+                let [bx, by, bw, bh] = norm(from, to);
+                let touched: Vec<usize> = (0..self.live.len())
+                    .filter(|i| unsafe { wm::IsWindowVisible(self.live[*i]) }.as_bool())
+                    .filter(|i| {
+                        let [x, y, w, h] = self.rect_of(*i);
+                        x < bx + bw && bx < x + w && y < by + bh && by < y + h
+                    })
+                    .collect();
+                if bw > 2 || bh > 2 {
+                    s.select_many(&touched);
+                }
+            }
+            Drag::Resize { index, rect, now, .. } => {
                 if now != rect {
                     s.edit(|f| f.control[index].bounds = Some(now));
                     self.rebuild();
@@ -359,7 +454,15 @@ impl Canvas {
                 let r = norm(from, to);
                 format!("{}, {}  ·  {} × {}", r[0], r[1], r[2], r[3])
             }
-            Drag::Move { now, .. } | Drag::Resize { now, .. } => format!("{}, {}  ·  {} × {}", now[0], now[1], now[2], now[3]),
+            Drag::Resize { now, .. } => format!("{}, {}  ·  {} × {}", now[0], now[1], now[2], now[3]),
+            Drag::Move { d, .. } => {
+                let r = self.group[0].1;
+                format!("{}, {}", r[0] + d.0, r[1] + d.1)
+            }
+            Drag::Band { from, to } => {
+                let r = norm(from, to);
+                format!("{} × {}", r[2], r[3])
+            }
             Drag::Form { now, .. } => format!("{} × {}", now[0], now[1]),
             Drag::None => return,
         };
@@ -431,7 +534,10 @@ impl Canvas {
     /// Arrow keys move the chosen control a pixel, with Shift they size it; Delete removes it.
     fn key(&mut self, vk: u16) -> bool {
         let Some(s) = studio() else { return false };
-        let Some(i) = s.selected else { return false };
+        if s.selected.is_none() {
+            return false;
+        }
+        let chosen = s.selection();
         let shift = unsafe { km::GetKeyState(km::VK_SHIFT.0 as i32) } < 0;
         let (dx, dy) = match vk {
             0x25 => (-1, 0),
@@ -445,9 +551,11 @@ impl Canvas {
             _ => return false,
         };
         s.edit(|f| {
-            let c = &mut f.control[i];
-            let [x, y, w, h] = c.rect();
-            c.bounds = Some(if shift { [x, y, (w + dx).max(1), (h + dy).max(1)] } else { [x + dx, y + dy, w, h] });
+            for i in &chosen {
+                let c = &mut f.control[*i];
+                let [x, y, w, h] = c.rect();
+                c.bounds = Some(if shift { [x, y, (w + dx).max(1), (h + dy).max(1)] } else { [x + dx, y + dy, w, h] });
+            }
         });
         self.rebuild();
         s.refresh_props();
@@ -671,6 +779,27 @@ extern "system" fn surface_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
         // The surface is the form: it draws the form's background, and nothing it holds may send
         // a command anywhere.
         wm::WM_COMMAND => LRESULT(0),
+        _ => win::def(h, msg, w, l),
+    }
+}
+
+/// A corner mark of a control chosen with others: hollow, in the accent colour.
+extern "system" fn mark_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_NCHITTEST => LRESULT(-1),
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_PAINT => unsafe {
+            let mut ps = Gdi::PAINTSTRUCT::default();
+            let dc = Gdi::BeginPaint(h, &mut ps);
+            let mut r = RECT::default();
+            let _ = wm::GetClientRect(h, &mut r);
+            let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+            win::fill(dc, &r, accent);
+            let inner = RECT { left: r.left + 1, top: r.top + 1, right: r.right - 1, bottom: r.bottom - 1 };
+            win::fill(dc, &inner, Color::rgb(255, 255, 255));
+            let _ = Gdi::EndPaint(h, &ps);
+            LRESULT(0)
+        },
         _ => win::def(h, msg, w, l),
     }
 }
