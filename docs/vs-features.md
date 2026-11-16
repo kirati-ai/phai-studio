@@ -1,0 +1,96 @@
+# Phai Studio เทียบ Visual Studio
+
+รายการจากเอกสารทางการของ Microsoft Learn (2026-11-16) — **★** = ที่คนทำ WinForms ใช้ทุกวัน
+สถานะ: ✅ มีแล้ว · 🟡 มีบางส่วน · ⬜ ยังไม่มี
+
+## Designer
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | Toolbox ลากวาด / คลิกแล้ววาด | ✅ |
+| ★ | ดับเบิลคลิกเครื่องมือ = วางบนฟอร์มเลย | ⬜ |
+| | Toolbox ค้นหา, หมวด | ⬜ (ไอคอนล้วนตามที่เจ้านายต้องการ) |
+| ★ | Properties (F4), ค่าเปลี่ยนทันที | ✅ |
+| ★ | Properties ⇄ Events, ดับเบิลคลิกสร้าง handler | ✅ |
+| ★ | เรียงหมวด (พับได้) / ตามตัวอักษร, คำอธิบายใต้ตาราง | ✅ |
+| ★ | ตัวแก้ค่าตามชนิด: รายการ, True/False, ตัวเลือกสี Windows, anchor แบบภาพ, “…” | ✅ |
+| ★ | BackColor / ForeColor / Font bold / มุมมน ราย control (ต่อเป็น CSS `#id`) | ✅ |
+| | ช่องเลือก object, เลือกหลายตัวแสดงค่าร่วม | 🟡 (เลือก object ได้, ค่าร่วมยังไม่มี) |
+| ★ | ดับเบิลคลิก control = ไปที่ handler | ✅ |
+| ★ | เลือกหลายตัว (Ctrl+คลิก, ลากกรอบ), ตัวหลัก | ✅ |
+| ★ | ลูกศรย้าย, Shift+ลูกศรย่อขยาย, Ctrl+ลูกศรกระโดดตามเส้นจัดแนว | 🟡 (Ctrl+ลูกศรยังไม่มี) |
+| ★ | จุดจับ 8 จุด | ✅ |
+| ★ | Snaplines ขอบ/ระยะขอบ | ✅ (baseline ข้อความยังไม่มี) |
+| ★ | Format > Align / Make Same Size / Spacing | ✅ |
+| ★ | Bring to Front / Send to Back | ⬜ |
+| ★ | Tab Order mode | ⬜ |
+| ★ | Lock Controls | ⬜ |
+| ★ | Dock / Anchor (ตัวแก้แบบภาพ) | ✅ |
+| ★ | Control: DateTimePicker, NumericUpDown, TrackBar, ProgressBar, TextBox หลายบรรทัด | ✅ |
+| | Control: PictureBox, Timer, MenuStrip ในฟอร์ม, TreeView, RichTextBox, DataGridView | ⬜ |
+| ★ | Smart tags | ⬜ |
+| ★ | Component tray (ของที่มองไม่เห็น เช่น Timer) | ⬜ |
+| | Document Outline | ⬜ |
+| | TableLayout / FlowLayout | ⬜ |
+| | ตัวแก้เมนู/toolbar | ✅ (แบบข้อความ) |
+| | Localization | ✅ (ตาราง ไทย/อังกฤษ + เทสต์) |
+
+## ตัวแก้โค้ด
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | IntelliSense หลัง `.` `::`, Ctrl+Space | ✅ (rust-analyzer) |
+| ★ | Quick Info (hover) | ✅ |
+| ★ | Parameter Info (Ctrl+Shift+Space) | ⬜ |
+| ★ | เส้นหยักใต้ error / warning | ✅ |
+| ★ | Quick Actions (Ctrl+.) | ⬜ |
+| ★ | Go To Definition (F12) / Peek | ⬜ |
+| ★ | Find All References (Shift+F12) | ⬜ |
+| ★ | Quick Find / Replace (Ctrl+F / Ctrl+H) | ✅ |
+| | Find in Files (Ctrl+Shift+F) | ⬜ |
+| ★ | Rename (F2 / Ctrl+R,R) | ⬜ |
+| | Comment toggle (Ctrl+/), ย้ายบรรทัด (Alt+↑↓), ทำซ้ำบรรทัด | ⬜ |
+| | Multi-caret, box selection | ⬜ |
+| | พับโค้ด (outlining) | ⬜ |
+| | จับคู่วงเล็บ | ⬜ |
+| | ซูม (Ctrl+ล้อ) | ✅ |
+| | Format Document (rustfmt) | ⬜ |
+
+## โปรเจกต์ / Build
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | Solution Explorer | ✅ (Project explorer) |
+| ★ | Build / Run (F5) / Stop | ✅ |
+| ★ | Debug / Release | ✅ |
+| ★ | Error List, ดับเบิลคลิกไปที่บรรทัด | ✅ (F8 ถัดไปยังไม่มี) |
+| ★ | Output window | ✅ |
+| | Rebuild / Clean | ⬜ |
+| | Task List (TODO) | ⬜ |
+
+## Debugger
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | Breakpoints, F10/F11/Shift+F11, Locals, Watch, Call Stack, data tips | ⬜ (ต้องใช้ debug adapter เช่น CodeLLDB/cppvsdbg) |
+
+## หน้าต่าง
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | แผง dock แยก, เส้นแบ่งปรับขนาด, ปิด/เปิดจาก View | ✅ |
+| ★ | ลากแผงไปติดขอบอื่น / ลอย | ⬜ |
+| ★ | Auto Hide | ⬜ |
+| ★ | แท็บเอกสาร, จุดบอกยังไม่บันทึก | ✅ |
+| | Split editor, หลายจอ | ⬜ |
+
+## อื่นๆ
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | Git Changes (stage, commit, push) | ⬜ |
+| | Start window | ⬜ |
+| | ธีมสว่าง/มืด, ฟอนต์ | ✅ |
+| | ไฟล์ล่าสุด | ✅ |
+| | Test Explorer (`cargo test`) | ⬜ |
+| | Publish / ตัวติดตั้ง | ⬜ |

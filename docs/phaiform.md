@@ -90,9 +90,9 @@ parts = [120]
 
 | ช่อง | ใช้กับ | ความหมาย |
 |---|---|---|
-| `kind` | ทุกตัว | `label` `edit` `button` `checkbox` `radio` `combo` `list` `group` `tabs` `statusbar` |
+| `kind` | ทุกตัว | `label` `edit` `textarea` `button` `checkbox` `radio` `combo` `list` `date` `number` `slider` `progress` `group` `tabs` `statusbar` |
 | `id` | ทุกตัว | ชื่อ field ใน struct ที่สร้าง และ `#id` ใน CSS — snake_case ห้ามซ้ำ |
-| `text` | label, edit, button, checkbox, radio, group | คีย์อังกฤษ (edit = ข้อความเริ่มต้น ไม่แปล) |
+| `text` | label, edit, textarea, button, checkbox, radio, group | คีย์อังกฤษ (edit = ข้อความเริ่มต้น ไม่แปล) |
 | `bounds` | ทุกตัวที่ไม่ dock | `[x, y, w, h]` design px |
 | `anchor` | | `left` `top` `right` `bottom` รวมกันได้, `all`, `none` |
 | `dock` | | `top` `bottom` `left` `right` `fill` — ตามลำดับในไฟล์ |
@@ -105,7 +105,12 @@ parts = [120]
 | `columns` | list | `[หัว, กว้าง]` |
 | `tabs` + `page` | tabs / ตัวอื่น | `tabs = ["General", "Advanced"]`; control ที่มี `page = 1` ขึ้นเฉพาะแท็บที่ 2 |
 | `parts` | statusbar | ความกว้างของช่องด้านขวา |
-| `on_click` `on_change` `on_select` | | ชื่อเมธอด handler |
+| `min` `max` `value` | number, slider, progress | ช่วงค่าและค่าเริ่มต้น (ค่าเริ่ม 0, 100, 0) |
+| `font_size` | | pt ของ control นี้ ทับของฟอร์ม |
+| `bold` | | ตัวหนา — `font-weight: bold` |
+| `back_color` `fore_color` `border_color` | | สีแบบ CSS (`#12855f`, `rgb(…)`, `orange`) ทับธีม — `background` `color` `border-color` |
+| `radius` | | มุมมน px 0–50 — `border-radius` |
+| `on_click` `on_change` `on_select` | | ชื่อเมธอด handler (date, number, slider, textarea ใช้ `on_change`) |
 
 designer ตรวจทุกช่องตอนเปิดไฟล์ ช่องที่ไม่รู้จักหรือค่าที่ผิดเป็น error บอกบรรทัด ไม่ข้ามเงียบๆ แบบเดียวกับ CSS
 

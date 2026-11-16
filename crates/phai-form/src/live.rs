@@ -104,8 +104,16 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             }
             h
         }
+        Kind::Textarea => win::textarea(parent, text, id, font),
+        Kind::Date => win::date(parent, id, font),
+        Kind::Number => win::number(parent, id, font, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
+        Kind::Progress => win::progress(parent, id, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
+        Kind::Slider => win::slider(parent, id, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
     };
     win::set_css(h, c.class.as_deref().unwrap_or(""), &c.id);
+    if let Some(own) = c.own_css() {
+        let _ = win::set_own_style(h, &own);
+    }
     if c.enabled == Some(false) {
         win::enable(h, false);
     }

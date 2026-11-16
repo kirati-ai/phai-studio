@@ -76,10 +76,15 @@ pub enum Kind {
     Group,
     Tabs,
     Statusbar,
+    Date,
+    Number,
+    Progress,
+    Slider,
+    Textarea,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [Kind::Label, Kind::Edit, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Group, Kind::Tabs, Kind::Statusbar];
+    pub const ALL: [Kind; 15] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Statusbar];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -93,6 +98,11 @@ impl Kind {
             Kind::Group => "group",
             Kind::Tabs => "tabs",
             Kind::Statusbar => "statusbar",
+            Kind::Date => "date",
+            Kind::Number => "number",
+            Kind::Progress => "progress",
+            Kind::Slider => "slider",
+            Kind::Textarea => "textarea",
         }
     }
 
@@ -109,6 +119,11 @@ impl Kind {
             Kind::Group => (240, 120),
             Kind::Tabs => (240, 30),
             Kind::Statusbar => (0, 26),
+            Kind::Date => (150, 23),
+            Kind::Number => (80, 23),
+            Kind::Progress => (200, 20),
+            Kind::Slider => (200, 30),
+            Kind::Textarea => (240, 90),
         }
     }
 
@@ -116,14 +131,14 @@ impl Kind {
     pub fn event(self) -> Option<&'static str> {
         match self {
             Kind::Button | Kind::Checkbox | Kind::Radio => Some("on_click"),
-            Kind::Edit | Kind::Combo | Kind::Tabs => Some("on_change"),
+            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider => Some("on_change"),
             Kind::List => Some("on_select"),
             _ => None,
         }
     }
 
     pub fn has_text(self) -> bool {
-        matches!(self, Kind::Label | Kind::Edit | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group)
+        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group)
     }
 }
 
@@ -171,6 +186,28 @@ pub struct Control {
     /// Points for this control's words, over the form's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<i32>,
+    /// Bold words - `#id { font-weight: bold }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bold: Option<bool>,
+    /// Colours over the theme's, as CSS writes them (`#12855f`, `red`) - `#id { background }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub back_color: Option<String>,
+    /// `#id { color }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fore_color: Option<String>,
+    /// `#id { border-color }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border_color: Option<String>,
+    /// Corner roundness, pixels - `#id { border-radius }`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius: Option<i32>,
+    /// A number box's, slider's or progress bar's range and starting value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<i32>,
 }
 
 impl Control {
@@ -206,6 +243,14 @@ impl Control {
             on_change: None,
             on_select: None,
             font_size: None,
+            bold: None,
+            back_color: None,
+            fore_color: None,
+            border_color: None,
+            radius: None,
+            min: None,
+            max: None,
+            value: None,
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
@@ -218,6 +263,24 @@ impl Control {
             _ => {}
         }
         c
+    }
+
+    /// The CSS declarations this control's own properties make - `background: #12855f; color: white`
+    /// - as a `#id { ... }` rule would say them, over the theme. Nothing when it sets none.
+    pub fn own_css(&self) -> Option<String> {
+        let mut decls = Vec::new();
+        for (name, v) in [("background", &self.back_color), ("color", &self.fore_color), ("border-color", &self.border_color)] {
+            if let Some(v) = v {
+                decls.push(format!("{name}: {v}"));
+            }
+        }
+        if let Some(r) = self.radius {
+            decls.push(format!("border-radius: {r}px"));
+        }
+        if self.bold == Some(true) {
+            decls.push("font-weight: bold".into());
+        }
+        (!decls.is_empty()).then(|| decls.join("; "))
     }
 
     pub fn rect(&self) -> [i32; 4] {
@@ -407,6 +470,23 @@ impl FormFile {
             out.extend(wrong("password", c.password.is_none() || c.kind == Kind::Edit));
             out.extend(wrong("checked", c.checked.is_none() || matches!(c.kind, Kind::Checkbox | Kind::Radio)));
             out.extend(wrong("group", c.group.is_none() || c.kind == Kind::Radio));
+            let ranged = matches!(c.kind, Kind::Number | Kind::Progress | Kind::Slider);
+            out.extend(wrong("min", c.min.is_none() || ranged));
+            out.extend(wrong("max", c.max.is_none() || ranged));
+            out.extend(wrong("value", c.value.is_none() || ranged));
+            if ranged && c.min.unwrap_or(0) > c.max.unwrap_or(100) {
+                out.push((format!("{}: min is more than max", c.id), at.clone()));
+            }
+            for (field, v) in [("back_color", &c.back_color), ("fore_color", &c.fore_color), ("border_color", &c.border_color)] {
+                if let Some(v) = v {
+                    if phai_ui::theme::parse_color(v).is_none() {
+                        out.push((format!("{field} {v:?} is not a colour - #rrggbb, rgb(...) or a CSS name"), at.clone()));
+                    }
+                }
+            }
+            if c.radius.is_some_and(|r| !(0..=50).contains(&r)) {
+                out.push((format!("{}: radius 0 to 50", c.id), at.clone()));
+            }
             if let Some(e) = c.kind.event() {
                 for (name, v) in [("on_click", &c.on_click), ("on_change", &c.on_change), ("on_select", &c.on_select)] {
                     if v.is_some() && name != e {
@@ -584,5 +664,29 @@ mod tests {
         f.control[0].set_handler(Some("go".into()));
         assert_eq!(f.handlers(), vec!["go".to_string()]);
         assert!(f.texts().contains(&"Button".to_string()));
+    }
+
+    #[test]
+    fn a_controls_own_colours_are_css_and_checked() {
+        let mut c = Control::new(Kind::Button, "ok", [0, 0, 75, 23]);
+        assert_eq!(c.own_css(), None);
+        c.back_color = Some("#12855f".into());
+        c.fore_color = Some("white".into());
+        c.radius = Some(6);
+        c.bold = Some(true);
+        assert_eq!(c.own_css().as_deref(), Some("background: #12855f; color: white; border-radius: 6px; font-weight: bold"));
+        let mut f = FormFile::new("Main");
+        f.control.push(c.clone());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        f.control[0].back_color = Some("blurple".into());
+        assert!(f.check()[0].0.contains("blurple"));
+        f.control[0].back_color = None;
+        f.control[0].min = Some(1);
+        assert!(f.check()[0].0.contains("min"), "a button has no range");
+        let mut n = Control::new(Kind::Number, "count", [0, 0, 80, 23]);
+        n.min = Some(10);
+        n.max = Some(5);
+        f.control = vec![n];
+        assert!(f.check()[0].0.contains("more than max"));
     }
 }

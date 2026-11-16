@@ -11,7 +11,7 @@
 
    SELECTORS - one control at a time, no "a b" or "a > b":
        window label button checkbox radio edit combo list group tabs toolbar statusbar
-       menubar canvas tree            the kind of control, or * for all
+       date progress slider menubar canvas tree     (a number box is an edit)            the kind of control, or * for all
        .primary                  a class given in the form (class = "primary")
        #save                     one control by its id in the form
        :hover :pressed :focus :disabled :selected :checked      its state; several may join
@@ -19,7 +19,7 @@
 
    PROPERTIES:
        background  color  border-color   #rgb  #rrggbb  #rrggbbaa  rgb(r, g, b)
-                                         transparent  white  black  var(--name)
+                                         transparent  white  black  red ...  var(--name)
        border-width  border-radius       pixels at 100% scale (4 or 4px)
        accent-color                      the tick, the radio dot, the chosen tab's line
        icon-color                        toolbar icons
@@ -95,6 +95,15 @@ group         { color: var(--muted); border-color: var(--rule); border-radius: 6
 /* Tabs: border-color is the line under them, accent-color the chosen one's mark. */
 tabs          { background: var(--surface); color: var(--muted); border-color: var(--rule); accent-color: var(--accent); }
 tabs:selected { color: var(--text); }
+
+/* Dates: the box, and the calendar that drops from it (accent-color its chosen day). */
+date          { background: #ffffff; color: var(--text); border-color: var(--border); accent-color: var(--accent); }
+
+/* Progress bars and sliders: background is the track, accent-color what is done or chosen. */
+progress      { background: var(--rule); accent-color: var(--accent); border-radius: 3px; }
+slider        { background: var(--border); color: var(--text); accent-color: var(--accent); border-color: #8a8a8a; }
+slider:hover  { accent-color: var(--accent-hover); }
+slider:disabled { accent-color: var(--disabled-text); }
 
 /* Bars. */
 toolbar       { icon-color: var(--icon); border-color: var(--rule); }
