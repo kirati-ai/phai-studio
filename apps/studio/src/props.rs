@@ -71,11 +71,30 @@ pub struct Props {
     anchors: [HWND; 4],
     dock_label: HWND,
     dock: HWND,
+    /// Every object of the form, to choose one from - as Visual Studio's Properties has at its top.
+    chooser: HWND,
+    /// Properties | Events.
+    modes: HWND,
+    /// 0 the properties, 1 the events.
+    mode: usize,
+    /// Words under the events: what a double-click does, or the form's own events.
+    note: HWND,
     /// Set while the boxes are filled from the model, so their changes are not taken as edits.
     filling: bool,
 }
 
+const ID_CHOOSER: i32 = 3300;
+const ID_MODES: i32 = 3301;
 const ID_ROW: i32 = 3000;
+
+/// What an event is called in the Events view.
+fn event_label(event: &str) -> &'static str {
+    match event {
+        "on_click" => t("Click"),
+        "on_change" => t("Change"),
+        _ => t("Select"),
+    }
+}
 const ID_ANCHOR: i32 = 3100;
 const ID_DOCK: i32 = 3200;
 
@@ -92,7 +111,12 @@ impl Props {
         let anchors = std::array::from_fn(|i| win::checkbox(hwnd, names[i], ID_ANCHOR + i as i32, font, false));
         let dock_label = win::label(hwnd, t("Dock"), 0, font);
         let dock = win::combo(hwnd, ID_DOCK, font, &DOCKS);
-        Props { hwnd, heading, rows, anchor_label, anchors, dock_label, dock, filling: false }
+        let chooser = win::combo(hwnd, ID_CHOOSER, font, &[]);
+        let modes = phai_ui::controls::tabs(hwnd, ID_MODES, font, &[t("Properties"), t("Events")]);
+        let note = win::child(hwnd, "STATIC", "", windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(0x80), Default::default(), 0, font);
+        win::register_kind(note, win::Kind::Label);
+        win::set_css(note, "muted", "");
+        Props { hwnd, heading, rows, anchor_label, anchors, dock_label, dock, chooser, modes, mode: 0, note, filling: false }
     }
 
     /// Fills every box from the model and shows the rows that belong to what is chosen.
@@ -119,8 +143,48 @@ impl Props {
             Some(c) => format!("{} · {}", crate::kind_label(c.kind), c.id),
             None => format!("{} · {}", t("Form"), f.form.name),
         });
+        // The chooser: the form, then every control, the chosen one showing.
+        unsafe {
+            wm::SendMessageW(self.chooser, 0x014B /* CB_RESETCONTENT */, None, None);
+            let add = |s: String| {
+                let w = win::wide(&s);
+                wm::SendMessageW(self.chooser, 0x0143 /* CB_ADDSTRING */, None, Some(windows::Win32::Foundation::LPARAM(w.as_ptr() as isize)));
+            };
+            add(format!("{}  ({})", f.form.name, t("Form")));
+            for c in &f.control {
+                add(format!("{}  ({})", c.id, crate::kind_label(c.kind)));
+            }
+            wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(s.selected.map(|i| i + 1).unwrap_or(0))), None);
+        }
+        let events = self.mode == 1;
+        // The events: the chosen control's, named as Visual Studio names them; the form's listed.
+        if events {
+            let mut note = String::new();
+            match chosen {
+                Some(c) => match c.kind.event() {
+                    Some(e) => {
+                        if let Some(r) = self.rows.iter().find(|r| r.key == Key::Event) {
+                            win::set_text(r.label, event_label(e));
+                        }
+                        note = t("Type a method's name, or double-click the control to write it.").to_string();
+                    }
+                    None => note = t("This control has no events.").to_string(),
+                },
+                None => {
+                    note.push_str(t("The form's events:"));
+                    note.push_str("\n  loaded");
+                    for h in f.handlers() {
+                        note.push_str(&format!("\n  {h}"));
+                    }
+                }
+            }
+            win::set_text(self.note, &note);
+        }
+        win::show(self.note, events);
         for r in &self.rows {
             let (show, value) = match (chosen, r.key) {
+                // The Events view shows the event row only; the Properties view everything else.
+                (_, k) if events != (k == Key::Event) => (false, String::new()),
                 (None, k) if k.for_form() => (
                     true,
                     match k {
@@ -160,7 +224,7 @@ impl Props {
                 win::set_text(r.edit, &value);
             }
         }
-        let control_rows = chosen.is_some();
+        let control_rows = chosen.is_some() && !events;
         win::show(self.anchor_label, control_rows);
         win::show(self.dock_label, control_rows);
         win::show(self.dock, control_rows);
@@ -194,8 +258,12 @@ impl Props {
         let (m, row, gap, lw) = (px(11), px(23), px(7), px(64));
         let width = r.right - r.left;
         let mut y = m;
+        win::move_to(self.chooser, m, y, width - 2 * m, px(300));
+        y += row + gap;
+        win::move_to(self.modes, 0, y, width, px(28));
+        y += px(28) + gap;
         win::move_to(self.heading, m, y, width - 2 * m, row);
-        y += row + gap + px(4);
+        y += row + gap;
         for rw in self.rows.iter().filter(|rw| unsafe { wm::IsWindowVisible(rw.edit) }.as_bool()) {
             win::move_to(rw.label, m, y, lw, row);
             win::move_to(rw.edit, m + lw + px(6), y, width - 2 * m - lw - px(6), row);
@@ -211,7 +279,16 @@ impl Props {
                 let (cx, cy) = (m + lw + px(6) + (i as i32 % 2) * col, y + (i as i32 / 2) * (px(20) + gap));
                 win::move_to(*a, cx, cy, col, px(20));
             }
+            y += 2 * (px(20) + gap);
         }
+        win::move_to(self.note, m, y + gap, width - 2 * m, (r.bottom - y - gap - m).max(0));
+    }
+
+    /// Properties (0) or Events (1), as a click on the tabs does.
+    pub fn set_mode(&mut self, mode: usize) {
+        self.mode = mode;
+        phai_ui::controls::tabs_select(self.modes, mode);
+        self.refresh();
     }
 
     /// New words after a language switch.
@@ -220,6 +297,7 @@ impl Props {
             win::set_text(r.label, r.key.label());
         }
         win::set_text(self.anchor_label, t("Anchor"));
+        phai_ui::controls::tabs_relabel(self.modes, &[t("Properties"), t("Events")]);
         win::set_text(self.dock_label, t("Dock"));
         for (h, name) in self.anchors.iter().zip([t("Left"), t("Top"), t("Right"), t("Bottom")]) {
             win::set_text(*h, name);
@@ -230,6 +308,16 @@ impl Props {
     fn command(&mut self, id: i32, code: u16) {
         let Some(s) = studio() else { return };
         if self.filling {
+            return;
+        }
+        if id == ID_MODES {
+            self.mode = code as usize;
+            self.refresh();
+            return;
+        }
+        if id == ID_CHOOSER && code == 1 {
+            let k = win::combo_selected(self.chooser);
+            s.select(if k <= 0 { None } else { Some(k as usize - 1) });
             return;
         }
         if (ID_ROW..ID_ROW + 100).contains(&id) {

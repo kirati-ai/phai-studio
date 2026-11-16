@@ -28,8 +28,14 @@
   เลือกด้วยเมาส์/คีย์บอร์ด, scroll, คลิปบอร์ด). ใน Studio: ดับเบิลคลิก .rs/.toml/.css ใน explorer = เปิดเป็นแท็บ,
   ดับเบิลคลิก error = ไปที่บรรทัด, Ctrl+S คงท้ายบรรทัด CRLF เดิม; `--codetest` พิมพ์ไทยด้วยข้อความแป้นพิมพ์แล้วบันทึก
   (เขียนตามแบบ Monaco ไม่ใช่แปลงทีละบรรทัด — แผน E แบบแปลงจริงยังทำต่อได้)
-- **เหลือ**: rust-analyzer (LSP: เติมโค้ด, hover, ขีดเส้น error), ค้นหา/แทนที่ในตัวแก้โค้ด, debugger, Git,
-  เส้นช่วยจัดแนว, Start window
+- rust-analyzer ต่อแล้ว (`phai-editor/src/lsp.rs`): เส้นหยักใต้ error (เปิด experimental diagnostics), hover, เติมโค้ด
+  (Ctrl+Space, หลัง `.`/`::`); ไม่มี rust-analyzer → status บอกคำสั่ง `rustup component add rust-analyzer`
+- ฟอนต์: ฟอร์ม/control มี font_size (Properties), ตัวแก้โค้ดซูม Ctrl+ล้อ / Ctrl+= - 0 จำค่าใน %APPDATA%\Phai Studio
+- แผงแบบ dock: Project explorer และ Properties แยกแผง มีหัว + ✕, เส้นแบ่งลากได้, View เปิด/ปิด Toolbox/Explorer/Properties/Output
+- Properties แบบ VS: dropdown เลือก object + แท็บ Properties | Events
+- ทดสอบด้วยภาพโดยไม่แย่ง keyboard: `PHAI_SHOT` = แสดงหน้าต่างแบบไม่ activate + ทิ้งแป้นพิมพ์จริง
+  (บทเรียน: ครั้งแรกหน้าต่างทดสอบรับตัวอักษรที่เจ้านายพิมพ์อยู่)
+- **เหลือ**: ลากแผงไปติดขอบอื่น (re-dock), ค้นหา/แทนที่ในตัวแก้โค้ด, debugger, Git, เส้นช่วยจัดแนว, Start window
 - **ก่อนแจก**: ใส่ `repository` ใน Cargo.toml ของ workspace เป็น URL ของ repo
 - self-test: `--selftest out.phaiform` (ลากสร้าง/ย้าย/ย่อขยาย), `--buildtest` (Build จริง), `--tab N`, `--menus`;
   `PHAI_SHOT=out.png` ถ่ายหน้าต่างหน้าสุดของโปรแกรม (รวม dialog)

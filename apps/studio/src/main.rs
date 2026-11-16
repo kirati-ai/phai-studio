@@ -1929,7 +1929,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -1949,6 +1949,15 @@ fn main() {
                 if let Some(id) = args.get(i + 1).and_then(|n| n.parse::<usize>().ok()) {
                     let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(id), LPARAM(0));
                 }
+            }
+        }
+        // `--select N` chooses control N; `--events` shows the Events view - for checking by picture.
+        if let Some(n) = args.iter().position(|a| a == "--select").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            s.select(Some(n));
+        }
+        if args.iter().any(|a| a == "--events") {
+            if let Some(p) = s.props.as_mut() {
+                p.set_mode(1);
             }
         }
         // `--menus` opens the menu editor at once - for checking it by its picture.
