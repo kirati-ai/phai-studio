@@ -111,6 +111,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "phai-editor"
+version = "0.1.0"
+dependencies = [
+ "phai-ui",
+ "windows",
+]
+
+[[package]]
 name = "phai-form"
 version = "0.1.0"
 dependencies = [

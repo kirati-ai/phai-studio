@@ -1,0 +1,456 @@
+//! What editing does, apart from how it looks: a caret and a selection over a [`Buffer`], the
+//! commands Monaco's keyboard gives (by character, word, line, page; with Shift to select), typing
+//! that keeps the line's indent, and undo that takes back a run of typing at once.
+//!
+//! The caret never stops inside a character, nor between a Thai consonant and the vowel or tone
+//! mark written over or under it: those marks join the character before, as a reader sees them.
+
+use crate::buffer::Buffer;
+
+/// Marks that sit on the character before: Thai vowels and tones above and below, combining
+/// accents, variation selectors and the zero-width joiner.
+pub fn joins_previous(c: char) -> bool {
+    matches!(c as u32, 0x0E31 | 0x0E34..=0x0E3A | 0x0E47..=0x0E4E | 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x20D0..=0x20FF | 0xFE00..=0xFE0F | 0x200D)
+}
+
+/// The next place the caret may stop after byte `at` in `s`.
+pub fn next_stop(s: &str, at: usize) -> usize {
+    let mut it = s[at..].char_indices().skip(1);
+    for (i, c) in it.by_ref() {
+        if !joins_previous(c) {
+            return at + i;
+        }
+    }
+    s.len()
+}
+
+/// The place before byte `at` in `s` where the caret may stop.
+pub fn prev_stop(s: &str, at: usize) -> usize {
+    let mut i = at;
+    while i > 0 {
+        i -= 1;
+        while !s.is_char_boundary(i) {
+            i -= 1;
+        }
+        let c = s[i..].chars().next().unwrap_or(' ');
+        if !joins_previous(c) {
+            return i;
+        }
+    }
+    0
+}
+
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Edit {
+    at: usize,
+    removed: String,
+    inserted: String,
+    /// Where the caret and anchor were before.
+    caret_before: (usize, usize),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Move {
+    Left,
+    Right,
+    WordLeft,
+    WordRight,
+    Up,
+    Down,
+    Home,
+    End,
+    Top,
+    Bottom,
+    PageUp(usize),
+    PageDown(usize),
+}
+
+pub struct Model {
+    pub buf: Buffer,
+    /// Byte offset of the caret.
+    pub caret: usize,
+    /// The other end of the selection; equal to `caret` when nothing is selected.
+    pub anchor: usize,
+    /// The column a run of Up and Down keeps to, in characters.
+    goal: Option<usize>,
+    undo: Vec<Edit>,
+    redo: Vec<Edit>,
+    /// The undo step typing is adding to, if any.
+    typing: bool,
+    pub dirty: bool,
+}
+
+impl Model {
+    pub fn new(text: &str) -> Model {
+        Model { buf: Buffer::new(text), caret: 0, anchor: 0, goal: None, undo: vec![], redo: vec![], typing: false, dirty: false }
+    }
+
+    pub fn selection(&self) -> (usize, usize) {
+        (self.caret.min(self.anchor), self.caret.max(self.anchor))
+    }
+
+    pub fn selected_text(&self) -> String {
+        let (a, b) = self.selection();
+        self.buf.slice(a, b)
+    }
+
+    /// Replaces the selection with `text`; `typing` joins it to the undo step before.
+    fn replace(&mut self, text: &str, typing: bool) {
+        let (a, b) = self.selection();
+        let before = (self.caret, self.anchor);
+        let removed = self.buf.delete(a, b - a);
+        self.buf.insert(a, text);
+        let joined = typing && self.typing && removed.is_empty() && self.undo.last().is_some_and(|e| e.at + e.inserted.len() == a && !text.contains('\n'));
+        if joined {
+            self.undo.last_mut().unwrap().inserted.push_str(text);
+        } else {
+            self.undo.push(Edit { at: a, removed, inserted: text.to_string(), caret_before: before });
+        }
+        self.typing = typing;
+        self.redo.clear();
+        self.caret = a + text.len();
+        self.anchor = self.caret;
+        self.goal = None;
+        self.dirty = true;
+    }
+
+    /// Typed text. A new line keeps the indent of the line it breaks; a `}` typed at the start of
+    /// an indented line takes one level of indent back.
+    pub fn type_text(&mut self, text: &str) {
+        if text == "\n" {
+            let (line, _) = self.buf.position(self.selection().0);
+            let current = self.buf.line(line);
+            let mut indent: String = current.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+            if current.trim_end().ends_with('{') || current.trim_end().ends_with('(') || current.trim_end().ends_with('[') {
+                indent.push_str("    ");
+            }
+            self.replace(&format!("\n{indent}"), false);
+            return;
+        }
+        if text == "}" && self.caret == self.anchor {
+            let (line, col) = self.buf.position(self.caret);
+            let before = &self.buf.line(line)[..col];
+            if before.len() >= 4 && before.chars().all(|c| c == ' ') {
+                self.anchor = self.caret - 4;
+            }
+        }
+        self.replace(text, true);
+    }
+
+    /// Text put in all at once - pasted, or a tab's spaces.
+    pub fn insert(&mut self, text: &str) {
+        self.replace(text, false);
+    }
+
+    pub fn backspace(&mut self) {
+        if self.caret == self.anchor {
+            if self.caret == 0 {
+                return;
+            }
+            let (line, col) = self.buf.position(self.caret);
+            let s = self.buf.line(line);
+            // Within leading spaces, back one indent level at a time.
+            let before = &s[..col];
+            if col > 0 && before.chars().all(|c| c == ' ') {
+                let to = (col - 1) / 4 * 4;
+                self.anchor = self.caret - (col - to);
+            } else if col == 0 {
+                self.anchor = self.caret - 1;
+            } else {
+                self.anchor = self.buf.line_start(line) + prev_stop(&s, col);
+            }
+        }
+        self.replace("", false);
+    }
+
+    pub fn delete_forward(&mut self) {
+        if self.caret == self.anchor {
+            if self.caret >= self.buf.len() {
+                return;
+            }
+            let (line, col) = self.buf.position(self.caret);
+            let s = self.buf.line(line);
+            self.anchor = if col >= s.len() { self.caret + 1 } else { self.buf.line_start(line) + next_stop(&s, col) };
+        }
+        self.replace("", false);
+    }
+
+    /// Moves the caret; with `select` the anchor stays and the selection grows.
+    pub fn move_caret(&mut self, m: Move, select: bool) {
+        let (line, col) = self.buf.position(self.caret);
+        let s = self.buf.line(line);
+        let start = self.buf.line_start(line);
+        let chars_before = s[..col].chars().filter(|c| !joins_previous(*c)).count();
+        let collapsed = self.caret == self.anchor;
+        let to = match m {
+            // Without Shift, Left and Right first close a selection on its side.
+            Move::Left if !select && !collapsed => self.selection().0,
+            Move::Right if !select && !collapsed => self.selection().1,
+            Move::Left => {
+                if col == 0 {
+                    self.caret.saturating_sub(1)
+                } else {
+                    start + prev_stop(&s, col)
+                }
+            }
+            Move::Right => {
+                if col >= s.len() {
+                    (self.caret + 1).min(self.buf.len())
+                } else {
+                    start + next_stop(&s, col)
+                }
+            }
+            Move::WordLeft => {
+                if col == 0 {
+                    self.caret.saturating_sub(1)
+                } else {
+                    let chars: Vec<(usize, char)> = s[..col].char_indices().collect();
+                    let mut k = chars.len();
+                    while k > 0 && chars[k - 1].1.is_whitespace() {
+                        k -= 1;
+                    }
+                    let word = k > 0 && is_word(chars[k - 1].1);
+                    while k > 0 && !chars[k - 1].1.is_whitespace() && is_word(chars[k - 1].1) == word {
+                        k -= 1;
+                    }
+                    start + chars.get(k).map(|(i, _)| *i).unwrap_or(0)
+                }
+            }
+            Move::WordRight => {
+                if col >= s.len() {
+                    (self.caret + 1).min(self.buf.len())
+                } else {
+                    let rest: Vec<(usize, char)> = s[col..].char_indices().collect();
+                    let mut k = 0;
+                    let word = is_word(rest[0].1);
+                    while k < rest.len() && !rest[k].1.is_whitespace() && is_word(rest[k].1) == word {
+                        k += 1;
+                    }
+                    while k < rest.len() && rest[k].1.is_whitespace() {
+                        k += 1;
+                    }
+                    start + col + rest.get(k).map(|(i, _)| *i).unwrap_or(s.len() - col)
+                }
+            }
+            Move::Up | Move::Down | Move::PageUp(_) | Move::PageDown(_) => {
+                let goal = *self.goal.get_or_insert(chars_before);
+                let target = match m {
+                    Move::Up => line.checked_sub(1),
+                    Move::Down => (line + 1 < self.buf.line_count()).then_some(line + 1),
+                    Move::PageUp(n) => Some(line.saturating_sub(n)),
+                    Move::PageDown(n) => Some((line + n).min(self.buf.line_count() - 1)),
+                    _ => None,
+                };
+                let to = match target {
+                    None if m == Move::Up => 0,
+                    None => self.buf.len(),
+                    Some(t) => {
+                        let ts = self.buf.line(t);
+                        let mut at = 0;
+                        for _ in 0..goal {
+                            if at >= ts.len() {
+                                break;
+                            }
+                            at = next_stop(&ts, at);
+                        }
+                        self.buf.line_start(t) + at
+                    }
+                };
+                self.caret = to;
+                if !select {
+                    self.anchor = to;
+                }
+                self.typing = false;
+                return;
+            }
+            Move::Home => {
+                // First to the line's first word, then to its very start.
+                let indent = s.len() - s.trim_start().len();
+                if col == indent {
+                    start
+                } else {
+                    start + indent
+                }
+            }
+            Move::End => start + s.len(),
+            Move::Top => 0,
+            Move::Bottom => self.buf.len(),
+        };
+        self.caret = to;
+        if !select {
+            self.anchor = to;
+        }
+        self.goal = None;
+        self.typing = false;
+    }
+
+    pub fn select_all(&mut self) {
+        self.anchor = 0;
+        self.caret = self.buf.len();
+    }
+
+    /// The word around byte `at` - a double-click.
+    pub fn select_word(&mut self, at: usize) {
+        let (line, col) = self.buf.position(at);
+        let s = self.buf.line(line);
+        let start = self.buf.line_start(line);
+        let mut a = col;
+        while a > 0 {
+            let p = prev_stop(&s, a);
+            if !s[p..].chars().next().is_some_and(is_word) {
+                break;
+            }
+            a = p;
+        }
+        let mut b = col;
+        while b < s.len() && s[b..].chars().next().is_some_and(is_word) {
+            b = next_stop(&s, b);
+        }
+        self.anchor = start + a;
+        self.caret = start + b;
+    }
+
+    pub fn undo(&mut self) {
+        let Some(e) = self.undo.pop() else { return };
+        self.buf.delete(e.at, e.inserted.len());
+        self.buf.insert(e.at, &e.removed);
+        (self.caret, self.anchor) = e.caret_before;
+        self.redo.push(e);
+        self.typing = false;
+        self.dirty = true;
+    }
+
+    pub fn redo(&mut self) {
+        let Some(e) = self.redo.pop() else { return };
+        self.buf.delete(e.at, e.removed.len());
+        self.buf.insert(e.at, &e.inserted);
+        self.caret = e.at + e.inserted.len();
+        self.anchor = self.caret;
+        self.undo.push(e);
+        self.typing = false;
+        self.dirty = true;
+    }
+
+    /// Indents the selected lines one level (`out` false) or takes one level off them.
+    pub fn indent_lines(&mut self, out: bool) {
+        let (a, b) = self.selection();
+        let (first, _) = self.buf.position(a);
+        let (last, last_col) = self.buf.position(b);
+        let last = if last > first && last_col == 0 { last - 1 } else { last };
+        let start = self.buf.line_start(first);
+        let end = self.buf.line_start(last) + self.buf.line(last).len();
+        let text = self.buf.slice(start, end);
+        let changed: Vec<String> = text
+            .split('\n')
+            .map(|l| {
+                if out {
+                    let n = l.chars().take(4).take_while(|c| *c == ' ').count();
+                    l[n..].to_string()
+                } else if l.is_empty() {
+                    String::new()
+                } else {
+                    format!("    {l}")
+                }
+            })
+            .collect();
+        let joined = changed.join("\n");
+        self.anchor = start;
+        self.caret = end;
+        self.replace(&joined, false);
+        self.anchor = start;
+        self.caret = start + joined.len();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at_end(text: &str) -> Model {
+        let mut m = Model::new(text);
+        m.caret = text.len();
+        m.anchor = m.caret;
+        m
+    }
+
+    #[test]
+    fn the_caret_steps_over_thai_marks_as_one_character() {
+        let s = "สวัสดี";
+        let stops: Vec<usize> = std::iter::successors(Some(0), |&i| (i < s.len()).then(|| next_stop(s, i))).collect();
+        // ส ว ั ส ด ี  -> stops before ส, ว, ส, ด and at the end: ั and ี join the letter before.
+        assert_eq!(stops.len(), 5, "{stops:?}");
+        assert_eq!(prev_stop(s, s.len()), "สวัส".len());
+        let mut m = at_end("กี่");
+        m.backspace();
+        assert_eq!(m.buf.text(), "", "ก with its vowel and tone goes as one");
+    }
+
+    #[test]
+    fn typing_keeps_the_indent_and_one_undo_takes_back_a_word() {
+        let mut m = at_end("fn main() {");
+        m.type_text("\n");
+        assert_eq!(m.buf.text(), "fn main() {\n    ");
+        for c in "hello".chars() {
+            m.type_text(&c.to_string());
+        }
+        m.type_text("\n");
+        m.type_text("}");
+        assert_eq!(m.buf.text(), "fn main() {\n    hello\n}");
+        m.undo();
+        m.undo();
+        assert_eq!(m.buf.text(), "fn main() {\n    hello", "the closing brace and the new line came back separately");
+        m.undo();
+        assert_eq!(m.buf.text(), "fn main() {\n    ", "hello went at once");
+        m.redo();
+        assert_eq!(m.buf.text(), "fn main() {\n    hello");
+    }
+
+    #[test]
+    fn moves_by_word_line_and_page_keep_their_column() {
+        let mut m = Model::new("let value = 42;\nx\nlet other = 7;");
+        m.move_caret(Move::WordRight, false);
+        assert_eq!(m.caret, 4);
+        m.move_caret(Move::WordRight, true);
+        assert_eq!(m.selected_text(), "value ");
+        m.move_caret(Move::End, false);
+        m.move_caret(Move::Down, false);
+        assert_eq!(m.buf.position(m.caret), (1, 1), "a short line holds the caret at its end");
+        m.move_caret(Move::Down, false);
+        assert_eq!(m.buf.position(m.caret), (2, 14), "and the next long one gives the column back");
+        m.move_caret(Move::Home, false);
+        assert_eq!(m.buf.position(m.caret), (2, 0));
+    }
+
+    #[test]
+    fn backspace_takes_indent_a_level_at_a_time_and_selections_go_whole() {
+        let mut m = at_end("        ");
+        m.backspace();
+        assert_eq!(m.buf.text(), "    ");
+        let mut m = Model::new("abc def");
+        m.anchor = 1;
+        m.caret = 5;
+        m.backspace();
+        assert_eq!(m.buf.text(), "aef");
+    }
+
+    #[test]
+    fn lines_indent_and_unindent_together() {
+        let mut m = Model::new("a\nb\nc");
+        m.select_all();
+        m.indent_lines(false);
+        assert_eq!(m.buf.text(), "    a\n    b\n    c");
+        m.indent_lines(true);
+        assert_eq!(m.buf.text(), "a\nb\nc");
+    }
+
+    #[test]
+    fn double_click_takes_the_word() {
+        let mut m = Model::new("call some_fn(now)");
+        m.select_word(7);
+        assert_eq!(m.selected_text(), "some_fn");
+    }
+}
