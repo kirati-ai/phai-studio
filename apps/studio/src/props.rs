@@ -131,12 +131,15 @@ impl Props {
                 win::show(r.label, false);
                 win::show(r.edit, false);
             }
-            for h in [self.anchor_label, self.dock_label, self.dock].into_iter().chain(self.anchors) {
+            for h in [self.anchor_label, self.dock_label, self.dock, self.chooser, self.modes, self.note].into_iter().chain(self.anchors) {
                 win::show(h, false);
             }
             self.filling = false;
+            self.layout();
             return;
         }
+        win::show(self.chooser, true);
+        win::show(self.modes, true);
         let f = &s.doc.form;
         let chosen = s.selected.and_then(|i| f.control.get(i));
         win::set_text(self.heading, &match chosen {
@@ -258,10 +261,12 @@ impl Props {
         let (m, row, gap, lw) = (px(11), px(23), px(7), px(64));
         let width = r.right - r.left;
         let mut y = m;
-        win::move_to(self.chooser, m, y, width - 2 * m, px(300));
-        y += row + gap;
-        win::move_to(self.modes, 0, y, width, px(28));
-        y += px(28) + gap;
+        if unsafe { wm::IsWindowVisible(self.chooser) }.as_bool() {
+            win::move_to(self.chooser, m, y, width - 2 * m, px(300));
+            y += row + gap;
+            win::move_to(self.modes, 0, y, width, px(28));
+            y += px(28) + gap;
+        }
         win::move_to(self.heading, m, y, width - 2 * m, row);
         y += row + gap;
         for rw in self.rows.iter().filter(|rw| unsafe { wm::IsWindowVisible(rw.edit) }.as_bool()) {

@@ -75,7 +75,29 @@ struct View {
     all_items: Vec<crate::lsp::Completion>,
     /// Edits since the file was opened, as the server counts versions.
     pub version: i64,
+    find: Option<FindBar>,
+    /// What is being found, and every place it is - worked out again after each edit.
+    query: String,
+    hits: Vec<(usize, usize)>,
+    hits_for: usize,
 }
+
+/// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
+struct FindBar {
+    panel: HWND,
+    query: HWND,
+    with: HWND,
+    replacing: bool,
+    count: HWND,
+}
+
+const ID_FIND: i32 = 1;
+const ID_WITH: i32 = 2;
+const ID_PREV: i32 = 3;
+const ID_NEXT: i32 = 4;
+const ID_CLOSE: i32 = 5;
+const ID_REPLACE: i32 = 6;
+const ID_ALL: i32 = 7;
 
 fn wide_of(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
@@ -177,7 +199,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1 }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -324,6 +346,217 @@ fn notify(h: HWND, code: u16) {
         if let Ok(p) = wm::GetParent(h) {
             wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((code as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
         }
+    }
+}
+
+fn refresh_hits(v: &mut View) {
+    if v.hits_for == v.edits {
+        return;
+    }
+    v.hits = if v.find.is_some() { crate::model::find_all(&v.model.buf.text(), &v.query, false) } else { vec![] };
+    v.hits_for = v.edits;
+}
+
+/// "3 of 12" beside the box.
+fn say_count(v: &mut View) {
+    refresh_hits(v);
+    let Some(f) = v.find.as_ref() else { return };
+    let (a, _) = v.model.selection();
+    let at = v.hits.iter().position(|hh| hh.0 == a).map(|i| i + 1).unwrap_or(0);
+    win::set_text(f.count, &if v.query.is_empty() { String::new() } else { format!("{at}/{}", v.hits.len()) });
+}
+
+fn find_step(h: HWND, v: &mut View, forward: bool) {
+    if v.query.is_empty() {
+        return;
+    }
+    let q = v.query.clone();
+    if v.model.find(&q, false, forward) {
+        moved(h);
+    }
+    say_count(v);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// The box to find in keeps Enter, Escape and F3 for itself.
+unsafe extern "system" fn find_box(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
+    use windows::Win32::UI::Shell::DefSubclassProc;
+    let editor = unsafe { wm::GetParent(wm::GetParent(h).unwrap_or_default()).unwrap_or_default() };
+    match msg {
+        wm::WM_GETDLGCODE => LRESULT(0x0004), // DLGC_WANTALLKEYS
+        wm::WM_KEYDOWN if matches!(w.0, 0x0D | 0x1B | 0x72) => {
+            if let Some(v) = view(editor) {
+                let shift = unsafe { km::GetKeyState(0x10) } < 0;
+                let is_with = unsafe { wm::GetDlgCtrlID(h) } == ID_WITH;
+                match w.0 {
+                    0x1B => {
+                        close_find(editor, v);
+                        unsafe {
+                            let _ = km::SetFocus(Some(editor));
+                        }
+                    }
+                    0x0D if is_with => {
+                        let text = win::text_of(h);
+                        let q = v.query.clone();
+                        v.model.replace_one(&q, &text, false);
+                        changed(editor);
+                        say_count(v);
+                    }
+                    _ => find_step(editor, v, !shift),
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_CHAR if matches!(w.0, 0x0D | 0x1B) => LRESULT(0),
+        _ => unsafe { DefSubclassProc(h, msg, w, l) },
+    }
+}
+
+extern "system" fn find_panel_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        // Its boxes and buttons speak to the editor.
+        wm::WM_COMMAND => unsafe {
+            match wm::GetParent(h) {
+                Ok(p) => wm::SendMessageW(p, msg, Some(w), Some(l)),
+                Err(_) => LRESULT(0),
+            }
+        },
+        wm::WM_ERASEBKGND => {
+            let dc = Gdi::HDC(w.0 as *mut _);
+            let mut r = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(h, &mut r);
+            }
+            let bg = theme::style("tabs", State::default()).background_or(win::window_background());
+            win::fill(dc, &r, bg);
+            let border = theme::style("group", State::default()).border_or(Color::rgb(0xd4, 0xd4, 0xd4));
+            win::fill(dc, &RECT { top: r.bottom - 1, ..r }, border);
+            win::fill(dc, &RECT { right: 1, ..r }, border);
+            LRESULT(1)
+        }
+        _ => win::def(h, msg, w, l),
+    }
+}
+
+fn open_find(h: HWND, v: &mut View, replacing: bool) {
+    // A word chosen on one line is what to find.
+    let sel = v.model.selected_text();
+    if !sel.is_empty() && !sel.contains('\n') {
+        v.query = sel;
+    }
+    if v.find.as_ref().is_some_and(|f| f.replacing != replacing) {
+        close_find(h, v);
+    }
+    if v.find.is_none() {
+        let class = win::register("PhaiFindBar", Some(find_panel_proc), None);
+        let font = unsafe { HFONT(wm::SendMessageW(wm::GetParent(h).unwrap_or_default(), wm::WM_GETFONT, None, None).0 as *mut _) };
+        let font = if font.is_invalid() { win::font(h, 0, false) } else { font };
+        unsafe {
+            let panel = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN, 0, 0, 10, 10, Some(h), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
+            let query = win::edit(panel, &v.query, ID_FIND, font, false);
+            let with = if replacing { win::edit(panel, "", ID_WITH, font, false) } else { HWND::default() };
+            for e in [query, with] {
+                if !e.is_invalid() {
+                    let _ = windows::Win32::UI::Shell::SetWindowSubclass(e, Some(find_box), 9, 0);
+                }
+            }
+            win::button(panel, "↑", ID_PREV, font, false);
+            win::button(panel, "↓", ID_NEXT, font, false);
+            win::button(panel, "✕", ID_CLOSE, font, false);
+            if replacing {
+                win::button(panel, phai_ui::text::t("Replace"), ID_REPLACE, font, false);
+                win::button(panel, phai_ui::text::t("All"), ID_ALL, font, false);
+            }
+            let count = win::label(panel, "", 0, font);
+            win::set_css(count, "muted", "");
+            v.find = Some(FindBar { panel, query, with, replacing, count });
+        }
+        place_find(h, v);
+    }
+    if let Some(f) = v.find.as_ref() {
+        if win::text_of(f.query) != v.query {
+            win::set_text(f.query, &v.query);
+        }
+        unsafe {
+            let _ = km::SetFocus(Some(f.query));
+            wm::SendMessageW(f.query, 0x00B1 /* EM_SETSEL */, Some(WPARAM(0)), Some(LPARAM(-1)));
+        }
+    }
+    v.hits_for = usize::MAX;
+    say_count(v);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+fn close_find(h: HWND, v: &mut View) {
+    if let Some(f) = v.find.take() {
+        unsafe {
+            let _ = wm::DestroyWindow(f.panel);
+        }
+    }
+    v.hits.clear();
+    v.hits_for = usize::MAX;
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// The bar at the top right: the find box with its count and buttons, the replace row below.
+fn place_find(h: HWND, v: &View) {
+    let Some(f) = v.find.as_ref() else { return };
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut r);
+    }
+    let px = |n| win::px(h, n);
+    let (m, row, b) = (px(6), px(23), px(28));
+    let width = px(380).min(r.right - px(20));
+    let rows = if f.replacing { 2 } else { 1 };
+    let height = m + rows * (row + m);
+    win::move_to(f.panel, r.right - width - px(16), 0, width, height);
+    let box_w = width - 2 * m - 3 * (b + px(2)) - px(52);
+    win::move_to(f.query, m, m, box_w, row);
+    win::move_to(f.count, m + box_w + px(4), m, px(48), row);
+    let mut x = m + box_w + px(52);
+    for id in [ID_PREV, ID_NEXT, ID_CLOSE] {
+        unsafe {
+            if let Ok(c) = wm::GetDlgItem(Some(f.panel), id) {
+                win::move_to(c, x, m, b, row);
+            }
+        }
+        x += b + px(2);
+    }
+    if f.replacing {
+        let y = m + row + m;
+        win::move_to(f.with, m, y, box_w, row);
+        let bw = (width - m - box_w - px(4) - m - px(4)) / 2;
+        unsafe {
+            if let Ok(c) = wm::GetDlgItem(Some(f.panel), ID_REPLACE) {
+                win::move_to(c, m + box_w + px(4), y, bw, row);
+            }
+            if let Ok(c) = wm::GetDlgItem(Some(f.panel), ID_ALL) {
+                win::move_to(c, m + box_w + px(8) + bw, y, bw, row);
+            }
+        }
+    }
+}
+
+/// Opens the find bar with `query` in it and the first place chosen - for checking by picture.
+pub fn find_text(h: HWND, query: &str, replacing: bool) {
+    if let Some(v) = view(h) {
+        v.query = query.to_string();
+        open_find(h, v, replacing);
+        find_step(h, v, true);
+    }
+}
+
+/// Opens the find bar (`replacing` with the replace row), as Ctrl+F and Ctrl+H do.
+pub fn find(h: HWND, replacing: bool) {
+    if let Some(v) = view(h) {
+        open_find(h, v, replacing);
     }
 }
 
@@ -492,6 +725,7 @@ pub fn zoom(h: HWND, by: i32) {
 fn paint(h: HWND, v: &mut View) {
     refont(h, v);
     v.refresh_comments();
+    refresh_hits(v);
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
         let screen = Gdi::BeginPaint(h, &mut ps);
@@ -517,6 +751,16 @@ fn paint(h: HWND, v: &mut View) {
             let y = (line - v.top) as i32 * v.line_h;
             let s = v.model.buf.line(line);
             let start = v.model.buf.line_start(line);
+            // Every place the find bar's words are, softly.
+            if !v.hits.is_empty() {
+                let hit_bg = theme::current().var_color("--find").unwrap_or(if dark { Color::rgb(0x61, 0x51, 0x1e) } else { Color::rgb(0xff, 0xe9, 0x8f) });
+                for &(a, b) in v.hits.iter().filter(|(a, b)| *b > start && *a <= start + s.len()) {
+                    let (a, b) = (a.max(start) - start, b.min(start + s.len()) - start);
+                    let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
+                    let x1 = gutter + v.width_of(dc, &s[..b]) - v.left;
+                    win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, hit_bg);
+                }
+            }
             // The selection on this line, end of line included when it runs on.
             if sb > sa && sb >= start && sa <= start + s.len() {
                 let a = sa.max(start) - start;
@@ -656,6 +900,25 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
         notify(h, COMPLETE);
         return true;
     }
+    match (vk, ctrl) {
+        (0x46, true) => {
+            open_find(h, v, false);
+            return true;
+        }
+        (0x48, true) => {
+            open_find(h, v, true);
+            return true;
+        }
+        (0x72, _) => {
+            find_step(h, v, !shift);
+            return true;
+        }
+        (0x1B, _) if v.find.is_some() => {
+            close_find(h, v);
+            return true;
+        }
+        _ => {}
+    }
     // Ctrl+= / Ctrl++ larger, Ctrl+- smaller, Ctrl+0 back to the usual size.
     if ctrl && matches!(vk, 0xBB | 0x6B | 0xBD | 0x6D | 0x30 | 0x60) {
         zoom(h, match vk {
@@ -746,6 +1009,44 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_SIZE => {
             update_scroll(h);
+            place_find(h, v);
+            LRESULT(0)
+        }
+        // The find bar's buttons and boxes.
+        wm::WM_COMMAND => {
+            let (id, code) = (win::loword(w.0) as i32, win::hiword(w.0));
+            match (id, code) {
+                (ID_FIND, 0x0300) => {
+                    // As the words are typed, the next place they are is chosen.
+                    if let Some(f) = v.find.as_ref() {
+                        v.query = win::text_of(f.query);
+                    }
+                    v.hits_for = usize::MAX;
+                    v.model.caret = v.model.selection().0;
+                    v.model.anchor = v.model.caret;
+                    find_step(h, v, true);
+                }
+                (ID_NEXT, 0) => find_step(h, v, true),
+                (ID_PREV, 0) => find_step(h, v, false),
+                (ID_CLOSE, 0) => close_find(h, v),
+                (ID_REPLACE, 0) => {
+                    let with = v.find.as_ref().map(|f| win::text_of(f.with)).unwrap_or_default();
+                    let q = v.query.clone();
+                    v.model.replace_one(&q, &with, false);
+                    changed(h);
+                    say_count(v);
+                }
+                (ID_ALL, 0) => {
+                    let with = v.find.as_ref().map(|f| win::text_of(f.with)).unwrap_or_default();
+                    let q = v.query.clone();
+                    let n = v.model.replace_all(&q, &with, false);
+                    changed(h);
+                    if let Some(f) = v.find.as_ref() {
+                        win::set_text(f.count, &format!("{n} ✓"));
+                    }
+                }
+                _ => {}
+            }
             LRESULT(0)
         }
         wm::WM_KEYDOWN => {
