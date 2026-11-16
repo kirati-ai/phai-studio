@@ -1977,6 +1977,16 @@ fn main() {
         s.rebuild();
         s.refresh_props();
         // `--selftest out.phaiform`: draws, moves and sizes a control with the mouse messages a
+        // `--snaptest`: drags the sample's Save button a little off its row and leaves it held,
+        // so a picture shows the snapline it is drawn to.
+        if args.iter().any(|a| a == "--snaptest") {
+            if let Some(surface) = s.canvas.as_ref().map(|c| c.surface) {
+                let at = |x: i32, y: i32| LPARAM(((win::px(surface, y) as isize) << 16) | (win::px(surface, x) as isize & 0xFFFF));
+                wm::SendMessageW(surface, wm::WM_LBUTTONDOWN, Some(WPARAM(1)), Some(at(340, 312)));
+                wm::SendMessageW(surface, wm::WM_MOUSEMOVE, Some(WPARAM(1)), Some(at(300, 290)));
+                wm::SendMessageW(surface, wm::WM_MOUSEMOVE, Some(WPARAM(1)), Some(at(260, 315)));
+            }
+        }
         // person's hand would send, then saves - the designer checked end to end.
         if let Some(i) = args.iter().position(|a| a == "--selftest") {
             selftest(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("selftest.phaiform")));
@@ -2010,9 +2020,9 @@ fn main() {
         let quiet = std::env::var_os("PHAI_SHOT").is_some();
         let mut msg = wm::MSG::default();
         while wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
-            // Being photographed, a program takes no keys from the keyboard: a person typing elsewhere
-            // must not type into it. Tests send their keys straight to the window, past this queue.
-            if quiet && (wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) {
+            // Being photographed, a program takes no keys and no mouse: a person typing or moving the
+            // mouse elsewhere must not reach it. Tests send theirs straight to the window, past this queue.
+            if quiet && ((wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) || (wm::WM_MOUSEFIRST..=wm::WM_MOUSELAST).contains(&msg.message)) {
                 continue;
             }
             if let Some(cmd) = shortcut(&msg) {

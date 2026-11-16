@@ -1405,9 +1405,9 @@ pub fn run_loop(dialog: Option<HWND>) {
         let quiet = std::env::var_os("PHAI_SHOT").is_some();
         let mut msg = wm::MSG::default();
         while wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
-            // Being photographed, a program takes no keys from the keyboard: a person typing elsewhere
-            // must not type into it. Tests send their keys straight to the window, past this queue.
-            if quiet && (wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) {
+            // Being photographed, a program takes no keys and no mouse: a person typing or moving the
+            // mouse elsewhere must not reach it. Tests send theirs straight to the window, past this queue.
+            if quiet && ((wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) || (wm::WM_MOUSEFIRST..=wm::WM_MOUSELAST).contains(&msg.message)) {
                 continue;
             }
             if let Some(d) = dialog {
