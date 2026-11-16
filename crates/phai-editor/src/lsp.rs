@@ -166,8 +166,11 @@ impl Lsp {
                     "textDocument": {
                         "hover": { "contentFormat": ["plaintext", "markdown"] },
                         "completion": { "completionItem": { "snippetSupport": false } },
-                        "publishDiagnostics": {}
+                        "publishDiagnostics": {},
+                        "definition": { "linkSupport": true },
+                        "rename": { "prepareSupport": true }
                     },
+                    "workspace": { "workspaceEdit": { "documentChanges": true } },
                     "general": { "positionEncodings": ["utf-16"] }
                 },
                 "workspaceFolders": [{ "uri": uri_of(root), "name": "project" }],
@@ -222,6 +225,31 @@ impl Lsp {
 
     pub fn completion(&mut self, path: &Path, line: u32, character: u32) -> i64 {
         self.request("textDocument/completion", json!({ "textDocument": { "uri": uri_of(path) }, "position": { "line": line, "character": character } }))
+    }
+}
+
+impl Lsp {
+    fn at(&mut self, method: &str, path: &Path, line: u32, character: u32, extra: Value) -> i64 {
+        let mut params = json!({ "textDocument": { "uri": uri_of(path) }, "position": { "line": line, "character": character } });
+        if let (Value::Object(p), Value::Object(e)) = (&mut params, extra) {
+            p.extend(e);
+        }
+        self.request(method, params)
+    }
+
+    /// Where the thing at a place is defined (F12).
+    pub fn definition(&mut self, path: &Path, line: u32, character: u32) -> i64 {
+        self.at("textDocument/definition", path, line, character, json!({}))
+    }
+
+    /// Whether the thing at a place can be renamed, and the name it has now.
+    pub fn prepare_rename(&mut self, path: &Path, line: u32, character: u32) -> i64 {
+        self.at("textDocument/prepareRename", path, line, character, json!({}))
+    }
+
+    /// Every change that gives the thing at a place a new name, in every file.
+    pub fn rename(&mut self, path: &Path, line: u32, character: u32, new_name: &str) -> i64 {
+        self.at("textDocument/rename", path, line, character, json!({ "newName": new_name }))
     }
 }
 
@@ -336,6 +364,110 @@ pub fn completions_of(result: &Value, max: usize) -> Vec<Completion> {
     v.into_iter().map(|(_, c)| c).take(max).collect()
 }
 
+/// A place in a file: LSP lines and characters from the start to the end of it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Location {
+    pub path: PathBuf,
+    pub start: (u32, u32),
+    pub end: (u32, u32),
+}
+
+fn position(v: &Value) -> (u32, u32) {
+    (v["line"].as_u64().unwrap_or(0) as u32, v["character"].as_u64().unwrap_or(0) as u32)
+}
+
+/// The places of a definition answer: one `Location`, a list of them, or `LocationLink`s.
+pub fn locations_of(result: &Value) -> Vec<Location> {
+    let one = |v: &Value| -> Option<Location> {
+        let uri = v.get("targetUri").or(v.get("uri"))?.as_str()?;
+        let range = v.get("targetSelectionRange").or(v.get("range"))?;
+        Some(Location { path: path_of(uri)?, start: position(&range["start"]), end: position(&range["end"]) })
+    };
+    match result {
+        Value::Array(a) => a.iter().filter_map(one).collect(),
+        Value::Object(_) => one(result).into_iter().collect(),
+        _ => vec![],
+    }
+}
+
+/// One change in a file: the LSP range it replaces and what goes there.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextEdit {
+    pub start: (u32, u32),
+    pub end: (u32, u32),
+    pub text: String,
+}
+
+/// The changes of a `WorkspaceEdit`, by file - from `documentChanges` or `changes`. A file
+/// created, renamed or deleted is not a text change and is left out.
+pub fn workspace_edit_of(result: &Value) -> Vec<(PathBuf, Vec<TextEdit>)> {
+    let edits = |list: &Value| -> Vec<TextEdit> {
+        list.as_array()
+            .map(|a| a.iter().map(|e| TextEdit { start: position(&e["range"]["start"]), end: position(&e["range"]["end"]), text: e["newText"].as_str().unwrap_or_default().to_string() }).collect())
+            .unwrap_or_default()
+    };
+    let mut out: Vec<(PathBuf, Vec<TextEdit>)> = Vec::new();
+    let mut add = |uri: &str, list: Vec<TextEdit>| {
+        let Some(path) = path_of(uri) else { return };
+        match out.iter_mut().find(|(p, _)| same_path(p, &path)) {
+            Some((_, l)) => l.extend(list),
+            None => out.push((path, list)),
+        }
+    };
+    if let Some(changes) = result.get("documentChanges").and_then(|d| d.as_array()) {
+        for c in changes {
+            if let Some(uri) = c["textDocument"]["uri"].as_str() {
+                add(uri, edits(&c["edits"]));
+            }
+        }
+    } else if let Some(map) = result.get("changes").and_then(|c| c.as_object()) {
+        for (uri, list) in map {
+            add(uri, edits(list));
+        }
+    }
+    out
+}
+
+/// The name a `prepareRename` answer offers: its placeholder, or `None` when it cannot be renamed.
+/// `text` is the file, for an answer that gives only a range.
+pub fn rename_placeholder(result: &Value, text: &str) -> Option<String> {
+    if let Some(p) = result.get("placeholder").and_then(|p| p.as_str()) {
+        return Some(p.to_string());
+    }
+    let range = result.get("range").unwrap_or(result);
+    let (start, end) = (range.get("start")?, range.get("end")?);
+    let (sl, sc) = position(start);
+    let (el, ec) = position(end);
+    if sl != el {
+        return None;
+    }
+    let line = text.lines().nth(sl as usize)?;
+    Some(line[from_lsp(line, sc)..from_lsp(line, ec)].to_string())
+}
+
+/// Byte offsets in `text` of LSP edits: `(from, to, new text)`, last first, so each can be made in
+/// turn with the places still as the server saw them.
+pub fn edit_spans<'a>(text: &str, edits: &'a [TextEdit]) -> Vec<(usize, usize, &'a str)> {
+    let starts: Vec<usize> = std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
+    let offset = |(line, ch): (u32, u32)| -> usize {
+        let Some(&s) = starts.get(line as usize) else { return text.len() };
+        let end = text[s..].find('\n').map(|e| s + e).unwrap_or(text.len());
+        s + from_lsp(&text[s..end], ch)
+    };
+    let mut spans: Vec<(usize, usize, &str)> = edits.iter().map(|e| (offset(e.start), offset(e.end), e.text.as_str())).filter(|(a, b, _)| a <= b).collect();
+    spans.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+    spans
+}
+
+/// `text` with `edits` made.
+pub fn apply_edits(text: &str, edits: &[TextEdit]) -> String {
+    let mut out = text.to_string();
+    for (a, b, t) in edit_spans(text, edits) {
+        out.replace_range(a..b, t);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +505,35 @@ mod tests {
             {"label": "pop", "sortText": "a"}]}), 10);
         assert_eq!(c[0].label, "pop");
         assert_eq!(c[1].insert, "push(value)");
+    }
+
+    #[test]
+    fn definitions_and_renames_are_read_and_made() {
+        let link = json!([{"targetUri": "file:///d%3A/p/a.rs", "targetRange": {"start": {"line": 0, "character": 0}, "end": {"line": 9, "character": 1}},
+            "targetSelectionRange": {"start": {"line": 2, "character": 3}, "end": {"line": 2, "character": 7}}}]);
+        let l = locations_of(&link);
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].start, l[0].end), ((2, 3), (2, 7)));
+        let plain = json!({"uri": "file:///d%3A/p/b.rs", "range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 2}}});
+        assert!(same_path(&locations_of(&plain)[0].path, Path::new(r"D:\p\b.rs")));
+        assert!(locations_of(&Value::Null).is_empty());
+
+        let text = "fn go() {}\nfn main() { go(); go() }\n";
+        let r = |l, a, b| json!({"range": {"start": {"line": l, "character": a}, "end": {"line": l, "character": b}}, "newText": "run"});
+        let we = json!({"documentChanges": [{"textDocument": {"uri": "file:///d%3A/p/a.rs", "version": 3}, "edits": [r(1, 12, 14), r(0, 3, 5), r(1, 18, 20)]},
+            {"kind": "rename", "oldUri": "file:///x", "newUri": "file:///y"}]});
+        let files = workspace_edit_of(&we);
+        assert_eq!(files.len(), 1);
+        assert_eq!(apply_edits(text, &files[0].1), "fn run() {}\nfn main() { run(); run() }\n");
+        let old = json!({"changes": {"file:///d%3A/p/a.rs": [r(0, 3, 5)]}});
+        assert_eq!(workspace_edit_of(&old)[0].1.len(), 1);
+
+        assert_eq!(rename_placeholder(&json!({"range": {"start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 5}}, "placeholder": "go"}), text).as_deref(), Some("go"));
+        assert_eq!(rename_placeholder(&json!({"start": {"line": 1, "character": 3}, "end": {"line": 1, "character": 7}}), text).as_deref(), Some("main"));
+        assert_eq!(rename_placeholder(&Value::Null, text), None);
+        // Thai counts in UTF-16 units, as the server does.
+        let thai = "let ชื่อ = 1;";
+        let e = [TextEdit { start: (0, 4), end: (0, 8), text: "name".into() }];
+        assert_eq!(apply_edits(thai, &e), "let name = 1;");
     }
 }

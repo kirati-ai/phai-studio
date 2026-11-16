@@ -22,6 +22,10 @@ pub const CHANGED: u16 = 0x0300;
 pub const HOVER: u16 = 0x0301;
 /// Completion was asked for (Ctrl+Space, or `.` / `::` typed): see [`caret_lsp`] and [`show_completions`].
 pub const COMPLETE: u16 = 0x0302;
+/// Go To Definition was asked for (F12, or Ctrl+click) at [`caret_lsp`].
+pub const DEFINITION: u16 = 0x0303;
+/// Rename was asked for (F2) at [`caret_lsp`].
+pub const RENAME: u16 = 0x0304;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -601,6 +605,39 @@ pub fn caret_position(h: HWND) -> (usize, usize) {
     }).unwrap_or((1, 1))
 }
 
+/// Selects an LSP range - a definition's name - and shows it a few lines from the top.
+pub fn select_lsp(h: HWND, start: (u32, u32), end: (u32, u32)) {
+    if let Some(v) = view(h) {
+        let at = |(line, ch): (u32, u32)| {
+            let l = (line as usize).min(v.model.buf.line_count() - 1);
+            v.model.buf.line_start(l) + crate::lsp::from_lsp(&v.model.buf.line(l), ch)
+        };
+        v.model.anchor = at(start);
+        v.model.caret = at(end);
+        let line = start.0 as usize;
+        let page = v.visible_lines(h);
+        if line < v.top || line >= v.top + page {
+            v.top = line.saturating_sub(5);
+        }
+        update_scroll(h);
+        place_caret(h);
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+            let _ = km::SetFocus(Some(h));
+        }
+    }
+}
+
+/// Makes a language server's changes to the text, as one undo step; how many were made.
+pub fn apply_lsp_edits(h: HWND, edits: &[crate::lsp::TextEdit]) -> usize {
+    let Some(v) = view(h) else { return 0 };
+    let text = v.model.buf.text();
+    let spans = crate::lsp::edit_spans(&text, edits);
+    v.model.edit_many(&spans);
+    changed(h);
+    spans.len()
+}
+
 /// Puts the caret at a line and column from 1 - a double-clicked error - and shows it.
 pub fn go_to(h: HWND, line: usize, column: usize) {
     if let Some(v) = view(h) {
@@ -900,6 +937,14 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
         notify(h, COMPLETE);
         return true;
     }
+    if vk == 0x7B && !shift && !ctrl {
+        notify(h, DEFINITION);
+        return true;
+    }
+    if vk == 0x71 && !shift && !ctrl {
+        notify(h, RENAME);
+        return true;
+    }
     match (vk, ctrl) {
         (0x46, true) => {
             open_find(h, v, false);
@@ -1166,7 +1211,15 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let at = v.offset_at(dc, x, y);
                 Gdi::SelectObject(dc, old);
                 Gdi::ReleaseDC(Some(h), dc);
-                if msg == wm::WM_LBUTTONDOWN {
+                if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x11) < 0 {
+                    // Ctrl+click: to where the thing clicked is defined, as F12.
+                    let _ = km::SetFocus(Some(h));
+                    v.model.caret = at;
+                    v.model.anchor = at;
+                    moved(h);
+                    notify(h, DEFINITION);
+                    return LRESULT(0);
+                } else if msg == wm::WM_LBUTTONDOWN {
                     let _ = km::SetFocus(Some(h));
                     km::SetCapture(h);
                     v.dragging = true;

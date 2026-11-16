@@ -74,6 +74,21 @@ pub fn project_of(file: &Path) -> Option<PathBuf> {
     file.parent()?.ancestors().find(|d| d.join("Cargo.toml").is_file()).map(Path::to_path_buf)
 }
 
+/// The Cargo workspace a file is in: the folder whose `Cargo.toml` has `[workspace]` above it, or
+/// its own project when it is in none.
+pub fn workspace_of(file: &Path) -> Option<PathBuf> {
+    let own = project_of(file)?;
+    let top = own.ancestors().filter(|d| std::fs::read_to_string(d.join("Cargo.toml")).is_ok_and(|t| t.lines().any(|l| l.trim() == "[workspace]"))).last();
+    Some(top.map(Path::to_path_buf).unwrap_or(own))
+}
+
+/// Whether a file is someone else's code - the standard library, or a crate Cargo fetched - which
+/// the language server of the project that uses it already knows.
+pub fn is_library(file: &Path) -> bool {
+    let p = file.to_string_lossy().replace('/', "\\").to_ascii_lowercase();
+    ["\\toolchains\\", "\\registry\\src\\", "\\git\\checkouts\\"].iter().any(|m| p.contains(m))
+}
+
 #[derive(Deserialize)]
 struct Line {
     reason: String,

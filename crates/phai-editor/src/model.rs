@@ -151,6 +151,48 @@ impl Model {
         self.replace(text, false);
     }
 
+    /// Several changes at once - a rename - as one undo step: `(from, to, new text)` in byte
+    /// offsets of the text as it is, not overlapping. The caret keeps its place among them.
+    pub fn edit_many(&mut self, spans: &[(usize, usize, &str)]) {
+        if spans.is_empty() {
+            return;
+        }
+        let mut spans = spans.to_vec();
+        spans.sort_by_key(|s| s.0);
+        let lo = spans[0].0;
+        let hi = spans.iter().map(|s| s.1).max().unwrap_or(lo).min(self.buf.len());
+        let old = self.buf.slice(lo, hi);
+        let mut new = String::with_capacity(old.len());
+        let mut at = lo;
+        let mut caret = self.caret;
+        let shift = |c: usize, a: usize, b: usize, t: &str| -> usize {
+            if c >= b {
+                c + t.len() - (b - a)
+            } else if c > a {
+                a + t.len().min(c - a)
+            } else {
+                c
+            }
+        };
+        for &(a, b, t) in spans.iter().rev() {
+            caret = shift(caret, a, b, t);
+        }
+        for &(a, b, t) in &spans {
+            if a < at || b > hi {
+                continue;
+            }
+            new.push_str(&old[at - lo..a - lo]);
+            new.push_str(t);
+            at = b;
+        }
+        new.push_str(&old[at - lo..]);
+        self.anchor = lo;
+        self.caret = hi;
+        self.replace(&new, false);
+        self.caret = caret.min(self.buf.len());
+        self.anchor = self.caret;
+    }
+
     pub fn backspace(&mut self) {
         if self.caret == self.anchor {
             if self.caret == 0 {
@@ -593,5 +635,17 @@ fn main() {", "broken at the start, the brace was not before the caret");
         let mut m = Model::new("call some_fn(now)");
         m.select_word(7);
         assert_eq!(m.selected_text(), "some_fn");
+    }
+
+    #[test]
+    fn many_edits_are_one_undo_step_and_the_caret_keeps_its_place() {
+        let mut m = Model::new("go(); go(); go();");
+        m.caret = 7; // in the second `go`
+        m.anchor = 7;
+        m.edit_many(&[(12, 14, "run"), (0, 2, "run"), (6, 8, "run")]);
+        assert_eq!(m.buf.text(), "run(); run(); run();");
+        assert_eq!(m.caret, 8);
+        m.undo();
+        assert_eq!(m.buf.text(), "go(); go(); go();");
     }
 }
