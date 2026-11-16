@@ -18,6 +18,7 @@ mod preview;
 mod props;
 mod text;
 mod toolbox;
+mod autohide;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -67,6 +68,8 @@ const ID_VIEW_OUTPUT: i32 = 183;
 const ID_SPLIT_SIDE: i32 = 207;
 const ID_SPLIT_BOTTOM: i32 = 208;
 const ID_SPLIT_TOOLBOX: i32 = 209;
+/// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
+const TIMER_SLIDE: usize = 7301;
 /// File > Recent: `ID_RECENT + n`, newest first.
 const ID_RECENT: i32 = 160;
 /// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
@@ -204,6 +207,15 @@ pub struct Studio {
     side: HWND,
     side_split: HWND,
     toolbox_split: HWND,
+    /// Auto Hide: the toolbox, and the right-hand panes (as one group), each hidden at its edge.
+    auto_left: bool,
+    auto_right: bool,
+    /// Which right-hand panes were showing when the group's pin was pulled.
+    right_saved: (bool, bool),
+    strip_left: HWND,
+    strip_right: HWND,
+    /// The auto-hidden pane slid out over the form now.
+    sliding: Option<Pane>,
     /// Design pixels: the toolbox's width.
     toolbox_w: i32,
     bottom_split: HWND,
@@ -1644,8 +1656,214 @@ impl Studio {
         self.layout.items.iter_mut().find(|(w, _)| *w == h).map(|(_, i)| i)
     }
 
+    /// Whether a pane hides itself at its edge.
+    fn is_auto(&self, pane: Pane) -> bool {
+        match pane {
+            Pane::Toolbox => self.auto_left,
+            Pane::Explorer | Pane::Properties => self.auto_right,
+            Pane::Output => false,
+        }
+    }
+
+    /// A pane caption's button: ▾ the Window Position menu, the pin Auto Hide, × Close.
+    pub fn pane_button(&mut self, pane: Pane, code: u16, caption: HWND) {
+        match code {
+            controls::CAPTION_CLOSE => self.show_pane(pane, false),
+            controls::CAPTION_PIN => self.set_auto_hide(pane, !self.is_auto(pane)),
+            controls::CAPTION_MENU => {
+                const FLOAT: usize = 1;
+                const DOCK: usize = 2;
+                const AUTO: usize = 3;
+                const HIDE: usize = 4;
+                let auto = self.is_auto(pane);
+                unsafe {
+                    let m = wm::CreatePopupMenu().unwrap_or_default();
+                    let item = |id: usize, label: &str, flags: wm::MENU_ITEM_FLAGS| {
+                        let w = wide(label);
+                        let _ = wm::AppendMenuW(m, flags, id, PCWSTR(w.as_ptr()));
+                    };
+                    item(FLOAT, t("Float"), wm::MF_STRING | wm::MF_GRAYED);
+                    item(DOCK, t("Dock"), wm::MF_STRING | if auto { wm::MF_UNCHECKED } else { wm::MF_CHECKED });
+                    item(AUTO, t("Auto Hide"), wm::MF_STRING | if auto { wm::MF_CHECKED } else { wm::MF_UNCHECKED });
+                    item(HIDE, t("Hide"), wm::MF_STRING);
+                    let (x, y) = controls::caption_menu_point(caption);
+                    let chosen = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, self.hwnd, None).0 as usize;
+                    let _ = wm::DestroyMenu(m);
+                    match chosen {
+                        DOCK => self.set_auto_hide(pane, false),
+                        AUTO => self.set_auto_hide(pane, true),
+                        HIDE => self.show_pane(pane, false),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Auto Hide on or off: the pane gives its room back to the form and becomes a tab at its edge,
+    /// or comes back to stay.
+    pub fn set_auto_hide(&mut self, pane: Pane, on: bool) {
+        self.slide_in();
+        match pane {
+            Pane::Toolbox => {
+                self.auto_left = on;
+                let (tb, split, w, shown) = (self.toolbox, self.toolbox_split, self.toolbox_w, self.toolbox_on);
+                if let Some(i) = self.item(tb) {
+                    i.bounds.w = if on || !shown { 0 } else { w };
+                }
+                if let Some(i) = self.item(split) {
+                    i.bounds.w = if on || !shown { 0 } else { 6 };
+                }
+                win::show(tb, !on && shown);
+                win::show(split, !on && shown);
+                controls::caption_set_auto_hidden(toolbox::caption_of(tb), on);
+            }
+            Pane::Explorer | Pane::Properties => {
+                if on == self.auto_right {
+                    return;
+                }
+                self.auto_right = on;
+                let (side, split, w) = (self.side, self.side_split, self.side_w);
+                if on {
+                    self.right_saved = explorer::side_panes(side);
+                } else {
+                    explorer::show_side_panes(side, self.right_saved.0, self.right_saved.1);
+                }
+                if let Some(i) = self.item(side) {
+                    i.bounds.w = if on { 0 } else { w };
+                }
+                if let Some(i) = self.item(split) {
+                    i.bounds.w = if on { 0 } else { 6 };
+                }
+                win::show(side, !on);
+                win::show(split, !on);
+                if let Some((a, b)) = explorer::side_captions(side) {
+                    controls::caption_set_auto_hidden(a, on);
+                    controls::caption_set_auto_hidden(b, on);
+                }
+            }
+            Pane::Output => {}
+        }
+        self.refresh_strips();
+        self.layout.apply(self.hwnd);
+        self.rebuild_menu();
+    }
+
+    /// The strips' tabs, and room for a strip only while it has some.
+    fn refresh_strips(&mut self) {
+        let left: Vec<Pane> = if self.auto_left && self.toolbox_on { vec![Pane::Toolbox] } else { vec![] };
+        let mut right: Vec<Pane> = Vec::new();
+        if self.auto_right {
+            if self.right_saved.0 {
+                right.push(Pane::Explorer);
+            }
+            if self.right_saved.1 {
+                right.push(Pane::Properties);
+            }
+        }
+        for (strip, tabs) in [(self.strip_left, left), (self.strip_right, right)] {
+            let any = !tabs.is_empty();
+            autohide::set_tabs(strip, tabs);
+            if let Some(i) = self.item(strip) {
+                i.bounds.w = if any { autohide::WIDTH } else { 0 };
+            }
+            win::show(strip, any);
+        }
+    }
+
+    /// An auto-hidden pane, slid out over the form beside its strip, until the pointer and the
+    /// focus leave it.
+    pub fn slide_out(&mut self, pane: Pane) {
+        if self.sliding == Some(pane) {
+            return;
+        }
+        self.slide_in();
+        let strip = if pane == Pane::Toolbox { self.strip_left } else { self.strip_right };
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetWindowRect(strip, &mut r);
+            let mut pts = [windows::Win32::Foundation::POINT { x: r.left, y: r.top }, windows::Win32::Foundation::POINT { x: r.right, y: r.bottom }];
+            Gdi::MapWindowPoints(None, Some(self.hwnd), &mut pts);
+            r = RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y };
+            // Siblings must not paint over the pane that lies across them.
+            for (h, _) in &self.layout.items {
+                let st = wm::GetWindowLongW(*h, wm::GWL_STYLE) as u32;
+                wm::SetWindowLongW(*h, wm::GWL_STYLE, (st | wm::WS_CLIPSIBLINGS.0) as i32);
+            }
+        }
+        let (h, x, w) = if pane == Pane::Toolbox {
+            let w = win::px(self.hwnd, self.toolbox_w);
+            (self.toolbox, r.right, w)
+        } else {
+            explorer::show_side_panes(self.side, pane == Pane::Explorer, pane == Pane::Properties);
+            let w = win::px(self.hwnd, self.side_w);
+            (self.side, r.left - w, w)
+        };
+        unsafe {
+            let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), x, r.top, w, r.bottom - r.top, wm::SWP_SHOWWINDOW);
+            wm::SetTimer(Some(self.hwnd), TIMER_SLIDE, 250, None);
+        }
+        self.sliding = Some(pane);
+    }
+
+    /// The pane slid out goes back to its strip.
+    fn slide_in(&mut self) {
+        let Some(pane) = self.sliding.take() else { return };
+        unsafe {
+            let _ = wm::KillTimer(Some(self.hwnd), TIMER_SLIDE);
+        }
+        if pane == Pane::Toolbox {
+            win::show(self.toolbox, false);
+        } else {
+            win::show(self.side, false);
+            explorer::show_side_panes(self.side, self.right_saved.0, self.right_saved.1);
+        }
+    }
+
+    /// The slide timer: the pane stays while the pointer is over it or its strip, or the focus is
+    /// in it. A program being photographed ignores the real pointer.
+    fn slide_check(&mut self) {
+        let Some(pane) = self.sliding else { return };
+        if std::env::var_os("PHAI_SHOT").is_some() {
+            return;
+        }
+        let (h, strip) = if pane == Pane::Toolbox { (self.toolbox, self.strip_left) } else { (self.side, self.strip_right) };
+        unsafe {
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            let _ = wm::GetCursorPos(&mut pt);
+            let inside = |w: HWND| {
+                let mut r = RECT::default();
+                let _ = wm::GetWindowRect(w, &mut r);
+                pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom
+            };
+            let focus = km::GetFocus();
+            let focused = !focus.is_invalid() && (focus == h || wm::IsChild(h, focus).as_bool());
+            let held = km::GetKeyState(0x01) < 0 || !km::GetCapture().is_invalid();
+            if !(inside(h) || inside(strip) || focused || held) {
+                self.slide_in();
+            }
+        }
+    }
+
     /// Shows or hides a docked pane, as the View menu and the panes' close buttons do.
     pub fn show_pane(&mut self, pane: Pane, on: bool) {
+        // An auto-hidden pane asked for slides out; one closed stops hiding itself first.
+        if self.is_auto(pane) {
+            if on {
+                if pane == Pane::Toolbox {
+                    self.toolbox_on = true;
+                } else if pane == Pane::Explorer {
+                    self.right_saved.0 = true;
+                } else {
+                    self.right_saved.1 = true;
+                }
+                self.refresh_strips();
+                self.layout.apply(self.hwnd);
+                return self.slide_out(pane);
+            }
+            self.set_auto_hide(pane, false);
+        }
         match pane {
             Pane::Toolbox => {
                 self.toolbox_on = on;
@@ -2090,6 +2308,10 @@ fn file_dialog(owner: HWND, save: bool, description: &str, pattern: &str, sugges
 extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     let Some(s) = studio().filter(|s| s.hwnd == hwnd) else { return win::def(hwnd, msg, w, l) };
     match msg {
+        wm::WM_TIMER if w.0 == TIMER_SLIDE => {
+            s.slide_check();
+            LRESULT(0)
+        }
         wm::WM_SIZE => {
             s.layout.apply(hwnd);
             LRESULT(0)
@@ -2351,6 +2573,12 @@ fn main() {
             side: HWND::default(),
             side_split: HWND::default(),
             toolbox_split,
+            auto_left: false,
+            auto_right: false,
+            right_saved: (true, true),
+            strip_left: HWND::default(),
+            strip_right: HWND::default(),
+            sliding: None,
             toolbox_w: toolbox::WIDTH,
             bottom_split: HWND::default(),
             side_w: 280,
@@ -2384,6 +2612,13 @@ fn main() {
         s.bottom_split = bottom_split;
         s.layout.add(side, Item { bounds: Rect::new(0, 0, 280, 0), dock: Dock::Right, anchor: Anchor::default() });
         s.layout.add(side_split, Item { bounds: Rect::new(0, 0, 6, 0), dock: Dock::Right, anchor: Anchor::default() });
+        // Auto Hide's strips, empty until a pane's pin is pulled.
+        let strip_left = autohide::new(hwnd, true, font);
+        let strip_right = autohide::new(hwnd, false, font);
+        s.strip_left = strip_left;
+        s.strip_right = strip_right;
+        s.layout.add(strip_left, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Left, anchor: Anchor::default() });
+        s.layout.add(strip_right, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Right, anchor: Anchor::default() });
         s.layout.add(tabbar, Item { bounds: Rect::new(0, 0, 0, 30), dock: Dock::Top, anchor: Anchor::default() });
         s.layout.add(canvas.hwnd, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
         s.props = Some(props);
@@ -2396,7 +2631,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -2444,6 +2679,15 @@ fn main() {
         s.rebuild();
         s.refresh_props();
         // `--selftest out.phaiform`: draws, moves and sizes a control with the mouse messages a
+        // `--autohide`: the toolbox and the right-hand panes pinned away to their edges; `--slide N`
+        // then slides one out (0 the toolbox, 1 the project, 2 the properties) - checked by picture.
+        if args.iter().any(|a| a == "--autohide") {
+            s.set_auto_hide(Pane::Toolbox, true);
+            s.set_auto_hide(Pane::Properties, true);
+            if let Some(n) = args.iter().position(|a| a == "--slide").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+                s.slide_out([Pane::Toolbox, Pane::Explorer, Pane::Properties][n.min(2)]);
+            }
+        }
         // `--snaptest`: drags the sample's Save button a little off its row and leaves it held,
         // so a picture shows the snapline it is drawn to.
         if args.iter().any(|a| a == "--snaptest") {

@@ -345,13 +345,18 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
     }
 }
 
-// --- panes: a caption with a close button, and a splitter ---------------------------------------
+// --- panes: a caption with its buttons, and a splitter ------------------------------------------
 //
 // What makes a panel a docked pane, as Visual Studio's tool windows are: a caption naming it with
-// a close button, and a splitter beside it to drag its size.
+// three buttons - Window Position (▾), Auto Hide (the pin) and Close - and a splitter beside it to
+// drag its size.
 
 /// A caption's close button was pressed: `WM_COMMAND` with the caption's id and this high word.
 pub const CAPTION_CLOSE: u16 = 1;
+/// Its ▾ was pressed: the owner shows the Window Position menu under [`caption_menu_point`].
+pub const CAPTION_MENU: u16 = 2;
+/// Its pin was pressed: Auto Hide, on or off.
+pub const CAPTION_PIN: u16 = 3;
 
 /// Sent while a splitter is dragged: `WPARAM` its id, `LPARAM` how many device pixels it moved
 /// since the last one - right or down positive.
@@ -359,24 +364,50 @@ pub const WM_SPLIT: u32 = wm::WM_APP + 0x3A20;
 
 struct Caption {
     font: HFONT,
-    hot: bool,
+    /// The button under the pointer: 0 menu, 1 pin, 2 close.
+    hot: Option<usize>,
+    /// Hidden on its own when not in use: the pin lies on its side.
+    auto_hidden: bool,
 }
 
-/// A pane's caption: its name on the left in the muted colour, a close glyph on the right.
+/// A pane's caption: its name on the left in the muted colour, ▾, the pin and × on the right.
 pub fn caption(parent: HWND, title: &str, id: i32, f: HFONT) -> HWND {
     let h = create(parent, "PhaiCaption", Some(caption_proc), title, id, f, WINDOW_EX_STYLE(0));
-    win::set_state(h, Box::new(Caption { font: f, hot: false }));
+    win::set_state(h, Box::new(Caption { font: f, hot: None, auto_hidden: false }));
     mark(h, Kind::Label);
     h
 }
 
-fn close_box(h: HWND) -> RECT {
+/// Shows the pin as Visual Studio does: upright while the pane stays, on its side while it hides
+/// itself.
+pub fn caption_set_auto_hidden(h: HWND, on: bool) {
+    if let Some(s) = unsafe { win::state::<Caption>(h) } {
+        s.auto_hidden = on;
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// The caption's buttons, left to right: ▾, the pin, ×.
+fn caption_boxes(h: HWND) -> [RECT; 3] {
     let mut r = RECT::default();
     unsafe {
         let _ = wm::GetClientRect(h, &mut r);
     }
-    let s = r.bottom - r.top;
-    RECT { left: r.right - s, ..r }
+    let s = (r.bottom - r.top - 1).max(1);
+    let b = |k: i32| RECT { left: r.right - s * (3 - k), right: r.right - s * (2 - k), top: r.top, bottom: r.top + s };
+    [b(0), b(1), b(2)]
+}
+
+/// Where the Window Position menu opens: under the ▾, in screen pixels.
+pub fn caption_menu_point(h: HWND) -> (i32, i32) {
+    let m = caption_boxes(h)[0];
+    let mut pt = windows::Win32::Foundation::POINT { x: m.left, y: m.bottom };
+    unsafe {
+        let _ = Gdi::ClientToScreen(h, &mut pt);
+    }
+    (pt.x, pt.y)
 }
 
 extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -398,14 +429,10 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
                 let rule = RECT { top: r.bottom - 1, ..r };
                 win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
                 let muted = crate::theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
-                let mut tr = RECT { left: px(h, 10), right: close_box(h).left, ..r };
+                let boxes = caption_boxes(h);
+                let mut tr = RECT { left: px(h, 10), right: boxes[0].left, ..r };
                 win::draw_text(dc, h, &win::text_of(h), &mut tr, muted, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
-                // The close glyph, shaded under the pointer.
-                let cb = close_box(h);
-                if s.hot {
-                    let hover = crate::theme::style("button", State { hover: true, ..Default::default() });
-                    win::fill(dc, &cb, hover.background_or(Color::rgb(0xe7, 0xf3, 0xef)));
-                }
+                // The buttons' glyphs, the one under the pointer shaded.
                 let mut lf = Gdi::LOGFONTW { lfHeight: -px(h, 9), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::ANTIALIASED_QUALITY, ..Default::default() };
                 for (i, u) in "Segoe Fluent Icons".encode_utf16().enumerate() {
                     lf.lfFaceName[i] = u;
@@ -414,9 +441,16 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
                 let old = Gdi::SelectObject(dc, icons.into());
                 Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
-                let mut one = [0xE8BBu16];
-                let mut gr = cb;
-                Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                let glyphs = [0xE70Du16, if s.auto_hidden { 0xE77A } else { 0xE718 }, 0xE8BB];
+                for (k, b) in boxes.iter().enumerate() {
+                    if s.hot == Some(k) {
+                        let hover = crate::theme::style("button", State { hover: true, ..Default::default() });
+                        win::fill(dc, b, hover.background_or(Color::rgb(0xe7, 0xf3, 0xef)));
+                    }
+                    let mut one = [glyphs[k]];
+                    let mut gr = *b;
+                    Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                }
                 Gdi::SelectObject(dc, old);
                 let _ = Gdi::DeleteObject(icons.into());
                 let _ = Gdi::EndPaint(h, &ps);
@@ -424,8 +458,7 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
             }
             wm::WM_MOUSEMOVE => {
                 let (x, y) = win::point_of(l);
-                let cb = close_box(h);
-                let hot = x >= cb.left && x < cb.right && y >= cb.top && y < cb.bottom;
+                let hot = caption_boxes(h).iter().position(|b| x >= b.left && x < b.right && y >= b.top && y < b.bottom);
                 if hot != s.hot {
                     s.hot = hot;
                     let mut t = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: h, dwHoverTime: 0 };
@@ -436,14 +469,15 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
             }
             0x02A3 => {
                 // WM_MOUSELEAVE
-                s.hot = false;
+                s.hot = None;
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
                 LRESULT(0)
             }
-            wm::WM_LBUTTONUP if s.hot => {
+            wm::WM_LBUTTONUP if s.hot.is_some() => {
+                let code = [CAPTION_MENU, CAPTION_PIN, CAPTION_CLOSE][s.hot.unwrap_or(2)];
                 let id = wm::GetDlgCtrlID(h) as usize;
                 if let Ok(p) = wm::GetParent(h) {
-                    wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((CAPTION_CLOSE as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
+                    wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((code as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
                 }
                 LRESULT(0)
             }
