@@ -1,0 +1,30 @@
+[package]
+name = "phai-ui"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Win32 windows the Windows 11 way, themed with CSS, Thai and English built in"
+
+[lib]
+name = "phai_ui"
+path = "src/lib.rs"
+
+[features]
+default = ["shot"]
+# Photographs a window to PNG (PrintWindow): bugs in how a window looks do not show in code.
+shot = ["dep:png"]
+
+[dependencies]
+png = { workspace = true, optional = true }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dwm",
+    "Win32_Storage_Xps",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

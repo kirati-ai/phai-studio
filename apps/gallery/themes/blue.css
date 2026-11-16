@@ -1,0 +1,40 @@
+/* An example: a whole new look from one file. Run `phai-gallery --css themes/blue.css`, change a
+   colour here and save - the window follows. */
+
+:root {
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --tint: #eaf1ff;
+  --surface: #f7f9fc;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #cbd5e1;
+}
+
+window          { background: var(--surface); color: var(--text); }
+label           { color: var(--text); }
+menubar         { background: var(--surface); color: var(--text); }
+menubar:hover   { background: var(--tint); }
+
+button          { background: #ffffff; color: var(--text); border-color: var(--border); border-radius: 10px; }
+button:hover    { background: var(--tint); border-color: var(--accent); color: var(--accent-dark); }
+button:pressed  { background: #dbe7ff; border-color: var(--accent-dark); }
+button.primary  { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); color: #ffffff; }
+button:disabled { background: #eef2f7; color: #94a3b8; border-color: #e2e8f0; }
+
+checkbox, radio         { background: #ffffff; color: var(--text); border-color: #94a3b8; accent-color: #ffffff; border-radius: 4px; }
+checkbox:hover, radio:hover { border-color: var(--accent); background: var(--tint); }
+checkbox:checked, radio:checked { background: var(--accent); border-color: var(--accent); }
+checkbox:disabled, radio:disabled { color: #94a3b8; border-color: #e2e8f0; background: #eef2f7; }
+
+edit            { background: #ffffff; color: var(--text); border-color: var(--border); }
+edit:focus      { border-color: var(--accent); }
+combo           { background: #ffffff; color: var(--text); }
+list            { background: #ffffff; color: var(--text); }
+list:selected   { background: var(--tint); color: var(--accent-dark); }
+group           { color: var(--accent-dark); border-color: var(--border); border-radius: 10px; }
+tabs            { background: var(--surface); color: var(--muted); border-color: var(--border); accent-color: var(--accent); }
+tabs:selected   { color: var(--text); }
+toolbar         { icon-color: var(--accent-dark); }
+statusbar       { background: var(--accent); color: #ffffff; border-color: var(--accent); }
