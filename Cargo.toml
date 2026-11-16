@@ -7,6 +7,8 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 license = "MIT"
+# The GitHub address, once the repository exists: new projects then take phai-ui from it.
+repository = ""
 authors = ["Monrak Net"]
 
 # One `windows` for every crate, as in PhaiDesk: crates written apart do not each pin another.

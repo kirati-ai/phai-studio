@@ -14,6 +14,18 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 
 /// Posted to the window when a build ends; `LPARAM` is a `Box<Outcome>` to take back.
 pub const WM_BUILD_DONE: u32 = wm::WM_APP + 0x0B01;
+/// Posted for each line Cargo says while it works; `LPARAM` is a `Box<String>` to take back.
+pub const WM_BUILD_LINE: u32 = wm::WM_APP + 0x0B02;
+
+/// A line to the window, as it comes.
+fn post_line(target: isize, line: String) {
+    let boxed = Box::into_raw(Box::new(line));
+    unsafe {
+        if wm::PostMessageW(Some(HWND(target as *mut _)), WM_BUILD_LINE, WPARAM(0), LPARAM(boxed as isize)).is_err() {
+            drop(Box::from_raw(boxed));
+        }
+    }
+}
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -147,7 +159,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 }
 
 /// Builds `project` on another thread and posts [`WM_BUILD_DONE`] to `window` when it ends.
-pub fn build(window: HWND, project: PathBuf, then_run: bool) {
+pub fn build(window: HWND, project: PathBuf, then_run: bool, release: bool) {
     let target = window.0 as isize;
     std::thread::spawn(move || {
         let started = std::time::Instant::now();
@@ -156,8 +168,14 @@ pub fn build(window: HWND, project: PathBuf, then_run: bool) {
             None => out.no_cargo = true,
             Some(cargo) => {
                 let manifest = project.join("Cargo.toml");
+                let mut args = vec!["build", "--message-format=json"];
+                if release {
+                    args.push("--release");
+                }
+                post_line(target, format!("> cargo {} --manifest-path {}", args.join(" "), manifest.display()));
                 let child = Command::new(cargo)
-                    .args(["build", "--message-format=json", "--manifest-path"])
+                    .args(&args)
+                    .arg("--manifest-path")
                     .arg(&manifest)
                     .current_dir(&project)
                     .stdout(Stdio::piped())
@@ -169,7 +187,16 @@ pub fn build(window: HWND, project: PathBuf, then_run: bool) {
                     Ok(mut child) => {
                         // Cargo's progress and its own errors come on stderr; read it alongside.
                         let stderr = child.stderr.take();
-                        let errs = std::thread::spawn(move || stderr.map(|s| BufReader::new(s).lines().map_while(Result::ok).collect::<Vec<_>>()).unwrap_or_default());
+                        let errs = std::thread::spawn(move || {
+                            let mut kept = Vec::new();
+                            if let Some(s) = stderr {
+                                for line in BufReader::new(s).lines().map_while(Result::ok) {
+                                    post_line(target, line.clone());
+                                    kept.push(line);
+                                }
+                            }
+                            kept
+                        });
                         let mut other = Vec::new();
                         if let Some(stdout) = child.stdout.take() {
                             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
