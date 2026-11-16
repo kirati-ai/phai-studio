@@ -10,7 +10,7 @@
 ตรวจด้วยภาพทุกครั้ง:
 ```
 cargo build -p phai-gallery
-target\debug\phai-gallery.exe --shot out.png [--dark] [--thai] [--tab 1] [--css apps\gallery	hemeslue.css]
+target\debug\phai-gallery.exe --shot out.png [--dark] [--thai] [--tab 1] [--css apps\gallery\themes\blue.css]
 ```
 repo ยังมีแค่ในเครื่อง (ยังไม่มี GitHub)
 
