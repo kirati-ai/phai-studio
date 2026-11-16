@@ -218,6 +218,18 @@ pub static THAI: &[(&str, &str)] = &[
     ("Find All References", "ค้นหาการอ้างอิงทั้งหมด"),
     ("Toggle Comment", "สลับคอมเมนต์"),
     ("{0} references in {1} files", "พบ {0} การอ้างอิงใน {1} ไฟล์"),
+    ("Common controls", "คอนโทรลทั่วไป"),
+    ("Containers", "ตัวบรรจุ"),
+    ("Menus and toolbars", "เมนูและแถบเครื่องมือ"),
+    ("Search Toolbox", "ค้นหาในกล่องเครื่องมือ"),
+    ("Categorized", "ตามหมวด"),
+    ("Alphabetical", "ตามตัวอักษร"),
+    ("Location", "ตำแหน่ง"),
+    ("Size", "ขนาด"),
+    ("Font", "ฟอนต์"),
+    ("Its words' size and weight - Segoe UI, 9pt is Windows' own.", "ขนาดและน้ำหนักของตัวอักษร - Segoe UI, 9pt คือของ Windows"),
+    ("Its top-left corner from the form's, at 100% scale.", "มุมซ้ายบนนับจากของฟอร์ม ที่สเกล 100%"),
+    ("Its width and height, at 100% scale.", "ความกว้างและความสูง ที่สเกล 100%"),
 ];
 
 #[cfg(test)]

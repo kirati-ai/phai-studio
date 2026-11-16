@@ -1,5 +1,7 @@
-//! The properties pane, as Visual Studio's: an object chooser, Properties | Events, and a grid -
-//! name and value - in categories that fold, or alphabetical. Each value has the editor its kind
+//! The properties pane, as Visual Studio's: an object chooser (its name in bold, its kind beside),
+//! a row of icons - Categorized, Alphabetical, Properties, Events - and a grid of name and value,
+//! in categories that fold, or alphabetical. A value set apart from its default shows in bold;
+//! Location, Size and Font fold open into their parts. Each value has the editor its kind
 //! wants: a box for words and numbers, a list for a choice, a click for true or false, a picker
 //! for anchors, Windows' colour dialog for colours, "…" for lists and files. Below, what the chosen
 //! property is for.
@@ -49,6 +51,14 @@ pub enum Key {
     Min,
     Max,
     Value,
+    /// "x, y" - folds open into X and Y.
+    Location,
+    /// "w, h" - folds open into Width and Height.
+    Size,
+    /// The form's "w, h".
+    FormSize,
+    /// "Segoe UI, 9pt, Bold" - folds open into Font size and Bold.
+    FontAll,
 }
 
 /// How a value is edited.
@@ -75,6 +85,52 @@ struct Prop {
     value: String,
     ed: Ed,
     help: &'static str,
+    /// The composite property this one is a part of - shown only when that is open.
+    parent: Option<Key>,
+    /// Set apart from its default: shown in bold, as Visual Studio shows it.
+    set: bool,
+}
+
+/// Whether a value is other than what a new control has.
+fn is_set(key: Key, value: &str) -> bool {
+    match key {
+        Key::FormName | Key::FormTitle | Key::FormSize | Key::FormWidth | Key::FormHeight | Key::Id | Key::Location | Key::Size | Key::X | Key::Y | Key::W | Key::H => true,
+        Key::Bold | Key::Checked | Key::Password => value == "True",
+        Key::Enabled | Key::Visible => value == "False",
+        Key::Group | Key::Min | Key::Value => value != "0",
+        Key::Max => value != "100",
+        Key::Dock => value != "none",
+        Key::Anchor => value != "left top",
+        Key::FontAll => value.contains("Bold") || !value.ends_with(", 9pt"),
+        _ => !value.trim().is_empty(),
+    }
+}
+
+/// The two numbers of "a, b" - a Location or a Size typed in.
+pub fn pair(text: &str) -> Option<(i32, i32)> {
+    let mut it = text.split([',', ';', 'x', '×', ' ']).map(str::trim).filter(|s| !s.is_empty()).map(|s| s.parse::<i32>());
+    match (it.next(), it.next(), it.next()) {
+        (Some(Ok(a)), Some(Ok(b)), None) => Some((a, b)),
+        _ => None,
+    }
+}
+
+/// The size and boldness of "Segoe UI, 10pt, Bold" - a Font typed in. A bare number is points.
+pub fn font_spec(text: &str) -> Option<(Option<i32>, bool)> {
+    let mut size = None;
+    let mut bold = false;
+    for part in text.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let low = part.to_lowercase();
+        if low == "bold" {
+            bold = true;
+        } else if let Ok(n) = low.trim_end_matches("pt").trim().parse::<i32>() {
+            if !(6..=48).contains(&n) {
+                return None;
+            }
+            size = Some(n);
+        }
+    }
+    Some((size, bold))
 }
 
 /// A row of the grid as shown: a category's heading, or a property.
@@ -87,16 +143,18 @@ enum Line {
 pub struct Props {
     pub hwnd: HWND,
     chooser: HWND,
-    modes: HWND,
+    /// Categorized, Alphabetical | Properties, Events.
+    bar: HWND,
+    /// The name shown when the pane is about a code file.
     heading: HWND,
-    sort_cat: HWND,
-    sort_az: HWND,
     grid: HWND,
     help_name: HWND,
     help_text: HWND,
     mode: usize,
     alphabetical: bool,
     folded: Vec<&'static str>,
+    /// The composite properties folded open.
+    expanded: Vec<Key>,
     props: Vec<Prop>,
     lines: Vec<Line>,
     chosen: Option<usize>,
@@ -109,9 +167,21 @@ pub struct Props {
 }
 
 const ID_CHOOSER: i32 = 3300;
-const ID_MODES: i32 = 3301;
+const ID_BAR: i32 = 3301;
 const ID_SORT_CAT: i32 = 3302;
 const ID_SORT_AZ: i32 = 3303;
+const ID_MODE_PROPS: i32 = 3305;
+const ID_MODE_EVENTS: i32 = 3306;
+
+fn bar_items() -> Vec<(i32, &'static str, u16)> {
+    vec![
+        (ID_SORT_CAT, t("Categorized"), 0xE8A9),
+        (ID_SORT_AZ, t("Alphabetical"), 0xE8CB),
+        (0, "", 0),
+        (ID_MODE_PROPS, t("Properties"), 0xE713),
+        (ID_MODE_EVENTS, t("Events"), 0xE945),
+    ]
+}
 const ID_EDITOR: i32 = 3304;
 /// Posted to the pane to fill itself again after an edit, once the editor's message is done.
 const WM_REFILL: u32 = wm::WM_APP + 0x0D01;
@@ -151,11 +221,14 @@ impl Props {
         let hwnd = unsafe {
             wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
-        let chooser = win::combo(hwnd, ID_CHOOSER, font, &[]);
-        let modes = phai_ui::controls::tabs(hwnd, ID_MODES, font, &[t("Properties"), t("Events")]);
+        // The chooser draws each object as Visual Studio does: its name in bold, its kind beside.
+        const CBS_DROPDOWNLIST: u32 = 0x0003;
+        const CBS_OWNERDRAWFIXED: u32 = 0x0010;
+        const CBS_HASSTRINGS: u32 = 0x0200;
+        let chooser = win::child(hwnd, "COMBOBOX", "", wm::WINDOW_STYLE(CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS) | wm::WS_TABSTOP | wm::WS_VSCROLL, Default::default(), ID_CHOOSER, font);
+        win::register_kind(chooser, win::Kind::Combo);
+        let bar = win::toolbar(hwnd, ID_BAR, &bar_items());
         let heading = win::label(hwnd, "", 0, font);
-        let sort_cat = win::button(hwnd, "☰", ID_SORT_CAT, font, false);
-        let sort_az = win::button(hwnd, "A-Z", ID_SORT_AZ, font, false);
         let grid_class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiPropGrid", Some(grid_proc), None);
         let grid = unsafe {
             wm::CreateWindowExW(Default::default(), PCWSTR(grid_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_VSCROLL, 0, 0, 10, 10, Some(hwnd), Some(HMENU(3310 as *mut _)), Some(win::instance()), None).unwrap_or_default()
@@ -165,14 +238,17 @@ impl Props {
         let help_text = win::child(hwnd, "STATIC", "", wm::WINDOW_STYLE(0x80), Default::default(), 0, font);
         win::register_kind(help_text, win::Kind::Label);
         win::set_css(help_text, "muted", "");
-        Props { hwnd, chooser, modes, heading, sort_cat, sort_az, grid, help_name, help_text, mode: 0, alphabetical: false, folded: vec![], props: vec![], lines: vec![], chosen: None, top: 0, editor: None, font, bold, filling: false }
+        let p = Props { hwnd, chooser, bar, heading, grid, help_name, help_text, mode: 0, alphabetical: false, folded: vec![], expanded: vec![], props: vec![], lines: vec![], chosen: None, top: 0, editor: None, font, bold, filling: false };
+        p.say_bar();
+        p
     }
 
     /// The properties of what is chosen, from the model.
     fn gather(&self) -> Vec<Prop> {
         let Some(s) = studio() else { return vec![] };
         let f = &s.doc.form;
-        let p = |category, key, name, value: String, ed, help| Prop { category, key, name, value, ed, help };
+        let p = |category, key, name, value: String, ed, help| Prop { category, key, name, value, ed, help, parent: None, set: false };
+        let part = |parent: Key, category, key, name, value: String, ed, help| Prop { category, key, name, value, ed, help, parent: Some(parent), set: false };
         let sizes: Vec<String> = ["", "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"].iter().map(|s| s.to_string()).collect();
         let bools = Ed::Bool;
         if self.mode == 1 {
@@ -199,14 +275,21 @@ impl Props {
             };
         }
         let Some(c) = s.selected.and_then(|i| f.control.get(i)) else {
-            return vec![
+            return [
                 p(t("Design"), Key::FormName, t("Name"), f.form.name.clone(), Ed::Text, t("The window's name in code: a struct, and its files' names.")),
                 p(t("Appearance"), Key::FormTitle, t("Title"), f.form.title.clone(), Ed::Text, t("The words in the title bar - an English key, translated by the program.")),
                 p(t("Appearance"), Key::FormFont, t("Font size"), f.form.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for every control's words; empty is Windows' own 9.")),
                 p(t("Appearance"), Key::FormTheme, t("Theme"), f.form.theme.clone().unwrap_or_default(), Ed::Dialog, t("The CSS file every control takes its colours from.")),
-                p(t("Layout"), Key::FormWidth, t("Width"), f.form.size[0].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
-                p(t("Layout"), Key::FormHeight, t("Height"), f.form.size[1].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
-            ];
+                p(t("Layout"), Key::FormSize, t("Size"), format!("{}, {}", f.form.size[0], f.form.size[1]), Ed::Text, t("The inside of the window, at 100% scale.")),
+                part(Key::FormSize, t("Layout"), Key::FormWidth, t("Width"), f.form.size[0].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
+                part(Key::FormSize, t("Layout"), Key::FormHeight, t("Height"), f.form.size[1].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
+            ]
+            .into_iter()
+            .map(|mut q| {
+                q.set = is_set(q.key, &q.value);
+                q
+            })
+            .collect();
         };
         let [x, y, w, h] = c.rect();
         let docked = c.dock.is_some();
@@ -220,8 +303,9 @@ impl Props {
             v.push(p(t("Appearance"), Key::Text, t("Text"), c.text.clone().unwrap_or_default(), Ed::Text, t("The words it shows - an English key, translated by the program.")));
         }
         v.extend([
-            p(t("Appearance"), Key::Font, t("Font size"), c.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for this control's words, over the form's.")),
-            p(t("Appearance"), Key::Bold, t("Bold"), yes_no(c.bold == Some(true)), bools.clone(), t("Its words in bold.")),
+            p(t("Appearance"), Key::FontAll, t("Font"), format!("Segoe UI, {}pt{}", c.font_size.or(f.form.font_size).unwrap_or(9), if c.bold == Some(true) { ", Bold" } else { "" }), Ed::Text, t("Its words' size and weight - Segoe UI, 9pt is Windows' own.")),
+            part(Key::FontAll, t("Appearance"), Key::Font, t("Font size"), c.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for this control's words, over the form's.")),
+            part(Key::FontAll, t("Appearance"), Key::Bold, t("Bold"), yes_no(c.bold == Some(true)), bools.clone(), t("Its words in bold.")),
             p(t("Appearance"), Key::BackColor, t("Back colour"), colour(&c.back_color), Ed::Color, t("Its background, over the theme - written into CSS as #id { background }.")),
             p(t("Appearance"), Key::ForeColor, t("Fore colour"), colour(&c.fore_color), Ed::Color, t("Its words' colour, over the theme - #id { color }.")),
             p(t("Appearance"), Key::BorderColor, t("Border colour"), colour(&c.border_color), Ed::Color, t("Its border, over the theme - #id { border-color }.")),
@@ -253,17 +337,22 @@ impl Props {
         }
         if !docked {
             v.extend([
-                p(t("Layout"), Key::X, "X", x.to_string(), Ed::Number, t("From the form's left, at 100% scale.")),
-                p(t("Layout"), Key::Y, "Y", y.to_string(), Ed::Number, t("From the form's top, at 100% scale.")),
+                p(t("Layout"), Key::Location, t("Location"), format!("{x}, {y}"), Ed::Text, t("Its top-left corner from the form's, at 100% scale.")),
+                part(Key::Location, t("Layout"), Key::X, "X", x.to_string(), Ed::Number, t("From the form's left, at 100% scale.")),
+                part(Key::Location, t("Layout"), Key::Y, "Y", y.to_string(), Ed::Number, t("From the form's top, at 100% scale.")),
             ]);
         }
         v.extend([
-            p(t("Layout"), Key::W, t("Width"), w.to_string(), Ed::Number, t("At 100% scale.")),
-            p(t("Layout"), Key::H, t("Height"), h.to_string(), Ed::Number, t("At 100% scale.")),
+            p(t("Layout"), Key::Size, t("Size"), format!("{w}, {h}"), Ed::Text, t("Its width and height, at 100% scale.")),
+            part(Key::Size, t("Layout"), Key::W, t("Width"), w.to_string(), Ed::Number, t("At 100% scale.")),
+            part(Key::Size, t("Layout"), Key::H, t("Height"), h.to_string(), Ed::Number, t("At 100% scale.")),
             p(t("Layout"), Key::Dock, t("Dock"), c.dock.clone().unwrap_or_else(|| "none".into()), Ed::Choice(DOCKS.iter().map(|d| d.to_string()).collect(), false), t("Fills an edge of the form, or all that is left.")),
         ]);
         if !docked {
             v.push(p(t("Layout"), Key::Anchor, t("Anchor"), c.anchor.clone().unwrap_or_else(|| "left top".into()), Ed::Anchor, t("The edges it keeps its distance to when the window grows.")));
+        }
+        for q in v.iter_mut() {
+            q.set = is_set(q.key, &q.value);
         }
         v
     }
@@ -272,9 +361,11 @@ impl Props {
     fn arrange(&mut self) {
         self.lines.clear();
         if self.alphabetical {
-            let mut idx: Vec<usize> = (0..self.props.len()).collect();
+            let mut idx: Vec<usize> = (0..self.props.len()).filter(|i| self.props[*i].parent.is_none()).collect();
             idx.sort_by_key(|i| self.props[*i].name.to_lowercase());
-            self.lines = idx.into_iter().map(Line::Prop).collect();
+            for i in idx {
+                self.push_with_parts(i);
+            }
             return;
         }
         let mut cats: Vec<&'static str> = Vec::new();
@@ -286,12 +377,41 @@ impl Props {
         for c in cats {
             self.lines.push(Line::Heading(c));
             if !self.folded.contains(&c) {
-                for (i, p) in self.props.iter().enumerate() {
-                    if p.category == c {
-                        self.lines.push(Line::Prop(i));
-                    }
+                let mine: Vec<usize> = (0..self.props.len()).filter(|i| self.props[*i].category == c && self.props[*i].parent.is_none()).collect();
+                for i in mine {
+                    self.push_with_parts(i);
                 }
             }
+        }
+    }
+
+    /// A property's line, and its parts' lines below it when it is folded open.
+    fn push_with_parts(&mut self, i: usize) {
+        self.lines.push(Line::Prop(i));
+        let key = self.props[i].key;
+        if self.expanded.contains(&key) {
+            for (k, q) in self.props.iter().enumerate() {
+                if q.parent == Some(key) {
+                    self.lines.push(Line::Prop(k));
+                }
+            }
+        }
+    }
+
+    fn has_parts(&self, i: usize) -> bool {
+        let key = self.props[i].key;
+        self.props.iter().any(|q| q.parent == Some(key))
+    }
+
+    /// The left margin, where a category's or a composite's box is.
+    fn gutter(&self) -> i32 {
+        win::px(self.grid, 16)
+    }
+
+    /// The icons' pressed state as the pane is now.
+    fn say_bar(&self) {
+        for (id, on) in [(ID_SORT_CAT, !self.alphabetical), (ID_SORT_AZ, self.alphabetical), (ID_MODE_PROPS, self.mode == 0), (ID_MODE_EVENTS, self.mode == 1)] {
+            win::toolbar_check(self.bar, id, on);
         }
     }
 
@@ -300,10 +420,13 @@ impl Props {
         let Some(s) = studio() else { return };
         self.close_editor(false);
         self.filling = true;
+        // A retheme makes the bar's buttons again; their pressed state with them.
+        self.say_bar();
         let code = s.doc.code.is_some();
-        for h in [self.chooser, self.modes, self.sort_cat, self.sort_az, self.grid, self.help_name, self.help_text] {
+        for h in [self.chooser, self.bar, self.grid, self.help_name, self.help_text] {
             win::show(h, !code);
         }
+        win::show(self.heading, code);
         if code {
             win::set_text(self.heading, &s.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
             self.filling = false;
@@ -311,25 +434,24 @@ impl Props {
             return;
         }
         let f = &s.doc.form;
-        let chosen = s.selected.and_then(|i| f.control.get(i));
-        win::set_text(self.heading, &match chosen {
-            Some(c) => format!("{} · {}", crate::kind_label(c.kind), c.id),
-            None => format!("{} · {}", t("Form"), f.form.name),
-        });
         unsafe {
             wm::SendMessageW(self.chooser, 0x014B /* CB_RESETCONTENT */, None, None);
             let add = |s: String| {
                 let w = win::wide(&s);
                 wm::SendMessageW(self.chooser, 0x0143 /* CB_ADDSTRING */, None, Some(LPARAM(w.as_ptr() as isize)));
             };
-            add(format!("{}  ({})", f.form.name, t("Form")));
+            // Name, a tab, kind: the chooser draws the two apart.
+            add(format!("{}\t{}", f.form.name, t("Form")));
             for c in &f.control {
-                add(format!("{}  ({})", c.id, crate::kind_label(c.kind)));
+                add(format!("{}\t{}", c.id, crate::kind_label(c.kind)));
             }
             wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(s.selected.map(|i| i + 1).unwrap_or(0))), None);
         }
         let keep = self.chosen.and_then(|l| self.lines.get(l)).and_then(|l| if let Line::Prop(i) = l { self.props.get(*i).map(|p| p.key) } else { None });
         self.props = self.gather();
+        for q in self.props.iter_mut().filter(|q| q.key == Key::Event) {
+            q.set = !q.value.is_empty();
+        }
         self.arrange();
         self.chosen = keep.and_then(|k| self.lines.iter().position(|l| matches!(l, Line::Prop(i) if self.props[*i].key == k)));
         self.say_help();
@@ -363,19 +485,17 @@ impl Props {
         let px = |v| win::px(h, v);
         let (m, row, gap) = (px(8), px(23), px(6));
         let width = r.right - r.left;
-        let mut y = m;
+        let mut y = m / 2;
         if unsafe { wm::IsWindowVisible(self.chooser) }.as_bool() {
-            win::move_to(self.chooser, m, y, width - 2 * m, px(300));
+            win::move_to(self.chooser, m / 2, y, width - m, px(300));
+            y += row + px(2);
+            win::move_to(self.bar, 0, y, width, win::toolbar_height(self.bar));
+            y += win::toolbar_height(self.bar);
+        } else {
+            win::move_to(self.heading, m, y, width - 2 * m, row);
             y += row + gap;
-            win::move_to(self.modes, 0, y, width, px(28));
-            y += px(28) + gap;
         }
-        let bw = px(36);
-        win::move_to(self.heading, m, y, width - 2 * m - 2 * bw - px(4), row);
-        win::move_to(self.sort_cat, width - m - 2 * bw - px(2), y, bw, row);
-        win::move_to(self.sort_az, width - m - bw, y, bw, row);
-        y += row + gap;
-        let help_h = px(70);
+        let help_h = px(64);
         let grid_h = (r.bottom - y - help_h - gap).max(0);
         win::move_to(self.grid, 0, y, width, grid_h);
         y += grid_h + gap;
@@ -385,17 +505,19 @@ impl Props {
 
     pub fn set_mode(&mut self, mode: usize) {
         self.mode = mode;
-        phai_ui::controls::tabs_select(self.modes, mode);
+        self.say_bar();
         self.refresh();
     }
 
     pub fn relabel(&mut self) {
-        phai_ui::controls::tabs_relabel(self.modes, &[t("Properties"), t("Events")]);
+        win::set_toolbar(self.bar, &bar_items());
+        self.say_bar();
         self.refresh();
     }
 
+    /// Visual Studio's rows: close, a little more than the words' height.
     fn row_h(&self) -> i32 {
-        win::measure(self.grid, self.font, "Ag").1 + win::px(self.grid, 8)
+        win::measure(self.grid, self.font, "Ag").1 + win::px(self.grid, 5)
     }
 
     fn visible_rows(&self) -> usize {
@@ -449,26 +571,47 @@ impl Props {
             let muted = phai_ui::theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
             let split = self.split();
             let pad = win::px(h, 8);
+            let gutter = self.gutter();
+            // Visual Studio's grey margin down the left, where the boxes that fold are.
+            win::fill(dc, &RECT { right: gutter, ..r }, head_bg);
+            let fold_box = |dc: Gdi::HDC, lr: &RECT, open: bool| {
+                let s = win::px(h, 9);
+                let (cx, cy) = (gutter / 2, (lr.top + lr.bottom) / 2);
+                let b = RECT { left: cx - s / 2, top: cy - s / 2, right: cx - s / 2 + s, bottom: cy - s / 2 + s };
+                win::round_rect(dc, b, bg, muted, 0);
+                win::fill(dc, &RECT { left: b.left + 2, top: cy, right: b.right - 2, bottom: cy + 1 }, win::window_text());
+                if !open {
+                    win::fill(dc, &RECT { left: cx, top: b.top + 2, right: cx + 1, bottom: b.bottom - 2 }, win::window_text());
+                }
+            };
             for (k, line) in self.lines.iter().enumerate().skip(self.top).take(self.visible_rows() + 1) {
                 let lr = self.line_rect(k);
                 match line {
                     Line::Heading(name) => {
                         win::fill(dc, &lr, head_bg);
-                        let mark = if self.folded.contains(name) { "▸ " } else { "▾ " };
-                        let mut tr = RECT { left: pad / 2, ..lr };
+                        fold_box(dc, &lr, !self.folded.contains(name));
+                        let mut tr = RECT { left: gutter + pad / 2, ..lr };
                         let old = Gdi::SelectObject(dc, self.bold.into());
-                        draw(dc, &format!("{mark}{name}"), &mut tr, win::window_text(), Gdi::DT_LEFT);
+                        draw(dc, name, &mut tr, win::window_text(), Gdi::DT_LEFT);
                         Gdi::SelectObject(dc, old);
                     }
                     Line::Prop(i) => {
                         let p = &self.props[*i];
-                        let name_r = RECT { right: split, ..lr };
+                        let name_r = RECT { left: gutter, right: split, ..lr };
                         if self.chosen == Some(k) {
                             win::fill(dc, &name_r, tint);
                         }
+                        if self.has_parts(*i) {
+                            fold_box(dc, &lr, self.expanded.contains(&p.key));
+                        }
                         let old = Gdi::SelectObject(dc, self.font.into());
-                        let mut tr = RECT { left: pad * 2, right: split - pad / 2, ..lr };
+                        let indent = if p.parent.is_some() { win::px(h, 12) } else { 0 };
+                        let mut tr = RECT { left: gutter + pad / 2 + indent, right: split - pad / 2, ..lr };
                         draw(dc, p.name, &mut tr, win::window_text(), Gdi::DT_LEFT);
+                        // A value set apart from its default, in bold.
+                        if p.set {
+                            Gdi::SelectObject(dc, self.bold.into());
+                        }
                         let mut vr = RECT { left: split + pad / 2, right: lr.right - pad / 2, ..lr };
                         match &p.ed {
                             Ed::Color => {
@@ -497,7 +640,7 @@ impl Props {
                         win::fill(dc, &RECT { left: split, right: split + 1, ..lr }, rule);
                     }
                 }
-                win::fill(dc, &RECT { top: lr.bottom - 1, ..lr }, rule);
+                win::fill(dc, &RECT { left: gutter, top: lr.bottom - 1, ..lr }, rule);
             }
             let _ = Gdi::EndPaint(h, &ps);
         }
@@ -518,6 +661,18 @@ impl Props {
                 } else {
                     self.folded.push(name);
                 }
+                self.arrange();
+                self.update_scroll();
+            }
+            Line::Prop(i) if self.has_parts(i) && (x < self.gutter() || (double && x < self.split())) => {
+                let key = self.props[i].key;
+                if let Some(at) = self.expanded.iter().position(|e| *e == key) {
+                    self.expanded.remove(at);
+                } else {
+                    self.expanded.push(key);
+                }
+                self.chosen = Some(k);
+                self.say_help();
                 self.arrange();
                 self.update_scroll();
             }
@@ -666,8 +821,9 @@ impl Props {
             return;
         }
         match (id, code) {
-            (ID_MODES, _) => {
-                self.mode = code as usize;
+            (ID_MODE_PROPS, 0) | (ID_MODE_EVENTS, 0) => {
+                self.mode = (id == ID_MODE_EVENTS) as usize;
+                self.say_bar();
                 self.refresh();
             }
             (ID_CHOOSER, 1) => {
@@ -676,6 +832,7 @@ impl Props {
             }
             (ID_SORT_CAT, 0) | (ID_SORT_AZ, 0) => {
                 self.alphabetical = id == ID_SORT_AZ;
+                self.say_bar();
                 self.arrange();
                 self.chosen = None;
                 self.update_scroll();
@@ -804,8 +961,49 @@ extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
     }
 }
 
+/// The chooser's rows: the name in bold, then the kind in the muted colour - as Visual Studio's.
+fn draw_choice(l: LPARAM) {
+    let d = unsafe { &*(l.0 as *const windows::Win32::UI::Controls::DRAWITEMSTRUCT) };
+    if d.itemID == u32::MAX {
+        return;
+    }
+    let Some(p) = studio().and_then(|s| s.props.as_ref()) else { return };
+    let text = unsafe {
+        let n = wm::SendMessageW(d.hwndItem, 0x0149 /* CB_GETLBTEXTLEN */, Some(WPARAM(d.itemID as usize)), None).0.max(0) as usize;
+        let mut buf = vec![0u16; n + 1];
+        wm::SendMessageW(d.hwndItem, 0x0148 /* CB_GETLBTEXT */, Some(WPARAM(d.itemID as usize)), Some(LPARAM(buf.as_mut_ptr() as isize)));
+        String::from_utf16_lossy(&buf[..n])
+    };
+    let (name, kind) = text.split_once('\t').unwrap_or((&text, ""));
+    let selected = d.itemState.0 & 0x0001 != 0 && d.itemState.0 & 0x1000 == 0; // ODS_SELECTED, not ODS_COMBOBOXEDIT
+    let bg = if selected { phai_ui::theme::style("list", State { selected: true, ..Default::default() }).background_or(Color::rgb(0xe7, 0xf3, 0xef)) } else { win::window_background() };
+    let muted = phai_ui::theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
+    let dc = d.hDC;
+    win::fill(dc, &d.rcItem, bg);
+    unsafe {
+        let pad = win::px(d.hwndItem, 4);
+        let old = Gdi::SelectObject(dc, p.bold.into());
+        let mut r = RECT { left: d.rcItem.left + pad, ..d.rcItem };
+        draw(dc, name, &mut r, win::window_text(), Gdi::DT_LEFT);
+        let (w, _) = win::measure(d.hwndItem, p.bold, name);
+        Gdi::SelectObject(dc, p.font.into());
+        let mut r = RECT { left: d.rcItem.left + pad + w + pad * 2, ..d.rcItem };
+        draw(dc, kind, &mut r, muted, Gdi::DT_LEFT);
+        Gdi::SelectObject(dc, old);
+    }
+}
+
 extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
+        wm::WM_MEASUREITEM => {
+            let m = unsafe { &mut *(l.0 as *mut windows::Win32::UI::Controls::MEASUREITEMSTRUCT) };
+            m.itemHeight = win::px(h, 20) as u32;
+            LRESULT(1)
+        }
+        wm::WM_DRAWITEM if w.0 as i32 == ID_CHOOSER => {
+            draw_choice(l);
+            LRESULT(1)
+        }
         wm::WM_COMMAND => {
             if let Some(p) = studio().and_then(|s| s.props.as_mut()).filter(|p| p.hwnd == h) {
                 p.command(win::loword(w.0) as i32, win::hiword(w.0));
@@ -923,5 +1121,24 @@ fn anchor_picker(owner: HWND, x: i32, y: i32, start: Anchors) -> Option<Anchors>
         drop(win::take_state::<Picker>(p));
         let _ = wm::DestroyWindow(p);
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn composites_typed_in_whole_are_read() {
+        assert_eq!(pair("95, 67"), Some((95, 67)));
+        assert_eq!(pair("362 x 23"), Some((362, 23)));
+        assert_eq!(pair("1, 2, 3"), None);
+        assert_eq!(pair("a, 2"), None);
+        assert_eq!(font_spec("Segoe UI, 10pt, Bold"), Some((Some(10), true)));
+        assert_eq!(font_spec("12"), Some((Some(12), false)));
+        assert_eq!(font_spec("Segoe UI, 99pt"), None);
+        assert!(is_set(Key::FontAll, "Segoe UI, 9pt, Bold"));
+        assert!(!is_set(Key::FontAll, "Segoe UI, 9pt"));
+        assert!(!is_set(Key::Enabled, "True") && is_set(Key::Enabled, "False"));
     }
 }
