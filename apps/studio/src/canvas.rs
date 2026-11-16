@@ -66,6 +66,12 @@ pub struct Canvas {
     lines: Vec<HWND>,
     drag: Drag,
     cursor: PCWSTR,
+    /// Format > Lock controls: they can be chosen, not moved or sized.
+    pub locked: bool,
+    /// Tab order mode: the number the next control clicked gets; `None` when off.
+    tab_next: Option<usize>,
+    /// Tab order mode's numbers on the controls.
+    numbers: Vec<HWND>,
 }
 
 fn snap(v: i32) -> i32 {
@@ -93,7 +99,7 @@ impl Canvas {
             wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
-        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW }
+        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![] }
     }
 
     /// Builds the form again from the model: size, controls, handles.
@@ -104,7 +110,7 @@ impl Canvas {
             for h in self.live.drain(..).chain(self.toolbar.take()).chain(self.handles.drain(..)) {
                 let _ = wm::DestroyWindow(h);
             }
-            for h in self.marks.drain(..).chain(self.lines.drain(..)) {
+            for h in self.marks.drain(..).chain(self.lines.drain(..)).chain(self.numbers.drain(..)) {
                 let _ = wm::DestroyWindow(h);
             }
             for h in self.form_handles.drain(..) {
@@ -130,6 +136,64 @@ impl Canvas {
             let _ = Gdi::RedrawWindow(Some(self.hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_ERASE | Gdi::RDW_ALLCHILDREN | Gdi::RDW_FRAME);
         }
         self.place_handles();
+        self.show_numbers();
+    }
+
+    /// Tab order mode on or off: as Visual Studio's View > Tab Order, each control shows its place
+    /// and a click gives it the next.
+    pub fn set_tab_mode(&mut self, on: bool) {
+        self.tab_next = on.then_some(0);
+        self.show_numbers();
+        if let Some(s) = studio() {
+            s.select(None);
+        }
+    }
+
+    pub fn tab_mode(&self) -> bool {
+        self.tab_next.is_some()
+    }
+
+    fn show_numbers(&mut self) {
+        for h in self.numbers.drain(..) {
+            unsafe {
+                let _ = wm::DestroyWindow(h);
+            }
+        }
+        let Some(next) = self.tab_next else { return };
+        let class = win::register("PhaiStudioTabNumber", Some(number_proc), None);
+        let dpi = win::dpi(self.surface);
+        for i in 0..self.live.len() {
+            if !unsafe { wm::IsWindowVisible(self.live[i]) }.as_bool() {
+                continue;
+            }
+            let [x, y, _, _] = self.rect_of(i);
+            let h = create_child(&class, self.surface, WINDOW_EX_STYLE(0));
+            win::set_text(h, &(i + 1).to_string());
+            // Those already given their place in this round are in the accent; the rest, grey.
+            unsafe {
+                wm::SetWindowLongPtrW(h, wm::GWLP_USERDATA, (i < next) as isize);
+            }
+            let wide = if i + 1 >= 10 { 26 } else { 18 };
+            win::move_to(h, scale(x, dpi), scale(y, dpi), scale(wide, dpi), scale(18, dpi));
+            unsafe {
+                let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+            }
+            self.numbers.push(h);
+        }
+    }
+
+    /// A click in tab order mode: the control takes the next place.
+    fn tab_click(&mut self, i: usize) {
+        let Some(s) = studio() else { return };
+        let Some(next) = self.tab_next else { return };
+        if i >= next {
+            s.edit(|f| {
+                let c = f.control.remove(i);
+                f.control.insert(next, c);
+            });
+            self.tab_next = Some((next + 1).min(s.doc.form.control.len()));
+        }
+        self.rebuild();
     }
 
     /// The design rectangle control `i` really has now - docked ones included.
@@ -231,7 +295,8 @@ impl Canvas {
     /// The topmost control under design point `p`, by its real rectangle.
     fn hit(&self, p: (i32, i32)) -> Option<usize> {
         let s = studio()?;
-        (0..self.live.len()).rev().filter(|i| unsafe { wm::IsWindowVisible(self.live[*i]) }.as_bool()).find(|i| {
+        // Windows puts the first child made on top, so the first in the form is found first.
+        (0..self.live.len()).filter(|i| unsafe { wm::IsWindowVisible(self.live[*i]) }.as_bool()).find(|i| {
             let [x, y, w, h] = self.rect_of(*i);
             // A group is chosen by its frame and title only, so what is inside it can be.
             if s.doc.form.control[*i].kind == Kind::Group {
@@ -277,10 +342,19 @@ impl Canvas {
             let _ = km::SetFocus(Some(self.surface));
             km::SetCapture(self.surface);
         }
+        if self.tab_next.is_some() {
+            unsafe {
+                let _ = km::ReleaseCapture();
+            }
+            if let Some(i) = self.hit(p) {
+                self.tab_click(i);
+            }
+            return;
+        }
         if let Some(kind) = s.tool {
             let at = (snap(p.0), snap(p.1));
             self.drag = Drag::Create { kind, from: at, to: at };
-        } else if let (Some(i), Some(handle)) = (s.selected, self.hit_handle(p)) {
+        } else if let (Some(i), Some(handle), false) = (s.selected, self.hit_handle(p), self.locked) {
             let r = self.rect_of(i);
             self.drag = Drag::Resize { index: i, handle, from: p, rect: r, now: r };
         } else if let Some(i) = self.hit(p) {
@@ -306,7 +380,7 @@ impl Canvas {
                 .filter(|j| s.doc.form.control[*j].dock.as_deref().is_none_or(|d| d == "none"))
                 .map(|j| (j, self.rect_of(j)))
                 .collect();
-            if !self.group.is_empty() {
+            if !self.group.is_empty() && !self.locked {
                 self.drag = Drag::Move { from: p, d: (0, 0) };
             }
         } else {
@@ -554,11 +628,19 @@ impl Canvas {
     /// Arrow keys move the chosen control a pixel, with Shift they size it; Delete removes it.
     fn key(&mut self, vk: u16) -> bool {
         let Some(s) = studio() else { return false };
+        if vk == 0x1B && self.tab_next.is_some() {
+            self.set_tab_mode(false);
+            return true;
+        }
         if s.selected.is_none() {
             return false;
         }
         let chosen = s.selection();
         let shift = unsafe { km::GetKeyState(km::VK_SHIFT.0 as i32) } < 0;
+        let ctrl = unsafe { km::GetKeyState(km::VK_CONTROL.0 as i32) } < 0;
+        if self.locked && vk != 0x2E {
+            return matches!(vk, 0x25..=0x28);
+        }
         let (dx, dy) = match vk {
             0x25 => (-1, 0),
             0x27 => (1, 0),
@@ -569,6 +651,20 @@ impl Canvas {
                 return true;
             }
             _ => return false,
+        };
+        // Ctrl: on to the next line another control's edge or the margin makes, as snaplines do.
+        let (dx, dy) = if ctrl {
+            let first = s.selected.map(|i| self.rect_of(i)).unwrap_or_default();
+            let others: Vec<[i32; 4]> = (0..self.live.len()).filter(|i| !chosen.contains(i) && unsafe { wm::IsWindowVisible(self.live[*i]) }.as_bool()).map(|i| self.rect_of(i)).collect();
+            let form = s.doc.form.form.size;
+            let m = phai_design::metrics::MARGIN;
+            if dx != 0 {
+                (phai_form::arrange::next_stop(first, &others, form, m, true, dx, shift), 0)
+            } else {
+                (0, phai_form::arrange::next_stop(first, &others, form, m, false, dy, shift))
+            }
+        } else {
+            (dx, dy)
         };
         s.edit(|f| {
             for i in &chosen {
@@ -864,6 +960,36 @@ extern "system" fn surface_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
         // The surface is the form: it draws the form's background, and nothing it holds may send
         // a command anywhere.
         wm::WM_COMMAND => LRESULT(0),
+        _ => win::def(h, msg, w, l),
+    }
+}
+
+/// A control's place in tab order mode: a small tag at its corner, white on the accent once given
+/// its place in this round, on grey before.
+extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_NCHITTEST => LRESULT(-1),
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_PAINT => unsafe {
+            let mut ps = Gdi::PAINTSTRUCT::default();
+            let dc = Gdi::BeginPaint(h, &mut ps);
+            let mut r = RECT::default();
+            let _ = wm::GetClientRect(h, &mut r);
+            let done = wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA) != 0;
+            let bg = if done { theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f)) } else { Color::rgb(0x5f, 0x5f, 0x5f) };
+            win::fill(dc, &r, bg);
+            let text = win::text_of(h);
+            let font = win::font(h, 8, true);
+            let old = Gdi::SelectObject(dc, font.into());
+            let mut w16: Vec<u16> = text.encode_utf16().collect();
+            Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+            Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(0x00FF_FFFF));
+            Gdi::DrawTextW(dc, &mut w16, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            Gdi::SelectObject(dc, old);
+            let _ = Gdi::DeleteObject(font.into());
+            let _ = Gdi::EndPaint(h, &ps);
+            LRESULT(0)
+        },
         _ => win::def(h, msg, w, l),
     }
 }

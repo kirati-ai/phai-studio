@@ -77,6 +77,10 @@ const ID_COPY: i32 = 116;
 const ID_PASTE: i32 = 117;
 const ID_DUPLICATE: i32 = 118;
 const ID_SELECT_ALL: i32 = 119;
+const ID_FRONT: i32 = 190;
+const ID_BACK: i32 = 191;
+const ID_LOCK: i32 = 192;
+const ID_TAB_ORDER: i32 = 193;
 /// Format menu: `ID_FORMAT + Op as index` in `FORMATS` order.
 const ID_FORMAT: i32 = 150;
 const FORMATS: [phai_form::arrange::Op; 11] = {
@@ -359,6 +363,19 @@ fn build_menu() -> HMENU {
                 sep(fmt);
             }
             add(fmt, ID_FORMAT + k as i32, name, "");
+        }
+        sep(fmt);
+        add(fmt, ID_FRONT, t("Bring to front"), "");
+        add(fmt, ID_BACK, t("Send to back"), "");
+        sep(fmt);
+        add(fmt, ID_LOCK, t("Lock controls"), "");
+        add(fmt, ID_TAB_ORDER, t("Tab order"), "");
+        if let Some(c) = studio().and_then(|s| s.canvas.as_ref()) {
+            for (id, on) in [(ID_LOCK, c.locked), (ID_TAB_ORDER, c.tab_mode())] {
+                if on {
+                    wm::CheckMenuItem(fmt, id as u32, wm::MF_CHECKED.0);
+                }
+            }
         }
         sub(t("F&ormat"), fmt);
         let proj = wm::CreatePopupMenu().unwrap_or_default();
@@ -709,6 +726,58 @@ impl Studio {
         if !chosen.is_empty() {
             self.add_controls(&phai_form::arrange::to_clipboard(&chosen));
         }
+    }
+
+    /// Format > Bring to front / Send to back. Windows stacks the first child made on top and
+    /// visits it first with Tab, so the front is the start of the form's list, the back its end.
+    fn restack(&mut self, front: bool) {
+        let mut chosen = self.selection();
+        if chosen.is_empty() {
+            return;
+        }
+        chosen.sort_unstable();
+        let mut moved: Vec<usize> = Vec::new();
+        self.edit(|f| {
+            let taken: Vec<phai_form::Control> = chosen.iter().rev().map(|i| f.control.remove(*i)).collect::<Vec<_>>().into_iter().rev().collect();
+            let n = taken.len();
+            if front {
+                for (k, c) in taken.into_iter().enumerate() {
+                    f.control.insert(k, c);
+                }
+                moved = (0..n).collect();
+            } else {
+                let start = f.control.len();
+                f.control.extend(taken);
+                moved = (start..start + n).collect();
+            }
+        });
+        self.rebuild();
+        self.select_many(&moved);
+    }
+
+    /// The toolbox double-clicked: the kind goes on the form at once, as in Visual Studio, at the
+    /// margin or a little below and right of what is already there.
+    fn add_at_margin(&mut self, kind: Kind) {
+        let m = phai_design::metrics::MARGIN;
+        let (w, h) = kind.default_size();
+        let taken: Vec<(i32, i32)> = self.doc.form.control.iter().filter_map(|c| c.bounds).map(|b| (b[0], b[1])).collect();
+        let mut at = (m, m + if self.doc.form.toolbar.is_empty() { 0 } else { phai_ui::win::TOOLBAR_HEIGHT });
+        while taken.contains(&at) {
+            at = (at.0 + canvas::GRID * 2, at.1 + canvas::GRID * 2);
+        }
+        self.edit(|f| {
+            let id = f.next_id(kind);
+            let mut c = phai_form::Control::new(kind, &id, [at.0, at.1, w, h]);
+            if kind == Kind::Statusbar {
+                c.bounds = Some([0, 0, 0, 26]);
+            }
+            f.control.push(c);
+        });
+        self.tool = None;
+        self.toolbox_reset();
+        self.rebuild();
+        let last = self.doc.form.control.len() - 1;
+        self.select(Some(last));
     }
 
     /// Lines the chosen controls up against the first one chosen.
@@ -1467,6 +1536,25 @@ impl Studio {
             }
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
+            ID_FRONT | ID_BACK => self.restack(id == ID_FRONT),
+            ID_LOCK => {
+                if let Some(c) = self.canvas.as_mut() {
+                    c.locked = !c.locked;
+                    let on = c.locked;
+                    controls::status_text(self.status, 0, if on { t("Controls are locked") } else { t("Controls are unlocked") });
+                }
+                self.rebuild_menu();
+            }
+            ID_TAB_ORDER => {
+                if let Some(c) = self.canvas.as_mut() {
+                    let on = !c.tab_mode();
+                    c.set_tab_mode(on);
+                    if on {
+                        controls::status_text(self.status, 0, t("Click the controls in the order Tab should visit them; Esc ends"));
+                    }
+                }
+                self.rebuild_menu();
+            }
             ID_CLOSE => {
                 self.close_tab();
             }
@@ -1730,6 +1818,14 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            if hdr.hwndFrom == s.toolbox && hdr.code == cc::NM_DBLCLK && s.doc.code.is_none() {
+                let m = unsafe { &*(l.0 as *const cc::NMMOUSE) };
+                let id = m.dwItemSpec as i32;
+                if let Some(kind) = (id > ID_TOOL).then(|| Kind::ALL.get((id - ID_TOOL - 1) as usize).copied()).flatten() {
+                    s.add_at_margin(kind);
+                    return LRESULT(0);
+                }
+            }
             if hdr.hwndFrom == s.errors && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
