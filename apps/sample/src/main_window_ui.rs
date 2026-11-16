@@ -104,8 +104,8 @@ impl MainWindowUi {
             let style = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;
             let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 480), bottom: win::px(hwnd, 360) };
             let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), true, Default::default(), win::dpi(hwnd) as u32);
-            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER);
-            let _ = wm::ShowWindow(hwnd, wm::SW_SHOW);
+            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
+            win::show_top(hwnd);
             // A debug build follows the theme file as it is saved.
             #[cfg(debug_assertions)]
             win::watch_theme(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/theme.css")));

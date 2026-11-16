@@ -115,6 +115,7 @@ name = "phai-editor"
 version = "0.1.0"
 dependencies = [
  "phai-ui",
+ "serde_json",
  "windows",
 ]
 

@@ -18,6 +18,19 @@ use crate::syntax::{line_tokens, Language, Token};
 
 /// `WM_COMMAND`'s high word when the text changed (as `EN_CHANGE`).
 pub const CHANGED: u16 = 0x0300;
+/// The pointer rested on the text: the parent may ask the language server about [`hover_position`].
+pub const HOVER: u16 = 0x0301;
+/// Completion was asked for (Ctrl+Space, or `.` / `::` typed): see [`caret_lsp`] and [`show_completions`].
+pub const COMPLETE: u16 = 0x0302;
+
+/// A diagnostic placed in the text: byte offsets, how bad, what it says.
+#[derive(Clone, Debug)]
+struct Mark {
+    from: usize,
+    to: usize,
+    error: bool,
+    message: String,
+}
 
 struct View {
     model: Model,
@@ -35,6 +48,18 @@ struct View {
     edits: usize,
     dragging: bool,
     high_surrogate: Option<u16>,
+    /// A key already acted on whose character is still to come.
+    swallow_char: bool,
+    marks: Vec<Mark>,
+    /// Where the pointer rested, for a hover: byte offset and screen point.
+    hover: Option<(usize, i32, i32)>,
+    tracking: bool,
+    tip: Option<Box<crate::popup::Popup>>,
+    list: Option<Box<crate::popup::Popup>>,
+    /// Every completion the server gave; the list shows those that start with what is typed.
+    all_items: Vec<crate::lsp::Completion>,
+    /// Edits since the file was opened, as the server counts versions.
+    pub version: i64,
 }
 
 fn wide_of(s: &str) -> Vec<u16> {
@@ -137,7 +162,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None }));
+        win::set_state(h, Box::new(View { model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1 }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -167,9 +192,134 @@ fn metrics(h: HWND, font: HFONT) -> (i32, i32) {
     }
 }
 
+/// The language server's diagnostics for this file, shown as wavy lines under their text.
+pub fn set_diagnostics(h: HWND, diags: &[crate::lsp::Diagnostic]) {
+    let Some(v) = view(h) else { return };
+    let offset = |(line, ch): (u32, u32)| {
+        let l = (line as usize).min(v.model.buf.line_count() - 1);
+        let s = v.model.buf.line(l);
+        v.model.buf.line_start(l) + crate::lsp::from_lsp(&s, ch)
+    };
+    v.marks = diags
+        .iter()
+        .map(|d| {
+            let (from, mut to) = (offset(d.start), offset(d.end));
+            if to <= from {
+                to = (from + 1).min(v.model.buf.len());
+            }
+            Mark { from, to, error: d.error, message: d.message.clone() }
+        })
+        .collect();
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// How many errors and warnings are shown.
+pub fn diagnostic_counts(h: HWND) -> (usize, usize) {
+    view(h).map(|v| (v.marks.iter().filter(|m| m.error).count(), v.marks.iter().filter(|m| !m.error).count())).unwrap_or((0, 0))
+}
+
+fn lsp_position_of(v: &View, offset: usize) -> (u32, u32) {
+    let (line, col) = v.model.buf.position(offset);
+    (line as u32, crate::lsp::to_lsp(&v.model.buf.line(line), col))
+}
+
+/// Where the pointer rests, as the language server counts.
+pub fn hover_position(h: HWND) -> Option<(u32, u32)> {
+    let v = view(h)?;
+    v.hover.map(|(at, _, _)| lsp_position_of(v, at))
+}
+
+/// The caret, as the language server counts.
+pub fn caret_lsp(h: HWND) -> (u32, u32) {
+    view(h).map(|v| lsp_position_of(v, v.model.caret)).unwrap_or((0, 0))
+}
+
+/// Shows a hover's words where the pointer rests.
+pub fn show_tip(h: HWND, text: &str) {
+    let Some(v) = view(h) else { return };
+    let Some((_, x, y)) = v.hover else { return };
+    v.tip = Some(crate::popup::Popup::tip(h, v.font, text, x, y + v.line_h));
+}
+
+fn hide_tip(v: &mut View) {
+    v.tip = None;
+}
+
+/// The identifier being typed before the caret - what a completion replaces.
+fn word_before(v: &View) -> (usize, String) {
+    let (line, col) = v.model.buf.position(v.model.caret);
+    let s = v.model.buf.line(line);
+    let start = s[..col].char_indices().rev().take_while(|(_, c)| c.is_alphanumeric() || *c == '_').last().map(|(i, _)| i).unwrap_or(col);
+    (v.model.buf.line_start(line) + start, s[start..col].to_string())
+}
+
+/// The language server's completions, as a list under the caret, filtered by what is typed.
+pub fn show_completions(h: HWND, items: Vec<crate::lsp::Completion>) {
+    let Some(v) = view(h) else { return };
+    v.all_items = items;
+    filter_list(h);
+}
+
+fn filter_list(h: HWND) {
+    let Some(v) = view(h) else { return };
+    let (_, typed) = word_before(v);
+    let lower = typed.to_lowercase();
+    let shown: Vec<crate::lsp::Completion> = v.all_items.iter().filter(|c| c.label.to_lowercase().starts_with(&lower)).take(50).cloned().collect();
+    if shown.is_empty() {
+        v.list = None;
+        return;
+    }
+    let mut pt = windows::Win32::Foundation::POINT::default();
+    unsafe {
+        let dc = Gdi::GetDC(Some(h));
+        let old = Gdi::SelectObject(dc, v.font.into());
+        let (x, y) = v.caret_point(dc);
+        Gdi::SelectObject(dc, old);
+        Gdi::ReleaseDC(Some(h), dc);
+        pt.x = x;
+        pt.y = y + v.line_h;
+        let _ = Gdi::ClientToScreen(h, &mut pt);
+    }
+    match v.list.as_mut() {
+        Some(list) => {
+            list.items = shown;
+            list.chosen = 0;
+            list.place(pt.x, pt.y);
+        }
+        None => v.list = Some(crate::popup::Popup::list(h, v.font, shown, pt.x, pt.y)),
+    }
+}
+
+/// Puts the chosen completion in place of the word being typed.
+fn accept(h: HWND, v: &mut View) {
+    let Some(c) = v.list.as_ref().and_then(|l| l.choice()).cloned() else { return };
+    let (start, _) = word_before(v);
+    v.model.anchor = start;
+    v.model.insert(&c.insert);
+    v.list = None;
+    v.all_items.clear();
+    changed(h);
+}
+
+fn notify(h: HWND, code: u16) {
+    unsafe {
+        let id = wm::GetDlgCtrlID(h) as usize;
+        if let Ok(p) = wm::GetParent(h) {
+            wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((code as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
+        }
+    }
+}
+
 /// The text now, with `\n` line ends.
 pub fn text(h: HWND) -> String {
     view(h).map(|v| v.model.buf.text()).unwrap_or_default()
+}
+
+/// The text's version, as the language server counts edits.
+pub fn version(h: HWND) -> i64 {
+    view(h).map(|v| v.version).unwrap_or(1)
 }
 
 pub fn is_dirty(h: HWND) -> bool {
@@ -269,6 +419,10 @@ fn place_caret(h: HWND) {
 fn changed(h: HWND) {
     if let Some(v) = view(h) {
         v.edits += 1;
+        v.version += 1;
+        // Old marks point at text that moved; the server sends fresh ones.
+        v.marks.clear();
+        hide_tip(v);
     }
     place_caret(h);
     unsafe {
@@ -338,6 +492,28 @@ fn paint(h: HWND, v: &mut View) {
                 }
                 x += pw;
             }
+            // Wavy lines under what the language server found.
+            for m in v.marks.iter().filter(|m| m.to > start && m.from <= start + s.len()) {
+                let a = m.from.max(start) - start;
+                let b = (m.to.min(start + s.len())).max(m.from.max(start)) - start;
+                let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
+                let x1 = (gutter + v.width_of(dc, &s[..b]) - v.left).max(x0 + v.char_w);
+                let colour = if m.error { Color::rgb(0xe5, 0x14, 0x00) } else { Color::rgb(0xbf, 0x88, 0x03) };
+                let pen = Gdi::CreatePen(Gdi::PS_SOLID, win::px(h, 1).max(1), windows::Win32::Foundation::COLORREF(colour.colorref()));
+                let old = Gdi::SelectObject(dc, pen.into());
+                let step = win::px(h, 2).max(2);
+                let base = y + v.line_h - win::px(h, 2);
+                let mut x = x0.max(gutter);
+                let _ = Gdi::MoveToEx(dc, x, base, None);
+                let mut up = true;
+                while x < x1 {
+                    x += step;
+                    let _ = Gdi::LineTo(dc, x.min(x1), if up { base - step } else { base });
+                    up = !up;
+                }
+                Gdi::SelectObject(dc, old);
+                let _ = Gdi::DeleteObject(pen.into());
+            }
             // The gutter on top, so text scrolled left goes under it.
             win::fill(dc, &RECT { left: 0, top: y, right: gutter - v.char_w / 2, bottom: y + v.line_h }, bg);
             let n = wide_of(&(line + 1).to_string());
@@ -405,6 +581,32 @@ fn clipboard_get(h: HWND) -> Option<String> {
 fn key(h: HWND, v: &mut View, vk: u16) -> bool {
     let shift = unsafe { km::GetKeyState(0x10) } < 0;
     let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+    // An open completion list takes the arrows, Enter, Tab and Escape.
+    if v.list.is_some() {
+        match vk {
+            0x26 | 0x28 => {
+                if let Some(l) = v.list.as_mut() {
+                    l.move_choice(if vk == 0x26 { -1 } else { 1 });
+                }
+                return true;
+            }
+            0x0D | 0x09 => {
+                accept(h, v);
+                v.swallow_char = true;
+                return true;
+            }
+            0x1B => {
+                v.list = None;
+                return true;
+            }
+            0x25 | 0x27 | 0x24 | 0x23 | 0x21 | 0x22 => v.list = None,
+            _ => {}
+        }
+    }
+    if vk == 0x20 && ctrl {
+        notify(h, COMPLETE);
+        return true;
+    }
     let page = v.visible_lines(h).saturating_sub(1).max(1);
     let m = match vk {
         0x25 => Some(if ctrl { Move::WordLeft } else { Move::Left }),
@@ -478,6 +680,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         }
         wm::WM_KILLFOCUS => {
+            v.list = None;
             unsafe {
                 let _ = wm::DestroyCaret();
             }
@@ -495,6 +698,10 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_CHAR => {
             let unit = w.0 as u16;
+            // The Enter or Tab that took a completion also comes as a character; it is spent.
+            if std::mem::take(&mut v.swallow_char) && (unit == 0x0D || unit == 0x09) {
+                return LRESULT(0);
+            }
             let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
             match unit {
                 0x08 => {
@@ -527,13 +734,72 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
                 u => {
                     let s = String::from_utf16_lossy(&[u]);
+                    let before_colon = {
+                        let (line, col) = v.model.buf.position(v.model.caret);
+                        v.model.buf.line(line)[..col].ends_with(':')
+                    };
                     v.model.type_text(&s);
                     changed(h);
+                    // A member or a path asks for completions; typing on narrows the open list.
+                    if s == "." || (s == ":" && before_colon) {
+                        notify(h, COMPLETE);
+                    } else if v.list.is_some() {
+                        if s.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            filter_list(h);
+                        } else {
+                            v.list = None;
+                        }
+                    }
                 }
             }
             LRESULT(0)
         }
+        wm::WM_MOUSEMOVE if !v.dragging => {
+            // Rest the pointer and a hover is asked; move it and any tip goes.
+            if v.tip.is_some() {
+                hide_tip(v);
+            }
+            if !v.tracking {
+                let mut t = km::TRACKMOUSEEVENT { cbSize: std::mem::size_of::<km::TRACKMOUSEEVENT>() as u32, dwFlags: km::TME_HOVER | km::TME_LEAVE, hwndTrack: h, dwHoverTime: 500 };
+                unsafe {
+                    let _ = km::TrackMouseEvent(&mut t);
+                }
+                v.tracking = true;
+            }
+            win::def(h, msg, w, l)
+        }
+        0x02A1 /* WM_MOUSEHOVER */ => {
+            v.tracking = false;
+            let (x, y) = win::point_of(l);
+            let at = unsafe {
+                let dc = Gdi::GetDC(Some(h));
+                let old = Gdi::SelectObject(dc, v.font.into());
+                let at = v.offset_at(dc, x, y);
+                Gdi::SelectObject(dc, old);
+                Gdi::ReleaseDC(Some(h), dc);
+                at
+            };
+            let mut pt = windows::Win32::Foundation::POINT { x, y };
+            unsafe {
+                let _ = Gdi::ClientToScreen(h, &mut pt);
+            }
+            v.hover = Some((at, pt.x, pt.y));
+            // Over a wavy line, its message at once; then ask the server for more.
+            if let Some(m) = v.marks.iter().find(|m| at >= m.from && at <= m.to) {
+                let text = m.message.clone();
+                v.tip = Some(crate::popup::Popup::tip(h, v.font, &text, pt.x, pt.y + v.line_h));
+            } else {
+                notify(h, HOVER);
+            }
+            LRESULT(0)
+        }
+        0x02A3 /* WM_MOUSELEAVE */ => {
+            v.tracking = false;
+            hide_tip(v);
+            LRESULT(0)
+        }
         wm::WM_LBUTTONDOWN | wm::WM_MOUSEMOVE if msg == wm::WM_LBUTTONDOWN || v.dragging => {
+            v.list = None;
             let (x, y) = win::point_of(l);
             unsafe {
                 let dc = Gdi::GetDC(Some(h));

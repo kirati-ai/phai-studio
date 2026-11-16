@@ -160,8 +160,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            let style = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;");
     let _ = writeln!(w, "            let mut r = RECT {{ left: 0, top: 0, right: win::px(hwnd, {}), bottom: win::px(hwnd, {}) }};", f.form.size[0], f.form.size[1]);
     let _ = writeln!(w, "            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), {}, Default::default(), win::dpi(hwnd) as u32);", !f.menu.is_empty());
-    let _ = writeln!(w, "            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER);");
-    let _ = writeln!(w, "            let _ = wm::ShowWindow(hwnd, wm::SW_SHOW);");
+    let _ = writeln!(w, "            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);");
+    let _ = writeln!(w, "            win::show_top(hwnd);");
     if let Some(watch) = &opts.theme_watch {
         let _ = writeln!(w, "            // A debug build follows the theme file as it is saved.");
         let _ = writeln!(w, "            #[cfg(debug_assertions)]");
