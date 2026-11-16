@@ -130,8 +130,13 @@ pub fn build(parent: HWND, f: &FormFile, font: HFONT, page: usize) -> Live {
         h
     });
     let mut out = Vec::new();
+    let form_font = match f.form.font_size {
+        Some(pt) => win::font(parent, pt, false),
+        None => font,
+    };
     for (i, c) in f.control.iter().enumerate() {
-        let h = make(parent, c, control_id(i), font);
+        let own = c.font_size.map(|pt| win::font(parent, pt, false)).unwrap_or(form_font);
+        let h = make(parent, c, control_id(i), own);
         if c.visible == Some(false) || c.page.is_some_and(|p| p != page) {
             win::show(h, false);
         }

@@ -209,7 +209,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
 
     // build
     let _ = writeln!(w, "    fn build(hwnd: HWND) -> {ui} {{");
-    let _ = writeln!(w, "        let font = win::font(hwnd, 0, false);");
+    let _ = writeln!(w, "        let font = win::font(hwnd, {}, false);", f.form.font_size.unwrap_or(0));
     let _ = writeln!(w, "        let dpi = win::dpi(hwnd);");
     let _ = writeln!(w, "        let mut layout = Layout::new(({}, {}));", f.form.size[0], f.form.size[1]);
     if !f.toolbar.is_empty() {
@@ -219,17 +219,25 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for c in &f.control {
         let id = format!("CONTROL_{}", c.id.to_ascii_uppercase());
         let text = format!("t({})", lit(&text_of(c)));
+        // A control with its own size gets a font of its own; the form's otherwise.
+        let font = match c.font_size {
+            Some(pt) => {
+                let _ = writeln!(w, "        let font_{} = win::font(hwnd, {pt}, false);", c.id);
+                format!("font_{}", c.id)
+            }
+            None => "font".to_string(),
+        };
         let make = match c.kind {
-            Kind::Label => format!("win::label(hwnd, {text}, {id}, font)"),
-            Kind::Edit => format!("win::edit(hwnd, {}, {id}, font, {})", lit(&text_of(c)), c.password.unwrap_or(false)),
-            Kind::Button => format!("win::button(hwnd, {text}, {id}, font, false)"),
-            Kind::Checkbox => format!("win::checkbox(hwnd, {text}, {id}, font, {})", c.checked.unwrap_or(false)),
-            Kind::Radio => format!("win::radio(hwnd, {text}, {id}, font, {}, {})", c.group.unwrap_or(0), c.checked.unwrap_or(false)),
-            Kind::Combo => format!("win::combo(hwnd, {id}, font, &[{}])", c.items.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
-            Kind::List => format!("win::list(hwnd, {id}, font, &[{}])", c.columns.iter().map(|(s, n)| format!("(t({}), {n})", lit(s))).collect::<Vec<_>>().join(", ")),
-            Kind::Group => format!("controls::group(hwnd, {text}, {id}, font)"),
-            Kind::Tabs => format!("controls::tabs(hwnd, {id}, font, &[{}])", c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
-            Kind::Statusbar => format!("controls::status_bar(hwnd, {id}, font)"),
+            Kind::Label => format!("win::label(hwnd, {text}, {id}, {font})"),
+            Kind::Edit => format!("win::edit(hwnd, {}, {id}, {font}, {})", lit(&text_of(c)), c.password.unwrap_or(false)),
+            Kind::Button => format!("win::button(hwnd, {text}, {id}, {font}, false)"),
+            Kind::Checkbox => format!("win::checkbox(hwnd, {text}, {id}, {font}, {})", c.checked.unwrap_or(false)),
+            Kind::Radio => format!("win::radio(hwnd, {text}, {id}, {font}, {}, {})", c.group.unwrap_or(0), c.checked.unwrap_or(false)),
+            Kind::Combo => format!("win::combo(hwnd, {id}, {font}, &[{}])", c.items.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
+            Kind::List => format!("win::list(hwnd, {id}, {font}, &[{}])", c.columns.iter().map(|(s, n)| format!("(t({}), {n})", lit(s))).collect::<Vec<_>>().join(", ")),
+            Kind::Group => format!("controls::group(hwnd, {text}, {id}, {font})"),
+            Kind::Tabs => format!("controls::tabs(hwnd, {id}, {font}, &[{}])", c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
+            Kind::Statusbar => format!("controls::status_bar(hwnd, {id}, {font})"),
         };
         let _ = writeln!(w, "        let {} = {make};", c.id);
         let _ = writeln!(w, "        win::set_css({}, {}, {});", c.id, lit(c.class.as_deref().unwrap_or("")), lit(&c.id));

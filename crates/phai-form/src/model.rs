@@ -29,6 +29,9 @@ pub struct Form {
     pub min_size: Option<[i32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// Points for every control's words; none is Windows' own (9 pt). A control may set its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -165,6 +168,9 @@ pub struct Control {
     pub on_change: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_select: Option<String>,
+    /// Points for this control's words, over the form's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<i32>,
 }
 
 impl Control {
@@ -199,6 +205,7 @@ impl Control {
             on_click: None,
             on_change: None,
             on_select: None,
+            font_size: None,
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
@@ -322,7 +329,7 @@ const LAST: &str = "\u{1}";
 impl FormFile {
     /// A new empty form.
     pub fn new(name: &str) -> FormFile {
-        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], min_size: None, theme: None }, menu: vec![], toolbar: vec![], control: vec![] }
+        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], min_size: None, theme: None, font_size: None }, menu: vec![], toolbar: vec![], control: vec![] }
     }
 
     pub fn parse(src: &str) -> Result<FormFile, FormError> {
@@ -348,6 +355,13 @@ impl FormFile {
         }
         if !is_pascal(&self.form.name) {
             out.push((format!("form name {:?} must be PascalCase, like MainWindow", self.form.name), Some("name".into())));
+        }
+        let font_ok = |f: Option<i32>| f.is_none_or(|n| (6..=48).contains(&n));
+        if !font_ok(self.form.font_size) {
+            out.push(("font_size: 6 to 48 points".into(), Some("font_size".into())));
+        }
+        if let Some(c) = self.control.iter().find(|c| !font_ok(c.font_size)) {
+            out.push((format!("{}: font_size 6 to 48 points", c.id), Some(format!("id = \"{}\"", c.id))));
         }
         if self.form.size[0] < 50 || self.form.size[1] < 30 {
             out.push(("form size is too small".into(), Some("size".into())));

@@ -377,6 +377,12 @@ impl Studio {
                 Some(n) if n >= 80 => f.form.size[1] = n,
                 _ => return,
             },
+            (Key::FormFont, _) => {
+                f.form.font_size = num.filter(|n| (6..=48).contains(n));
+                if !text.trim().is_empty() && f.form.font_size.is_none() {
+                    return;
+                }
+            }
             (Key::FormTheme, _) => {
                 f.form.theme = (!text.trim().is_empty()).then(|| text.trim().to_string());
                 self.changed();
@@ -395,6 +401,12 @@ impl Studio {
                     Key::W => c.bounds = Some([x, y, num.unwrap_or(w).max(1), h]),
                     Key::H => c.bounds = Some([x, y, w, num.unwrap_or(h).max(1)]),
                     Key::Class => c.class = (!text.trim().is_empty()).then(|| text.trim().to_string()),
+                    Key::Font => {
+                        c.font_size = num.filter(|n| (6..=48).contains(n));
+                        if !text.trim().is_empty() && c.font_size.is_none() {
+                            return;
+                        }
+                    }
                     Key::Event => c.set_handler((!text.trim().is_empty()).then(|| text.trim().to_string())),
                     Key::Items => match c.kind {
                         Kind::Combo => c.items = list(),
@@ -1392,6 +1404,21 @@ fn settings_dir() -> Option<PathBuf> {
     Some(PathBuf::from(std::env::var_os("APPDATA")?).join("Phai Studio"))
 }
 
+/// A remembered setting, `name=value` lines in `settings.txt`.
+fn setting(name: &str) -> Option<String> {
+    let text = std::fs::read_to_string(settings_dir()?.join("settings.txt")).ok()?;
+    text.lines().find_map(|l| l.strip_prefix(&format!("{name}=")).map(str::to_string))
+}
+
+fn remember_setting(name: &str, value: &str) {
+    let Some(dir) = settings_dir() else { return };
+    let path = dir.join("settings.txt");
+    let mut lines: Vec<String> = std::fs::read_to_string(&path).unwrap_or_default().lines().filter(|l| !l.starts_with(&format!("{name}="))).map(str::to_string).collect();
+    lines.push(format!("{name}={value}"));
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(path, lines.join("\n"));
+}
+
 /// The forms opened last, newest first, those still there.
 fn recent_files() -> Vec<PathBuf> {
     let Some(dir) = settings_dir() else { return vec![] };
@@ -1576,6 +1603,7 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         }
         wm::WM_DESTROY => {
             s.stop();
+            remember_setting("editor_font_pt", &phai_editor::view::font_size().to_string());
             unsafe { wm::PostQuitMessage(0) };
             LRESULT(0)
         }
@@ -1687,6 +1715,9 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     words::add(text::THAI);
     phai_form::live::set_translate(false);
+    if let Some(pt) = setting("editor_font_pt").and_then(|v| v.parse().ok()) {
+        phai_editor::view::set_font_size(pt);
+    }
     words::set_thai(args.iter().any(|a| a == "--thai"));
     if args.iter().any(|a| a == "--dark") {
         theme::set(Theme::dark());
