@@ -98,6 +98,16 @@ pub struct Doc {
     pub form: FormFile,
     pub path: Option<PathBuf>,
     pub dirty: bool,
+    /// A code file's editor, when this tab holds code rather than a form.
+    pub code: Option<HWND>,
+    /// The file had `\r\n` line ends; they are written back so.
+    pub crlf: bool,
+}
+
+impl Doc {
+    pub fn new(form: FormFile, path: Option<PathBuf>) -> Doc {
+        Doc { form, path, dirty: false, code: None, crlf: false }
+    }
 }
 
 /// An open form that is not the one on the canvas: everything it needs to come back as it was.
@@ -110,7 +120,7 @@ struct Tab {
 
 impl Tab {
     fn empty() -> Tab {
-        Tab { doc: Doc { form: FormFile::new("MainWindow"), path: None, dirty: false }, undo: vec![], redo: vec![], selected: None }
+        Tab { doc: Doc::new(FormFile::new("MainWindow"), None), undo: vec![], redo: vec![], selected: None }
     }
 
     fn label(&self) -> String {
@@ -642,7 +652,7 @@ impl Studio {
 
     /// The form on the canvas, packed away into its tab.
     fn stash(&mut self) {
-        let doc = std::mem::replace(&mut self.doc, Doc { form: FormFile::new("MainWindow"), path: None, dirty: false });
+        let doc = std::mem::replace(&mut self.doc, Doc::new(FormFile::new("MainWindow"), None));
         self.tabs[self.active] = Tab { doc, undo: std::mem::take(&mut self.undo), redo: std::mem::take(&mut self.redo), selected: self.selected.take() };
     }
 
@@ -663,10 +673,82 @@ impl Studio {
         self.after_switch();
     }
 
+    /// Shows the active tab's editor and hides every other one; the canvas shows when it is a form.
+    fn show_code(&mut self) {
+        let active = self.doc.code;
+        for t in &self.tabs {
+            if let Some(h) = t.doc.code {
+                win::show(h, false);
+            }
+        }
+        if let Some(c) = self.canvas.as_ref() {
+            win::show(c.surface, active.is_none());
+            if let Some(h) = active {
+                let mut r = RECT::default();
+                unsafe {
+                    let _ = wm::GetClientRect(c.hwnd, &mut r);
+                }
+                win::move_to(h, 0, 0, r.right, r.bottom);
+                unsafe {
+                    // Children made later sit lower: lift the editor over the form's windows.
+                    let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_SHOWWINDOW);
+                }
+                unsafe {
+                    let _ = km::SetFocus(Some(h));
+                }
+            }
+        }
+    }
+
+    /// Opens a code file in an editor tab - or the tab it is already in.
+    pub fn open_code(&mut self, path: &Path) {
+        let same = |q: &Option<PathBuf>| q.as_ref().is_some_and(|q| q == path);
+        if same(&self.doc.path) {
+            return self.after_switch();
+        }
+        if let Some(i) = self.tabs.iter().enumerate().position(|(i, t)| i != self.active && same(&t.doc.path)) {
+            return self.activate(i);
+        }
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            win::message(Some(self.hwnd), &tf("{0} cannot be opened", &[&path.display()]), "Phai Studio", wm::MB_ICONWARNING);
+            return;
+        };
+        let (text, crlf) = phai_editor::buffer::normalize(&raw);
+        let Some(parent) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
+        let h = phai_editor::view::create(parent, 900, &text, &path.to_string_lossy());
+        let blank = self.doc.path.is_none() && !self.doc.dirty && self.doc.form.control.is_empty() && self.doc.code.is_none();
+        if !blank {
+            self.stash();
+            self.tabs.push(Tab::empty());
+            self.active = self.tabs.len() - 1;
+        }
+        self.doc = Doc { code: Some(h), crlf, ..Doc::new(FormFile::new("Code"), Some(path.to_path_buf())) };
+        self.undo.clear();
+        self.redo.clear();
+        self.selected = None;
+        self.after_switch();
+    }
+
+    /// The editor said its text changed.
+    pub fn code_changed(&mut self) {
+        if let Some(h) = self.doc.code {
+            let dirty = phai_editor::view::is_dirty(h);
+            if dirty != self.doc.dirty {
+                self.doc.dirty = dirty;
+                self.say_title();
+                self.refresh_tabs();
+            }
+            let (l, c) = phai_editor::view::caret_position(h);
+            controls::status_text(self.status, 1, &tf("Line {0}, column {1}", &[&l, &c]));
+        }
+    }
+
     /// Everything that shows the active form, again.
     fn after_switch(&mut self) {
         self.load_theme();
-        self.rebuild();
+        if self.doc.code.is_none() {
+            self.rebuild();
+        }
         self.refresh_props();
         self.say_title();
         self.say_selection();
@@ -675,12 +757,14 @@ impl Studio {
         if let Some(e) = self.explorer.as_mut() {
             e.show_project_of(path.as_deref());
         }
+        // Last, so nothing shown above leaves the form's surface over the editor.
+        self.show_code();
     }
 
     fn refresh_tabs(&mut self) {
         let mut labels: Vec<String> = Vec::new();
         for (i, tab) in self.tabs.iter().enumerate() {
-            labels.push(if i == self.active { Tab { doc: Doc { form: FormFile::new("X"), path: self.doc.path.clone(), dirty: self.doc.dirty }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
+            labels.push(if i == self.active { Tab { doc: Doc { dirty: self.doc.dirty, ..Doc::new(FormFile::new("X"), self.doc.path.clone()) }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
         }
         let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         controls::tabs_relabel(self.tabbar, &refs);
@@ -705,7 +789,7 @@ impl Studio {
             self.tabs.push(Tab::empty());
             self.active = self.tabs.len() - 1;
         }
-        self.doc = Doc { form, path, dirty: false };
+        self.doc = Doc::new(form, path);
         self.undo.clear();
         self.redo.clear();
         self.selected = None;
@@ -717,8 +801,13 @@ impl Studio {
         if !self.may_leave() {
             return false;
         }
+        if let Some(h) = self.doc.code.take() {
+            unsafe {
+                let _ = wm::DestroyWindow(h);
+            }
+        }
         if self.tabs.len() == 1 {
-            self.doc = Doc { form: FormFile::new("MainWindow"), path: None, dirty: false };
+            self.doc = Doc::new(FormFile::new("MainWindow"), None);
             self.undo.clear();
             self.redo.clear();
             self.selected = None;
@@ -759,6 +848,11 @@ impl Studio {
     }
 
     pub fn say_selection(&self) {
+        if let Some(h) = self.doc.code {
+            let (l, c) = phai_editor::view::caret_position(h);
+            controls::status_text(self.status, 1, &tf("Line {0}, column {1}", &[&l, &c]));
+            return;
+        }
         let f = &self.doc.form;
         let text = match self.selected.and_then(|i| f.control.get(i)) {
             Some(c) => {
@@ -808,6 +902,25 @@ impl Studio {
 
     /// Writes the form, its generated code and - the first time - the programmer's file.
     fn save(&mut self, choose: bool) -> bool {
+        // A code file: its text, with the line ends it came with.
+        if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
+            let text = phai_editor::view::text(h);
+            let text = if self.doc.crlf { text.replace('\n', "\r\n") } else { text };
+            return match std::fs::write(&path, text) {
+                Ok(()) => {
+                    phai_editor::view::set_clean(h);
+                    self.doc.dirty = false;
+                    self.say_title();
+                    self.refresh_tabs();
+                    controls::status_text(self.status, 0, &tf("Saved {0}", &[&path.file_name().unwrap_or_default().to_string_lossy()]));
+                    true
+                }
+                Err(e) => {
+                    win::message(Some(self.hwnd), &format!("{}\n\n{e}", tf("{0} cannot be saved", &[&path.display()])), "Phai Studio", wm::MB_ICONWARNING);
+                    false
+                }
+            };
+        }
         if let Some((message, _)) = self.doc.form.check().into_iter().next() {
             win::message(Some(self.hwnd), &message, t("The form has a mistake"), wm::MB_ICONWARNING);
             return false;
@@ -1023,9 +1136,14 @@ impl Studio {
     /// Double-click in the error list: the file, opened as Windows opens it.
     fn open_diagnostic(&mut self, row: usize) {
         let Some(d) = self.diagnostics.get(row) else { return };
-        let Some(file) = &d.file else { return };
-        controls::status_text(self.status, 0, &format!("{}:{}:{}", file.display(), d.line, d.column));
-        open_with_windows(&file.to_string_lossy());
+        let Some(file) = d.file.clone() else { return };
+        let (line, column) = (d.line as usize, d.column as usize);
+        controls::status_text(self.status, 0, &format!("{}:{line}:{column}", file.display()));
+        // Into Phai's own editor, at the line.
+        self.open_code(&file);
+        if let Some(h) = self.doc.code {
+            phai_editor::view::go_to(h, line, column);
+        }
     }
 
     // --- commands -----------------------------------------------------------------------------
@@ -1070,6 +1188,11 @@ impl Studio {
                     unsafe {
                         let _ = wm::DestroyWindow(self.hwnd);
                     }
+                }
+            }
+            ID_UNDO | ID_REDO if self.doc.code.is_some() => {
+                if let Some(h) = self.doc.code {
+                    phai_editor::view::undo_redo(h, id == ID_UNDO);
                 }
             }
             ID_UNDO => self.undo_redo(true),
@@ -1509,7 +1632,7 @@ fn main() {
             tabs: vec![Tab::empty()],
             active: 0,
             layout,
-            doc: Doc { form: FormFile::new("MainWindow"), path: None, dirty: false },
+            doc: Doc::new(FormFile::new("MainWindow"), None),
             undo: vec![],
             redo: vec![],
             selected: None,
@@ -1543,7 +1666,11 @@ fn main() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
         for p in &forms {
-            s.open_path(Path::new(p));
+            if p.ends_with(".phaiform") {
+                s.open_path(Path::new(p));
+            } else {
+                s.open_code(Path::new(p));
+            }
         }
         if forms.len() > 1 {
             s.activate(0);
@@ -1567,6 +1694,18 @@ fn main() {
         }
         if let Some(i) = args.iter().position(|a| a == "--selftest-multi") {
             selftest_multi(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("multi.phaiform")));
+        }
+        // `--codetest`: types into the open code file as a keyboard would - Thai, a new line, a
+        // backspace - then saves it.
+        if args.iter().any(|a| a == "--codetest") {
+            if let Some(h) = s.doc.code {
+                for u in "// ทดสอบ พิมพ์ไทยx".encode_utf16() {
+                    wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
+                }
+                wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(0x08)), Some(LPARAM(1)));
+                wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(0x0D)), Some(LPARAM(1)));
+                s.save(false);
+            }
         }
         // `--buildtest`: builds the open form's project the way Build does, prints what came of
         // it and ends - the Build command checked end to end.

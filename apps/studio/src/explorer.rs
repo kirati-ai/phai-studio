@@ -186,8 +186,11 @@ impl Explorer {
             return;
         }
         let Some(s) = studio() else { return };
-        if path.extension().is_some_and(|e| e == "phaiform") {
+        let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if ext == "phaiform" {
             s.open_path(&path);
+        } else if ["rs", "toml", "css", "md", "txt", "json", "gitignore"].contains(&ext.as_str()) || path.file_name().is_some_and(|n| n == ".gitignore") {
+            s.open_code(&path);
         } else {
             crate::open_with_windows(&path.to_string_lossy());
         }

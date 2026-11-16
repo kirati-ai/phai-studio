@@ -97,6 +97,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Menus...", "เมนู..."),
     ("Cut", "ตัด"),
     ("Recent", "ล่าสุด"),
+    ("Line {0}, column {1}", "บรรทัด {0} คอลัมน์ {1}"),
     ("New from template", "สร้างจากแม่แบบ"),
     ("Dialog with OK and Cancel", "กล่องโต้ตอบ ตกลง/ยกเลิก"),
     ("Main window with menu, toolbar and status bar", "หน้าต่างหลัก มีเมนู แถบเครื่องมือ แถบสถานะ"),

@@ -96,6 +96,20 @@ impl Props {
     pub fn refresh(&mut self) {
         let Some(s) = studio() else { return };
         self.filling = true;
+        // A code file has no properties: its name, and nothing else.
+        if s.doc.code.is_some() {
+            let name = s.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            win::set_text(self.heading, &name);
+            for r in &self.rows {
+                win::show(r.label, false);
+                win::show(r.edit, false);
+            }
+            for h in [self.anchor_label, self.dock_label, self.dock].into_iter().chain(self.anchors) {
+                win::show(h, false);
+            }
+            self.filling = false;
+            return;
+        }
         let f = &s.doc.form;
         let chosen = s.selected.and_then(|i| f.control.get(i));
         win::set_text(self.heading, &match chosen {

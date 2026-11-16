@@ -149,6 +149,7 @@ name = "phai-studio"
 version = "0.1.0"
 dependencies = [
  "phai-design",
+ "phai-editor",
  "phai-form",
  "phai-ui",
  "serde",

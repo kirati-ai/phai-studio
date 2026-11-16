@@ -689,7 +689,7 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             let bg = theme::style("canvas", State::default()).background_or(Color::rgb(243, 243, 243));
             win::fill(dc, &r, bg);
-            if let Some(s) = studio() {
+            if let Some(s) = studio().filter(|s| s.doc.code.is_none()) {
                 paint_frame(dc, h, &s.doc.form, s.drag_size());
             }
             LRESULT(1)
@@ -697,6 +697,19 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         wm::WM_LBUTTONDOWN => {
             if let Some(c) = canvas_of(h) {
                 c.canvas_down(l);
+            }
+            LRESULT(0)
+        }
+        // An editor on the canvas says its text changed; an editor takes the canvas's whole size.
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::CHANGED => {
+            if let Some(s) = studio() {
+                s.code_changed();
+            }
+            LRESULT(0)
+        }
+        wm::WM_SIZE => {
+            if let Some(code) = studio().and_then(|s| s.doc.code) {
+                win::move_to(code, 0, 0, win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
             }
             LRESULT(0)
         }

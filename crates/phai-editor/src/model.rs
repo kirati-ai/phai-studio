@@ -122,11 +122,16 @@ impl Model {
     /// an indented line takes one level of indent back.
     pub fn type_text(&mut self, text: &str) {
         if text == "\n" {
-            let (line, _) = self.buf.position(self.selection().0);
+            let (line, col) = self.buf.position(self.selection().0);
             let current = self.buf.line(line);
             let mut indent: String = current.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
-            if current.trim_end().ends_with('{') || current.trim_end().ends_with('(') || current.trim_end().ends_with('[') {
+            // What is before the caret decides: a line broken before its `{` is not opening one.
+            let before = current[..col].trim_end();
+            if before.ends_with('{') || before.ends_with('(') || before.ends_with('[') {
                 indent.push_str("    ");
+            }
+            if indent.len() > col {
+                indent.truncate(col);
             }
             self.replace(&format!("\n{indent}"), false);
             return;
@@ -407,6 +412,22 @@ mod tests {
         assert_eq!(m.buf.text(), "fn main() {\n    ", "hello went at once");
         m.redo();
         assert_eq!(m.buf.text(), "fn main() {\n    hello");
+    }
+
+    #[test]
+    fn a_new_line_in_front_of_code_does_not_indent_it() {
+        let mut m = Model::new("fn main() {");
+        m.type_text("
+");
+        assert_eq!(m.buf.text(), "
+fn main() {", "broken at the start, the brace was not before the caret");
+        let mut m = Model::new("    let x = 1;");
+        m.caret = 2;
+        m.anchor = 2;
+        m.type_text("
+");
+        assert_eq!(m.buf.text(), "  
+    let x = 1;", "broken inside the indent, the code keeps its whole indent");
     }
 
     #[test]
