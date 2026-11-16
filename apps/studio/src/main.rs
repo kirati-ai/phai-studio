@@ -83,6 +83,8 @@ const ID_LOCK: i32 = 192;
 const ID_TAB_ORDER: i32 = 193;
 const ID_GO_DEFINITION: i32 = 194;
 const ID_RENAME: i32 = 195;
+const ID_REFERENCES: i32 = 197;
+const ID_COMMENT: i32 = 198;
 /// One step of `--lsptest`, posted again and again until it is done.
 const ID_LSP_TEST: i32 = 196;
 /// Format menu: `ID_FORMAT + Op as index` in `FORMATS` order.
@@ -146,6 +148,7 @@ enum Ask {
     PrepareRename(PathBuf, (u32, u32)),
     /// The changes that rename `old` to `new`.
     Rename { old: String, new: String },
+    References,
 }
 
 struct Tab {
@@ -181,6 +184,8 @@ pub struct Studio {
     /// Build with `--release`.
     release: bool,
     diagnostics: Vec<cargo::Diagnostic>,
+    /// The last Find All References, as its list shows them.
+    references: Vec<phai_editor::lsp::Location>,
     building: bool,
     running: Option<std::process::Child>,
     /// rust-analyzer for the project of the code being edited.
@@ -213,7 +218,7 @@ pub struct Studio {
 }
 
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// How far `--lsptest` has come: 0 asking for the definition, 1 renaming, 2 waiting for it.
+/// How far `--lsptest` has come: 0-1 the definition, 2 the references, 3 the rename, 4 done.
 static LSP_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static STUDIO: AtomicPtr<Studio> = AtomicPtr::new(std::ptr::null_mut());
 
@@ -348,7 +353,9 @@ fn build_menu() -> HMENU {
         add(edit, ID_SELECT_ALL, t("Select all"), "Ctrl+A");
         sep(edit);
         add(edit, ID_GO_DEFINITION, t("Go To Definition"), "F12");
+        add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
         add(edit, ID_RENAME, t("Rename..."), "F2");
+        add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
         sep(edit);
         add(edit, ID_EDIT_MENUS, t("Menus..."), "");
         add(edit, ID_EDIT_TOOLBAR, t("Toolbar..."), "");
@@ -1042,6 +1049,10 @@ impl Studio {
                     self.asked.insert(id, (h, Ask::Rename { old, new }));
                 }
             }
+            Ask::References => {
+                let found = phai_editor::lsp::locations_of(&result);
+                self.show_references(found);
+            }
             Ask::Rename { old, new } => {
                 if let Some(e) = error {
                     win::message(Some(self.hwnd), &e, t("Rename"), wm::MB_ICONWARNING);
@@ -1118,19 +1129,24 @@ impl Studio {
                 println!("definition: line 1");
                 LSP_TEST.store(2, Ordering::Relaxed);
             }
+            2 if !self.references.is_empty() => LSP_TEST.store(3, Ordering::Relaxed),
+            2 => {
+                on_call(h);
+                self.lsp_references(h);
+            }
             1 => {
                 on_call(h);
                 self.lsp_definition(h);
             }
-            2 if phai_editor::view::text(h).contains(&format!("{to}(")) => {
+            3 if phai_editor::view::text(h).contains(&format!("{to}(")) => {
                 self.save(false);
-                LSP_TEST.store(3, Ordering::Relaxed);
+                LSP_TEST.store(4, Ordering::Relaxed);
                 // Being photographed, it stays for the picture.
                 if std::env::var_os("PHAI_SHOT").is_none() {
                     std::process::exit(0);
                 }
             }
-            2 => {
+            3 => {
                 on_call(h);
                 self.lsp_rename(h);
             }
@@ -1148,6 +1164,56 @@ impl Studio {
                 self.asked.insert(id, (h, Ask::Definition));
             }
             None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
+        }
+    }
+
+    /// Shift+F12 in an editor: every place the thing at the caret is used, in the References list.
+    pub fn lsp_references(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let pos = phai_editor::view::caret_lsp(h);
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.references(&path, pos.0, pos.1);
+            self.asked.insert(id, (h, Ask::References));
+        }
+    }
+
+    /// Fills the References list - file, line, the line's code - and shows it.
+    fn show_references(&mut self, mut found: Vec<phai_editor::lsp::Location>) {
+        use windows::Win32::UI::Controls as cc;
+        found.sort_by(|a, b| a.path.cmp(&b.path).then(a.start.cmp(&b.start)));
+        let Some(list) = self.bottom.as_ref().map(|b| b.refs) else { return };
+        unsafe {
+            wm::SendMessageW(list, cc::LVM_DELETEALLITEMS, None, None);
+        }
+        let mut texts: std::collections::HashMap<PathBuf, Vec<String>> = std::collections::HashMap::new();
+        for r in &found {
+            let lines = texts.entry(r.path.clone()).or_insert_with(|| {
+                let text = self.editor_of(&r.path).map(phai_editor::view::text).or_else(|| std::fs::read_to_string(&r.path).ok()).unwrap_or_default();
+                text.lines().map(str::to_string).collect()
+            });
+            let code = lines.get(r.start.0 as usize).map(|l| l.trim().to_string()).unwrap_or_default();
+            let file = r.path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            win::list_add(list, &[&file, &(r.start.0 + 1).to_string(), &code]);
+        }
+        let files = texts.len();
+        let said = tf("{0} references in {1} files", &[&found.len(), &files]);
+        if LSP_TEST.load(Ordering::Relaxed) > 0 && !found.is_empty() {
+            println!("{said}");
+        }
+        controls::status_text(self.status, 0, &said);
+        self.references = found;
+        self.show_pane(Pane::Output, true);
+        if let Some(b) = self.bottom.as_ref() {
+            b.show_tab(2);
+        }
+    }
+
+    /// Double-click in the References list: that place, in Phai's editor.
+    fn open_reference(&mut self, row: usize) {
+        let Some(r) = self.references.get(row).cloned() else { return };
+        self.open_code(&r.path);
+        if let Some(h) = self.doc.code {
+            phai_editor::view::select_lsp(h, r.start, r.end);
         }
     }
 
@@ -1713,8 +1779,10 @@ impl Studio {
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_LSP_TEST => self.lsp_test_step(),
-            ID_GO_DEFINITION | ID_RENAME => match self.doc.code {
+            ID_GO_DEFINITION | ID_RENAME | ID_REFERENCES | ID_COMMENT => match self.doc.code {
                 Some(h) if id == ID_GO_DEFINITION => self.lsp_definition(h),
+                Some(h) if id == ID_REFERENCES => self.lsp_references(h),
+                Some(h) if id == ID_COMMENT => phai_editor::view::toggle_comment(h),
                 Some(h) => self.lsp_rename(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
             },
@@ -2008,6 +2076,13 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                     return LRESULT(0);
                 }
             }
+            if s.bottom.as_ref().is_some_and(|b| b.refs == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if it.iItem >= 0 {
+                    s.open_reference(it.iItem as usize);
+                }
+                return LRESULT(0);
+            }
             if hdr.hwndFrom == s.errors && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
@@ -2230,6 +2305,7 @@ fn main() {
             bottom: Some(bottom),
             release: false,
             diagnostics: vec![],
+            references: vec![],
             building: false,
             running: None,
             lsp: None,

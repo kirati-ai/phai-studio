@@ -45,11 +45,11 @@
 | ★ | เส้นหยักใต้ error / warning | ✅ |
 | ★ | Quick Actions (Ctrl+.) | ⬜ |
 | ★ | Go To Definition (F12, Ctrl+click; Edit menu) — Peek not yet | 🟡 |
-| ★ | Find All References (Shift+F12) | ⬜ |
+| ★ | Find All References (Shift+F12) — References tab, double-click to go | ✅ |
 | ★ | Quick Find / Replace (Ctrl+F / Ctrl+H) | ✅ |
 | | Find in Files (Ctrl+Shift+F) | ⬜ |
 | ★ | Rename (F2; Edit menu) — every file, open ones as one undo step | ✅ |
-| | Comment toggle (Ctrl+/), ย้ายบรรทัด (Alt+↑↓), ทำซ้ำบรรทัด | ⬜ |
+| | Comment toggle (Ctrl+/) ✅; ย้ายบรรทัด (Alt+↑↓), ทำซ้ำบรรทัด ⬜ | 🟡 |
 | | Multi-caret, box selection | ⬜ |
 | | พับโค้ด (outlining) | ⬜ |
 | | จับคู่วงเล็บ | ⬜ |

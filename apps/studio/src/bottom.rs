@@ -1,5 +1,5 @@
-//! The panel under the canvas: the error list and Cargo's output, one at a time, under two tabs -
-//! Visual Studio's Error List and Output window.
+//! The panel under the canvas: the error list, Cargo's output and the last Find All References,
+//! one at a time, under tabs - Visual Studio's Error List, Output and Find Symbol Results.
 
 use phai_ui::controls;
 use phai_ui::layout::{Anchor, Dock, Item, Layout, Rect};
@@ -12,12 +12,14 @@ use windows::Win32::UI::WindowsAndMessaging::{self as wm, HMENU};
 
 const ID_TABS: i32 = 500;
 const ID_OUTPUT: i32 = 501;
+pub const ID_REFS: i32 = 502;
 
 pub struct Bottom {
     pub hwnd: HWND,
     tabs: HWND,
     pub errors: HWND,
     output: HWND,
+    pub refs: HWND,
     layout: Layout,
 }
 
@@ -27,9 +29,10 @@ impl Bottom {
         let hwnd = unsafe {
             wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default()
         };
-        let tabs = controls::tabs(hwnd, ID_TABS, font, &[t("Errors"), t("Output")]);
+        let tabs = controls::tabs(hwnd, ID_TABS, font, &[t("Errors"), t("Output"), t("References")]);
         let errors = win::list(hwnd, errors_id, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
+        let refs = win::list(hwnd, ID_REFS, font, &[(t("File"), 170), (t("Line"), 60), (t("Code"), 640)]);
         unsafe {
             wm::SendMessageW(output, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
@@ -37,7 +40,8 @@ impl Bottom {
         layout.add(tabs, Item { bounds: Rect::new(0, 0, 0, 28), dock: Dock::Top, anchor: Anchor::default() });
         layout.add(errors, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
         layout.add(output, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, layout });
+        layout.add(refs, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -45,15 +49,16 @@ impl Bottom {
         b
     }
 
-    /// 0 the errors, 1 the output.
+    /// 0 the errors, 1 the output, 2 the references.
     pub fn show_tab(&self, i: usize) {
         controls::tabs_select(self.tabs, i);
         win::show(self.errors, i == 0);
         win::show(self.output, i == 1);
+        win::show(self.refs, i == 2);
     }
 
     pub fn relabel(&self) {
-        controls::tabs_relabel(self.tabs, &[t("Errors"), t("Output")]);
+        controls::tabs_relabel(self.tabs, &[t("Errors"), t("Output"), t("References")]);
     }
 
     pub fn clear_output(&self) {

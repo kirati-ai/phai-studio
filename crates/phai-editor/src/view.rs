@@ -26,6 +26,8 @@ pub const COMPLETE: u16 = 0x0302;
 pub const DEFINITION: u16 = 0x0303;
 /// Rename was asked for (F2) at [`caret_lsp`].
 pub const RENAME: u16 = 0x0304;
+/// Find All References was asked for (Shift+F12) at [`caret_lsp`].
+pub const REFERENCES: u16 = 0x0305;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -628,6 +630,14 @@ pub fn select_lsp(h: HWND, start: (u32, u32), end: (u32, u32)) {
     }
 }
 
+/// Comments the chosen lines or takes the comment off, as Ctrl+/ does.
+pub fn toggle_comment(h: HWND) {
+    if let Some(v) = view(h) {
+        v.model.toggle_comment("//");
+        changed(h);
+    }
+}
+
 /// Makes a language server's changes to the text, as one undo step; how many were made.
 pub fn apply_lsp_edits(h: HWND, edits: &[crate::lsp::TextEdit]) -> usize {
     let Some(v) = view(h) else { return 0 };
@@ -937,8 +947,14 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
         notify(h, COMPLETE);
         return true;
     }
-    if vk == 0x7B && !shift && !ctrl {
-        notify(h, DEFINITION);
+    if vk == 0x7B && !ctrl {
+        notify(h, if shift { REFERENCES } else { DEFINITION });
+        return true;
+    }
+    // Ctrl+/ (and Ctrl+K on the numeric pad's /): comment the lines, or take the comment off.
+    if ctrl && (vk == 0xBF || vk == 0x6F) {
+        v.model.toggle_comment("//");
+        changed(h);
         return true;
     }
     if vk == 0x71 && !shift && !ctrl {

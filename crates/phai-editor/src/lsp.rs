@@ -168,6 +168,7 @@ impl Lsp {
                         "completion": { "completionItem": { "snippetSupport": false } },
                         "publishDiagnostics": {},
                         "definition": { "linkSupport": true },
+                        "references": {},
                         "rename": { "prepareSupport": true }
                     },
                     "workspace": { "workspaceEdit": { "documentChanges": true } },
@@ -240,6 +241,11 @@ impl Lsp {
     /// Where the thing at a place is defined (F12).
     pub fn definition(&mut self, path: &Path, line: u32, character: u32) -> i64 {
         self.at("textDocument/definition", path, line, character, json!({}))
+    }
+
+    /// Every place the thing at a place is used, its definition too (Shift+F12).
+    pub fn references(&mut self, path: &Path, line: u32, character: u32) -> i64 {
+        self.at("textDocument/references", path, line, character, json!({ "context": { "includeDeclaration": true } }))
     }
 
     /// Whether the thing at a place can be renamed, and the name it has now.

@@ -213,6 +213,11 @@ pub static THAI: &[(&str, &str)] = &[
     ("No definition found here", "ไม่พบนิยามของสิ่งนี้"),
     ("This cannot be renamed", "เปลี่ยนชื่อสิ่งนี้ไม่ได้"),
     ("Open a code file first", "เปิดไฟล์โค้ดก่อน"),
+    ("References", "การอ้างอิง"),
+    ("Code", "โค้ด"),
+    ("Find All References", "ค้นหาการอ้างอิงทั้งหมด"),
+    ("Toggle Comment", "สลับคอมเมนต์"),
+    ("{0} references in {1} files", "พบ {0} การอ้างอิงใน {1} ไฟล์"),
 ];
 
 #[cfg(test)]

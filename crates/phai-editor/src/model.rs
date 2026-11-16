@@ -151,6 +151,49 @@ impl Model {
         self.replace(text, false);
     }
 
+    /// Ctrl+/: the chosen lines (or the caret's) commented with `mark`, or - when every one that is
+    /// not blank already is - uncommented. The comment goes at the lines' least indent, as Visual
+    /// Studio puts it; one undo step, and the selection keeps to the same lines.
+    pub fn toggle_comment(&mut self, mark: &str) {
+        let (a, b) = self.selection();
+        let first = self.buf.position(a).0;
+        let (mut last, last_col) = self.buf.position(b);
+        if last > first && last_col == 0 {
+            last -= 1;
+        }
+        let lines: Vec<String> = (first..=last).map(|i| self.buf.line(i)).collect();
+        let filled: Vec<&String> = lines.iter().filter(|l| !l.trim().is_empty()).collect();
+        if filled.is_empty() {
+            return;
+        }
+        let commented = filled.iter().all(|l| l.trim_start().starts_with(mark));
+        let indent = filled.iter().map(|l| l.len() - l.trim_start().len()).min().unwrap_or(0);
+        let start = self.buf.line_start(first);
+        let end = self.buf.line_start(last) + lines.last().map(|l| l.len()).unwrap_or(0);
+        let mut spans: Vec<(usize, usize, String)> = Vec::new();
+        for (k, l) in lines.iter().enumerate() {
+            if l.trim().is_empty() {
+                continue;
+            }
+            let at = self.buf.line_start(first + k);
+            if commented {
+                let i = l.len() - l.trim_start().len();
+                let gone = if l[i + mark.len()..].starts_with(' ') { mark.len() + 1 } else { mark.len() };
+                spans.push((at + i, at + i + gone, String::new()));
+            } else {
+                spans.push((at + indent, at + indent, format!("{mark} ")));
+            }
+        }
+        let refs: Vec<(usize, usize, &str)> = spans.iter().map(|(a, b, t)| (*a, *b, t.as_str())).collect();
+        let whole = self.caret != self.anchor;
+        self.edit_many(&refs);
+        if whole {
+            let delta: isize = spans.iter().map(|(a, b, t)| t.len() as isize - (b - a) as isize).sum();
+            self.anchor = start;
+            self.caret = ((end as isize) + delta).max(start as isize) as usize;
+        }
+    }
+
     /// Several changes at once - a rename - as one undo step: `(from, to, new text)` in byte
     /// offsets of the text as it is, not overlapping. The caret keeps its place among them.
     pub fn edit_many(&mut self, spans: &[(usize, usize, &str)]) {
@@ -647,5 +690,25 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert_eq!(m.caret, 8);
         m.undo();
         assert_eq!(m.buf.text(), "go(); go(); go();");
+    }
+
+    #[test]
+    fn ctrl_slash_comments_and_uncomments_lines() {
+        let mut m = Model::new("fn a() {\n    let x = 1;\n\n    go();\n}\n");
+        m.anchor = m.buf.line_start(1);
+        m.caret = m.buf.line_start(4);
+        m.toggle_comment("//");
+        assert_eq!(m.buf.text(), "fn a() {\n    // let x = 1;\n\n    // go();\n}\n");
+        assert_eq!(m.selected_text(), "    // let x = 1;\n\n    // go();");
+        m.toggle_comment("//");
+        assert_eq!(m.buf.text(), "fn a() {\n    let x = 1;\n\n    go();\n}\n");
+        // One line, the caret anywhere in it; one undo step back.
+        let mut m = Model::new("x();\n");
+        m.caret = 2;
+        m.anchor = 2;
+        m.toggle_comment("//");
+        assert_eq!(m.buf.text(), "// x();\n");
+        m.undo();
+        assert_eq!(m.buf.text(), "x();\n");
     }
 }
