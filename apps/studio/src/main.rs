@@ -81,6 +81,10 @@ const ID_FRONT: i32 = 190;
 const ID_BACK: i32 = 191;
 const ID_LOCK: i32 = 192;
 const ID_TAB_ORDER: i32 = 193;
+const ID_GO_DEFINITION: i32 = 194;
+const ID_RENAME: i32 = 195;
+/// One step of `--lsptest`, posted again and again until it is done.
+const ID_LSP_TEST: i32 = 196;
 /// Format menu: `ID_FORMAT + Op as index` in `FORMATS` order.
 const ID_FORMAT: i32 = 150;
 const FORMATS: [phai_form::arrange::Op; 11] = {
@@ -132,6 +136,18 @@ impl Doc {
 }
 
 /// An open form that is not the one on the canvas: everything it needs to come back as it was.
+/// What a request to rust-analyzer was for.
+#[derive(Clone)]
+enum Ask {
+    Hover,
+    Complete,
+    Definition,
+    /// Whether the name at this place in this file may be renamed.
+    PrepareRename(PathBuf, (u32, u32)),
+    /// The changes that rename `old` to `new`.
+    Rename { old: String, new: String },
+}
+
 struct Tab {
     doc: Doc,
     undo: Vec<FormFile>,
@@ -169,8 +185,8 @@ pub struct Studio {
     running: Option<std::process::Child>,
     /// rust-analyzer for the project of the code being edited.
     lsp: Option<phai_editor::lsp::Lsp>,
-    /// Requests sent to it, by id: which editor asked, and whether for a hover (else completions).
-    asked: std::collections::HashMap<i64, (HWND, bool)>,
+    /// Requests sent to it, by id: which editor asked, and what for.
+    asked: std::collections::HashMap<i64, (HWND, Ask)>,
     pub canvas: Option<Canvas>,
     side: HWND,
     side_split: HWND,
@@ -197,6 +213,8 @@ pub struct Studio {
 }
 
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// How far `--lsptest` has come: 0 asking for the definition, 1 renaming, 2 waiting for it.
+static LSP_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static STUDIO: AtomicPtr<Studio> = AtomicPtr::new(std::ptr::null_mut());
 
 /// The one Studio of this process - its window's thread is the only one that asks.
@@ -328,6 +346,9 @@ fn build_menu() -> HMENU {
         add(edit, ID_DELETE, t("Delete"), "Del");
         sep(edit);
         add(edit, ID_SELECT_ALL, t("Select all"), "Ctrl+A");
+        sep(edit);
+        add(edit, ID_GO_DEFINITION, t("Go To Definition"), "F12");
+        add(edit, ID_RENAME, t("Rename..."), "F2");
         sep(edit);
         add(edit, ID_EDIT_MENUS, t("Menus..."), "");
         add(edit, ID_EDIT_TOOLBAR, t("Toolbar..."), "");
@@ -898,7 +919,7 @@ impl Studio {
 
     /// Opens a code file in an editor tab - or the tab it is already in.
     pub fn open_code(&mut self, path: &Path) {
-        let same = |q: &Option<PathBuf>| q.as_ref().is_some_and(|q| q == path);
+        let same = |q: &Option<PathBuf>| q.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
         if same(&self.doc.path) {
             return self.after_switch();
         }
@@ -932,7 +953,11 @@ impl Studio {
 
     /// rust-analyzer for the project holding `path`, started if it is not running for it already.
     fn lsp_for(&mut self, path: &Path) -> Option<&mut phai_editor::lsp::Lsp> {
-        let root = cargo::project_of(path)?;
+        // The standard library and fetched crates, reached by F12, are the running server's too.
+        if cargo::is_library(path) && self.lsp.is_some() {
+            return self.lsp.as_mut();
+        }
+        let root = cargo::workspace_of(path)?;
         if self.lsp.as_ref().is_none_or(|l| !phai_editor::lsp::same_path(&l.root, &root)) {
             self.lsp = phai_editor::lsp::Lsp::start(&root, self.hwnd);
             if self.lsp.is_none() {
@@ -955,15 +980,10 @@ impl Studio {
     fn lsp_message(&mut self, msg: serde_json::Value) {
         // A request of ours answered.
         if let (Some(id), None) = (msg.get("id").and_then(|i| i.as_i64()), msg.get("method")) {
-            if let Some((h, hover)) = self.asked.remove(&id) {
+            if let Some((h, ask)) = self.asked.remove(&id) {
                 let result = msg.get("result").cloned().unwrap_or_default();
-                if hover {
-                    if let Some(text) = phai_editor::lsp::hover_text(&result) {
-                        phai_editor::view::show_tip(h, &text);
-                    }
-                } else {
-                    phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300));
-                }
+                let error = msg["error"]["message"].as_str().map(str::to_string);
+                self.lsp_answer(h, ask, result, error);
             }
             return;
         }
@@ -985,12 +1005,168 @@ impl Studio {
         }
     }
 
+    fn lsp_answer(&mut self, h: HWND, ask: Ask, result: serde_json::Value, error: Option<String>) {
+        match ask {
+            Ask::Hover => {
+                if let Some(text) = phai_editor::lsp::hover_text(&result) {
+                    phai_editor::view::show_tip(h, &text);
+                }
+            }
+            Ask::Complete => phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300)),
+            Ask::Definition => match phai_editor::lsp::locations_of(&result).into_iter().next() {
+                Some(place) => {
+                    self.open_code(&place.path);
+                    if let Some(code) = self.doc.code {
+                        phai_editor::view::select_lsp(code, place.start, place.end);
+                    }
+                    let (l, _) = phai_editor::view::caret_position(self.doc.code.unwrap_or(h));
+                    controls::status_text(self.status, 0, &format!("{}:{l}", place.path.file_name().unwrap_or_default().to_string_lossy()));
+                }
+                None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
+            },
+            Ask::PrepareRename(path, pos) => {
+                let text = phai_editor::view::text(h);
+                let Some(old) = phai_editor::lsp::rename_placeholder(&result, &text) else {
+                    controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("This cannot be renamed")));
+                    return;
+                };
+                // `--lsptest` names it without the box.
+                let test = std::env::var("PHAI_RENAME_TO").ok();
+                let Some(new) = test.or_else(|| phai_ui::dialogs::ask(Some(self.hwnd), t("Rename"), &tf("New name for {0}, in every file that uses it:", &[&old]), &old, false)) else { return };
+                let new = new.trim().to_string();
+                if new.is_empty() || new == old {
+                    return;
+                }
+                if let Some(l) = self.lsp_for(&path) {
+                    let id = l.rename(&path, pos.0, pos.1, &new);
+                    self.asked.insert(id, (h, Ask::Rename { old, new }));
+                }
+            }
+            Ask::Rename { old, new } => {
+                if let Some(e) = error {
+                    win::message(Some(self.hwnd), &e, t("Rename"), wm::MB_ICONWARNING);
+                    return;
+                }
+                let (places, files) = self.apply_workspace_edit(&result);
+                let said = tf("Renamed {0} to {1}: {2} places in {3} files", &[&old, &new, &places, &files]);
+                if LSP_TEST.load(Ordering::Relaxed) > 0 {
+                    println!("{said}");
+                }
+                controls::status_text(self.status, 0, &said);
+            }
+        }
+    }
+
+    /// Makes a rename's changes: in the editor of a file that is open (one undo step, left unsaved
+    /// as Visual Studio leaves it), on disk for one that is not. How many places, in how many files.
+    fn apply_workspace_edit(&mut self, result: &serde_json::Value) -> (usize, usize) {
+        let mut places = 0;
+        let mut files = 0;
+        for (path, edits) in phai_editor::lsp::workspace_edit_of(result) {
+            if edits.is_empty() {
+                continue;
+            }
+            files += 1;
+            if let Some(h) = self.editor_of(&path) {
+                places += phai_editor::view::apply_lsp_edits(h, &edits);
+                if Some(h) != self.doc.code {
+                    // Not the file in front: its tab is changed, and the server told.
+                    let text = phai_editor::view::text(h);
+                    let version = phai_editor::view::version(h);
+                    if let Some(l) = self.lsp.as_ref() {
+                        l.did_change(&path, version, &text);
+                    }
+                    if let Some(tab) = self.tabs.iter_mut().find(|t| t.doc.code == Some(h)) {
+                        tab.doc.dirty = true;
+                    }
+                }
+                continue;
+            }
+            let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+            let (text, crlf) = phai_editor::buffer::normalize(&raw);
+            places += phai_editor::lsp::edit_spans(&text, &edits).len();
+            let out = phai_editor::lsp::apply_edits(&text, &edits);
+            let out = if crlf { out.replace('\n', "\r\n") } else { out };
+            if std::fs::write(&path, out).is_err() {
+                win::message(Some(self.hwnd), &tf("{0} cannot be saved", &[&path.display()]), t("Rename"), wm::MB_ICONWARNING);
+            }
+        }
+        self.refresh_tabs();
+        (places, files)
+    }
+
+    /// `--lsptest`, one step: the open file's second line calls a function the first defines. F12
+    /// on the call must land on line 1; F2 then renames it to `PHAI_RENAME_TO` everywhere. A step
+    /// not done yet is asked again each second, while rust-analyzer loads.
+    fn lsp_test_step(&mut self) {
+        let Some(h) = self.doc.code else { std::process::exit(3) };
+        let to = std::env::var("PHAI_RENAME_TO").unwrap_or_else(|_| "renamed".into());
+        let on_call = |h: HWND| {
+            let text = phai_editor::view::text(h);
+            let second = text.lines().nth(1).unwrap_or_default();
+            let name = text.lines().next().unwrap_or_default().trim_start_matches("pub ").trim_start_matches("fn ").split('(').next().unwrap_or_default().to_string();
+            let col = second.find(&format!("{name}(")).map(|b| second[..b].chars().count() + 2).unwrap_or(1);
+            phai_editor::view::go_to(h, 2, col);
+        };
+        match LSP_TEST.load(Ordering::Relaxed) {
+            0 => {
+                on_call(h);
+                self.lsp_definition(h);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
+            1 if phai_editor::view::caret_position(h).0 == 1 => {
+                println!("definition: line 1");
+                LSP_TEST.store(2, Ordering::Relaxed);
+            }
+            1 => {
+                on_call(h);
+                self.lsp_definition(h);
+            }
+            2 if phai_editor::view::text(h).contains(&format!("{to}(")) => {
+                self.save(false);
+                LSP_TEST.store(3, Ordering::Relaxed);
+                // Being photographed, it stays for the picture.
+                if std::env::var_os("PHAI_SHOT").is_none() {
+                    std::process::exit(0);
+                }
+            }
+            2 => {
+                on_call(h);
+                self.lsp_rename(h);
+            }
+            _ => {}
+        }
+    }
+
+    /// F12 or Ctrl+click in an editor: to where the thing at the caret is defined.
+    pub fn lsp_definition(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let pos = phai_editor::view::caret_lsp(h);
+        match self.lsp_for(&path) {
+            Some(l) => {
+                let id = l.definition(&path, pos.0, pos.1);
+                self.asked.insert(id, (h, Ask::Definition));
+            }
+            None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
+        }
+    }
+
+    /// F2 in an editor: renames the thing at the caret wherever it is used.
+    pub fn lsp_rename(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let pos = phai_editor::view::caret_lsp(h);
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.prepare_rename(&path, pos.0, pos.1);
+            self.asked.insert(id, (h, Ask::PrepareRename(path, pos)));
+        }
+    }
+
     /// The pointer rested in an editor: ask what is under it.
     pub fn lsp_hover(&mut self, h: HWND) {
         let (Some(path), Some(pos)) = (self.doc.path.clone(), phai_editor::view::hover_position(h)) else { return };
         if let Some(l) = self.lsp_for(&path) {
             let id = l.hover(&path, pos.0, pos.1);
-            self.asked.insert(id, (h, true));
+            self.asked.insert(id, (h, Ask::Hover));
         }
     }
 
@@ -1000,7 +1176,7 @@ impl Studio {
         let pos = phai_editor::view::caret_lsp(h);
         if let Some(l) = self.lsp_for(&path) {
             let id = l.completion(&path, pos.0, pos.1);
-            self.asked.insert(id, (h, false));
+            self.asked.insert(id, (h, Ask::Complete));
         }
     }
 
@@ -1536,6 +1712,12 @@ impl Studio {
             }
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
+            ID_LSP_TEST => self.lsp_test_step(),
+            ID_GO_DEFINITION | ID_RENAME => match self.doc.code {
+                Some(h) if id == ID_GO_DEFINITION => self.lsp_definition(h),
+                Some(h) => self.lsp_rename(h),
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_FRONT | ID_BACK => self.restack(id == ID_FRONT),
             ID_LOCK => {
                 if let Some(c) = self.canvas.as_mut() {
@@ -2176,6 +2358,18 @@ fn main() {
                 wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(0x0D)), Some(LPARAM(1)));
                 s.save(false);
             }
+        }
+        // `--lsptest`: F12 and F2 against rust-analyzer, end to end - see `lsp_test_step`.
+        if args.iter().any(|a| a == "--lsptest") {
+            let target = hwnd.0 as isize;
+            std::thread::spawn(move || {
+                for _ in 0..90 {
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    let _ = wm::PostMessageW(Some(HWND(target as *mut _)), wm::WM_COMMAND, WPARAM(ID_LSP_TEST as usize), LPARAM(0));
+                }
+                println!("lsptest: timed out");
+                std::process::exit(4);
+            });
         }
         // `--buildtest`: builds the open form's project the way Build does, prints what came of
         // it and ends - the Build command checked end to end.

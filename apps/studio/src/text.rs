@@ -205,6 +205,14 @@ pub static THAI: &[(&str, &str)] = &[
     ("Controls are locked", "ล็อก control แล้ว"),
     ("Controls are unlocked", "ปลดล็อก control แล้ว"),
     ("Click the controls in the order Tab should visit them; Esc ends", "คลิก control ตามลำดับที่ต้องการให้ Tab ไป กด Esc เพื่อจบ"),
+    ("Go To Definition", "ไปที่นิยาม"),
+    ("Rename...", "เปลี่ยนชื่อ..."),
+    ("Rename", "เปลี่ยนชื่อ"),
+    ("New name for {0}, in every file that uses it:", "ชื่อใหม่ของ {0} ในทุกไฟล์ที่ใช้:"),
+    ("Renamed {0} to {1}: {2} places in {3} files", "เปลี่ยน {0} เป็น {1} แล้ว: {2} จุดใน {3} ไฟล์"),
+    ("No definition found here", "ไม่พบนิยามของสิ่งนี้"),
+    ("This cannot be renamed", "เปลี่ยนชื่อสิ่งนี้ไม่ได้"),
+    ("Open a code file first", "เปิดไฟล์โค้ดก่อน"),
 ];
 
 #[cfg(test)]

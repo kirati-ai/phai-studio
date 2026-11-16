@@ -875,6 +875,18 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::DEFINITION => {
+            if let Some(s) = studio() {
+                s.lsp_definition(HWND(l.0 as *mut _));
+            }
+            LRESULT(0)
+        }
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::RENAME => {
+            if let Some(s) = studio() {
+                s.lsp_rename(HWND(l.0 as *mut _));
+            }
+            LRESULT(0)
+        }
         wm::WM_SIZE => {
             if let Some(code) = studio().and_then(|s| s.doc.code) {
                 win::move_to(code, 0, 0, win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
