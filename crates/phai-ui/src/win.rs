@@ -60,6 +60,18 @@ pub fn px(hwnd: HWND, v: i32) -> i32 {
 /// Registers a window class once per process. Its background is painted by [`def`] in the
 /// theme's window colour, so the class has none of its own.
 pub fn register(class: &str, proc_: wm::WNDPROC, icon: Option<wm::HICON>) -> Vec<u16> {
+    register_with(ClassStyle::Plain, class, proc_, icon)
+}
+
+/// What a class asks of Windows beyond the usual.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ClassStyle {
+    Plain,
+    /// The window hears `WM_LBUTTONDBLCLK`.
+    DoubleClicks,
+}
+
+pub fn register_with(extra: ClassStyle, class: &str, proc_: wm::WNDPROC, icon: Option<wm::HICON>) -> Vec<u16> {
     static DONE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
     let name = wide(class);
     let mut done = DONE.lock().unwrap_or_else(|e| e.into_inner());
@@ -68,7 +80,7 @@ pub fn register(class: &str, proc_: wm::WNDPROC, icon: Option<wm::HICON>) -> Vec
         unsafe {
             let wc = wm::WNDCLASSEXW {
                 cbSize: std::mem::size_of::<wm::WNDCLASSEXW>() as u32,
-                style: wm::CS_HREDRAW | wm::CS_VREDRAW,
+                style: wm::CS_HREDRAW | wm::CS_VREDRAW | if extra == ClassStyle::DoubleClicks { wm::CS_DBLCLKS } else { Default::default() },
                 lpfnWndProc: proc_,
                 hInstance: instance(),
                 hCursor: wm::LoadCursorW(None, wm::IDC_ARROW).unwrap_or_default(),
@@ -121,6 +133,9 @@ pub fn set_font_all(parent: HWND, f: HFONT) {
 /// The width and height of `text` in `font`, measured - never guessed, because Thai is taller
 /// and often longer than the English it replaces.
 pub fn measure(hwnd: HWND, font: HFONT, text: &str) -> (i32, i32) {
+    if text.is_empty() {
+        return (0, measure(hwnd, font, "Ag").1);
+    }
     unsafe {
         let dc = Gdi::GetDC(Some(hwnd));
         let old = Gdi::SelectObject(dc, font.into());
@@ -307,6 +322,10 @@ pub fn fill(dc: HDC, r: &RECT, c: Color) {
 
 /// Text in `colour`, in the control's own font.
 pub fn draw_text(dc: HDC, h: HWND, text: &str, r: &mut RECT, colour: Color, flags: Gdi::DRAW_TEXT_FORMAT) {
+    // An empty buffer is a dangling pointer with no length, and DrawTextW reads it all the same.
+    if text.is_empty() {
+        return;
+    }
     unsafe {
         let font = HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
         let old = Gdi::SelectObject(dc, font.into());
@@ -846,9 +865,12 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
     }
 }
 
-/// The toolbar's height at its scale, for docking: its buttons and 3 px above and below.
+/// A toolbar's height in design pixels: its buttons and 3 px above and below.
+pub const TOOLBAR_HEIGHT: i32 = TOOL_BUTTON + 6;
+
+/// The toolbar's height at its scale, for docking.
 pub fn toolbar_height(h: HWND) -> i32 {
-    px(h, TOOL_BUTTON + 6)
+    px(h, TOOLBAR_HEIGHT)
 }
 
 /// `NM_CUSTOMDRAW` from a toolbar: the button under the pointer in the theme's hover colour.
@@ -1044,7 +1066,31 @@ pub unsafe fn take_state<T>(hwnd: HWND) -> Option<Box<T>> {
 }
 
 /// The message loop of one window's thread. `dialog` makes Tab move between controls.
+///
+/// With `PHAI_SHOT=out.png` in the environment, the window is photographed after it has drawn
+/// (`PHAI_SHOT_DELAY` milliseconds, 800 by default) and the program ends - so any program made
+/// with phai-ui, generated ones included, can be checked by its picture.
 pub fn run_loop(dialog: Option<HWND>) {
+    #[cfg(feature = "shot")]
+    if let (Some(h), Ok(path)) = (dialog, std::env::var("PHAI_SHOT")) {
+        static TARGET: Mutex<Option<(isize, String)>> = Mutex::new(None);
+        unsafe extern "system" fn snap(_: HWND, _: u32, id: usize, _: u32) {
+            unsafe {
+                let _ = wm::KillTimer(None, id);
+            }
+            if let Some((h, path)) = TARGET.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                if let Err(e) = crate::shot::save(HWND(h as *mut _), std::path::Path::new(&path)) {
+                    eprintln!("{e}");
+                }
+            }
+            std::process::exit(0);
+        }
+        *TARGET.lock().unwrap_or_else(|e| e.into_inner()) = Some((h.0 as isize, path));
+        let delay = std::env::var("PHAI_SHOT_DELAY").ok().and_then(|d| d.parse().ok()).unwrap_or(800);
+        unsafe {
+            wm::SetTimer(None, 0, delay, Some(snap));
+        }
+    }
     unsafe {
         let mut msg = wm::MSG::default();
         while wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {

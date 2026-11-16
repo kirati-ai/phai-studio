@@ -33,6 +33,20 @@ pub mod glyph {
     pub const RENAME: u16 = 0xE8AC;
     pub const BRIGHTNESS: u16 = 0xE706;
     pub const LANGUAGE: u16 = 0xF2B7; // LocaleLanguage
+
+    /// Every glyph by the name a form writes (`glyph = "SAVE"`).
+    pub const NAMES: &[(&str, u16)] = &[
+        ("NEW", NEW), ("OPEN", OPEN), ("SAVE", SAVE), ("UNDO", UNDO), ("REDO", REDO), ("CUT", CUT),
+        ("COPY", COPY), ("PASTE", PASTE), ("DELETE", DELETE), ("PLAY", PLAY), ("BUILD", BUILD),
+        ("SETTINGS", SETTINGS), ("REFRESH", REFRESH), ("SEARCH", SEARCH), ("FOLDER", FOLDER),
+        ("DOCUMENT", DOCUMENT), ("MONITOR", MONITOR), ("CHAT", CHAT), ("APPS", APPS), ("UP", UP),
+        ("DOWNLOAD", DOWNLOAD), ("UPLOAD", UPLOAD), ("RENAME", RENAME), ("BRIGHTNESS", BRIGHTNESS),
+        ("LANGUAGE", LANGUAGE),
+    ];
+
+    pub fn by_name(name: &str) -> Option<u16> {
+        NAMES.iter().find(|(n, _)| *n == name).map(|(_, g)| *g)
+    }
 }
 
 /// An icon or cursor from straight-alpha BGRA pixels, top row first. The caller destroys it.

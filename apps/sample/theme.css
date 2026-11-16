@@ -1,0 +1,7 @@
+/* The sample's theme: the Phai standard, with its own accent. Save a change while the program
+   runs (a debug build) and the window follows. */
+@import "phai:light";
+
+:root {
+  --accent: #12855f;
+}

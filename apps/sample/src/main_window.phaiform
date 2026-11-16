@@ -1,0 +1,93 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Customers"
+size = [480, 360]
+min_size = [400, 300]
+theme = "../theme.css"
+
+[[menu]]
+label = "&File"
+items = [
+  { id = "new_customer", label = "New customer" },
+  { separator = true },
+  { id = "exit", label = "Exit" },
+]
+
+[[toolbar]]
+id = "new_customer"
+label = "New customer"
+glyph = "NEW"
+
+[[toolbar]]
+id = "save"
+label = "Save"
+glyph = "SAVE"
+
+[[control]]
+kind = "group"
+id = "details"
+text = "Customer"
+bounds = [11, 45, 458, 90]
+anchor = "left top right"
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name"
+bounds = [23, 67, 60, 23]
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [95, 67, 362, 23]
+anchor = "left top right"
+on_change = "name_changed"
+
+[[control]]
+kind = "checkbox"
+id = "active"
+text = "Active"
+bounds = [95, 101, 110, 20]
+checked = true
+
+[[control]]
+kind = "combo"
+id = "kind"
+items = ["Shop", "Office"]
+bounds = [215, 99, 120, 23]
+
+[[control]]
+kind = "list"
+id = "customers"
+columns = [["Name", 200], ["Phone", 120]]
+bounds = [11, 146, 458, 147]
+anchor = "all"
+on_select = "customer_chosen"
+
+[[control]]
+kind = "button"
+id = "save_button"
+text = "Save"
+class = "primary"
+bounds = [312, 302, 75, 23]
+anchor = "right bottom"
+on_click = "save"
+
+[[control]]
+kind = "button"
+id = "close"
+text = "Close"
+bounds = [394, 302, 75, 23]
+anchor = "right bottom"
+on_click = "exit"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "Ready"
+bounds = [0, 0, 0, 26]
+dock = "bottom"
+parts = [120]
