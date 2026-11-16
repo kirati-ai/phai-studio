@@ -357,6 +357,8 @@ pub const CAPTION_CLOSE: u16 = 1;
 pub const CAPTION_MENU: u16 = 2;
 /// Its pin was pressed: Auto Hide, on or off.
 pub const CAPTION_PIN: u16 = 3;
+/// The left button went down on its name: the owner may drag the pane somewhere else.
+pub const CAPTION_DRAG: u16 = 4;
 
 /// Sent while a splitter is dragged: `WPARAM` its id, `LPARAM` how many device pixels it moved
 /// since the last one - right or down positive.
@@ -471,6 +473,13 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
                 // WM_MOUSELEAVE
                 s.hot = None;
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
+                LRESULT(0)
+            }
+            wm::WM_LBUTTONDOWN if s.hot.is_none() => {
+                let id = wm::GetDlgCtrlID(h) as usize;
+                if let Ok(p) = wm::GetParent(h) {
+                    wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((CAPTION_DRAG as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
+                }
                 LRESULT(0)
             }
             wm::WM_LBUTTONUP if s.hot.is_some() => {

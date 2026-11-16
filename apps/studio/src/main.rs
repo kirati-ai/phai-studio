@@ -19,6 +19,7 @@ mod props;
 mod text;
 mod toolbox;
 mod autohide;
+mod docking;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -228,6 +229,11 @@ pub struct Studio {
     side: HWND,
     side_split: HWND,
     toolbox_split: HWND,
+    /// The edge the toolbox is docked to, and - while it floats - its window.
+    pub toolbox_dock: Dock,
+    toolbox_float: Option<HWND>,
+    /// Design pixels: the toolbox's height when docked at the top or bottom.
+    toolbox_h: i32,
     /// The form designer's Layout bar, under the Standard bar.
     layout_bar: HWND,
     /// The Debug / Release box on the Standard bar.
@@ -1816,6 +1822,142 @@ impl Studio {
         self.activate(front);
     }
 
+    /// The toolbox's room in the layout as it is docked: its width at the left or right, its height
+    /// at the top or bottom; none when hidden.
+    fn size_toolbox(&mut self, on: bool) {
+        let across = matches!(self.toolbox_dock, Dock::Left | Dock::Right);
+        let (tb, split, w, h) = (self.toolbox, self.toolbox_split, self.toolbox_w, self.toolbox_h);
+        if let Some(i) = self.item(tb) {
+            i.bounds.w = if on && across { w } else { 0 };
+            i.bounds.h = if on && !across { h } else { 0 };
+        }
+        if let Some(i) = self.item(split) {
+            i.bounds.w = if on && across { 6 } else { 0 };
+            i.bounds.h = if on && !across { 6 } else { 0 };
+        }
+    }
+
+    /// Dragging the toolbox by its caption: a shaded box follows the pointer to show where it
+    /// would go - an edge, or floating - until the button comes up; Escape leaves it where it was.
+    fn drag_toolbox(&mut self) {
+        unsafe {
+            let mut start = windows::Win32::Foundation::POINT::default();
+            let _ = wm::GetCursorPos(&mut start);
+            // The room the panes share: under the bars, above the status bar.
+            let mut top_r = RECT::default();
+            let mut status_r = RECT::default();
+            let mut client = RECT::default();
+            let _ = wm::GetWindowRect(self.layout_bar, &mut top_r);
+            let _ = wm::GetWindowRect(self.status, &mut status_r);
+            let _ = wm::GetClientRect(self.hwnd, &mut client);
+            let mut pts = [windows::Win32::Foundation::POINT { x: client.left, y: client.top }, windows::Win32::Foundation::POINT { x: client.right, y: client.bottom }];
+            Gdi::MapWindowPoints(Some(self.hwnd), None, &mut pts);
+            let area = RECT { left: pts[0].x, top: top_r.bottom, right: pts[1].x, bottom: status_r.top };
+            let (across, down) = (win::px(self.hwnd, self.toolbox_w), win::px(self.hwnd, self.toolbox_h));
+            let zone = win::px(self.hwnd, 56);
+            let preview = docking::preview_window(self.hwnd);
+            km::SetCapture(self.hwnd);
+            let mut target: Option<docking::Target> = None;
+            let mut msg = wm::MSG::default();
+            loop {
+                if !wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                    break;
+                }
+                match msg.message {
+                    wm::WM_MOUSEMOVE => {
+                        let mut pt = windows::Win32::Foundation::POINT::default();
+                        let _ = wm::GetCursorPos(&mut pt);
+                        if target.is_none() && (pt.x - start.x).abs() < 6 && (pt.y - start.y).abs() < 6 {
+                            continue;
+                        }
+                        let t = docking::target_at(pt, area, zone, (across, win::px(self.hwnd, 460)));
+                        let r = docking::preview_rect(t, area, across, down);
+                        let _ = wm::SetWindowPos(preview, Some(wm::HWND_TOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, wm::SWP_NOACTIVATE | wm::SWP_SHOWWINDOW);
+                        target = Some(t);
+                    }
+                    wm::WM_LBUTTONUP => break,
+                    wm::WM_KEYDOWN if msg.wParam.0 == 0x1B => {
+                        target = None;
+                        break;
+                    }
+                    wm::WM_CAPTURECHANGED => break,
+                    _ => {
+                        let _ = wm::TranslateMessage(&msg);
+                        wm::DispatchMessageW(&msg);
+                    }
+                }
+            }
+            let _ = km::ReleaseCapture();
+            let _ = wm::DestroyWindow(preview);
+            if let Some(t) = target {
+                self.dock_toolbox(t);
+            }
+        }
+    }
+
+    /// Puts the toolbox against an edge of the window, or in a window of its own.
+    pub fn dock_toolbox(&mut self, target: docking::Target) {
+        let tb = self.toolbox;
+        // Out of a floating window first: back among the main window's children, in its old
+        // place in the layout - before the splitter, so it stays outside it.
+        if let Some(f) = self.toolbox_float.take() {
+            unsafe {
+                let _ = wm::SetParent(tb, Some(self.hwnd));
+                let _ = wm::DestroyWindow(f);
+            }
+            let at = self.layout.items.iter().position(|(h, _)| *h == self.toolbox_split).unwrap_or(0);
+            self.layout.items.insert(at, (tb, Item { bounds: Rect::new(0, 0, 0, 0), dock: self.toolbox_dock, anchor: Anchor::default() }));
+        }
+        match target {
+            docking::Target::Edge(d) => {
+                let d = if matches!(d, Dock::Left | Dock::Right | Dock::Top | Dock::Bottom) { d } else { Dock::Left };
+                self.toolbox_dock = d;
+                // A splitter that drags the right way: across for a side, down for top or bottom.
+                let across = matches!(d, Dock::Left | Dock::Right);
+                let old = self.toolbox_split;
+                let split = controls::splitter(self.hwnd, ID_SPLIT_TOOLBOX, across);
+                if let Some(e) = self.layout.items.iter_mut().find(|(h, _)| *h == old) {
+                    e.0 = split;
+                    e.1.dock = d;
+                }
+                unsafe {
+                    let _ = wm::DestroyWindow(old);
+                }
+                self.toolbox_split = split;
+                if let Some(i) = self.item(tb) {
+                    i.dock = d;
+                }
+                self.size_toolbox(self.toolbox_on);
+                win::show(tb, self.toolbox_on);
+                win::show(split, self.toolbox_on);
+            }
+            docking::Target::Float(r) => {
+                // Out of the layout, into a window of its own.
+                self.layout.items.retain(|(h, _)| *h != tb);
+                if let Some(i) = self.item(self.toolbox_split) {
+                    i.bounds.w = 0;
+                    i.bounds.h = 0;
+                }
+                win::show(self.toolbox_split, false);
+                let f = docking::float_window(self.hwnd, docking::title(), r);
+                unsafe {
+                    let _ = wm::SetParent(tb, Some(f));
+                }
+                let mut c = RECT::default();
+                unsafe {
+                    let _ = wm::GetClientRect(f, &mut c);
+                }
+                win::move_to(tb, 0, 0, c.right, c.bottom);
+                win::show(tb, true);
+                win::show(f, true);
+                self.toolbox_float = Some(f);
+                self.toolbox_on = true;
+            }
+        }
+        self.layout.apply(self.hwnd);
+        self.rebuild_menu();
+    }
+
     /// Whether a pane hides itself at its edge.
     fn is_auto(&self, pane: Pane) -> bool {
         match pane {
@@ -1830,6 +1972,7 @@ impl Studio {
         match code {
             controls::CAPTION_CLOSE => self.show_pane(pane, false),
             controls::CAPTION_PIN => self.set_auto_hide(pane, !self.is_auto(pane)),
+            controls::CAPTION_DRAG if pane == Pane::Toolbox && !self.auto_left => self.drag_toolbox(),
             controls::CAPTION_MENU => {
                 const FLOAT: usize = 1;
                 const DOCK: usize = 2;
@@ -1842,14 +1985,22 @@ impl Studio {
                         let w = wide(label);
                         let _ = wm::AppendMenuW(m, flags, id, PCWSTR(w.as_ptr()));
                     };
-                    item(FLOAT, t("Float"), wm::MF_STRING | wm::MF_GRAYED);
-                    item(DOCK, t("Dock"), wm::MF_STRING | if auto { wm::MF_UNCHECKED } else { wm::MF_CHECKED });
+                    let floats = pane == Pane::Toolbox && self.toolbox_float.is_some();
+                    item(FLOAT, t("Float"), wm::MF_STRING | if pane != Pane::Toolbox { wm::MF_GRAYED } else if floats { wm::MF_CHECKED } else { wm::MF_UNCHECKED });
+                    item(DOCK, t("Dock"), wm::MF_STRING | if auto || floats { wm::MF_UNCHECKED } else { wm::MF_CHECKED });
                     item(AUTO, t("Auto Hide"), wm::MF_STRING | if auto { wm::MF_CHECKED } else { wm::MF_UNCHECKED });
                     item(HIDE, t("Hide"), wm::MF_STRING);
                     let (x, y) = controls::caption_menu_point(caption);
                     let chosen = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, self.hwnd, None).0 as usize;
                     let _ = wm::DestroyMenu(m);
                     match chosen {
+                        FLOAT => {
+                            let mut r = RECT::default();
+                            let _ = wm::GetWindowRect(self.toolbox, &mut r);
+                            let r = RECT { left: r.left + 40, top: r.top + 40, right: r.left + 40 + win::px(self.hwnd, self.toolbox_w), bottom: r.top + 40 + win::px(self.hwnd, 460) };
+                            self.dock_toolbox(docking::Target::Float(r));
+                        }
+                        DOCK if floats => self.dock_toolbox(docking::Target::Edge(self.toolbox_dock)),
                         DOCK => self.set_auto_hide(pane, false),
                         AUTO => self.set_auto_hide(pane, true),
                         HIDE => self.show_pane(pane, false),
@@ -1868,13 +2019,12 @@ impl Studio {
         match pane {
             Pane::Toolbox => {
                 self.auto_left = on;
-                let (tb, split, w, shown) = (self.toolbox, self.toolbox_split, self.toolbox_w, self.toolbox_on);
-                if let Some(i) = self.item(tb) {
-                    i.bounds.w = if on || !shown { 0 } else { w };
+                if on && self.toolbox_float.is_some() {
+                    self.dock_toolbox(docking::Target::Edge(self.toolbox_dock));
                 }
-                if let Some(i) = self.item(split) {
-                    i.bounds.w = if on || !shown { 0 } else { 6 };
-                }
+                self.auto_left = on;
+                let (tb, split, shown) = (self.toolbox, self.toolbox_split, self.toolbox_on);
+                self.size_toolbox(!on && shown);
                 win::show(tb, !on && shown);
                 win::show(split, !on && shown);
                 controls::caption_set_auto_hidden(toolbox::caption_of(tb), on);
@@ -2027,15 +2177,14 @@ impl Studio {
         match pane {
             Pane::Toolbox => {
                 self.toolbox_on = on;
-                let (tb, split, w) = (self.toolbox, self.toolbox_split, self.toolbox_w);
-                if let Some(i) = self.item(tb) {
-                    i.bounds.w = if on { w } else { 0 };
+                if let Some(f) = self.toolbox_float {
+                    win::show(f, on);
+                    win::show(self.toolbox, on);
+                } else {
+                    self.size_toolbox(on);
+                    win::show(self.toolbox, on);
+                    win::show(self.toolbox_split, on);
                 }
-                if let Some(i) = self.item(split) {
-                    i.bounds.w = if on { 6 } else { 0 };
-                }
-                win::show(tb, on);
-                win::show(split, on);
             }
             Pane::Explorer | Pane::Properties => {
                 let (mut e, mut p) = explorer::side_panes(self.side);
@@ -2076,11 +2225,13 @@ impl Studio {
     fn split(&mut self, id: i32, d: i32) {
         let d = phai_ui::layout::unscale(d, win::dpi(self.hwnd));
         if id == ID_SPLIT_TOOLBOX {
-            self.toolbox_w = (self.toolbox_w + d).clamp(140, 600);
-            let (tb, w) = (self.toolbox, self.toolbox_w);
-            if let Some(i) = self.item(tb) {
-                i.bounds.w = w;
+            match self.toolbox_dock {
+                Dock::Left => self.toolbox_w = (self.toolbox_w + d).clamp(140, 600),
+                Dock::Right => self.toolbox_w = (self.toolbox_w - d).clamp(140, 600),
+                Dock::Top => self.toolbox_h = (self.toolbox_h + d).clamp(80, 600),
+                _ => self.toolbox_h = (self.toolbox_h - d).clamp(80, 600),
             }
+            self.size_toolbox(true);
         } else if id == ID_SPLIT_SIDE {
             self.side_w = (self.side_w - d).clamp(180, 900);
             let (side, w) = (self.side, self.side_w);
@@ -2750,6 +2901,9 @@ fn main() {
             side: HWND::default(),
             side_split: HWND::default(),
             toolbox_split,
+            toolbox_dock: Dock::Left,
+            toolbox_float: None,
+            toolbox_h: 200,
             layout_bar,
             config,
             nav: vec![],
@@ -2812,7 +2966,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -2860,6 +3014,17 @@ fn main() {
         s.rebuild();
         s.refresh_props();
         // `--selftest out.phaiform`: draws, moves and sizes a control with the mouse messages a
+        // `--dock-toolbox top|right|bottom|float`: the toolbox moved as a drag would - checked by picture.
+        if let Some(d) = args.iter().position(|a| a == "--dock-toolbox").and_then(|i| args.get(i + 1)) {
+            let t = match d.as_str() {
+                "top" => docking::Target::Edge(Dock::Top),
+                "right" => docking::Target::Edge(Dock::Right),
+                "bottom" => docking::Target::Edge(Dock::Bottom),
+                "float" => docking::Target::Float(RECT { left: win::px(hwnd, 300), top: win::px(hwnd, 200), right: win::px(hwnd, 520), bottom: win::px(hwnd, 640) }),
+                _ => docking::Target::Edge(Dock::Left),
+            };
+            s.dock_toolbox(t);
+        }
         // `--autohide`: the toolbox and the right-hand panes pinned away to their edges; `--slide N`
         // then slides one out (0 the toolbox, 1 the project, 2 the properties) - checked by picture.
         if args.iter().any(|a| a == "--autohide") {
