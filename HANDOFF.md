@@ -4,8 +4,17 @@
 
 **สถานะ (2026-11-16): เริ่มแล้ว** เจ้านายสั่งเริ่ม ("เกินไปก็ไม่ติดอะไร ขอให้ฉันได้ phai studio")
 - ขั้น 0 เสร็จ: `docs/phaiform.md`
-- ขั้น 1 ใช้งานได้: `crates/phai-ui` (เทสต์ 17 ตัว, clippy สะอาด) + `apps/gallery` หน้าต่างรวมทุก control
-- **ต่อไป: ขั้น 2 designer** — อ่าน/เขียน `.phaiform`, สร้างโค้ดตาม `docs/phaiform.md`, หน้าต่าง designer ที่สร้างจาก `phai-ui` เอง
+- ขั้น 1 ใช้งานได้: `crates/phai-ui` — control ธีม CSS (`@import "phai:light"`, ไฟล์เปลี่ยนแล้วหน้าต่างเปลี่ยนทันที),
+  dock/anchor, ไทย/อังกฤษ, ถ่ายภาพหน้าต่าง (`PHAI_SHOT=out.png` กับทุกโปรแกรม)
+- ขั้น 2 ตัวแรกใช้งานได้:
+  - `crates/phai-form` — อ่าน/ตรวจ/เขียน `.phaiform` (error บอกบรรทัด), สร้างโค้ด `<name>_ui.rs` + `<name>.rs`, `live` สร้างฟอร์มจริง
+  - `apps/studio` — designer: กล่องเครื่องมือ, ลากสร้าง/ย้าย/ย่อขยาย (snap 4), ลูกศร/Shift+ลูกศร/Del, Properties,
+    Undo/Redo, บันทึก+สร้างโค้ด, ดับเบิลคลิก = เพิ่ม handler ในไฟล์ผู้ใช้, F5 ดูตัวอย่าง, ธีม: สร้างจากมาตรฐาน/นำเข้า CSS
+  - `apps/sample` — โปรแกรมที่ build จากโค้ดที่ generate จริง; เทสต์ตรวจว่าไฟล์ตรงกับตัวสร้างโค้ด
+    (เปลี่ยนตัวสร้างโค้ดแล้ว: `cargo test -p phai-form -- --ignored regenerate`)
+- **ต่อไป**: ใช้จริงแล้วเก็บ: เลือกหลายตัว, คัดลอก/วาง, เส้นช่วยจัดแนว, แก้ menu/toolbar ใน designer, ขั้น 3 (Build/Run ผ่าน cargo)
+- debug build ของ studio เป็น console + พิมพ์ backtrace ตอนพัง (`report_crashes`)
+- `phai-studio form.phaiform --selftest out.phaiform` ลากสร้าง/ย้าย/ย่อขยายด้วยข้อความเมาส์จริงแล้วบันทึก
 
 ตรวจด้วยภาพทุกครั้ง:
 ```
@@ -58,7 +67,11 @@ control มาตรฐานที่ยังขาด (checkbox, radio, combo
 แบบ `phai-desk/UI/ModernUi.cs` แล้วทุกฟังก์ชันอ่านจากธีม; เพิ่มสว่าง/มืด และ DWM (แถบชื่อ, มุมมน, Mica) บน Windows 11
 แนวหน้าตา: Fluent ของ Windows 11 แบบ WPF UI — เอาแค่ภาษาออกแบบ ไม่ก๊อปปี้โค้ด
 
-### บทเรียนจากการทำ `phai-ui`
+### บทเรียนจากการทำ `phai-ui` / designer
+- `DrawTextW` กับข้อความว่าง = pointer ลอย → access violation (โปรแกรมหายไปเงียบๆ exit 127 ใน bash) — `win::draw_text` กันแล้ว
+- control บน canvas ตอบ `WM_NCHITTEST` = HTTRANSPARENT (`ghost`) เมาส์ทั้งหมดจึงไปที่ surface ซึ่งหา control จากสี่เหลี่ยม
+- designer แสดงข้อความในฟอร์มตามที่เขียน (`live::set_translate(false)`) — ตารางไทยของ designer จะแปลผิด
+- โปรแกรม GUI ที่เปิดผ่าน `cmd /c` ไม่รอ — ใช้ bash ตรงๆ หรือ `timeout`
 - control ลูกที่สร้างทีหลังอยู่**ล่าง** z-order — group ต้องถูกส่งไปล่างสุดตอนจัดวาง (`Layout::apply` ทำให้แล้ว)
 - ธีม Explorer ของ list วาดแถวที่เลือกเอง สี `list:selected` จะไม่ขึ้น → ไม่ใส่ธีม Explorer ให้ตัว list
 - ระยะห่างตามมาตรฐาน Windows: ขอบ 11, ระหว่างแถว 7, control สูง 23, ปุ่มกว้างอย่างน้อย 75 (design px)

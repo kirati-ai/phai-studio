@@ -60,3 +60,4 @@ statusbar     { background: #1c1c1c; color: var(--muted); border-color: var(--ru
 menubar       { background: var(--surface); color: var(--text); }
 menubar:hover { background: #2d2d2d; }
 menubar:disabled { color: var(--disabled-text); }
+canvas    { background: #191919; }

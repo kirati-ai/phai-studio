@@ -1,61 +1,101 @@
-/* Phai light: Windows 11, white and flat, Phai green (#12855f) only where the pointer is or what is
-   chosen. The colours PhaiDesk's console was drawn with, gathered here. */
+/* Phai standard theme (light) - copy it, change it, import it.
+   ====================================================================================
+   Phai Studio puts a copy of this file in a project as theme.css. Every control below
+   follows it. Save the file and an open window changes at once.
+
+   To change only a little, start your own file with
+       @import "phai:light";      (or "phai:dark")
+   and write only what is different, for example
+       :root  { --accent: #2563eb; }
+       button { border-radius: 10px; }
+
+   SELECTORS - one control at a time, no "a b" or "a > b":
+       window label button checkbox radio edit combo list group tabs toolbar statusbar
+       menubar canvas            the kind of control, or * for all
+       .primary                  a class given in the form (class = "primary")
+       #save                     one control by its id in the form
+       :hover :pressed :focus :disabled :selected :checked      its state; several may join
+   The more specific rule wins (id > class/state > kind); between equals, the later one.
+
+   PROPERTIES:
+       background  color  border-color   #rgb  #rrggbb  #rrggbbaa  rgb(r, g, b)
+                                         transparent  white  black  var(--name)
+       border-width  border-radius       pixels at 100% scale (4 or 4px)
+       accent-color                      the tick, the radio dot, the chosen tab's line
+       icon-color                        toolbar icons
+       font-size  font-weight            read, not yet drawn
+
+   A mistake is shown with its line; the window keeps the theme it had.
+   ==================================================================================== */
 
 :root {
-  --accent: #12855f;
+  --accent: #12855f;              /* Phai green: only where the pointer is or what is chosen */
   --accent-hover: #107352;
   --accent-pressed: #0e5c41;
-  --accent-tint: #e7f3ef;
+  --accent-tint: #e7f3ef;         /* the light green behind a hovered or chosen thing */
   --accent-tint-pressed: #d0e7df;
-  --surface: #ffffff;
+  --surface: #ffffff;             /* windows are white and flat */
   --text: #1b1b1b;
-  --muted: #5f5f5f;
+  --muted: #5f5f5f;               /* secondary words: group titles, the status bar */
   --border: #d4d4d4;
-  --rule: #e5e5e5;
+  --rule: #e5e5e5;                /* thin lines that divide */
   --disabled-bg: #f5f5f5;
   --disabled-border: #e5e5e5;
   --disabled-text: #a0a0a0;
-  --icon: #3c3c3c;
+  --icon: #3c3c3c;                /* the colour Windows draws its toolbar glyphs in */
 }
 
+/* The window itself, and everything that sits on it. */
 window    { background: var(--surface); color: var(--text); }
-label     { color: var(--text); }
-label.muted { color: var(--muted); }
+menubar       { background: var(--surface); color: var(--text); }
+menubar:hover { background: var(--accent-tint); }
+canvas    { background: #f3f3f3; }   /* Phai Studio: the space around the form being designed */
+
+/* Words. */
+label          { color: var(--text); }
+label.muted    { color: var(--muted); }
 label:disabled { color: var(--disabled-text); }
 
+/* Push buttons. */
 button          { background: #ffffff; color: var(--text); border-color: var(--border); border-radius: 4px; border-width: 1px; }
 button:hover    { background: var(--accent-tint); border-color: var(--accent); color: var(--accent-pressed); }
 button:pressed  { background: var(--accent-tint-pressed); border-color: var(--accent); color: var(--accent-pressed); }
 button:focus    { border-color: var(--accent); }
 button:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-text); }
 
+/* The one button that answers a window: class = "primary". */
 button.primary          { background: var(--accent); border-color: var(--accent); color: #ffffff; }
 button.primary:hover    { background: var(--accent-hover); border-color: var(--accent-hover); color: #ffffff; }
 button.primary:pressed  { background: var(--accent-pressed); border-color: var(--accent-pressed); color: #e1f0e8; }
 button.primary:disabled { background: var(--disabled-bg); border-color: var(--disabled-border); color: var(--disabled-text); }
 
+/* Check boxes and radios: background and border are the box's, color the words', accent-color the tick. */
 checkbox, radio                 { background: #ffffff; color: var(--text); border-color: #8a8a8a; accent-color: #ffffff; border-radius: 3px; }
 checkbox:hover, radio:hover     { border-color: var(--accent); background: var(--accent-tint); }
 checkbox:checked, radio:checked { background: var(--accent); border-color: var(--accent); }
 checkbox:checked:hover, radio:checked:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 checkbox:disabled, radio:disabled { border-color: var(--disabled-border); color: var(--disabled-text); background: var(--disabled-bg); }
 
+/* Text boxes. */
 edit          { background: #ffffff; color: var(--text); border-color: var(--border); }
 edit:hover    { border-color: #8a8a8a; }
 edit:focus    { border-color: var(--accent); }
 edit:disabled { background: var(--disabled-bg); color: var(--disabled-text); border-color: var(--disabled-border); }
 
+/* Drop-down lists. */
 combo         { background: #ffffff; color: var(--text); border-color: var(--border); }
 
+/* Lists: the chosen row in :selected. */
 list          { background: var(--surface); color: var(--text); border-color: var(--rule); }
 list:selected { background: var(--accent-tint); color: var(--accent-pressed); }
 
+/* Group frames: color is the title's. */
 group         { color: var(--muted); border-color: var(--rule); border-radius: 6px; }
 
+/* Tabs: border-color is the line under them, accent-color the chosen one's mark. */
 tabs          { background: var(--surface); color: var(--muted); border-color: var(--rule); accent-color: var(--accent); }
 tabs:selected { color: var(--text); }
 
+/* Bars. */
 toolbar       { icon-color: var(--icon); border-color: var(--rule); }
 statusbar     { background: var(--surface); color: var(--muted); border-color: var(--rule); }
-menubar       { background: var(--surface); color: var(--text); }
-menubar:hover { background: var(--accent-tint); }

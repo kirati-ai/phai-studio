@@ -237,37 +237,31 @@ impl Theme {
     }
 
     /// Reads a sheet. Every rule, every value and every `var()` is checked here, so a theme that
-    /// loads is a theme that applies.
+    /// loads is a theme that applies. `@import "phai:light";` and `"phai:dark"` bring in a
+    /// built-in theme to change only part of; a file path needs [`load`].
     pub fn parse(css: &str) -> Result<Theme, ThemeError> {
-        let css = strip_comments(css)?;
-        let blocks = split_blocks(&css)?;
-        // `:root` first: a variable may be used above where it is set, as in a browser.
+        Theme::parse_with(css, &|name| Err(format!("{name:?}: only phai:light and phai:dark can be imported here")))
+    }
+
+    /// As [`Theme::parse`], with `files` reading any `@import` that is not built in.
+    pub fn parse_with(css: &str, files: &dyn Fn(&str) -> Result<String, String>) -> Result<Theme, ThemeError> {
         let mut vars = HashMap::new();
-        for b in &blocks {
-            if b.selectors.trim() == ":root" {
-                for (name, value, line) in declarations(&b.body, b.body_line)? {
-                    if !name.starts_with("--") {
-                        return Err(ThemeError { line, message: format!("only --variables belong in :root, not {name}") });
-                    }
-                    vars.insert(name, value);
-                }
-            }
-        }
+        let mut raw = Vec::new();
+        collect(css, "", files, 0, &mut vars, &mut raw)?;
+        // Every value is read now, with every sheet's variables: a `--accent` set after an
+        // `@import` recolours what the imported sheet said, as in a browser.
         let mut rules = Vec::new();
-        for b in &blocks {
-            if b.selectors.trim() == ":root" {
-                continue;
-            }
-            let selectors = b.selectors.split(',').map(|s| parse_selector(s.trim(), b.line)).collect::<Result<Vec<_>, _>>()?;
-            let mut decls = Vec::new();
-            for (name, raw, line) in declarations(&b.body, b.body_line)? {
-                let prop = Prop::parse(&name).ok_or_else(|| ThemeError { line, message: format!("unknown property {name}") })?;
-                let text = resolve_vars(&raw, &vars, line, 0)?;
-                let value = parse_value(prop, &text).ok_or_else(|| ThemeError { line, message: format!("{name}: cannot read {text:?}") })?;
-                decls.push((prop, value));
+        for (selectors, decls, source) in raw {
+            let mut out = Vec::new();
+            for (name, value, line) in decls {
+                let err = |message: String| ThemeError { line, message: if source.is_empty() { message } else { format!("{source}: {message}") } };
+                let prop = Prop::parse(&name).ok_or_else(|| err(format!("unknown property {name}")))?;
+                let text = resolve_vars(&value, &vars, line, 0).map_err(|e| err(e.message))?;
+                let value = parse_value(prop, &text).ok_or_else(|| err(format!("{name}: cannot read {text:?}")))?;
+                out.push((prop, value));
             }
             let order = rules.len();
-            rules.push(Rule { selectors, decls, order });
+            rules.push(Rule { selectors, decls: out, order });
         }
         Ok(Theme { rules, vars })
     }
@@ -313,6 +307,50 @@ impl Theme {
     }
 }
 
+type RawRule = (Vec<Selector>, Vec<(String, String, usize)>, String);
+
+/// One sheet's imports, variables and rules, in order, values still unread.
+fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, String>, depth: usize, vars: &mut HashMap<String, String>, raw: &mut Vec<RawRule>) -> Result<(), ThemeError> {
+    let named = |e: ThemeError| if source.is_empty() { e } else { ThemeError { line: e.line, message: format!("{source}: {}", e.message) } };
+    if depth > 8 {
+        return Err(ThemeError { line: 0, message: "@import goes too deep - sheets that import each other?".into() });
+    }
+    let mut css = strip_comments(css).map_err(named)?;
+    // `@import "name";` first; each becomes spaces so line numbers stay true.
+    while let Some(i) = css.find("@import") {
+        let line = line_at(&css, i);
+        let end = css[i..].find(';').map(|e| i + e).ok_or_else(|| named(ThemeError { line, message: "@import without ;".into() }))?;
+        let what = css[i + 7..end].trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+        let text = match what.as_str() {
+            "phai:light" => LIGHT_CSS.to_string(),
+            "phai:dark" => DARK_CSS.to_string(),
+            _ => files(&what).map_err(|m| named(ThemeError { line, message: m }))?,
+        };
+        collect(&text, &what, files, depth + 1, vars, raw)?;
+        let blank: String = css[i..=end].chars().map(|c| if c == '\n' { '\n' } else { ' ' }).collect();
+        css.replace_range(i..=end, &blank);
+    }
+    let blocks = split_blocks(&css).map_err(named)?;
+    for b in &blocks {
+        if b.selectors.trim() == ":root" {
+            for (name, value, line) in declarations(&b.body, b.body_line).map_err(named)? {
+                if !name.starts_with("--") {
+                    return Err(named(ThemeError { line, message: format!("only --variables belong in :root, not {name}") }));
+                }
+                vars.insert(name, value);
+            }
+        }
+    }
+    for b in &blocks {
+        if b.selectors.trim() == ":root" {
+            continue;
+        }
+        let selectors = b.selectors.split(',').map(|s| parse_selector(s.trim(), b.line)).collect::<Result<Vec<_>, _>>().map_err(named)?;
+        raw.push((selectors, declarations(&b.body, b.body_line).map_err(named)?, source.to_string()));
+    }
+    Ok(())
+}
+
 // --- the theme in use ---------------------------------------------------------------------------
 
 static CURRENT: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
@@ -333,10 +371,18 @@ pub fn set(theme: Theme) {
 }
 
 /// Reads a theme from a `.css` file. An error names the file and the line.
+/// `@import "other.css";` inside it is read beside it.
 pub fn load(path: &std::path::Path) -> Result<Theme, ThemeError> {
     let css = std::fs::read_to_string(path).map_err(|e| ThemeError { line: 0, message: format!("{}: {e}", path.display()) })?;
-    Theme::parse(&css).map_err(|e| ThemeError { line: e.line, message: format!("{}: {}", path.display(), e.message) })
+    let dir = path.parent().map(|d| d.to_path_buf()).unwrap_or_default();
+    let files = move |name: &str| std::fs::read_to_string(dir.join(name)).map_err(|e| format!("@import {name:?}: {e}"));
+    Theme::parse_with(&css, &files).map_err(|e| ThemeError { line: e.line, message: format!("{}: {}", path.display(), e.message) })
 }
+
+/// The standard sheet to start a theme from: every control, every state, every property, said
+/// what each is for. It is the light theme itself, so the two can never drift apart. Phai Studio
+/// copies it into a project as `theme.css`.
+pub const STANDARD_CSS: &str = LIGHT_CSS;
 
 /// `current().style(...)` for a control with no classes or id.
 pub fn style(kind: &str, state: State) -> Style {
@@ -655,5 +701,28 @@ mod tests {
         }
         let primary = light.style(&q("button", &["primary"], None, State::default()));
         assert_eq!(primary.background, Some(Color::rgb(0x12, 0x85, 0x5f)), "Phai green");
+    }
+
+    #[test]
+    fn an_import_brings_a_built_in_theme_and_later_variables_recolour_it() {
+        let t = Theme::parse("@import \"phai:light\";\n:root { --accent: #ff0000; }\nbutton { border-radius: 12px; }").unwrap();
+        let primary = t.style(&Query { kind: "button", classes: &["primary"], id: None, state: State::default() });
+        assert_eq!(primary.background, Some(Color::rgb(255, 0, 0)), "the imported rule takes the new --accent");
+        assert_eq!(primary.border_radius, Some(12), "and the sheet's own rule is added");
+        assert!(!t.is_dark());
+        let e = Theme::parse("@import \"mine.css\";").unwrap_err();
+        assert!(e.message.contains("mine.css"), "{e}");
+        let e = Theme::parse_with("@import \"a.css\";", &|_| Ok("button {\n  bogus: 1; }".into())).unwrap_err();
+        assert!(e.message.starts_with("a.css:") && e.line == 2, "an imported sheet's mistake names it: {e}");
+        let e = Theme::parse_with("@import \"a.css\";", &|_| Ok("@import \"a.css\";".into())).unwrap_err();
+        assert!(e.message.contains("too deep"), "{e}");
+    }
+
+    #[test]
+    fn the_standard_sheet_names_every_kind_and_every_property() {
+        for word in ["window", "label", "button", "checkbox", "radio", "edit", "combo", "list", "group", "tabs", "toolbar", "statusbar", "menubar", "canvas", ":hover", ":pressed", ":focus", ":disabled", ":selected", ":checked", "background", "border-radius", "accent-color", "icon-color", "@import"] {
+            assert!(STANDARD_CSS.contains(word), "the standard sheet should say {word}");
+        }
+        assert!(!Theme::parse(STANDARD_CSS).unwrap().is_dark());
     }
 }

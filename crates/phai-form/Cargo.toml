@@ -1,0 +1,21 @@
+[package]
+name = "phai-form"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "The .phaiform file: read, check, write, generate Rust from it, and build it live"
+
+[lib]
+name = "phai_form"
+path = "src/lib.rs"
+
+[dependencies]
+phai-ui = { path = "../phai-ui" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Controls",
+    "Win32_UI_WindowsAndMessaging",
+] }
