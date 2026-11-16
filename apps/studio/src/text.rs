@@ -61,6 +61,29 @@ pub static THAI: &[(&str, &str)] = &[
     ("Theme: {0}", "ธีม: {0}"),
     ("Theme file has a mistake", "ไฟล์ธีมมีจุดผิด"),
     ("The form has a mistake", "ฟอร์มมีจุดผิด"),
+    ("&Project", "โ&ปรเจกต์"),
+    ("New project...", "โปรเจกต์ใหม่..."),
+    ("Build", "สร้างโปรแกรม"),
+    ("Run", "รัน"),
+    ("Stop", "หยุด"),
+    ("Kind", "ชนิด"),
+    ("Message", "ข้อความ"),
+    ("File", "ไฟล์"),
+    ("Line", "บรรทัด"),
+    ("Error", "ข้อผิดพลาด"),
+    ("Warning", "คำเตือน"),
+    ("Building...", "กำลังสร้างโปรแกรม..."),
+    ("Built in {0} s - {1} warnings", "สร้างเสร็จใน {0} วินาที - คำเตือน {1}"),
+    ("Build failed - {0} errors, {1} warnings", "สร้างไม่สำเร็จ - ข้อผิดพลาด {0} คำเตือน {1}"),
+    ("Running {0}", "กำลังรัน {0}"),
+    ("The project has no program to run", "โปรเจกต์นี้ไม่มีโปรแกรมให้รัน"),
+    ("Rust is not installed", "ยังไม่ได้ติดตั้ง Rust"),
+    ("Building needs Rust, and it is not on this computer. Open rustup.rs to install it?", "การสร้างโปรแกรมต้องใช้ Rust ซึ่งยังไม่มีในเครื่องนี้ เปิด rustup.rs เพื่อติดตั้งไหม"),
+    ("Save the form in a project first - or make one with New project.", "บันทึกฟอร์มไว้ในโปรเจกต์ก่อน หรือสร้างด้วยโปรเจกต์ใหม่"),
+    ("This form is not in a Cargo project - make one with New project.", "ฟอร์มนี้ไม่ได้อยู่ในโปรเจกต์ Cargo - สร้างด้วยโปรเจกต์ใหม่"),
+    ("Choose an empty folder for the new project", "เลือกโฟลเดอร์ว่างสำหรับโปรเจกต์ใหม่"),
+    ("New project in {0}", "สร้างโปรเจกต์ใหม่ใน {0} แล้ว"),
+    ("{0} cannot be made", "สร้าง {0} ไม่ได้"),
 ];
 
 #[cfg(test)]
@@ -68,7 +91,7 @@ mod tests {
     #[test]
     fn every_sentence_has_thai() {
         phai_ui::text::add(super::THAI);
-        let used = phai_ui::text::scan(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")), &["text.rs"]);
+        let used = phai_ui::text::scan(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")), &["text.rs", "project.rs"]); // project.rs holds a new program's source, not ours
         assert!(used.len() > 40, "the scanner found only {}", used.len());
         assert_eq!(phai_ui::text::problems(&used), Vec::<String>::new());
     }

@@ -1,0 +1,238 @@
+//! A new project: everything a Phai program needs, in a folder the person picked - Cargo.toml,
+//! the manifest build script, main.rs, a first form with its generated code, the standard theme,
+//! and a Thai table whose test already passes.
+
+use std::path::{Path, PathBuf};
+
+use phai_form::codegen;
+use phai_form::{Control, FormFile, Kind};
+use windows::Win32::Foundation::HWND;
+
+/// Where phai-ui is on this machine, for the new project's Cargo.toml - until it is published.
+pub fn phai_ui_path() -> PathBuf {
+    let here = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("crates").join("phai-ui");
+    here.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(here)
+}
+
+/// A folder name as a Cargo package name: lowercase letters, digits, `-` and `_`.
+pub fn package_name(folder: &str) -> String {
+    let mut s: String = folder.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
+    s = s.trim_matches('_').to_string();
+    if s.is_empty() || s.starts_with(|c: char| c.is_ascii_digit()) {
+        s = format!("app_{s}");
+    }
+    s
+}
+
+/// The first form: a window that says hello, with a button and a status bar.
+pub fn first_form() -> FormFile {
+    let mut f = FormFile::new("MainWindow");
+    f.form.title = "My program".into();
+    f.form.size = [480, 320];
+    f.form.theme = Some("../theme.css".into());
+    let mut hello = Control::new(Kind::Label, "hello", [11, 11, 300, 23]);
+    hello.text = Some("Hello".into());
+    let mut ok = Control::new(Kind::Button, "ok", [394, 260, 75, 23]);
+    ok.text = Some("OK".into());
+    ok.class = Some("primary".into());
+    ok.anchor = Some("right bottom".into());
+    ok.on_click = Some("ok_clicked".into());
+    let mut status = Control::new(Kind::Statusbar, "status", [0, 0, 0, 26]);
+    status.text = Some("Ready".into());
+    f.control = vec![hello, ok, status];
+    f
+}
+
+fn cargo_toml(name: &str) -> String {
+    format!(
+        r#"[package]
+name = "{name}"
+version = "0.1.0"
+edition = "2021"
+
+# Made with Phai Studio.
+
+[dependencies]
+phai-ui = {{ path = {ui:?} }}
+windows = {{ version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }}
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+"#,
+        ui = phai_ui_path().to_string_lossy().replace('\\', "/")
+    )
+}
+
+const BUILD_RS: &str = r#"//! Embeds a manifest that names Common Controls 6. Without it Windows hands the program the old
+//! controls: buttons as in Windows 2000, and toolbar icons in black squares.
+
+fn main() {
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!(
+            "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+        );
+    }
+    println!("cargo:rerun-if-changed=build.rs");
+}
+"#;
+
+const MAIN_RS: &str = r#"//! Made with Phai Studio. `main_window.phaiform` is the window's design, `main_window_ui.rs`
+//! what Phai Studio writes from it, and `main_window.rs` what its controls do.
+
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod main_window;
+mod main_window_ui;
+mod text;
+
+fn main() {
+    text::load();
+    main_window_ui::MainWindowUi::run(main_window::MainWindow::default());
+}
+"#;
+
+const TEXT_RS: &str = r#"//! The program's words in Thai. The English is the key. The test fails on a sentence the program
+//! shows with no Thai, so none is forgotten.
+
+pub static THAI: &[(&str, &str)] = &[
+    ("My program", "โปรแกรมของฉัน"),
+    ("Hello", "สวัสดี"),
+    ("Ready", "พร้อม"),
+    ("Hello, {0}", "สวัสดี {0}"),
+];
+
+/// Thai when started with `--thai`, else English.
+pub fn load() {
+    phai_ui::text::add(THAI);
+    phai_ui::text::set_thai(std::env::args().any(|a| a == "--thai"));
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_sentence_has_thai() {
+        phai_ui::text::add(super::THAI);
+        let mut used: Vec<String> = crate::main_window_ui::TEXTS.iter().map(|s| s.to_string()).collect();
+        used.extend(phai_ui::text::scan(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")), &["main_window_ui.rs"]));
+        assert_eq!(phai_ui::text::problems(&used), Vec::<String>::new());
+    }
+}
+"#;
+
+const MAIN_WINDOW_RS: &str = r#"//! MainWindow: what its controls do. Phai Studio made this file once; it is yours.
+//! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phaiform.
+
+use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use phai_ui::{controls, text::tf};
+
+#[derive(Default)]
+pub struct MainWindow {
+    clicks: u32,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn ok_clicked(&mut self, ui: &MainWindowUi) {
+        self.clicks += 1;
+        controls::status_text(ui.status, 0, &tf("Hello, {0}", &[&self.clicks]));
+    }
+}
+"#;
+
+/// Writes a new project into `dir`; returns its first form's path. `dir` must have no Cargo.toml.
+pub fn create(dir: &Path) -> std::io::Result<PathBuf> {
+    if dir.join("Cargo.toml").exists() {
+        return Err(std::io::Error::other("this folder already has a Cargo.toml"));
+    }
+    let name = package_name(&dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+    let src = dir.join("src");
+    std::fs::create_dir_all(&src)?;
+    let f = first_form();
+    let form_path = src.join("main_window.phaiform");
+    let opts = codegen::Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()) };
+    let files: [(PathBuf, String); 9] = [
+        (dir.join("Cargo.toml"), cargo_toml(&name)),
+        (dir.join("build.rs"), BUILD_RS.to_string()),
+        (dir.join("theme.css"), phai_ui::theme::STANDARD_CSS.to_string()),
+        (dir.join(".gitignore"), "/target\n".to_string()),
+        (src.join("main.rs"), MAIN_RS.to_string()),
+        (src.join("text.rs"), TEXT_RS.to_string()),
+        (form_path.clone(), f.to_toml()),
+        (src.join("main_window_ui.rs"), codegen::generate(&f, &opts)),
+        (src.join("main_window.rs"), MAIN_WINDOW_RS.to_string()),
+    ];
+    for (path, text) in files {
+        std::fs::write(path, text)?;
+    }
+    Ok(form_path)
+}
+
+/// Asks for a folder - Windows' own folder picker, where a new folder can be made too.
+pub fn pick_folder(owner: HWND, title: &str) -> Option<PathBuf> {
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, FOS_PICKFOLDERS, SIGDN_FILESYSPATH};
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let dlg: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        let opts = dlg.GetOptions().ok()?;
+        dlg.SetOptions(opts | FOS_PICKFOLDERS).ok()?;
+        let t = phai_ui::win::wide(title);
+        let _ = dlg.SetTitle(windows::core::PCWSTR(t.as_ptr()));
+        dlg.Show(Some(owner)).ok()?;
+        let item = dlg.GetResult().ok()?;
+        let name = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let path = name.to_string().ok();
+        CoTaskMemFree(Some(name.0 as *const _));
+        path.map(PathBuf::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn folder_names_become_package_names() {
+        assert_eq!(package_name("My App"), "my_app");
+        assert_eq!(package_name("2026 report"), "app_2026_report");
+        assert_eq!(package_name("ร้านค้า"), "app_");
+    }
+
+    #[test]
+    fn a_new_project_has_everything_and_its_form_reads() {
+        let dir = std::env::temp_dir().join(format!("phai-new-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let form = create(&dir).unwrap();
+        for f in ["Cargo.toml", "build.rs", "theme.css", "src/main.rs", "src/text.rs", "src/main_window_ui.rs", "src/main_window.rs"] {
+            assert!(dir.join(f).is_file(), "{f}");
+        }
+        let parsed = FormFile::parse(&std::fs::read_to_string(&form).unwrap()).unwrap();
+        assert_eq!(parsed, first_form());
+        assert!(create(&dir).is_err(), "never over a project");
+        // Every word the first form shows has Thai, so the new project's own test passes.
+        phai_ui::text::add(Box::leak(Box::new([("My program", "โปรแกรมของฉัน"), ("Hello", "สวัสดี"), ("Ready", "พร้อม")])));
+        assert!(TEXT_RS.contains("\"My program\"") && TEXT_RS.contains("\"Hello\"") && TEXT_RS.contains("\"Ready\""));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Makes a project in `PHAI_NEW_DIR`, for building it by hand: `cargo test -p phai-studio -- --ignored make_project`.
+    #[test]
+    #[ignore]
+    fn make_project() {
+        let dir = PathBuf::from(std::env::var("PHAI_NEW_DIR").expect("PHAI_NEW_DIR"));
+        std::fs::create_dir_all(&dir).unwrap();
+        create(&dir).unwrap();
+    }
+}

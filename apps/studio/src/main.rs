@@ -10,6 +10,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod canvas;
+mod cargo;
+mod project;
 mod preview;
 mod props;
 mod text;
@@ -49,6 +51,10 @@ const ID_THAI: i32 = 123;
 const ID_ENGLISH: i32 = 124;
 const ID_LANG: i32 = 125;
 const ID_THEME_TOGGLE: i32 = 126;
+const ID_NEW_PROJECT: i32 = 105;
+const ID_BUILD: i32 = 140;
+const ID_RUN: i32 = 141;
+const ID_STOP: i32 = 142;
 const ID_THEME_NEW: i32 = 130;
 const ID_THEME_IMPORT: i32 = 131;
 const ID_THEME_NONE: i32 = 132;
@@ -58,6 +64,9 @@ const ID_TOOLBOX: i32 = 201;
 const ID_CANVAS: i32 = 202;
 const ID_PROPS: i32 = 203;
 const ID_STATUS: i32 = 204;
+const ID_ERRORS: i32 = 205;
+/// The error list's height when it shows, design pixels.
+const ERRORS_HEIGHT: i32 = 140;
 
 pub struct Doc {
     pub form: FormFile,
@@ -71,6 +80,10 @@ pub struct Studio {
     pub toolbar: HWND,
     pub toolbox: HWND,
     pub status: HWND,
+    pub errors: HWND,
+    diagnostics: Vec<cargo::Diagnostic>,
+    building: bool,
+    running: Option<std::process::Child>,
     pub canvas: Option<Canvas>,
     pub props: Option<Props>,
     layout: Layout,
@@ -81,6 +94,7 @@ pub struct Studio {
     pub tool: Option<Kind>,
 }
 
+static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static STUDIO: AtomicPtr<Studio> = AtomicPtr::new(std::ptr::null_mut());
 
 /// The one Studio of this process - its window's thread is the only one that asks.
@@ -114,7 +128,9 @@ fn toolbar_items() -> Vec<(i32, &'static str, u16)> {
         (ID_REDO, t("Redo"), glyph::REDO),
         (ID_DELETE, t("Delete"), glyph::DELETE),
         (0, "", 0),
-        (ID_PREVIEW, t("Preview"), glyph::PLAY),
+        (ID_BUILD, t("Build"), glyph::BUILD),
+        (ID_RUN, t("Run"), glyph::PLAY),
+        (ID_PREVIEW, t("Preview"), glyph::MONITOR),
         (0, "", 0),
         (ID_THEME_TOGGLE, t("Theme"), glyph::BRIGHTNESS),
         (ID_LANG, t("Language"), glyph::LANGUAGE),
@@ -142,6 +158,8 @@ fn build_menu() -> HMENU {
         add(file, ID_SAVE, t("Save"), "Ctrl+S");
         add(file, ID_SAVE_AS, t("Save as..."), "");
         sep(file);
+        add(file, ID_NEW_PROJECT, t("New project..."), "");
+        sep(file);
         add(file, ID_EXIT, t("Exit"), "");
         sub(t("&File"), file);
         let edit = wm::CreatePopupMenu().unwrap_or_default();
@@ -151,7 +169,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_DELETE, t("Delete"), "Del");
         sub(t("&Edit"), edit);
         let view = wm::CreatePopupMenu().unwrap_or_default();
-        add(view, ID_PREVIEW, t("Preview"), "F5");
+        add(view, ID_PREVIEW, t("Preview"), "F4");
         sep(view);
         add(view, ID_LIGHT, t("Light"), "");
         add(view, ID_DARK, t("Dark"), "");
@@ -161,6 +179,11 @@ fn build_menu() -> HMENU {
         wm::CheckMenuItem(view, if theme::current().is_dark() { ID_DARK } else { ID_LIGHT } as u32, wm::MF_CHECKED.0);
         wm::CheckMenuItem(view, if words::is_thai() { ID_THAI } else { ID_ENGLISH } as u32, wm::MF_CHECKED.0);
         sub(t("&View"), view);
+        let proj = wm::CreatePopupMenu().unwrap_or_default();
+        add(proj, ID_BUILD, t("Build"), "Ctrl+B");
+        add(proj, ID_RUN, t("Run"), "F5");
+        add(proj, ID_STOP, t("Stop"), "Shift+F5");
+        sub(t("&Project"), proj);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
         add(th, ID_THEME_IMPORT, t("Import CSS..."), "");
@@ -487,6 +510,117 @@ impl Studio {
         self.refresh_props();
     }
 
+    // --- projects, building and running --------------------------------------------------------
+
+    fn new_project(&mut self) {
+        if !self.may_leave() {
+            return;
+        }
+        let Some(dir) = project::pick_folder(self.hwnd, t("Choose an empty folder for the new project")) else { return };
+        match project::create(&dir) {
+            Ok(form) => {
+                self.open_path(&form);
+                controls::status_text(self.status, 0, &tf("New project in {0}", &[&dir.display()]));
+            }
+            Err(e) => {
+                win::message(Some(self.hwnd), &format!("{}\n\n{e}", tf("{0} cannot be made", &[&dir.display()])), "Phai Studio", wm::MB_ICONWARNING);
+            }
+        }
+    }
+
+    /// Saves, then builds the project the form is in; `then_run` starts the program after.
+    fn start_build(&mut self, then_run: bool) {
+        if self.building {
+            return;
+        }
+        let Some(path) = self.doc.path.clone() else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        if self.doc.dirty && !self.save(false) {
+            return;
+        }
+        let Some(dir) = cargo::project_of(&path) else {
+            win::message(Some(self.hwnd), t("This form is not in a Cargo project - make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        if then_run {
+            self.stop();
+        }
+        self.building = true;
+        controls::status_text(self.status, 0, t("Building..."));
+        cargo::build(self.hwnd, dir, then_run);
+    }
+
+    fn stop(&mut self) {
+        if let Some(mut child) = self.running.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    fn show_errors(&mut self, on: bool) {
+        self.layout.items[2].1.bounds.h = if on { ERRORS_HEIGHT } else { 0 };
+        win::show(self.errors, on);
+        self.layout.apply(self.hwnd);
+    }
+
+    fn build_done(&mut self, out: cargo::Outcome) {
+        use windows::Win32::UI::Controls as cc;
+        self.building = false;
+        if out.no_cargo {
+            controls::status_text(self.status, 0, t("Rust is not installed"));
+            let answer = win::message(Some(self.hwnd), t("Building needs Rust, and it is not on this computer. Open rustup.rs to install it?"), "Phai Studio", wm::MB_YESNO | wm::MB_ICONINFORMATION);
+            if answer == wm::IDYES {
+                open_with_windows("https://rustup.rs");
+            }
+            return;
+        }
+        self.diagnostics = out.diagnostics.clone();
+        if let Some(e) = &out.cargo_error {
+            self.diagnostics.insert(0, cargo::Diagnostic { error: true, message: e.clone(), file: None, line: 0, column: 0 });
+        }
+        unsafe {
+            wm::SendMessageW(self.errors, cc::LVM_DELETEALLITEMS, None, None);
+        }
+        for d in &self.diagnostics {
+            let file = d.file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let line = if d.line > 0 { d.line.to_string() } else { String::new() };
+            let first = d.message.lines().next().unwrap_or_default();
+            win::list_add(self.errors, &[if d.error { t("Error") } else { t("Warning") }, first, &file, &line]);
+        }
+        let errors = self.diagnostics.iter().filter(|d| d.error).count();
+        let warnings = self.diagnostics.len() - errors;
+        self.show_errors(!self.diagnostics.is_empty());
+        if out.ok {
+            controls::status_text(self.status, 0, &tf("Built in {0} s - {1} warnings", &[&format!("{:.1}", out.seconds), &warnings]));
+            if out.then_run {
+                match out.executable.as_deref().map(cargo::run) {
+                    Some(Ok(child)) => {
+                        self.running = Some(child);
+                        controls::status_text(self.status, 0, &tf("Running {0}", &[&out.executable.as_ref().and_then(|e| e.file_name()).unwrap_or_default().to_string_lossy()]));
+                    }
+                    Some(Err(e)) => {
+                        controls::status_text(self.status, 0, &e.to_string());
+                    }
+                    None => {
+                        controls::status_text(self.status, 0, t("The project has no program to run"));
+                    }
+                }
+            }
+        } else {
+            controls::status_text(self.status, 0, &tf("Build failed - {0} errors, {1} warnings", &[&errors.max(1), &warnings]));
+        }
+    }
+
+    /// Double-click in the error list: the file, opened as Windows opens it.
+    fn open_diagnostic(&mut self, row: usize) {
+        let Some(d) = self.diagnostics.get(row) else { return };
+        let Some(file) = &d.file else { return };
+        controls::status_text(self.status, 0, &format!("{}:{}:{}", file.display(), d.line, d.column));
+        open_with_windows(&file.to_string_lossy());
+    }
+
     // --- commands -----------------------------------------------------------------------------
 
     fn command(&mut self, id: i32) {
@@ -532,6 +666,10 @@ impl Studio {
             }
             ID_THEME_NEW => self.theme_from_standard(),
             ID_THEME_IMPORT => self.theme_import(),
+            ID_NEW_PROJECT => self.new_project(),
+            ID_BUILD => self.start_build(false),
+            ID_RUN => self.start_build(true),
+            ID_STOP => self.stop(),
             ID_THEME_NONE => {
                 self.edit(|f| f.form.theme = None);
                 self.load_theme();
@@ -565,6 +703,14 @@ fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options {
     let dir = form.with_file_name("");
     let watch = dir.ancestors().find(|d| d.join("Cargo.toml").exists()).and_then(|root| dir.join(th).strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")));
     codegen::Options { theme_include: Some(th.replace('\\', "/")), theme_watch: watch }
+}
+
+/// A file or web address, opened by whatever Windows opens it with.
+fn open_with_windows(what: &str) {
+    let w = wide(what);
+    unsafe {
+        windows::Win32::UI::Shell::ShellExecuteW(None, windows::core::w!("open"), PCWSTR(w.as_ptr()), PCWSTR::null(), PCWSTR::null(), wm::SW_SHOWNORMAL);
+    }
 }
 
 /// The toolbox's rows: the pointer, then every kind.
@@ -630,6 +776,12 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            if hdr.hwndFrom == s.errors && hdr.code == cc::NM_DBLCLK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if it.iItem >= 0 {
+                    s.open_diagnostic(it.iItem as usize);
+                }
+            }
             if hdr.hwndFrom == s.toolbox && hdr.code == cc::LVN_ITEMCHANGED {
                 let it = unsafe { &*(l.0 as *const cc::NMLISTVIEW) };
                 if it.uNewState & cc::LVIS_SELECTED.0 != 0 {
@@ -637,6 +789,18 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
             }
             win::def(hwnd, msg, w, l)
+        }
+        cargo::WM_BUILD_DONE => {
+            let out = unsafe { Box::from_raw(l.0 as *mut cargo::Outcome) };
+            if BUILD_TEST.load(Ordering::Relaxed) && std::env::var_os("PHAI_SHOT").is_none() {
+                println!("ok={} seconds={:.1} exe={:?} no_cargo={} cargo_error={:?}", out.ok, out.seconds, out.executable, out.no_cargo, out.cargo_error);
+                for d in &out.diagnostics {
+                    println!("{} {}:{}:{} {}", if d.error { "error" } else { "warning" }, d.file.as_ref().map(|f| f.display().to_string()).unwrap_or_default(), d.line, d.column, d.message);
+                }
+                std::process::exit(if out.ok { 0 } else { 2 });
+            }
+            s.build_done(*out);
+            LRESULT(0)
         }
         win::WM_THEME_CHANGED => {
             if w.0 == 1 {
@@ -670,6 +834,7 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             LRESULT(0)
         }
         wm::WM_DESTROY => {
+            s.stop();
             unsafe { wm::PostQuitMessage(0) };
             LRESULT(0)
         }
@@ -691,7 +856,10 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         // In a box Ctrl+Z is the box's own undo.
         (b'Z', true) if !in_box => Some(ID_UNDO),
         (b'Y', true) if !in_box => Some(ID_REDO),
-        (0x74, _) => Some(ID_PREVIEW),
+        (b'B', true) => Some(ID_BUILD),
+        (0x73, _) => Some(ID_PREVIEW),
+        (0x74, _) if unsafe { km::GetKeyState(0x10) } < 0 => Some(ID_STOP),
+        (0x74, _) => Some(ID_RUN),
         _ => None,
     }
 }
@@ -769,6 +937,8 @@ fn main() {
         wm::SetWindowLongW(toolbox, wm::GWL_STYLE, style | 0x4000 /* LVS_NOCOLUMNHEADER */ | 0x0004 /* LVS_SINGLESEL */);
         fill_toolbox(toolbox);
         let status = controls::status_bar(hwnd, ID_STATUS, font);
+        let errors = win::list(hwnd, ID_ERRORS, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
+        win::show(errors, false);
         controls::status_parts(status, &[260]);
         controls::status_text(status, 0, t("Ready"));
         let dpi = win::dpi(hwnd);
@@ -777,6 +947,7 @@ fn main() {
         layout
             .add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
+            .add(errors, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(toolbox, Item { bounds: Rect::new(0, 0, 150, 0), dock: Dock::Left, anchor: Anchor::default() });
         let studio_box = Box::new(Studio {
             hwnd,
@@ -784,6 +955,10 @@ fn main() {
             toolbar,
             toolbox,
             status,
+            errors,
+            diagnostics: vec![],
+            building: false,
+            running: None,
             canvas: None,
             props: None,
             layout,
@@ -818,6 +993,12 @@ fn main() {
         // person's hand would send, then saves - the designer checked end to end.
         if let Some(i) = args.iter().position(|a| a == "--selftest") {
             selftest(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("selftest.phaiform")));
+        }
+        // `--buildtest`: builds the open form's project the way Build does, prints what came of
+        // it and ends - the Build command checked end to end.
+        if args.iter().any(|a| a == "--buildtest") {
+            BUILD_TEST.store(true, Ordering::Relaxed);
+            s.start_build(false);
         }
         // The loop: shortcuts first, then Tab between boxes, then everything else.
         if std::env::var("PHAI_SHOT").is_ok() {
