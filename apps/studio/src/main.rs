@@ -10,6 +10,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod canvas;
+mod explorer;
 mod cargo;
 mod project;
 mod preview;
@@ -55,6 +56,9 @@ const ID_NEW_PROJECT: i32 = 105;
 const ID_BUILD: i32 = 140;
 const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
+const ID_CLOSE: i32 = 106;
+/// Toolbox buttons: the pointer, then each kind in `Kind::ALL` order.
+const ID_TOOL: i32 = 300;
 const ID_THEME_NEW: i32 = 130;
 const ID_THEME_IMPORT: i32 = 131;
 const ID_THEME_NONE: i32 = 132;
@@ -65,6 +69,7 @@ const ID_CANVAS: i32 = 202;
 const ID_PROPS: i32 = 203;
 const ID_STATUS: i32 = 204;
 const ID_ERRORS: i32 = 205;
+const ID_TABS: i32 = 206;
 /// The error list's height when it shows, design pixels.
 const ERRORS_HEIGHT: i32 = 140;
 
@@ -72,6 +77,29 @@ pub struct Doc {
     pub form: FormFile,
     pub path: Option<PathBuf>,
     pub dirty: bool,
+}
+
+/// An open form that is not the one on the canvas: everything it needs to come back as it was.
+struct Tab {
+    doc: Doc,
+    undo: Vec<FormFile>,
+    redo: Vec<FormFile>,
+    selected: Option<usize>,
+}
+
+impl Tab {
+    fn empty() -> Tab {
+        Tab { doc: Doc { form: FormFile::new("MainWindow"), path: None, dirty: false }, undo: vec![], redo: vec![], selected: None }
+    }
+
+    fn label(&self) -> String {
+        let name = self.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| t("Untitled").to_string());
+        if self.doc.dirty {
+            format!("{name} •")
+        } else {
+            name
+        }
+    }
 }
 
 pub struct Studio {
@@ -86,6 +114,11 @@ pub struct Studio {
     running: Option<std::process::Child>,
     pub canvas: Option<Canvas>,
     pub props: Option<Props>,
+    pub explorer: Option<explorer::Explorer>,
+    tabbar: HWND,
+    /// Every open form; the active one's slot is stale - its contents live in the fields below.
+    tabs: Vec<Tab>,
+    active: usize,
     layout: Layout,
     pub doc: Doc,
     undo: Vec<FormFile>,
@@ -116,6 +149,27 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Tabs => t("Tabs"),
         Kind::Statusbar => t("Status bar"),
     }
+}
+
+/// The toolbox: the pointer, then every kind, as icons; the names are the tooltips.
+fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
+    let mut v = vec![(ID_TOOL, t("Pointer"), glyph::POINTER)];
+    for (i, k) in Kind::ALL.iter().enumerate() {
+        let g = match k {
+            Kind::Label => glyph::FONT,
+            Kind::Edit => glyph::RENAME,
+            Kind::Button => glyph::BUTTON,
+            Kind::Checkbox => glyph::CHECKBOX,
+            Kind::Radio => glyph::RADIO,
+            Kind::Combo => glyph::DROPDOWN,
+            Kind::List => glyph::LIST,
+            Kind::Group => glyph::GROUP,
+            Kind::Tabs => glyph::TABS,
+            Kind::Statusbar => glyph::STATUS,
+        };
+        v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
+    }
+    v
 }
 
 fn toolbar_items() -> Vec<(i32, &'static str, u16)> {
@@ -157,6 +211,7 @@ fn build_menu() -> HMENU {
         add(file, ID_OPEN, t("Open..."), "Ctrl+O");
         add(file, ID_SAVE, t("Save"), "Ctrl+S");
         add(file, ID_SAVE_AS, t("Save as..."), "");
+        add(file, ID_CLOSE, t("Close"), "Ctrl+W");
         sep(file);
         add(file, ID_NEW_PROJECT, t("New project..."), "");
         sep(file);
@@ -214,8 +269,12 @@ impl Studio {
     }
 
     fn changed(&mut self) {
+        let was = self.doc.dirty;
         self.doc.dirty = true;
         self.say_title();
+        if !was {
+            self.refresh_tabs();
+        }
     }
 
     /// A property typed into its box: the model takes it now, the canvas shows it now.
@@ -351,7 +410,120 @@ impl Studio {
     }
 
     pub fn toolbox_reset(&mut self) {
-        select_row(self.toolbox, 0);
+        win::toolbar_choose(self.toolbox, ID_TOOL);
+    }
+
+    // --- tabs -----------------------------------------------------------------------------------
+
+    /// The form on the canvas, packed away into its tab.
+    fn stash(&mut self) {
+        let doc = std::mem::replace(&mut self.doc, Doc { form: FormFile::new("MainWindow"), path: None, dirty: false });
+        self.tabs[self.active] = Tab { doc, undo: std::mem::take(&mut self.undo), redo: std::mem::take(&mut self.redo), selected: self.selected.take() };
+    }
+
+    /// Tab `i` onto the canvas.
+    fn activate(&mut self, i: usize) {
+        if i >= self.tabs.len() {
+            return;
+        }
+        if i != self.active {
+            self.stash();
+            self.active = i;
+        }
+        let tab = std::mem::replace(&mut self.tabs[i], Tab::empty());
+        self.doc = tab.doc;
+        self.undo = tab.undo;
+        self.redo = tab.redo;
+        self.selected = tab.selected;
+        self.after_switch();
+    }
+
+    /// Everything that shows the active form, again.
+    fn after_switch(&mut self) {
+        self.load_theme();
+        self.rebuild();
+        self.refresh_props();
+        self.say_title();
+        self.say_selection();
+        self.refresh_tabs();
+        let path = self.doc.path.clone();
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(path.as_deref());
+        }
+    }
+
+    fn refresh_tabs(&mut self) {
+        let mut labels: Vec<String> = Vec::new();
+        for (i, tab) in self.tabs.iter().enumerate() {
+            labels.push(if i == self.active { Tab { doc: Doc { form: FormFile::new("X"), path: self.doc.path.clone(), dirty: self.doc.dirty }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
+        }
+        let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+        controls::tabs_relabel(self.tabbar, &refs);
+        controls::tabs_select(self.tabbar, self.active);
+    }
+
+    /// A form in a tab of its own - or the tab it is already in. An untouched empty first tab is
+    /// used rather than left behind.
+    fn open_in_tab(&mut self, form: FormFile, path: Option<PathBuf>) {
+        if let Some(p) = &path {
+            let same = |q: &Option<PathBuf>| q.as_ref().is_some_and(|q| q == p);
+            if same(&self.doc.path) {
+                return self.after_switch();
+            }
+            if let Some(i) = self.tabs.iter().enumerate().position(|(i, t)| i != self.active && same(&t.doc.path)) {
+                return self.activate(i);
+            }
+        }
+        let blank = self.doc.path.is_none() && !self.doc.dirty && self.doc.form.control.is_empty();
+        if !blank {
+            self.stash();
+            self.tabs.push(Tab::empty());
+            self.active = self.tabs.len() - 1;
+        }
+        self.doc = Doc { form, path, dirty: false };
+        self.undo.clear();
+        self.redo.clear();
+        self.selected = None;
+        self.after_switch();
+    }
+
+    /// Closes the active tab, asking to save; the last one closed leaves an empty form.
+    fn close_tab(&mut self) -> bool {
+        if !self.may_leave() {
+            return false;
+        }
+        if self.tabs.len() == 1 {
+            self.doc = Doc { form: FormFile::new("MainWindow"), path: None, dirty: false };
+            self.undo.clear();
+            self.redo.clear();
+            self.selected = None;
+            self.after_switch();
+            return true;
+        }
+        self.tabs.remove(self.active);
+        let next = self.active.min(self.tabs.len() - 1);
+        self.active = next;
+        let tab = std::mem::replace(&mut self.tabs[next], Tab::empty());
+        self.doc = tab.doc;
+        self.undo = tab.undo;
+        self.redo = tab.redo;
+        self.selected = tab.selected;
+        self.after_switch();
+        true
+    }
+
+    /// Asks about every unsaved tab before the window closes; false when one said Cancel.
+    fn may_quit(&mut self) -> bool {
+        for i in 0..self.tabs.len() {
+            let dirty = if i == self.active { self.doc.dirty } else { self.tabs[i].doc.dirty };
+            if dirty {
+                self.activate(i);
+                if !self.may_leave() {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     // --- saying things --------------------------------------------------------------------------
@@ -392,15 +564,7 @@ impl Studio {
     }
 
     fn set_doc(&mut self, form: FormFile, path: Option<PathBuf>) {
-        self.doc = Doc { form, path, dirty: false };
-        self.undo.clear();
-        self.redo.clear();
-        self.selected = None;
-        self.load_theme();
-        self.rebuild();
-        self.refresh_props();
-        self.say_title();
-        self.say_selection();
+        self.open_in_tab(form, path);
     }
 
     pub fn open_path(&mut self, path: &Path) {
@@ -436,6 +600,10 @@ impl Studio {
                 self.doc.path = Some(path.clone());
                 self.doc.dirty = false;
                 self.say_title();
+                self.refresh_tabs();
+                if let Some(e) = self.explorer.as_mut() {
+                    e.show_project_of(Some(&path));
+                }
                 let file = |p: &Path| p.file_name().unwrap_or_default().to_string_lossy().to_string();
                 controls::status_text(self.status, 0, &tf("Saved {0} and wrote {1}", &[&file(&path), &file(&ui_path)]));
                 true
@@ -513,9 +681,6 @@ impl Studio {
     // --- projects, building and running --------------------------------------------------------
 
     fn new_project(&mut self) {
-        if !self.may_leave() {
-            return;
-        }
         let Some(dir) = project::pick_folder(self.hwnd, t("Choose an empty folder for the new project")) else { return };
         match project::create(&dir) {
             Ok(form) => {
@@ -625,17 +790,18 @@ impl Studio {
 
     fn command(&mut self, id: i32) {
         match id {
-            ID_NEW => {
-                if self.may_leave() {
-                    self.set_doc(FormFile::new("MainWindow"), None);
+            ID_NEW => self.open_in_tab(FormFile::new("MainWindow"), None),
+            ID_OPEN => {
+                if let Some(p) = file_dialog(self.hwnd, false, "Phai form (*.phaiform)", "*.phaiform", "") {
+                    self.open_path(&p);
                 }
             }
-            ID_OPEN => {
-                if self.may_leave() {
-                    if let Some(p) = file_dialog(self.hwnd, false, "Phai form (*.phaiform)", "*.phaiform", "") {
-                        self.open_path(&p);
-                    }
-                }
+            ID_CLOSE => {
+                self.close_tab();
+            }
+            ID_TABS => {}
+            t if (ID_TOOL..=ID_TOOL + Kind::ALL.len() as i32).contains(&t) => {
+                self.tool = if t == ID_TOOL { None } else { Kind::ALL.get((t - ID_TOOL - 1) as usize).copied() };
             }
             ID_SAVE => {
                 self.save(false);
@@ -644,7 +810,7 @@ impl Studio {
                 self.save(true);
             }
             ID_EXIT => {
-                if self.may_leave() {
+                if self.may_quit() {
                     unsafe {
                         let _ = wm::DestroyWindow(self.hwnd);
                     }
@@ -681,7 +847,8 @@ impl Studio {
 
     fn relabel(&mut self) {
         win::set_toolbar(self.toolbar, &toolbar_items());
-        fill_toolbox(self.toolbox);
+        win::set_toolbar(self.toolbox, &toolbox_items());
+        win::toolbar_choose(self.toolbox, self.tool.and_then(|k| Kind::ALL.iter().position(|x| *x == k)).map(|i| ID_TOOL + 1 + i as i32).unwrap_or(ID_TOOL));
         unsafe {
             let old = wm::GetMenu(self.hwnd);
             let _ = wm::SetMenu(self.hwnd, Some(build_menu()));
@@ -690,6 +857,10 @@ impl Studio {
         if let Some(p) = self.props.as_mut() {
             p.relabel();
         }
+        if let Some(e) = self.explorer.as_mut() {
+            e.relabel();
+        }
+        self.refresh_tabs();
         controls::status_text(self.status, 0, t("Ready"));
         self.say_title();
         self.rebuild();
@@ -698,7 +869,7 @@ impl Studio {
 
 /// Where the theme is for the generated code: beside the form for `include_str!`, and from the
 /// crate's `Cargo.toml` for a debug build to watch.
-fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options {
+pub fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options {
     let Some(th) = theme_file else { return codegen::Options::default() };
     let dir = form.with_file_name("");
     let watch = dir.ancestors().find(|d| d.join("Cargo.toml").exists()).and_then(|root| dir.join(th).strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")));
@@ -706,33 +877,10 @@ fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options {
 }
 
 /// A file or web address, opened by whatever Windows opens it with.
-fn open_with_windows(what: &str) {
+pub fn open_with_windows(what: &str) {
     let w = wide(what);
     unsafe {
         windows::Win32::UI::Shell::ShellExecuteW(None, windows::core::w!("open"), PCWSTR(w.as_ptr()), PCWSTR::null(), PCWSTR::null(), wm::SW_SHOWNORMAL);
-    }
-}
-
-/// The toolbox's rows: the pointer, then every kind.
-fn fill_toolbox(h: HWND) {
-    use windows::Win32::UI::Controls as cc;
-    unsafe {
-        wm::SendMessageW(h, cc::LVM_DELETEALLITEMS, None, None);
-    }
-    win::list_add(h, &[t("Pointer")]);
-    for k in Kind::ALL {
-        win::list_add(h, &[kind_label(k)]);
-    }
-    select_row(h, 0);
-}
-
-fn select_row(h: HWND, row: usize) {
-    use windows::Win32::UI::Controls as cc;
-    unsafe {
-        let clear = cc::LVITEMW { stateMask: cc::LVIS_SELECTED, state: cc::LIST_VIEW_ITEM_STATE_FLAGS(0), ..Default::default() };
-        wm::SendMessageW(h, cc::LVM_SETITEMSTATE, Some(WPARAM(usize::MAX)), Some(LPARAM(&clear as *const _ as isize)));
-        let set = cc::LVITEMW { stateMask: cc::LVIS_SELECTED, state: cc::LVIS_SELECTED, ..Default::default() };
-        wm::SendMessageW(h, cc::LVM_SETITEMSTATE, Some(WPARAM(row)), Some(LPARAM(&set as *const _ as isize)));
     }
 }
 
@@ -770,7 +918,12 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             LRESULT(0)
         }
         wm::WM_COMMAND => {
-            s.command(win::loword(w.0) as i32);
+            let id = win::loword(w.0) as i32;
+            if id == ID_TABS {
+                s.activate(win::hiword(w.0) as usize);
+            } else {
+                s.command(id);
+            }
             LRESULT(0)
         }
         wm::WM_NOTIFY => {
@@ -780,12 +933,6 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
                     s.open_diagnostic(it.iItem as usize);
-                }
-            }
-            if hdr.hwndFrom == s.toolbox && hdr.code == cc::LVN_ITEMCHANGED {
-                let it = unsafe { &*(l.0 as *const cc::NMLISTVIEW) };
-                if it.uNewState & cc::LVIS_SELECTED.0 != 0 {
-                    s.tool = if it.iItem <= 0 { None } else { Kind::ALL.get(it.iItem as usize - 1).copied() };
                 }
             }
             win::def(hwnd, msg, w, l)
@@ -826,7 +973,7 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             LRESULT(0)
         }
         wm::WM_CLOSE => {
-            if s.may_leave() {
+            if s.may_quit() {
                 unsafe {
                     let _ = wm::DestroyWindow(hwnd);
                 }
@@ -852,6 +999,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     match (msg.wParam.0 as u8, ctrl) {
         (b'N', true) => Some(ID_NEW),
         (b'O', true) => Some(ID_OPEN),
+        (b'W', true) => Some(ID_CLOSE),
         (b'S', true) => Some(ID_SAVE),
         // In a box Ctrl+Z is the box's own undo.
         (b'Z', true) if !in_box => Some(ID_UNDO),
@@ -931,11 +1079,8 @@ fn main() {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(build_menu()), Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
         let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &toolbar_items());
-        let toolbox = win::list(hwnd, ID_TOOLBOX, font, &[("", 150)]);
-        // One column and no heading: a plain list of what can be drawn.
-        let style = wm::GetWindowLongW(toolbox, wm::GWL_STYLE);
-        wm::SetWindowLongW(toolbox, wm::GWL_STYLE, style | 0x4000 /* LVS_NOCOLUMNHEADER */ | 0x0004 /* LVS_SINGLESEL */);
-        fill_toolbox(toolbox);
+        let toolbox = win::toolbar_column(hwnd, ID_TOOLBOX, &toolbox_items());
+        let tabbar = controls::tabs(hwnd, ID_TABS, font, &[t("Untitled")]);
         let status = controls::status_bar(hwnd, ID_STATUS, font);
         let errors = win::list(hwnd, ID_ERRORS, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
         win::show(errors, false);
@@ -948,7 +1093,7 @@ fn main() {
             .add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(errors, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
-            .add(toolbox, Item { bounds: Rect::new(0, 0, 150, 0), dock: Dock::Left, anchor: Anchor::default() });
+            .add(toolbox, Item { bounds: Rect::new(0, 0, win::TOOLBAR_HEIGHT + 4, 0), dock: Dock::Left, anchor: Anchor::default() });
         let studio_box = Box::new(Studio {
             hwnd,
             font,
@@ -961,6 +1106,10 @@ fn main() {
             running: None,
             canvas: None,
             props: None,
+            explorer: None,
+            tabbar,
+            tabs: vec![Tab::empty()],
+            active: 0,
             layout,
             doc: Doc { form: FormFile::new("MainWindow"), path: None, dirty: false },
             undo: vec![],
@@ -970,20 +1119,39 @@ fn main() {
         });
         STUDIO.store(Box::into_raw(studio_box), Ordering::Relaxed);
         let s = studio().unwrap();
-        let props = Props::new(hwnd, ID_PROPS, font);
+        // The right side: the project's files above, the chosen thing's properties below.
+        let side = explorer::side_panel(hwnd);
+        let explorer = explorer::Explorer::new(side, font);
+        let props = Props::new(side, ID_PROPS, font);
+        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd);
         let canvas = Canvas::new(hwnd, ID_CANVAS);
-        s.layout.add(props.hwnd, Item { bounds: Rect::new(0, 0, 260, 0), dock: Dock::Right, anchor: Anchor::default() });
+        s.layout.add(side, Item { bounds: Rect::new(0, 0, 280, 0), dock: Dock::Right, anchor: Anchor::default() });
+        s.layout.add(tabbar, Item { bounds: Rect::new(0, 0, 0, 30), dock: Dock::Top, anchor: Anchor::default() });
         s.layout.add(canvas.hwnd, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
         s.props = Some(props);
+        s.explorer = Some(explorer);
+        win::toolbar_choose(toolbox, ID_TOOL);
         s.canvas = Some(canvas);
         win::theme_frame(hwnd);
         let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 1100), bottom: win::px(hwnd, 700) };
         let st = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;
         let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(st), true, Default::default(), dpi as u32);
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER);
-        match args.iter().skip(1).find(|a| !a.starts_with("--")) {
-            Some(p) => s.open_path(Path::new(p)),
-            None => s.set_doc(FormFile::new("MainWindow"), None),
+        // Every form named on the command line, each in its tab; the first one shown. A value
+        // after a `--flag` that takes one is not a form.
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && args[i - 1] != "--selftest" && args[i - 1] != "--tab").map(|(_, a)| a).collect();
+        if forms.is_empty() {
+            s.set_doc(FormFile::new("MainWindow"), None);
+        }
+        for p in &forms {
+            s.open_path(Path::new(p));
+        }
+        if forms.len() > 1 {
+            s.activate(0);
+        }
+        // `--tab N` shows tab N, the way a click on it does - for checking the switch.
+        if let Some(n) = args.iter().position(|a| a == "--tab").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            wm::SendMessageW(hwnd, wm::WM_COMMAND, Some(WPARAM((n << 16) | ID_TABS as usize)), Some(LPARAM(0)));
         }
         let _ = wm::ShowWindow(hwnd, wm::SW_SHOW);
         s.layout.apply(hwnd);

@@ -61,3 +61,6 @@ menubar       { background: var(--surface); color: var(--text); }
 menubar:hover { background: #2d2d2d; }
 menubar:disabled { color: var(--disabled-text); }
 canvas    { background: #191919; }
+tree          { background: var(--surface); color: var(--text); icon-color: var(--icon); }
+tree:hover    { background: #2a2a2a; }
+tree:selected { background: var(--accent-tint); color: #ffffff; }

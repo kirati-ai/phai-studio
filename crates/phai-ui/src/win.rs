@@ -193,6 +193,7 @@ pub enum Kind {
     Combo,
     StatusBar,
     Toolbar,
+    Tree,
 }
 
 impl Kind {
@@ -209,6 +210,7 @@ impl Kind {
             Kind::Combo => "combo",
             Kind::StatusBar => "statusbar",
             Kind::Toolbar => "toolbar",
+            Kind::Tree => "tree",
         }
     }
 }
@@ -738,6 +740,126 @@ pub fn list_custom_draw(l: LPARAM) -> LRESULT {
     }
 }
 
+// --- trees ----------------------------------------------------------------------------------------
+
+/// A tree, as Explorer's folders: lines off, buttons to open and close, whole rows chosen. Its
+/// icons are glyphs of Windows' icon font in the theme's `tree { icon-color }` ([`tree_icons`]).
+pub fn tree(parent: HWND, id: i32, f: HFONT) -> HWND {
+    const TVS_HASBUTTONS: u32 = 0x0001;
+    const TVS_LINESATROOT: u32 = 0x0004;
+    const TVS_SHOWSELALWAYS: u32 = 0x0020;
+    const TVS_TRACKSELECT: u32 = 0x0200;
+    const TVS_FULLROWSELECT: u32 = 0x1000;
+    const TVM_SETEXTENDEDSTYLE: u32 = 0x112C;
+    const TVS_EX_DOUBLEBUFFER: isize = 0x0004;
+    let style = TVS_HASBUTTONS | TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_TRACKSELECT | TVS_FULLROWSELECT;
+    let h = child(parent, "SysTreeView32", "", WINDOW_STYLE(style) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
+    mark(h, Kind::Tree);
+    unsafe {
+        wm::SendMessageW(h, TVM_SETEXTENDEDSTYLE, Some(WPARAM(TVS_EX_DOUBLEBUFFER as usize)), Some(LPARAM(TVS_EX_DOUBLEBUFFER)));
+    }
+    theme_native(h);
+    h
+}
+
+type TreeGlyphs = Vec<u16>;
+static TREE_ICONS: Mutex<Option<HashMap<isize, TreeGlyphs>>> = Mutex::new(None);
+
+/// The tree's icons, one per glyph, by index - drawn again when the theme changes.
+pub fn tree_icons(h: HWND, glyphs: &[u16]) {
+    use windows::Win32::UI::Controls as cc;
+    const TVM_SETIMAGELIST: u32 = 0x1109;
+    TREE_ICONS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(h.0 as isize, glyphs.to_vec());
+    unsafe {
+        let size = px(h, 16);
+        let colour = style_of(h, Kind::Tree, State::default()).icon_color.unwrap_or(window_text());
+        let list = cc::ImageList_Create(size, size, cc::ILC_COLOR32 | cc::ILC_MASK, glyphs.len() as i32, 0);
+        for g in glyphs {
+            if let Some(i) = crate::icon::glyph_icon(*g, size, colour) {
+                cc::ImageList_ReplaceIcon(list, -1, i);
+                let _ = wm::DestroyIcon(i);
+            }
+        }
+        let old = wm::SendMessageW(h, TVM_SETIMAGELIST, Some(WPARAM(0)), Some(LPARAM(list.0 as isize))).0;
+        if old != 0 {
+            let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
+        }
+    }
+}
+
+/// Adds an item under `parent` (0 for the top), with icon `image` and a number kept with it.
+/// Returns the item, to add others under.
+pub fn tree_add(h: HWND, parent: isize, text: &str, image: i32, data: isize) -> isize {
+    use windows::Win32::UI::Controls as cc;
+    const TVM_INSERTITEMW: u32 = 0x1132;
+    let mut w = wide(text);
+    let item = cc::TVITEMW {
+        mask: cc::TVIF_TEXT | cc::TVIF_IMAGE | cc::TVIF_SELECTEDIMAGE | cc::TVIF_PARAM,
+        pszText: windows::core::PWSTR(w.as_mut_ptr()),
+        iImage: image,
+        iSelectedImage: image,
+        lParam: LPARAM(data),
+        ..Default::default()
+    };
+    let ins = cc::TVINSERTSTRUCTW {
+        hParent: cc::HTREEITEM(parent),
+        hInsertAfter: cc::HTREEITEM(-0xFFFE), // TVI_LAST
+        Anonymous: cc::TVINSERTSTRUCTW_0 { item },
+    };
+    unsafe { wm::SendMessageW(h, TVM_INSERTITEMW, None, Some(LPARAM(&ins as *const _ as isize))).0 }
+}
+
+/// Empties the tree.
+pub fn tree_clear(h: HWND) {
+    unsafe {
+        wm::SendMessageW(h, 0x1101 /* TVM_DELETEITEM */, None, Some(LPARAM(-0x10000 /* TVI_ROOT */)));
+    }
+}
+
+/// Opens an item to show what is under it.
+pub fn tree_expand(h: HWND, item: isize) {
+    unsafe {
+        wm::SendMessageW(h, 0x1102 /* TVM_EXPAND */, Some(WPARAM(2 /* TVE_EXPAND */)), Some(LPARAM(item)));
+    }
+}
+
+/// The number kept with the chosen item, if one is chosen.
+pub fn tree_selected(h: HWND) -> Option<isize> {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        let item = wm::SendMessageW(h, 0x110A /* TVM_GETNEXTITEM */, Some(WPARAM(9 /* TVGN_CARET */)), None).0;
+        if item == 0 {
+            return None;
+        }
+        let mut it = cc::TVITEMW { mask: cc::TVIF_PARAM, hItem: cc::HTREEITEM(item), ..Default::default() };
+        wm::SendMessageW(h, 0x113E /* TVM_GETITEMW */, None, Some(LPARAM(&mut it as *mut _ as isize)));
+        Some(it.lParam.0)
+    }
+}
+
+/// `NM_CUSTOMDRAW` from a tree: the chosen row in the theme's `tree:selected` colours.
+pub fn tree_custom_draw(l: LPARAM) -> LRESULT {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        let cd = &mut *(l.0 as *mut cc::NMTVCUSTOMDRAW);
+        match cd.nmcd.dwDrawStage {
+            cc::CDDS_PREPAINT => LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize),
+            cc::CDDS_ITEMPREPAINT => {
+                let selected = cd.nmcd.uItemState.0 & cc::CDIS_SELECTED.0 != 0;
+                let hot = cd.nmcd.uItemState.0 & cc::CDIS_HOT.0 != 0;
+                if selected || hot {
+                    let s = style_of(cd.nmcd.hdr.hwndFrom, Kind::Tree, State { selected, hover: hot && !selected, ..Default::default() });
+                    cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !(cc::CDIS_SELECTED.0 | cc::CDIS_FOCUS.0 | cc::CDIS_HOT.0));
+                    cd.clrTextBk = cr(s.background_or(window_background()));
+                    cd.clrText = cr(s.color_or(window_text()));
+                }
+                LRESULT(cc::CDRF_DODEFAULT as isize)
+            }
+            _ => LRESULT(cc::CDRF_DODEFAULT as isize),
+        }
+    }
+}
+
 /// Puts a control Windows draws - list, combo - in the theme: its colours, and Windows' own dark
 /// look for scroll bars and headers when the theme is dark.
 pub fn theme_native(h: HWND) {
@@ -756,6 +878,17 @@ pub fn theme_native(h: HWND) {
                 let header = HWND(wm::SendMessageW(h, cc::LVM_GETHEADER, None, None).0 as *mut _);
                 if !header.is_invalid() {
                     let _ = cc::SetWindowTheme(header, if dark { windows::core::w!("DarkMode_ItemsView") } else { windows::core::w!("ItemsView") }, PCWSTR::null());
+                }
+            }
+            Some(Kind::Tree) => {
+                let s = style_of(h, Kind::Tree, State::default());
+                wm::SendMessageW(h, 0x111D /* TVM_SETBKCOLOR */, None, Some(LPARAM(s.background_or(window_background()).colorref() as isize)));
+                wm::SendMessageW(h, 0x111E /* TVM_SETTEXTCOLOR */, None, Some(LPARAM(s.color_or(window_text()).colorref() as isize)));
+                // Explorer's arrows instead of + and - boxes; dark ones in a dark theme.
+                let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
+                let glyphs = TREE_ICONS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).cloned());
+                if let Some(g) = glyphs {
+                    tree_icons(h, &g);
                 }
             }
             Some(Kind::Combo) => {
@@ -807,6 +940,35 @@ pub fn toolbar(parent: HWND, id: i32, items: &[(i32, &str, u16)]) -> HWND {
     h
 }
 
+/// Toolbars that stand as a column of buttons, one of which is chosen ([`toolbar_column`]).
+static COLUMNS: Mutex<Option<HashSet<isize>>> = Mutex::new(None);
+
+/// A column of icon buttons of which one is chosen at a time - a toolbox. The labels are the
+/// tooltips; the chosen one shows pressed. Commands arrive as `WM_COMMAND`.
+pub fn toolbar_column(parent: HWND, id: i32, items: &[(i32, &str, u16)]) -> HWND {
+    const CCS_VERT: u32 = 0x0080;
+    const TBSTYLE_WRAPABLE: u32 = 0x0200;
+    let h = toolbar(parent, id, &[]);
+    unsafe {
+        let style = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32;
+        wm::SetWindowLongW(h, wm::GWL_STYLE, (style | CCS_VERT | TBSTYLE_WRAPABLE) as i32);
+    }
+    COLUMNS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new).insert(h.0 as isize);
+    set_toolbar(h, items);
+    h
+}
+
+/// Each column's chosen command, kept so a rebuilt column shows it still.
+static CHOSEN: Mutex<Option<HashMap<isize, i32>>> = Mutex::new(None);
+
+/// Shows `command` as the chosen button of a [`toolbar_column`].
+pub fn toolbar_choose(h: HWND, command: i32) {
+    CHOSEN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(h.0 as isize, command);
+    unsafe {
+        wm::SendMessageW(h, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(command as usize)), Some(LPARAM(1)));
+    }
+}
+
 /// Each toolbar's buttons, so [`retheme`] can draw their icons again in the new colour.
 type ToolItems = Vec<(i32, String, u16)>;
 static TOOLBARS: Mutex<Option<HashMap<isize, ToolItems>>> = Mutex::new(None);
@@ -856,6 +1018,27 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
             })
             .collect();
         wm::SendMessageW(h, TB_ADDBUTTONSW, Some(WPARAM(buttons.len())), Some(LPARAM(buttons.as_ptr() as isize)));
+        // A column: every button on a row of its own, one of the group chosen at a time.
+        if COLUMNS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.contains(&(h.0 as isize))) {
+            const TBSTATE_WRAP: u8 = 0x20;
+            const BTNS_CHECKGROUP: u8 = 0x06;
+            const TBIF_STYLE: u32 = 0x0008;
+            const TBIF_STATE: u32 = 0x0004;
+            for (cmd, _, _) in items.iter().filter(|(c, _, _)| *c != 0) {
+                let info = windows::Win32::UI::Controls::TBBUTTONINFOW {
+                    cbSize: std::mem::size_of::<windows::Win32::UI::Controls::TBBUTTONINFOW>() as u32,
+                    dwMask: windows::Win32::UI::Controls::TBBUTTONINFOW_MASK(TBIF_STYLE | TBIF_STATE),
+                    fsStyle: BTNS_CHECKGROUP,
+                    fsState: TBSTATE_ENABLED | TBSTATE_WRAP,
+                    ..Default::default()
+                };
+                wm::SendMessageW(h, 0x0440 /* TB_SETBUTTONINFOW */, Some(WPARAM(*cmd as usize)), Some(LPARAM(&info as *const _ as isize)));
+            }
+            let chosen = CHOSEN.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).copied());
+            if let Some(c) = chosen {
+                wm::SendMessageW(h, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(c as usize)), Some(LPARAM(1)));
+            }
+        }
         let b = px(h, TOOL_BUTTON) as isize;
         let pad = (px(h, TOOL_BUTTON) - icon) as isize;
         wm::SendMessageW(h, TB_SETPADDING, None, Some(LPARAM((pad << 16) | (pad & 0xFFFF))));
@@ -885,6 +1068,14 @@ pub fn toolbar_custom_draw(l: LPARAM) -> LRESULT {
             cc::CDDS_ITEMPREPAINT => {
                 let hover = theme::style("button", State { hover: true, ..Default::default() });
                 cd.clrHighlightHotTrack = cr(hover.background_or(Color::rgb(231, 243, 239)));
+                // A chosen button of a column: the theme's pressed colour behind it, no 3-D edge.
+                if cd.nmcd.uItemState.0 & cc::CDIS_CHECKED.0 != 0 {
+                    let chosen = theme::style("button", State { pressed: true, ..Default::default() });
+                    let r = cd.nmcd.rc;
+                    round_rect(cd.nmcd.hdc, r, chosen.background_or(Color::rgb(208, 231, 223)), chosen.border_or(Color::rgb(18, 133, 95)), px(cd.nmcd.hdr.hwndFrom, 8));
+                    cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !cc::CDIS_CHECKED.0);
+                    return LRESULT(cc::CDRF_DODEFAULT as isize | TBCDRF_NOEDGES | 0x0040_0000 /* TBCDRF_NOBACKGROUND */);
+                }
                 LRESULT(cc::CDRF_DODEFAULT as isize | TBCDRF_HILITEHOTTRACK | TBCDRF_NOEDGES)
             }
             _ => LRESULT(cc::CDRF_DODEFAULT as isize),
@@ -1251,6 +1442,7 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 match kind_of(hdr.hwndFrom) {
                     Some(Kind::List) => return list_custom_draw(l),
                     Some(Kind::Toolbar) => return toolbar_custom_draw(l),
+                    Some(Kind::Tree) => return tree_custom_draw(l),
                     _ => {}
                 }
             }
