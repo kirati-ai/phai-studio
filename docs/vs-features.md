@@ -8,7 +8,7 @@
 | | ความสามารถ | สถานะ |
 |---|---|---|
 | ★ | Toolbox ลากวาด / คลิกแล้ววาด | ✅ |
-| ★ | ดับเบิลคลิกเครื่องมือ = วางบนฟอร์มเลย | ⬜ |
+| ★ | ดับเบิลคลิกเครื่องมือ = วางบนฟอร์มเลย | ✅ |
 | | Toolbox ค้นหา, หมวด | ⬜ (ไอคอนล้วนตามที่เจ้านายต้องการ) |
 | ★ | Properties (F4), ค่าเปลี่ยนทันที | ✅ |
 | ★ | Properties ⇄ Events, ดับเบิลคลิกสร้าง handler | ✅ |
@@ -18,13 +18,13 @@
 | | ช่องเลือก object, เลือกหลายตัวแสดงค่าร่วม | 🟡 (เลือก object ได้, ค่าร่วมยังไม่มี) |
 | ★ | ดับเบิลคลิก control = ไปที่ handler | ✅ |
 | ★ | เลือกหลายตัว (Ctrl+คลิก, ลากกรอบ), ตัวหลัก | ✅ |
-| ★ | ลูกศรย้าย, Shift+ลูกศรย่อขยาย, Ctrl+ลูกศรกระโดดตามเส้นจัดแนว | 🟡 (Ctrl+ลูกศรยังไม่มี) |
+| ★ | ลูกศรย้าย, Shift+ลูกศรย่อขยาย, Ctrl+ลูกศรกระโดดตามเส้นจัดแนว | ✅ |
 | ★ | จุดจับ 8 จุด | ✅ |
 | ★ | Snaplines ขอบ/ระยะขอบ | ✅ (baseline ข้อความยังไม่มี) |
 | ★ | Format > Align / Make Same Size / Spacing | ✅ |
-| ★ | Bring to Front / Send to Back | ⬜ |
-| ★ | Tab Order mode | ⬜ |
-| ★ | Lock Controls | ⬜ |
+| ★ | Bring to Front / Send to Back | ✅ (ลำดับในฟอร์ม = ชั้น = ลำดับ Tab แบบ Win32) |
+| ★ | Tab Order mode | ✅ |
+| ★ | Lock Controls | ✅ (ทั้งฟอร์ม ยังไม่ราย control) |
 | ★ | Dock / Anchor (ตัวแก้แบบภาพ) | ✅ |
 | ★ | Control: DateTimePicker, NumericUpDown, TrackBar, ProgressBar, TextBox หลายบรรทัด | ✅ |
 | | Control: PictureBox, Timer, MenuStrip ในฟอร์ม, TreeView, RichTextBox, DataGridView | ⬜ |

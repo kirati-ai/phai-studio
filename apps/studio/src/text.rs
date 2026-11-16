@@ -198,6 +198,13 @@ pub static THAI: &[(&str, &str)] = &[
     ("At 100% scale.", "ที่สเกล 100%"),
     ("Fills an edge of the form, or all that is left.", "ติดขอบหนึ่งของฟอร์ม หรือเต็มพื้นที่ที่เหลือ"),
     ("The edges it keeps its distance to when the window grows.", "ขอบที่รักษาระยะไว้เมื่อหน้าต่างขยาย"),
+    ("Bring to front", "นำมาไว้หน้าสุด"),
+    ("Send to back", "ส่งไปไว้หลังสุด"),
+    ("Lock controls", "ล็อก control"),
+    ("Tab order", "ลำดับ Tab"),
+    ("Controls are locked", "ล็อก control แล้ว"),
+    ("Controls are unlocked", "ปลดล็อก control แล้ว"),
+    ("Click the controls in the order Tab should visit them; Esc ends", "คลิก control ตามลำดับที่ต้องการให้ Tab ไป กด Esc เพื่อจบ"),
 ];
 
 #[cfg(test)]

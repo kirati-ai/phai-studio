@@ -103,6 +103,27 @@ pub fn snaplines(moving: [i32; 4], others: &[[i32; 4]], form: [i32; 2], margin: 
     ((dx.unwrap_or(0), dy.unwrap_or(0)), lines)
 }
 
+/// Ctrl+arrow, as Visual Studio's designer: how far to go in direction `dir` (-1 or 1, across
+/// when `across`) for an edge of `moving` to reach the next line another control's edge or the
+/// form's margin makes. Sizing (`size`) moves only the right or bottom edge. Without a line ahead,
+/// one pixel.
+pub fn next_stop(moving: [i32; 4], others: &[[i32; 4]], form: [i32; 2], margin: i32, across: bool, dir: i32, size: bool) -> i32 {
+    let (pos, len, extent) = if across { (moving[0], moving[2], form[0]) } else { (moving[1], moving[3], form[1]) };
+    let mut lines = vec![margin, extent - margin];
+    for o in others {
+        let (p, l) = if across { (o[0], o[2]) } else { (o[1], o[3]) };
+        lines.extend([p, p + l]);
+    }
+    let edges: Vec<i32> = if size { vec![pos + len] } else { vec![pos, pos + len] };
+    lines
+        .iter()
+        .flat_map(|l| edges.iter().map(move |e| (l - e) * dir))
+        .filter(|d| *d > 0)
+        .min()
+        .map(|d| d * dir)
+        .unwrap_or(dir)
+}
+
 #[derive(Serialize, Deserialize)]
 struct Clip {
     control: Vec<Control>,
@@ -203,6 +224,22 @@ mod tests {
         assert_eq!(392 + dx + 75, 480 - 11);
         // Far from everything: nothing.
         assert_eq!(snaplines([200, 150, 50, 20], &[[10, 10, 20, 20]], [480, 320], 11), ((0, 0), vec![]));
+    }
+
+    #[test]
+    fn ctrl_arrows_go_to_the_next_line() {
+        let others = [[200, 50, 60, 23]];
+        // Right: the left edge (100) reaches no line before the other's left at 200, but the right
+        // edge (175) reaches 200 first.
+        assert_eq!(next_stop([100, 10, 75, 23], &others, [480, 320], 11, true, 1, false), 25);
+        // Left from 100: the margin at 11.
+        assert_eq!(next_stop([100, 10, 75, 23], &others, [480, 320], 11, true, -1, false), -89);
+        // Sizing right: only the right edge, to 200.
+        assert_eq!(next_stop([100, 10, 75, 23], &others, [480, 320], 11, true, 1, true), 25);
+        // Down: the top (20) to the other's top at 50 is 30, the bottom (43) to 50 is 7.
+        assert_eq!(next_stop([100, 20, 75, 23], &others, [480, 320], 11, false, 1, false), 7);
+        // Past every line: a pixel.
+        assert_eq!(next_stop([470, 10, 10, 10], &[], [480, 320], 11, true, 1, false), 1);
     }
 
     #[test]
