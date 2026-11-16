@@ -1,0 +1,15 @@
+[package]
+name = "phai-design"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "The Phai family's design: Windows' spacing, and the windows every program has, ready made"
+
+[lib]
+name = "phai_design"
+path = "src/lib.rs"
+
+[dependencies]
+phai-form = { path = "../phai-form" }

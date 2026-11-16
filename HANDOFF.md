@@ -18,13 +18,13 @@
   กล่องเครื่องมือเป็นไอคอนล้วน, ฟอร์มบน canvas มีแถบชื่อ + menu bar, แก้เมนู/toolbar เป็นข้อความ (Edit > เมนู..., คลิก menu bar)
 - MIT license ใส่แล้ว (Monrak Net เหมือน PhaiDesk) — ยังไม่สร้าง repo บน GitHub: รอเจ้านายสั่ง
   ก่อนเปิดสาธารณะ: โปรเจกต์ใหม่อ้าง phai-ui ด้วย path ในเครื่อง → ต้องเปลี่ยนเป็น git/crates.io
-- **เจ้านายบอกพอแค่นี้ (2026-11-16)** — งานที่เหลือถ้าจะทำต่อ ตามลำดับ:
-  1. เลือกหลายตัว, คัดลอก/วาง, toolbar จัดแนว (ชิดซ้าย/เท่ากัน/ระยะเท่ากัน), เส้นช่วยจัดแนว
-  2. Debug/Release + Output window (บันทึก cargo)
-  3. Toolbox ค้นหา, ไฟล์ล่าสุด, Start window
-  4. font จาก CSS, scrollbar/เมนู popup โหมดมืด
-  5. `phai-design` crate (ดู PLAN.md)
-  6. สาย E: แปลง Monaco (PLAN.md) — ตัวแก้โค้ด, debugger, Git
+- เจ้านายบอก "พอแค่นี้" แล้วสั่ง "ทำต่อสิ" (2026-11-16) — ทำเพิ่มแล้ว:
+  เลือกหลายตัว (Ctrl+คลิก, ลากกรอบ), ตัด/คัดลอก/วาง/ทำซ้ำ (TOML ในคลิปบอร์ด), เมนู Format (ชิด/เท่ากัน/เว้นระยะ),
+  แผงล่าง Errors + Output (บรรทัด cargo สด), Debug/Release, ไฟล์ล่าสุด, font จาก CSS, เมนู popup/scrollbar มืด,
+  `crates/phai-design` (metrics + แม่แบบ Dialog / หน้าต่างหลัก / ฟอร์มกรอกข้อมูล; File > New from template),
+  README + ภาพ, `repository = ""` ใน Cargo.toml — ใส่ URL GitHub แล้วโปรเจกต์ใหม่จะดึง phai-ui จาก git เอง
+- **เหลือ**: สาย E (แปลง Monaco: ตัวแก้โค้ด, จากนั้น debugger, Git), เส้นช่วยจัดแนว, Start window
+- **ก่อนแจก**: ใส่ `repository` ใน Cargo.toml ของ workspace เป็น URL ของ repo
 - self-test: `--selftest out.phaiform` (ลากสร้าง/ย้าย/ย่อขยาย), `--buildtest` (Build จริง), `--tab N`, `--menus`;
   `PHAI_SHOT=out.png` ถ่ายหน้าต่างหน้าสุดของโปรแกรม (รวม dialog)
 - debug build ของ studio เป็น console + พิมพ์ backtrace ตอนพัง (`report_crashes`)

@@ -104,6 +104,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "phai-design"
+version = "0.1.0"
+dependencies = [
+ "phai-form",
+]
+
+[[package]]
 name = "phai-form"
 version = "0.1.0"
 dependencies = [
@@ -133,6 +140,7 @@ dependencies = [
 name = "phai-studio"
 version = "0.1.0"
 dependencies = [
+ "phai-design",
  "phai-form",
  "phai-ui",
  "serde",

@@ -21,6 +21,8 @@ const ID_TREE: i32 = 400;
 const CMD_NEW_FORM: u32 = 1;
 const CMD_SHOW: u32 = 2;
 const CMD_REFRESH: u32 = 3;
+/// New form from a template: `CMD_TEMPLATE + n` in `Template::ALL` order.
+const CMD_TEMPLATE: u32 = 10;
 
 /// Icons, by index: folder, file, form, Rust source, the project, the theme.
 const ICONS: [u16; 6] = [glyph::FOLDER, glyph::DOCUMENT, glyph::FORM, glyph::CODE, glyph::LIBRARY, glyph::BRIGHTNESS];
@@ -192,12 +194,18 @@ impl Explorer {
     }
 
     fn menu(&mut self, owner: HWND) {
-        let chosen = win::popup(owner, &[(CMD_NEW_FORM, t("New form...")), (0, ""), (CMD_SHOW, t("Show in Explorer")), (CMD_REFRESH, t("Refresh"))]);
+        let mut items: Vec<(u32, &str)> = vec![(CMD_NEW_FORM, t("New form..."))];
+        for (k, tpl) in phai_design::templates::Template::ALL.iter().enumerate() {
+            items.push((CMD_TEMPLATE + k as u32, t(tpl.name())));
+        }
+        items.extend([(0, ""), (CMD_SHOW, t("Show in Explorer")), (CMD_REFRESH, t("Refresh"))]);
+        let chosen = win::popup(owner, &items);
         match chosen {
-            CMD_NEW_FORM => {
+            CMD_NEW_FORM | CMD_TEMPLATE..=19 => {
+                let tpl = chosen.checked_sub(CMD_TEMPLATE).and_then(|k| phai_design::templates::Template::ALL.get(k as usize).copied());
                 if let Some(root) = self.root.clone() {
                     if let Some(s) = studio() {
-                        s.new_form(&root);
+                        s.new_form(&root, tpl);
                     }
                 }
             }
@@ -241,7 +249,7 @@ pub fn add_mods(main_rs: &str, file: &str) -> Option<String> {
 impl crate::Studio {
     /// Right-click, New form: asks a name, writes the form and its code into `src`, makes them part
     /// of the program, and opens the form in a tab.
-    pub fn new_form(&mut self, root: &Path) {
+    pub fn new_form(&mut self, root: &Path, template: Option<phai_design::templates::Template>) {
         let Some(name) = phai_ui::dialogs::ask(Some(self.hwnd), t("New form"), t("Name of the new form, like CustomerWindow"), "", false) else { return };
         let name = name.trim().to_string();
         if !is_form_name(&name) {
@@ -255,7 +263,7 @@ impl crate::Studio {
             win::message(Some(self.hwnd), &tf("{0} already exists", &[&form_path.display()]), "Phai Studio", wm::MB_ICONWARNING);
             return;
         }
-        let mut f = FormFile::new(&name);
+        let mut f = template.map(|t| t.make(&name)).unwrap_or_else(|| FormFile::new(&name));
         if root.join("theme.css").exists() {
             f.form.theme = Some("../theme.css".into());
         }
@@ -300,5 +308,29 @@ mod tests {
         assert!(!is_form_name("customer"));
         assert!(!is_form_name("Customer Window"));
         assert!(!is_form_name(""));
+    }
+
+    /// Writes every template as a form into the project in `PHAI_NEW_DIR`, as New form does, for
+    /// building it by hand: `cargo test -p phai-studio -- --ignored templates_into_project`.
+    #[test]
+    #[ignore]
+    fn templates_into_project() {
+        use phai_design::templates::Template;
+        let root = std::path::PathBuf::from(std::env::var("PHAI_NEW_DIR").expect("PHAI_NEW_DIR"));
+        let src = root.join("src");
+        for (tpl, name) in [(Template::Dialog, "AskDialog"), (Template::MainWindow, "BigWindow"), (Template::DataEntry, "DetailsWindow")] {
+            let mut f = tpl.make(name);
+            f.form.theme = Some("../theme.css".into());
+            let file = snake(name);
+            let form_path = src.join(format!("{file}.phaiform"));
+            let opts = crate::theme_options(&form_path, f.form.theme.as_deref());
+            std::fs::write(&form_path, f.to_toml()).unwrap();
+            std::fs::write(src.join(format!("{file}_ui.rs")), codegen::generate(&f, &opts)).unwrap();
+            std::fs::write(src.join(format!("{file}.rs")), codegen::user_stub(&f)).unwrap();
+            let main = src.join("main.rs");
+            if let Some(more) = add_mods(&std::fs::read_to_string(&main).unwrap(), &file) {
+                std::fs::write(&main, more).unwrap();
+            }
+        }
     }
 }
