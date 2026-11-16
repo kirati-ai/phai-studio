@@ -25,6 +25,7 @@ const CAPTION: i32 = 28;
 const SEARCH: i32 = 24;
 const ROW: i32 = 22;
 const ID_SEARCH: i32 = 3400;
+const ID_CAPTION: i32 = 3401;
 
 /// A line of the list: a group's heading (its index), or a tool (its command and glyph).
 #[derive(Clone, Copy, PartialEq)]
@@ -47,6 +48,7 @@ fn group_of(k: Kind) -> usize {
 }
 
 struct Toolbox {
+    caption: HWND,
     search: HWND,
     lines: Vec<Line>,
     folded: Vec<usize>,
@@ -67,10 +69,11 @@ fn state<'a>(h: HWND) -> Option<&'a mut Toolbox> {
 pub fn new(parent: HWND, id: i32, font: HFONT) -> HWND {
     let class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiToolbox", Some(proc_), None);
     unsafe {
-        let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_VSCROLL, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
+        let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS | wm::WS_VSCROLL, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
+        let caption = phai_ui::controls::caption(h, t("Toolbox"), ID_CAPTION, font);
         let search = win::edit(h, "", ID_SEARCH, font, false);
         let bold = win::font(h, 0, true);
-        win::set_state(h, Box::new(Toolbox { search, lines: vec![], folded: vec![], chosen: crate::ID_TOOL_PUB, hover: None, top: 0, font, bold, icons: HashMap::new() }));
+        win::set_state(h, Box::new(Toolbox { caption, search, lines: vec![], folded: vec![], chosen: crate::ID_TOOL_PUB, hover: None, top: 0, font, bold, icons: HashMap::new() }));
         relabel(h);
         h
     }
@@ -89,6 +92,7 @@ pub fn choose(h: HWND, command: i32) {
 /// The names again, in the language now chosen; the list again, for what is searched.
 pub fn relabel(h: HWND) {
     let Some(s) = state(h) else { return };
+    win::set_text(s.caption, t("Toolbox"));
     let cue = win::wide(t("Search Toolbox"));
     unsafe {
         wm::SendMessageW(s.search, 0x1501 /* EM_SETCUEBANNER */, Some(WPARAM(1)), Some(LPARAM(cue.as_ptr() as isize)));
@@ -163,14 +167,9 @@ fn line_at(h: HWND, y: i32) -> Option<usize> {
     (k < s.lines.len()).then_some(k)
 }
 
-/// The caption's close button, device pixels.
-fn close_rect(h: HWND) -> RECT {
-    let mut r = RECT::default();
-    unsafe {
-        let _ = wm::GetClientRect(h, &mut r);
-    }
-    let c = win::px(h, CAPTION);
-    RECT { left: r.right - c, top: 0, right: r.right, bottom: c }
+/// The pane's caption - its buttons are the studio's to answer.
+pub fn caption_of(h: HWND) -> HWND {
+    state(h).map(|s| s.caption).unwrap_or_default()
 }
 
 fn icon(s: &mut Toolbox, g: u16, colour: Color, size: i32) -> Option<HICON> {
@@ -202,16 +201,8 @@ fn paint(h: HWND) {
         let old_bmp = Gdi::SelectObject(mem, bmp.into());
         win::fill(mem, &r, bg);
         let px = |v| win::px(h, v);
-        // The caption: the pane's name, and × to close it.
+        let _ = muted;
         let old_font = Gdi::SelectObject(mem, s.font.into());
-        let mut cr = RECT { left: px(8), top: 0, right: r.right - px(CAPTION), bottom: px(CAPTION) };
-        draw(mem, t("Toolbox"), &mut cr, muted, Gdi::DT_LEFT);
-        let mut xr = close_rect(h);
-        if let Some(i) = icon(s, 0xE711 /* Cancel */, muted, px(10)) {
-            let _ = wm::DrawIconEx(mem, (xr.left + xr.right - px(10)) / 2, (xr.top + xr.bottom - px(10)) / 2, i, px(10), px(10), 0, None, wm::DI_NORMAL);
-        } else {
-            draw(mem, "×", &mut xr, muted, Gdi::DT_CENTER);
-        }
         let rows = visible_rows(h) + 1;
         let row = px(ROW);
         let names = groups();
@@ -270,15 +261,8 @@ fn draw(dc: Gdi::HDC, text: &str, r: &mut RECT, colour: Color, align: Gdi::DRAW_
     }
 }
 
-fn click(h: HWND, x: i32, y: i32, double: bool) {
+fn click(h: HWND, _x: i32, y: i32, double: bool) {
     let Some(st) = state(h) else { return };
-    let cr = close_rect(h);
-    if !double && x >= cr.left && y < cr.bottom {
-        if let Some(s) = studio() {
-            s.show_pane(Pane::Toolbox, false);
-        }
-        return;
-    }
     let Some(k) = line_at(h, y) else { return };
     match st.lines[k] {
         Line::Group(g) => {
@@ -322,11 +306,18 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             if let Some(s) = state(h) {
                 let width = win::loword(l.0 as usize) as i32;
                 let px = |v| win::px(h, v);
-                win::move_to(s.search, px(6), px(CAPTION), (width - px(12)).max(0), px(SEARCH));
+                win::move_to(s.caption, 0, 0, width, px(CAPTION));
+                win::move_to(s.search, px(6), px(CAPTION) + px(2), (width - px(12)).max(0), px(SEARCH));
             }
             update_scroll(h);
             unsafe {
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
+            }
+            LRESULT(0)
+        }
+        wm::WM_COMMAND if win::loword(w.0) as i32 == ID_CAPTION => {
+            if let Some(s) = studio() {
+                s.pane_button(Pane::Toolbox, win::hiword(w.0), HWND(l.0 as *mut _));
             }
             LRESULT(0)
         }

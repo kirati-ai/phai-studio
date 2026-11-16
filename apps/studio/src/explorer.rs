@@ -120,6 +120,11 @@ pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, font: 
     }
 }
 
+/// The explorer's and the properties' captions.
+pub fn side_captions(side: HWND) -> Option<(HWND, HWND)> {
+    unsafe { win::state::<Side>(side) }.and_then(|s| s.parts).map(|p| (p.explorer_caption, p.props_caption))
+}
+
 /// New words on the captions, after a language switch.
 pub fn relabel_side(side: HWND) {
     if let Some(p) = unsafe { win::state::<Side>(side) }.and_then(|s| s.parts) {
@@ -135,15 +140,11 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             }
             LRESULT(0)
         }
-        // A pane's close button: hide it; the studio's View menu shows it again.
-        wm::WM_COMMAND if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE => {
-            let id = win::loword(w.0) as i32;
+        // A pane's caption buttons - ▾, the pin, × - are the studio's to answer.
+        wm::WM_COMMAND if matches!(win::loword(w.0) as i32, ID_EXPLORER_CAPTION | ID_PROPS_CAPTION) => {
+            let pane = if win::loword(w.0) as i32 == ID_EXPLORER_CAPTION { crate::Pane::Explorer } else { crate::Pane::Properties };
             if let Some(st) = studio() {
-                match id {
-                    ID_EXPLORER_CAPTION => st.show_pane(crate::Pane::Explorer, false),
-                    ID_PROPS_CAPTION => st.show_pane(crate::Pane::Properties, false),
-                    _ => {}
-                }
+                st.pane_button(pane, win::hiword(w.0), HWND(l.0 as *mut _));
             }
             LRESULT(0)
         }

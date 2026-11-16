@@ -230,6 +230,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its words' size and weight - Segoe UI, 9pt is Windows' own.", "ขนาดและน้ำหนักของตัวอักษร - Segoe UI, 9pt คือของ Windows"),
     ("Its top-left corner from the form's, at 100% scale.", "มุมซ้ายบนนับจากของฟอร์ม ที่สเกล 100%"),
     ("Its width and height, at 100% scale.", "ความกว้างและความสูง ที่สเกล 100%"),
+    ("Float", "ลอย"),
+    ("Auto Hide", "ซ่อนอัตโนมัติ"),
+    ("Hide", "ซ่อน"),
 ];
 
 #[cfg(test)]
