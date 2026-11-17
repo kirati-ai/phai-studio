@@ -743,6 +743,23 @@ pub fn set_current(h: HWND, line: Option<u32>) {
     }
 }
 
+/// Alt+Up / Alt+Down from a menu: the chosen lines moved.
+pub fn move_lines(h: HWND, up: bool) {
+    if let Some(v) = view(h) {
+        if v.model.move_lines(up) {
+            changed(h);
+        }
+    }
+}
+
+/// Ctrl+D: the line (or the chosen part) again.
+pub fn duplicate(h: HWND) {
+    if let Some(v) = view(h) {
+        v.model.duplicate();
+        changed(h);
+    }
+}
+
 /// Comments the chosen lines or takes the comment off, as Ctrl+/ does.
 pub fn toggle_comment(h: HWND) {
     if let Some(v) = view(h) {
@@ -1284,6 +1301,14 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     }
                 }
                 _ => {}
+            }
+            LRESULT(0)
+        }
+        // Alt+Up and Alt+Down: the lines move, as in Visual Studio.
+        wm::WM_SYSKEYDOWN if matches!(w.0, 0x26 | 0x28) => {
+            v.list = None;
+            if v.model.move_lines(w.0 == 0x26) {
+                changed(h);
             }
             LRESULT(0)
         }

@@ -50,7 +50,7 @@
 | ★ | Quick Find / Replace (Ctrl+F / Ctrl+H) | ✅ |
 | | Find in Files (Ctrl+Shift+F) | ⬜ |
 | ★ | Rename (F2; Edit menu) — every file, open ones as one undo step | ✅ |
-| | Comment toggle (Ctrl+/) ✅; ย้ายบรรทัด (Alt+↑↓), ทำซ้ำบรรทัด ⬜ | 🟡 |
+| | Comment toggle (Ctrl+/), ย้ายบรรทัด (Alt+↑↓ ไปพร้อมส่วนที่เลือก), ทำซ้ำบรรทัดหรือส่วนที่เลือก (Ctrl+D) - ย้อนกลับได้ทีละขั้น | ✅ |
 | | Multi-caret, box selection | ⬜ |
 | | พับโค้ด (outlining) | ⬜ |
 | | จับคู่วงเล็บ | ⬜ |
@@ -64,7 +64,7 @@
 | ★ | Solution Explorer | ✅ (Project explorer) |
 | ★ | Build / Run (F5) / Stop | ✅ |
 | ★ | Debug / Release | ✅ |
-| ★ | Error List, ดับเบิลคลิกไปที่บรรทัด | ✅ (F8 ถัดไปยังไม่มี) |
+| ★ | Error List, ดับเบิลคลิกไปที่บรรทัด, F8 / Shift+F8 ไปยังข้อผิดพลาดถัดไป/ก่อนหน้า (เปิดไฟล์ที่บรรทัดนั้น) | ✅ |
 | ★ | Output window | ✅ |
 | | Rebuild / Clean | ⬜ |
 | | Task List (TODO) | ⬜ |
