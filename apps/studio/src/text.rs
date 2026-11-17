@@ -472,6 +472,19 @@ pub static THAI: &[(&str, &str)] = &[
     ("Image", "รูป"),
     ("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.", "ไฟล์รูป: PNG, JPEG, BMP หรือ GIF - จากโฟลเดอร์โปรเจกต์ หรือพาธเต็ม"),
     ("Components", "คอมโพเนนต์"),
+    ("Edit Text...", "แก้ข้อความ..."),
+    ("Edit Columns...", "แก้คอลัมน์..."),
+    ("Edit Items...", "แก้รายการ..."),
+    ("Edit Tabs...", "แก้แท็บ..."),
+    ("Choose Image...", "เลือกรูป..."),
+    ("Undock in Parent Container", "เลิกเต็มพื้นที่ในตัวที่บรรจุ"),
+    ("Dock in Parent Container", "เต็มพื้นที่ในตัวที่บรรจุ"),
+    ("Write the {0} Method", "เขียนเมธอด {0}"),
+    ("Unlock", "ปลดล็อก"),
+    ("Lock", "ล็อก"),
+    ("{0} Tasks", "งานของ {0}"),
+    ("The words {0} shows:", "ข้อความที่ {0} แสดง:"),
+    ("Pictures (PNG, JPEG, BMP, GIF)", "รูปภาพ (PNG, JPEG, BMP, GIF)"),
 ];
 
 #[cfg(test)]
