@@ -774,6 +774,38 @@ fn matching_in(b: &[u8], code: &[usize], at: usize) -> Option<(usize, usize)> {
     None
 }
 
+/// The find bar's choices.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FindOpts {
+    /// Upper and lower case kept apart.
+    pub case: bool,
+    /// Only where the words stand alone - no letter, digit or _ either side.
+    pub word: bool,
+    /// The query is a regular expression.
+    pub regex: bool,
+}
+
+fn regex_of(query: &str, o: FindOpts) -> Option<regex::Regex> {
+    let pattern = if o.regex { query.to_string() } else { regex::escape(query) };
+    let pattern = if o.word { format!(r"\b(?:{pattern})\b") } else { pattern };
+    regex::RegexBuilder::new(&pattern).case_insensitive(!o.case).build().ok()
+}
+
+/// Every match of `query` in `text` with these choices; a regular expression that does not read
+/// matches nothing.
+pub fn find_matches(text: &str, query: &str, o: FindOpts) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return vec![];
+    }
+    if !o.regex && !o.word {
+        return find_all(text, query, o.case);
+    }
+    match regex_of(query, o) {
+        Some(re) => re.find_iter(text).filter(|m| m.end() > m.start()).map(|m| (m.start(), m.end())).collect(),
+        None => vec![],
+    }
+}
+
 /// Every place `query` is in `text`, as byte ranges; `case` false finds it in any case.
 pub fn find_all(text: &str, query: &str, case: bool) -> Vec<(usize, usize)> {
     if query.is_empty() {
@@ -826,8 +858,13 @@ impl Model {
     /// Chooses the next place `query` is after the caret (or before it, `forward` false),
     /// going round the end. False when it is nowhere.
     pub fn find(&mut self, query: &str, case: bool, forward: bool) -> bool {
+        self.find_with(query, FindOpts { case, ..Default::default() }, forward)
+    }
+
+    /// Find with the find bar's choices: case, whole word, regular expression.
+    pub fn find_with(&mut self, query: &str, o: FindOpts, forward: bool) -> bool {
         let text = self.buf.text();
-        let hits = find_all(&text, query, case);
+        let hits = find_matches(&text, query, o);
         if hits.is_empty() {
             return false;
         }
@@ -841,26 +878,41 @@ impl Model {
 
     /// Replaces the chosen text if it is `query`, then finds the next.
     pub fn replace_one(&mut self, query: &str, with: &str, case: bool) -> bool {
-        let sel = self.selected_text();
-        let same = if case { sel == query } else { sel.to_lowercase() == query.to_lowercase() };
-        if same && !sel.is_empty() {
-            self.insert(with);
+        self.replace_one_with(query, with, FindOpts { case, ..Default::default() })
+    }
+
+    /// Replace with the find bar's choices; a regular expression's `$1` takes what its group found.
+    pub fn replace_one_with(&mut self, query: &str, with: &str, o: FindOpts) -> bool {
+        let (a, b) = self.selection();
+        let text = self.buf.text();
+        // The chosen words are one of the matches: replaced.
+        if a != b && find_matches(&text, query, o).contains(&(a, b)) {
+            let new = if o.regex { regex_of(query, o).map(|re| re.replace(&text[a..b], with).to_string()).unwrap_or_else(|| with.to_string()) } else { with.to_string() };
+            self.insert(&new);
         }
-        self.find(query, case, true)
+        self.find_with(query, o, true)
     }
 
     /// Replaces every `query` with `with` in one undo step; returns how many.
     pub fn replace_all(&mut self, query: &str, with: &str, case: bool) -> usize {
+        self.replace_all_with(query, with, FindOpts { case, ..Default::default() })
+    }
+
+    pub fn replace_all_with(&mut self, query: &str, with: &str, o: FindOpts) -> usize {
         let text = self.buf.text();
-        let hits = find_all(&text, query, case);
+        let hits = find_matches(&text, query, o);
         if hits.is_empty() {
             return 0;
         }
+        let re = if o.regex { regex_of(query, o) } else { None };
         let mut out = String::with_capacity(text.len());
         let mut at = 0;
         for (s, e) in &hits {
             out.push_str(&text[at..*s]);
-            out.push_str(with);
+            match &re {
+                Some(re) => out.push_str(&re.replace(&text[*s..*e], with)),
+                None => out.push_str(with),
+            }
             at = *e;
         }
         out.push_str(&text[at..]);
@@ -1094,6 +1146,17 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(m.find("one", true, true), "and round again");
         assert_eq!(m.selection(), (0, 3));
         assert!(!m.find("three", true, true));
+    }
+
+    #[test]
+    fn whole_words_and_regular_expressions() {
+        let o = |case, word, regex| FindOpts { case, word, regex };
+        assert_eq!(find_matches("sum summary sum_x Sum", "sum", o(false, true, false)), vec![(0, 3), (18, 21)], "alone only, any case");
+        assert_eq!(find_matches("a1 b22 c333", r"[a-z]\d{2,}", o(true, false, true)), vec![(3, 6), (7, 11)]);
+        assert!(find_matches("x", "(", o(false, false, true)).is_empty(), "a broken expression finds nothing");
+        let mut m = Model::new("let a1 = b2;");
+        assert_eq!(m.replace_all_with(r"([a-z])(\d)", "$2$1", o(true, false, true)), 2);
+        assert_eq!(m.buf.text(), "let 1a = 2b;", "groups taken into the replacement");
     }
 
     #[test]
