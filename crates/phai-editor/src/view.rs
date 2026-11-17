@@ -121,6 +121,8 @@ struct View {
     lines_were: usize,
     /// Breakpoints with a condition, from 0.
     conditional: Vec<usize>,
+    /// Breakpoints turned off in the Breakpoints window: drawn hollow, not stopped at.
+    disabled: Vec<usize>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -291,7 +293,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -397,6 +399,16 @@ pub fn caret_line(h: HWND) -> u32 {
 pub fn set_conditional(h: HWND, lines: &[u32]) {
     if let Some(v) = view(h) {
         v.conditional = lines.iter().filter(|l| **l > 0).map(|l| *l as usize - 1).collect();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// The breakpoints turned off, lines from 1: drawn as a hollow circle.
+pub fn set_disabled(h: HWND, lines: &[u32]) {
+    if let Some(v) = view(h) {
+        v.disabled = lines.iter().filter(|l| **l > 0).map(|l| *l as usize - 1).collect();
         unsafe {
             let _ = Gdi::InvalidateRect(Some(h), None, false);
         }
@@ -1398,8 +1410,11 @@ fn paint(h: HWND, v: &mut View) {
             }
             if v.breakpoints.contains(&line) {
                 let red = Color::rgb(0xe5, 0x14, 0x00);
-                let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(red.colorref()));
-                let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, windows::Win32::Foundation::COLORREF(red.colorref()));
+                // Turned off: a ring of it, the margin showing through.
+                let off = v.disabled.contains(&line);
+                let inside = if off { if dark { Color::rgb(0x1e, 0x1e, 0x1e) } else { win::window_background() } } else { red };
+                let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(inside.colorref()));
+                let pen = Gdi::CreatePen(Gdi::PS_SOLID, if off { (d / 8).max(1) } else { 1 }, windows::Win32::Foundation::COLORREF(red.colorref()));
                 let (ob, op) = (Gdi::SelectObject(dc, brush.into()), Gdi::SelectObject(dc, pen.into()));
                 let _ = Gdi::Ellipse(dc, bx, by, bx + d, by + d);
                 Gdi::SelectObject(dc, ob);
@@ -1407,7 +1422,7 @@ fn paint(h: HWND, v: &mut View) {
                 let _ = Gdi::DeleteObject(brush.into());
                 let _ = Gdi::DeleteObject(pen.into());
                 // A condition on it: a white bar across, as Visual Studio marks one with a +.
-                if v.conditional.contains(&line) {
+                if v.conditional.contains(&line) && !off {
                     let t = (d / 6).max(2);
                     win::fill(dc, &RECT { left: bx + d / 4, top: by + d / 2 - t / 2, right: bx + d - d / 4, bottom: by + d / 2 - t / 2 + t }, Color::rgb(255, 255, 255));
                     win::fill(dc, &RECT { left: bx + d / 2 - t / 2, top: by + d / 4, right: bx + d / 2 - t / 2 + t, bottom: by + d - d / 4 }, Color::rgb(255, 255, 255));

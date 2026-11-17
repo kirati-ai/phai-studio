@@ -160,6 +160,7 @@ const ID_IMMEDIATE: i32 = 273;
 const ID_DIAG_TOOLS: i32 = 274;
 const ID_ATTACH: i32 = 275;
 const ID_DETACH: i32 = 276;
+const ID_BREAKPOINTS_WIN: i32 = 277;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -371,6 +372,11 @@ pub struct Studio {
     debug_after_build: bool,
     /// Breakpoints by file - those of files not open as well - lines from 1.
     bps: std::collections::HashMap<PathBuf, Vec<u32>>,
+    /// Breakpoints turned off in the Breakpoints window: kept, but the debugger is not given them.
+    bp_off: Vec<(PathBuf, u32)>,
+    /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
+    bp_rows: Vec<(PathBuf, u32)>,
+    bp_filling: bool,
     /// The call stack of the last stop, for a double-click in its list.
     frames: Vec<phai_debug::Frame>,
     /// Server Explorer: the data connections.
@@ -963,6 +969,7 @@ fn build_menu() -> HMENU {
         add(debug, ID_ADD_WATCH, t("Add Watch..."), "Shift+F9");
         add(debug, ID_IMMEDIATE, t("Immediate Window"), "Ctrl+Alt+I");
         add(debug, ID_DIAG_TOOLS, t("Show Diagnostic Tools"), "Ctrl+Alt+F2");
+        add(debug, ID_BREAKPOINTS_WIN, t("Breakpoints Window"), "Ctrl+Alt+B");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
@@ -2825,6 +2832,7 @@ impl Studio {
         } else {
             self.refresh_outline();
             self.refresh_lenses();
+            self.mark_breakpoints();
         }
         self.refresh_props();
         self.say_title();
@@ -3439,6 +3447,7 @@ impl Studio {
         if let Some(d) = &self.debug {
             d.send(phai_debug::Command::Conditions(self.conds.clone()));
         }
+        self.fill_breakpoints();
     }
 
     /// Publish: asks what the product is called and by whom, builds it as Release, then makes
@@ -3567,7 +3576,14 @@ impl Studio {
     }
 
     /// Every breakpoint, of open files and of those set before and closed.
+    /// The breakpoints the debugger is given: every one but those turned off.
     fn all_breakpoints(&mut self) -> Vec<(PathBuf, u32)> {
+        let all = self.every_breakpoint();
+        all.into_iter().filter(|(p, l)| !self.bp_off.iter().any(|(q, m)| m == l && phai_editor::lsp::same_path(p, q))).collect()
+    }
+
+    /// Every breakpoint, in every file, as the editors have them now.
+    fn every_breakpoint(&mut self) -> Vec<(PathBuf, u32)> {
         let open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).collect();
         for (p, h) in open {
             self.bps.retain(|q, _| !phai_editor::lsp::same_path(q, &p));
@@ -3576,7 +3592,84 @@ impl Studio {
                 self.bps.insert(p, lines);
             }
         }
-        self.bps.iter().flat_map(|(p, ls)| ls.iter().map(move |l| (p.clone(), *l))).collect()
+        let mut all: Vec<(PathBuf, u32)> = self.bps.iter().flat_map(|(p, ls)| ls.iter().map(move |l| (p.clone(), *l))).collect();
+        all.sort();
+        // Turned off and then taken away: forgotten.
+        let keep = all.clone();
+        self.bp_off.retain(|(p, l)| keep.iter().any(|(q, m)| m == l && phai_editor::lsp::same_path(p, q)));
+        all
+    }
+
+    /// The Breakpoints window filled: each breakpoint, its condition and hit count, ticked when on.
+    fn fill_breakpoints(&mut self) {
+        use windows::Win32::UI::Controls as cc;
+        let Some(list) = self.bottom.as_ref().map(|b| b.breakpoints) else { return };
+        let rows = self.every_breakpoint();
+        self.bp_filling = true;
+        unsafe {
+            wm::SendMessageW(list, cc::LVM_DELETEALLITEMS, None, None);
+        }
+        for (i, (p, l)) in rows.iter().enumerate() {
+            let cond = self.conds.iter().find(|(q, m, _)| m == l && phai_editor::lsp::same_path(p, q)).map(|c| phai_debug::split_condition(&c.2));
+            let (expr, hits) = cond.unwrap_or_default();
+            let name = tf("{0}, line {1}", &[&p.file_name().unwrap_or_default().to_string_lossy(), l]);
+            let when = if expr.is_empty() { t("(no condition)").to_string() } else { tf("when {0} is true", &[&expr]) };
+            let count = hits.map(|h| h.text()).unwrap_or_else(|| t("break always").to_string());
+            win::list_add(list, &[&name, &when, &count, &p.to_string_lossy()]);
+            let on = !self.bp_off.iter().any(|(q, m)| m == l && phai_editor::lsp::same_path(p, q));
+            let item = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(0xF000), state: cc::LIST_VIEW_ITEM_STATE_FLAGS(if on { 2 } else { 1 } << 12), ..Default::default() };
+            unsafe {
+                wm::SendMessageW(list, cc::LVM_SETITEMSTATE, Some(WPARAM(i)), Some(LPARAM(&item as *const _ as isize)));
+            }
+        }
+        self.bp_rows = rows;
+        self.bp_filling = false;
+    }
+
+    /// A tick in the Breakpoints window changed: that breakpoint turned on or off.
+    fn breakpoint_ticked(&mut self, row: usize, on: bool) {
+        if self.bp_filling {
+            return;
+        }
+        let Some((p, l)) = self.bp_rows.get(row).cloned() else { return };
+        self.bp_off.retain(|(q, m)| !(*m == l && phai_editor::lsp::same_path(&p, q)));
+        if !on {
+            self.bp_off.push((p, l));
+        }
+        self.mark_breakpoints();
+        self.send_breakpoints();
+    }
+
+    /// The breakpoint on a row of the Breakpoints window taken away (its Delete key).
+    fn delete_breakpoint_row(&mut self, row: usize) {
+        let Some((p, l)) = self.bp_rows.get(row).cloned() else { return };
+        let open = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).find(|(q, _)| phai_editor::lsp::same_path(q, &p));
+        match open {
+            Some((_, h)) => {
+                let lines: Vec<u32> = phai_editor::view::breakpoints(h).into_iter().filter(|m| *m != l).collect();
+                phai_editor::view::set_breakpoints(h, &lines);
+            }
+            None => {
+                for (q, ls) in self.bps.iter_mut() {
+                    if phai_editor::lsp::same_path(q, &p) {
+                        ls.retain(|m| *m != l);
+                    }
+                }
+            }
+        }
+        self.conds.retain(|(q, m, _)| !(*m == l && phai_editor::lsp::same_path(q, &p)));
+        self.send_breakpoints();
+        self.show_conditions();
+        self.fill_breakpoints();
+    }
+
+    /// Each open editor's breakpoints drawn as they are: with a condition, or turned off.
+    fn mark_breakpoints(&mut self) {
+        let open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).collect();
+        for (p, h) in open {
+            let off: Vec<u32> = self.bp_off.iter().filter(|(q, _)| phai_editor::lsp::same_path(q, &p)).map(|(_, l)| *l).collect();
+            phai_editor::view::set_disabled(h, &off);
+        }
     }
 
     fn send_breakpoints(&mut self) {
@@ -3589,6 +3682,8 @@ impl Studio {
     /// An editor's breakpoints changed: kept, and the running program told.
     pub fn breakpoints_changed(&mut self, _h: HWND) {
         self.send_breakpoints();
+        self.fill_breakpoints();
+        self.mark_breakpoints();
     }
 
     fn launch_debugger(&mut self, exe: &Path) {
@@ -4914,6 +5009,13 @@ impl Studio {
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_ATTACH => self.attach_to_process(),
+            ID_BREAKPOINTS_WIN => {
+                self.show_pane(Pane::Output, true);
+                self.fill_breakpoints();
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(10);
+                }
+            }
             ID_DETACH => {
                 if let Some(d) = &self.debug {
                     d.send(phai_debug::Command::Detach);
@@ -5216,7 +5318,10 @@ impl Studio {
                 for h in self.tabs.iter().filter_map(|t| t.doc.code).chain(self.doc.code) {
                     phai_editor::view::set_breakpoints(h, &[]);
                 }
+                self.bp_off.clear();
                 self.send_breakpoints();
+                self.mark_breakpoints();
+                self.fill_breakpoints();
             }
             ID_BUILD_ALL => self.start_job(cargo::Job::Build, true),
             ID_REBUILD_ALL => self.start_job(cargo::Job::Rebuild, true),
@@ -5518,6 +5623,39 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
                 return LRESULT(0);
             }
+            if s.bottom.as_ref().is_some_and(|b| b.breakpoints == hdr.hwndFrom) {
+                match hdr.code {
+                    cc::LVN_ITEMCHANGED => {
+                        let it = unsafe { &*(l.0 as *const cc::NMLISTVIEW) };
+                        if it.iItem >= 0 && (it.uNewState ^ it.uOldState) & 0xF000 != 0 && it.uOldState & 0xF000 != 0 {
+                            s.breakpoint_ticked(it.iItem as usize, (it.uNewState >> 12) == 2);
+                        }
+                    }
+                    cc::LVN_KEYDOWN => {
+                        let k = unsafe { &*(l.0 as *const cc::NMLVKEYDOWN) };
+                        if k.wVKey == 0x2E {
+                            let list = hdr.hwndFrom;
+                            let i = unsafe { wm::SendMessageW(list, cc::LVM_GETNEXTITEM, Some(WPARAM(usize::MAX)), Some(LPARAM(2))).0 };
+                            if i >= 0 {
+                                s.delete_breakpoint_row(i as usize);
+                            }
+                        }
+                    }
+                    cc::NM_DBLCLK => {
+                        let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                        if let Some((p, line)) = s.bp_rows.get(it.iItem.max(0) as usize).cloned() {
+                            if p.is_file() {
+                                s.open_code(&p);
+                                if let Some(h) = s.doc.code {
+                                    phai_editor::view::go_to(h, line as usize, 1);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                return LRESULT(0);
+            }
             if s.bottom.as_ref().is_some_and(|b| b.tests == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
@@ -5719,6 +5857,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x49 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_IMMEDIATE),
             0x71 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DIAG_TOOLS),
             0x50 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_ATTACH),
+            0x42 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_BREAKPOINTS_WIN),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -5925,6 +6064,9 @@ fn main() {
             paused: false,
             debug_after_build: false,
             bps: std::collections::HashMap::new(),
+            bp_off: vec![],
+            bp_rows: vec![],
+            bp_filling: false,
             frames: vec![],
             servers: None,
             watches: vec![],
@@ -6174,6 +6316,26 @@ fn main() {
             if let Some(h) = s.doc.code {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
+            }
+        }
+        // `--bpwin-test`: breakpoints on lines 4 and 5 (5 with a condition), the Breakpoints window
+        // shown, the first unticked there as a click would; what the debugger is given printed.
+        if args.iter().any(|a| a == "--bpwin-test") {
+            if let (Some(h), Some(path)) = (s.doc.code, s.doc.path.clone()) {
+                phai_editor::view::set_breakpoints(h, &[4, 5]);
+                s.conds.push((path, 5, phai_debug::join_condition("count > 3", phai_debug::Hits::parse(">= 2").ok().flatten())));
+                s.show_conditions();
+                s.command(ID_BREAKPOINTS_WIN);
+                if let Some(list) = s.bottom.as_ref().map(|b| b.breakpoints) {
+                    use windows::Win32::UI::Controls as cc;
+                    let item = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(0xF000), state: cc::LIST_VIEW_ITEM_STATE_FLAGS(1 << 12), ..Default::default() };
+                    wm::SendMessageW(list, cc::LVM_SETITEMSTATE, Some(WPARAM(0)), Some(LPARAM(&item as *const _ as isize)));
+                }
+                println!("rows: {:?}", s.bp_rows.iter().map(|(_, l)| *l).collect::<Vec<_>>());
+                println!("given to the debugger: {:?}", s.all_breakpoints().iter().map(|(_, l)| *l).collect::<Vec<_>>());
+                if std::env::var_os("PHAI_SHOT").is_none() {
+                    std::process::exit(0);
+                }
             }
         }
         // `--diag-test`: Diagnostic Tools watching this very program - printed after a few samples.
