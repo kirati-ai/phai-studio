@@ -85,6 +85,22 @@ fn break_step_and_read_locals() {
     assert_eq!(line, 8);
     assert_eq!(local(&locals, "y"), "42");
 
+    // A value typed over, as in Locals; the program goes on with it (it prints y at the end).
+    s.send(Command::SetValue { expr: "y".into(), value: "7".into() });
+    let locals = loop {
+        if let Event::ValueSet { result, .. } = rx.recv_timeout(Duration::from_secs(20)).expect("no answer") {
+            break result.expect("set");
+        }
+    };
+    assert_eq!(local(&locals, "y"), "7");
+    s.send(Command::SetValue { expr: "name".into(), value: "x".into() });
+    loop {
+        if let Event::ValueSet { result, .. } = rx.recv_timeout(Duration::from_secs(20)).expect("no answer") {
+            assert!(result.is_err(), "a &str is not typed over");
+            break;
+        }
+    }
+
     s.send(Command::StepOver);
     assert_eq!(stopped(&rx).1, 9);
     s.send(Command::StepOver);
@@ -94,7 +110,7 @@ fn break_step_and_read_locals() {
     assert_eq!(local(&locals, "text"), "\"ไผ่\"");
 
     // Watch: paths and comparisons, while paused.
-    s.send(Command::Evaluate { id: 7, exprs: vec!["text".into(), "y > 41".into(), "x == y".into(), "nothing".into()] });
+    s.send(Command::Evaluate { id: 7, exprs: vec!["text".into(), "y == 7".into(), "x == y".into(), "nothing".into()] });
     let vars = loop {
         if let Event::Values { id: 7, vars } = rx.recv_timeout(Duration::from_secs(20)).expect("no values") {
             break vars;

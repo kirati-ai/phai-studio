@@ -2083,6 +2083,27 @@ impl Studio {
         }
     }
 
+    /// A local double-clicked while paused: a new value typed over it, as in Visual Studio.
+    fn edit_local(&mut self, row: i32) {
+        let (Some(d), true) = (&self.debug, self.paused) else { return };
+        let Some(list) = self.bottom.as_ref().map(|b| b.locals) else { return };
+        if row < 0 {
+            return;
+        }
+        let cell = |col: i32| -> String {
+            use windows::Win32::UI::Controls as cc;
+            let mut buf = vec![0u16; 512];
+            let mut item = cc::LVITEMW { iSubItem: col, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 512, ..Default::default() };
+            let n = unsafe { wm::SendMessageW(list, 0x1073 /* LVM_GETITEMTEXTW */, Some(WPARAM(row as usize)), Some(LPARAM(&mut item as *mut _ as isize))).0 } as usize;
+            String::from_utf16_lossy(&buf[..n.min(512)])
+        };
+        let (name, value, ty) = (cell(0), cell(1), cell(2));
+        let Some(new) = phai_ui::dialogs::ask(Some(self.hwnd), &tf("Change {0}", &[&name]), &tf("A new value for {0} ({1}):", &[&name, &ty]), &value, false) else { return };
+        if new.trim() != value {
+            d.send(phai_debug::Command::SetValue { expr: name, value: new });
+        }
+    }
+
     /// Breakpoint Condition: the caret line's breakpoint (made if there is none) stops only when
     /// what is typed holds; nothing typed takes the condition off.
     fn edit_condition(&mut self) {
@@ -2284,6 +2305,24 @@ impl Studio {
                 controls::status_text(self.status, 0, &said);
                 self.rebuild_menu();
             }
+            Event::ValueSet { expr, result } => match result {
+                Ok(locals) => {
+                    if let Some(b) = self.bottom.as_ref() {
+                        use windows::Win32::UI::Controls as cc;
+                        unsafe {
+                            wm::SendMessageW(b.locals, cc::LVM_DELETEALLITEMS, None, None);
+                        }
+                        for v in &locals {
+                            win::list_add(b.locals, &[&v.name, &v.value, &v.ty]);
+                        }
+                    }
+                    self.refresh_watch();
+                    self.say_status(&tf("{0} changed", &[&expr]));
+                }
+                Err(e) => {
+                    win::message(Some(self.hwnd), &e, &tf("Change {0}", &[&expr]), wm::MB_ICONINFORMATION);
+                }
+            },
             Event::Values { id, vars } => {
                 if id == EVAL_WATCH {
                     if let Some(b) = self.bottom.as_ref() {
@@ -3587,6 +3626,11 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 } else {
                     s.results_menu(row, col);
                 }
+                return LRESULT(0);
+            }
+            if s.bottom.as_ref().is_some_and(|b| b.locals == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                s.edit_local(it.iItem);
                 return LRESULT(0);
             }
             if s.bottom.as_ref().is_some_and(|b| b.watch == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
