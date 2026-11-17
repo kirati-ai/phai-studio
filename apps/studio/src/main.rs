@@ -26,6 +26,7 @@ mod gitpane;
 mod startwin;
 mod outline;
 mod gotoall;
+mod crates;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -4615,6 +4616,19 @@ impl Studio {
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_PROJECT_PROPS => self.project_properties(),
+            ID_MANAGE_CRATES => match self.doc.path.as_deref().and_then(cargo::project_of) {
+                Some(dir) => {
+                    let dir = std::path::absolute(&dir).unwrap_or(dir);
+                    if crates::run(self.hwnd, &dir, cargo::find_cargo()) {
+                        if let Some(e) = self.explorer.as_mut() {
+                            e.show_project_of(self.doc.path.as_deref());
+                        }
+                    }
+                }
+                None => {
+                    win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+                }
+            },
             ID_NEW_WINDOW => self.new_window(),
             ID_CLOSE_PEEK => {
                 // Left for another of this program's windows than the peek's own editor.
