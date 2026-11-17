@@ -18,6 +18,9 @@ pub const ID_STACK: i32 = 504;
 pub const ID_RESULTS: i32 = 505;
 pub const ID_WATCH: i32 = 506;
 pub const ID_TESTS: i32 = 507;
+/// The Error List's filters: errors shown, warnings shown.
+pub const ID_SHOW_ERRORS: i32 = 520;
+pub const ID_SHOW_WARNINGS: i32 = 521;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
 /// results, 6 watch, 7 tests.
@@ -36,6 +39,8 @@ pub struct Bottom {
     pub results: HWND,
     pub watch: HWND,
     pub tests: HWND,
+    pub show_errors: HWND,
+    pub show_warnings: HWND,
     layout: Layout,
 }
 
@@ -67,7 +72,18 @@ impl Bottom {
         layout.add(results, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(watch, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(tests, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, layout });
+        // Errors (n) and Warnings (n), at the right of the tabs, as Visual Studio's Error List has them.
+        let show_errors = win::checkbox(hwnd, t("Errors"), ID_SHOW_ERRORS, font, true);
+        let show_warnings = win::checkbox(hwnd, t("Warnings"), ID_SHOW_WARNINGS, font, true);
+        let right = Anchor { left: false, top: true, right: true, bottom: false };
+        layout.add(show_errors, Item { bounds: Rect::new(560, 3, 110, 22), dock: Dock::None, anchor: right });
+        layout.add(show_warnings, Item { bounds: Rect::new(676, 3, 120, 22), dock: Dock::None, anchor: right });
+        unsafe {
+            for c in [show_errors, show_warnings] {
+                let _ = wm::SetWindowPos(c, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+            }
+        }
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -86,6 +102,8 @@ impl Bottom {
         win::show(self.results, i == 5);
         win::show(self.watch, i == 6);
         win::show(self.tests, i == 7);
+        win::show(self.show_errors, i == 0);
+        win::show(self.show_warnings, i == 0);
     }
 
     pub fn relabel(&self) {
@@ -116,6 +134,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         (wm::WM_COMMAND, Some(b)) if win::loword(w.0) as i32 == ID_TABS => {
             b.show_tab(win::hiword(w.0) as usize);
+            LRESULT(0)
+        }
+        // The filters are the main window's to apply.
+        (wm::WM_COMMAND, _) if matches!(win::loword(w.0) as i32, ID_SHOW_ERRORS | ID_SHOW_WARNINGS) => {
+            if let Some(s) = crate::studio() {
+                s.fill_errors();
+            }
             LRESULT(0)
         }
         // The error list's double-click is the main window's business.

@@ -320,6 +320,8 @@ pub struct Studio {
     /// Build with `--release`.
     release: bool,
     diagnostics: Vec<cargo::Diagnostic>,
+    /// The Error List's rows as filtered: each one's diagnostic.
+    diag_rows: Vec<usize>,
     /// The last Find All References, as its list shows them.
     references: Vec<phai_editor::lsp::Location>,
     building: bool,
@@ -4429,7 +4431,6 @@ impl Studio {
     }
 
     fn build_done(&mut self, out: cargo::Outcome) {
-        use windows::Win32::UI::Controls as cc;
         self.building = false;
         if out.no_cargo {
             controls::status_text(self.status, 0, t("Rust is not installed"));
@@ -4443,15 +4444,7 @@ impl Studio {
         if let Some(e) = &out.cargo_error {
             self.diagnostics.insert(0, cargo::Diagnostic { error: true, message: e.clone(), file: None, line: 0, column: 0 });
         }
-        unsafe {
-            wm::SendMessageW(self.errors, cc::LVM_DELETEALLITEMS, None, None);
-        }
-        for d in &self.diagnostics {
-            let file = d.file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let line = if d.line > 0 { d.line.to_string() } else { String::new() };
-            let first = d.message.lines().next().unwrap_or_default();
-            win::list_add(self.errors, &[if d.error { t("Error") } else { t("Warning") }, first, &file, &line]);
-        }
+        self.fill_errors();
         let errors = self.diagnostics.iter().filter(|d| d.error).count();
         let warnings = self.diagnostics.len() - errors;
         // Publish: built as Release, now packed.
@@ -4553,9 +4546,34 @@ impl Studio {
     }
 
     /// F8 and Shift+F8: the next (or last) error or warning in the Error List, opened at its line.
+    /// The Error List again from the diagnostics: the kinds its filters show, their counts on them.
+    pub fn fill_errors(&mut self) {
+        use windows::Win32::UI::Controls as cc;
+        let (errs, warns) = self.bottom.as_ref().map(|b| (win::is_checked(b.show_errors), win::is_checked(b.show_warnings))).unwrap_or((true, true));
+        unsafe {
+            wm::SendMessageW(self.errors, cc::LVM_DELETEALLITEMS, None, None);
+        }
+        self.diag_rows.clear();
+        for (i, d) in self.diagnostics.iter().enumerate() {
+            if (d.error && !errs) || (!d.error && !warns) {
+                continue;
+            }
+            let file = d.file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let line = if d.line > 0 { d.line.to_string() } else { String::new() };
+            let first = d.message.lines().next().unwrap_or_default();
+            win::list_add(self.errors, &[if d.error { t("Error") } else { t("Warning") }, first, &file, &line]);
+            self.diag_rows.push(i);
+        }
+        let e = self.diagnostics.iter().filter(|d| d.error).count();
+        if let Some(b) = self.bottom.as_ref() {
+            win::set_text(b.show_errors, &tf("Errors ({0})", &[&e]));
+            win::set_text(b.show_warnings, &tf("Warnings ({0})", &[&(self.diagnostics.len() - e)]));
+        }
+    }
+
     fn step_diagnostic(&mut self, forward: bool) {
         use windows::Win32::UI::Controls as cc;
-        let n = self.diagnostics.len();
+        let n = self.diag_rows.len();
         if n == 0 {
             controls::status_text(self.status, 0, t("No errors or warnings"));
             return;
@@ -4565,7 +4583,7 @@ impl Studio {
         let mut row = if at < 0 { if forward { n - 1 } else { 0 } } else { at as usize };
         for _ in 0..n {
             row = if forward { (row + 1) % n } else { (row + n - 1) % n };
-            if self.diagnostics[row].file.is_some() {
+            if self.diag_rows.get(row).and_then(|i| self.diagnostics.get(*i)).is_some_and(|d| d.file.is_some()) {
                 break;
             }
         }
@@ -4577,7 +4595,8 @@ impl Studio {
     }
 
     fn open_diagnostic(&mut self, row: usize) {
-        let Some(d) = self.diagnostics.get(row) else { return };
+        // A row of the list as filtered: its diagnostic.
+        let Some(d) = self.diag_rows.get(row).and_then(|i| self.diagnostics.get(*i)) else { return };
         let Some(file) = d.file.clone() else { return };
         let (line, column) = (d.line as usize, d.column as usize);
         controls::status_text(self.status, 0, &format!("{}:{line}:{column}", file.display()));
@@ -5596,6 +5615,7 @@ fn main() {
             bottom: Some(bottom),
             release: false,
             diagnostics: vec![],
+            diag_rows: vec![],
             references: vec![],
             building: false,
             running: None,

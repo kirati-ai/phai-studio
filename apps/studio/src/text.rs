@@ -553,6 +553,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Put the caret on a function's name first", "วางเคอร์เซอร์บนชื่อฟังก์ชันก่อน"),
     ("{0} calls in {1} files", "เรียก {0} แห่งใน {1} ไฟล์"),
     ("Calls to {0}: {1}", "ที่เรียก {0}: {1} แห่ง"),
+    ("Errors ({0})", "ข้อผิดพลาด ({0})"),
+    ("Warnings ({0})", "คำเตือน ({0})"),
+    ("Warnings", "คำเตือน"),
 ];
 
 #[cfg(test)]
