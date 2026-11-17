@@ -102,6 +102,11 @@ const ID_VIEW_SERVERS: i32 = 233;
 const ID_ADD_CONNECTION: i32 = 234;
 const ID_NEW_QUERY: i32 = 235;
 const ID_EXECUTE: i32 = 236;
+const ID_ADD_WATCH: i32 = 237;
+const ID_BP_CONDITION: i32 = 238;
+/// `Evaluate` ids: Watch's own, and data tips from this up.
+const EVAL_WATCH: u64 = 1;
+const EVAL_TIP: u64 = 1000;
 /// Posted by the debugger's thread for each thing it says; `LPARAM` is a `Box<phai_debug::Event>`.
 const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
 const BAND_STANDARD: u32 = 1;
@@ -281,6 +286,12 @@ pub struct Studio {
     frames: Vec<phai_debug::Frame>,
     /// Server Explorer: the data connections.
     pub servers: Option<servers::Servers>,
+    /// Watch: the expressions, in order.
+    watches: Vec<String>,
+    /// Breakpoint conditions by file and line.
+    conds: Vec<(PathBuf, u32, String)>,
+    /// The data tip asked for, and the editor and words it is for.
+    tip: Option<(u64, HWND, String)>,
     /// Query files, by path: the connection and database each runs in.
     queries: std::collections::HashMap<PathBuf, (usize, String)>,
     /// The Debug / Release box on the Standard bar.
@@ -607,7 +618,10 @@ fn build_menu() -> HMENU {
         add(debug, ID_STEP_OVER, t("Step Over"), "F10");
         add(debug, ID_STEP_OUT, t("Step Out"), "Shift+F11");
         sep(debug);
+        add(debug, ID_ADD_WATCH, t("Add Watch..."), "Shift+F9");
+        sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
+        add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
         add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
         let data = wm::CreatePopupMenu().unwrap_or_default();
@@ -1456,6 +1470,16 @@ impl Studio {
 
     /// The pointer rested in an editor: ask what is under it.
     pub fn lsp_hover(&mut self, h: HWND) {
+        // Paused in the debugger: the value of what the pointer rests on, as a data tip.
+        if let (Some(d), true) = (&self.debug, self.paused) {
+            if let Some(path) = phai_editor::view::hover_path(h) {
+                static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(EVAL_TIP);
+                let id = NEXT.fetch_add(1, Ordering::Relaxed);
+                self.tip = Some((id, h, path.clone()));
+                d.send(phai_debug::Command::Evaluate { id, exprs: vec![path] });
+                return;
+            }
+        }
         let (Some(path), Some(pos)) = (self.doc.path.clone(), phai_editor::view::hover_position(h)) else { return };
         if let Some(l) = self.lsp_for(&path) {
             let id = l.hover(&path, pos.0, pos.1);
@@ -1897,6 +1921,54 @@ impl Studio {
         }
     }
 
+    /// Watch again: while paused the debugger is asked for every value; else the names alone.
+    fn refresh_watch(&mut self) {
+        match (&self.debug, self.paused) {
+            (Some(d), true) if !self.watches.is_empty() => d.send(phai_debug::Command::Evaluate { id: EVAL_WATCH, exprs: self.watches.clone() }),
+            _ => {
+                if let Some(b) = self.bottom.as_ref() {
+                    use windows::Win32::UI::Controls as cc;
+                    unsafe {
+                        wm::SendMessageW(b.watch, cc::LVM_DELETEALLITEMS, None, None);
+                    }
+                    for w in &self.watches {
+                        win::list_add(b.watch, &[w, "", ""]);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Breakpoint Condition: the caret line's breakpoint (made if there is none) stops only when
+    /// what is typed holds; nothing typed takes the condition off.
+    fn edit_condition(&mut self) {
+        let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) else { return };
+        let line = phai_editor::view::caret_line(h);
+        if !phai_editor::view::breakpoints(h).contains(&line) {
+            phai_editor::view::toggle_breakpoint(h);
+        }
+        let now = self.conds.iter().find(|(p, l, _)| phai_editor::lsp::same_path(p, &path) && *l == line).map(|(_, _, c)| c.clone()).unwrap_or_default();
+        let Some(c) = phai_ui::dialogs::ask(Some(self.hwnd), t("Breakpoint Condition"), &tf("Stop at line {0} only when this holds - x > 5, name == \"ไผ่\":", &[&line]), &now, false) else { return };
+        self.conds.retain(|(p, l, _)| !(phai_editor::lsp::same_path(p, &path) && *l == line));
+        if !c.trim().is_empty() {
+            self.conds.push((path.clone(), line, c.trim().to_string()));
+        }
+        self.show_conditions();
+        self.send_breakpoints();
+    }
+
+    /// Each editor's conditional breakpoints drawn as such; the debugger told.
+    fn show_conditions(&mut self) {
+        let open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).collect();
+        for (p, h) in open {
+            let lines: Vec<u32> = self.conds.iter().filter(|(q, _, _)| phai_editor::lsp::same_path(q, &p)).map(|(_, l, _)| *l).collect();
+            phai_editor::view::set_conditional(h, &lines);
+        }
+        if let Some(d) = &self.debug {
+            d.send(phai_debug::Command::Conditions(self.conds.clone()));
+        }
+    }
+
     /// F5: build the project as Debug, then run it under the debugger.
     fn start_debugging(&mut self) {
         let was = self.release;
@@ -1948,6 +2020,11 @@ impl Studio {
             }
         }));
         self.paused = false;
+        if !self.conds.is_empty() {
+            if let Some(d) = &self.debug {
+                d.send(phai_debug::Command::Conditions(self.conds.clone()));
+            }
+        }
         self.show_debug_bar(true);
         controls::status_text(self.status, 0, &tf("Debugging {0}", &[&exe.file_name().unwrap_or_default().to_string_lossy()]));
         self.rebuild_menu();
@@ -1969,10 +2046,16 @@ impl Studio {
 
     /// What the debugger says, on the window's thread.
     fn debug_event(&mut self, e: phai_debug::Event) {
-        use phai_debug::Event;
-        if DEBUG_TEST.load(Ordering::Relaxed) > 0 {
+        // `--debugtest` acts after the stop is shown, as a person would.
+        let test = (DEBUG_TEST.load(Ordering::Relaxed) > 0).then(|| e.clone());
+        self.show_debug_event(e);
+        if let Some(e) = test {
             self.debug_test_step(&e);
         }
+    }
+
+    fn show_debug_event(&mut self, e: phai_debug::Event) {
+        use phai_debug::Event;
         match e {
             Event::Stopped { reason, file, line, frames, locals } => {
                 self.paused = true;
@@ -1999,6 +2082,7 @@ impl Studio {
                     }
                 }
                 self.frames = frames;
+                self.refresh_watch();
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
                     b.show_tab(3);
@@ -2056,6 +2140,25 @@ impl Studio {
                 controls::status_text(self.status, 0, &said);
                 self.rebuild_menu();
             }
+            Event::Values { id, vars } => {
+                if id == EVAL_WATCH {
+                    if let Some(b) = self.bottom.as_ref() {
+                        use windows::Win32::UI::Controls as cc;
+                        unsafe {
+                            wm::SendMessageW(b.watch, cc::LVM_DELETEALLITEMS, None, None);
+                        }
+                        for v in &vars {
+                            win::list_add(b.watch, &[&v.name, &v.value, &v.ty]);
+                        }
+                    }
+                } else if let Some((want, h, _)) = self.tip.take() {
+                    // A data tip: shown only if it still means something.
+                    match vars.first() {
+                        Some(v) if want == id && !v.ty.is_empty() => phai_editor::view::show_tip(h, &format!("{} = {}    {}", v.name, v.value, v.ty)),
+                        _ => {}
+                    }
+                }
+            }
             Event::Failed(msg) => {
                 self.debug = None;
                 self.paused = false;
@@ -2074,6 +2177,14 @@ impl Studio {
                 let vars: Vec<String> = locals.iter().map(|v| format!("{}={}", v.name, v.value)).collect();
                 println!("stopped {reason} at line {line}: {}", vars.join(", "));
                 let n = DEBUG_TEST.fetch_add(1, Ordering::Relaxed);
+                if n == 2 && std::env::var_os("PHAI_SHOT").is_some() {
+                    // The picture shows Watch at the second stop.
+                    self.watches = vec!["x".into(), "y".into(), "y > 41".into()];
+                    self.refresh_watch();
+                    if let Some(b) = self.bottom.as_ref() {
+                        b.show_tab(6);
+                    }
+                }
                 if let Some(d) = &self.debug {
                     if n == 1 {
                         d.send(phai_debug::Command::StepOver);
@@ -3012,6 +3123,20 @@ impl Studio {
                 }
             }
             ID_EXECUTE => self.execute_query(),
+            ID_ADD_WATCH => {
+                let start = self.doc.code.and_then(phai_editor::view::caret_path).unwrap_or_default();
+                if let Some(e) = phai_ui::dialogs::ask(Some(self.hwnd), t("Add Watch"), t("An expression: a name, a path like order.total, or a comparison like x > 5"), &start, false) {
+                    if !e.trim().is_empty() {
+                        self.watches.push(e.trim().to_string());
+                        self.refresh_watch();
+                        self.show_pane(Pane::Output, true);
+                        if let Some(b) = self.bottom.as_ref() {
+                            b.show_tab(6);
+                        }
+                    }
+                }
+            }
+            ID_BP_CONDITION => self.edit_condition(),
             ID_TOGGLE_BP => {
                 if let Some(h) = self.doc.code {
                     phai_editor::view::toggle_breakpoint(h);
@@ -3293,6 +3418,21 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                     return LRESULT(0);
                 }
             }
+            if s.bottom.as_ref().is_some_and(|b| b.watch == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if let Some(old) = s.watches.get(it.iItem.max(0) as usize).cloned() {
+                    if let Some(e) = phai_ui::dialogs::ask(Some(s.hwnd), t("Edit Watch"), t("The expression; nothing takes it away."), &old, false) {
+                        let i = it.iItem as usize;
+                        if e.trim().is_empty() {
+                            s.watches.remove(i);
+                        } else {
+                            s.watches[i] = e.trim().to_string();
+                        }
+                        s.refresh_watch();
+                    }
+                }
+                return LRESULT(0);
+            }
             if s.bottom.as_ref().is_some_and(|b| b.stack == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if let Some(f) = s.frames.get(it.iItem.max(0) as usize).cloned() {
@@ -3399,6 +3539,9 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x79 {
         return Some(ID_STEP_OVER);
     }
+    if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x78 {
+        return Some(ID_BP_CONDITION);
+    }
     if msg.message == wm::WM_KEYDOWN {
         let shift = unsafe { km::GetKeyState(0x10) } < 0;
         let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
@@ -3406,6 +3549,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x45 if ctrl && shift => return Some(ID_EXECUTE),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
+            0x78 if shift => return Some(ID_ADD_WATCH),
             0x78 => return Some(ID_TOGGLE_BP),
             0x7A if shift => return Some(ID_STEP_OUT),
             0x7A => return Some(ID_STEP_INTO),
@@ -3605,6 +3749,9 @@ fn main() {
             bps: std::collections::HashMap::new(),
             frames: vec![],
             servers: None,
+            watches: vec![],
+            conds: vec![],
+            tip: None,
             queries: std::collections::HashMap::new(),
             config,
             nav: vec![],

@@ -94,6 +94,8 @@ struct View {
     current: Option<usize>,
     /// Lines in the text at the last edit - for moving breakpoints with the lines they are on.
     lines_were: usize,
+    /// Breakpoints with a condition, from 0.
+    conditional: Vec<usize>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -214,7 +216,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0 }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -281,6 +283,49 @@ fn lsp_position_of(v: &View, offset: usize) -> (u32, u32) {
 pub fn hover_position(h: HWND) -> Option<(u32, u32)> {
     let v = view(h)?;
     v.hover.map(|(at, _, _)| lsp_position_of(v, at))
+}
+
+/// The path of names at a byte offset - `order.total` - as a data tip or Add Watch takes it.
+fn path_at(v: &View, at: usize) -> Option<String> {
+    let (line, col) = v.model.buf.position(at);
+    let s = v.model.buf.line(line);
+    let ok = |c: char| c.is_alphanumeric() || c == '_' || c == '.';
+    let start = s[..col].char_indices().rev().take_while(|(_, c)| ok(*c)).last().map(|(i, _)| i).unwrap_or(col);
+    let end = s[col..].char_indices().find(|(_, c)| !(c.is_alphanumeric() || *c == '_')).map(|(i, _)| col + i).unwrap_or(s.len());
+    let p = s[start..end].trim_matches('.').to_string();
+    (!p.is_empty() && !p.starts_with(|c: char| c.is_ascii_digit())).then_some(p)
+}
+
+/// The path of names under the resting pointer.
+pub fn hover_path(h: HWND) -> Option<String> {
+    let v = view(h)?;
+    let (at, _, _) = v.hover?;
+    path_at(v, at)
+}
+
+/// The path of names at the caret - or what is selected.
+pub fn caret_path(h: HWND) -> Option<String> {
+    let v = view(h)?;
+    let sel = v.model.selected_text();
+    if !sel.trim().is_empty() && !sel.contains('\n') {
+        return Some(sel.trim().to_string());
+    }
+    path_at(v, v.model.caret)
+}
+
+/// The caret's line, from 1.
+pub fn caret_line(h: HWND) -> u32 {
+    view(h).map(|v| v.model.buf.position(v.model.caret).0 as u32 + 1).unwrap_or(1)
+}
+
+/// The breakpoints that have a condition, lines from 1: drawn with a white bar across.
+pub fn set_conditional(h: HWND, lines: &[u32]) {
+    if let Some(v) = view(h) {
+        v.conditional = lines.iter().filter(|l| **l > 0).map(|l| *l as usize - 1).collect();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
 }
 
 /// The caret, as the language server counts.
@@ -961,6 +1006,12 @@ fn paint(h: HWND, v: &mut View) {
                 Gdi::SelectObject(dc, op);
                 let _ = Gdi::DeleteObject(brush.into());
                 let _ = Gdi::DeleteObject(pen.into());
+                // A condition on it: a white bar across, as Visual Studio marks one with a +.
+                if v.conditional.contains(&line) {
+                    let t = (d / 6).max(2);
+                    win::fill(dc, &RECT { left: bx + d / 4, top: by + d / 2 - t / 2, right: bx + d - d / 4, bottom: by + d / 2 - t / 2 + t }, Color::rgb(255, 255, 255));
+                    win::fill(dc, &RECT { left: bx + d / 2 - t / 2, top: by + d / 4, right: bx + d / 2 - t / 2 + t, bottom: by + d - d / 4 }, Color::rgb(255, 255, 255));
+                }
             }
             if v.current == Some(line) {
                 let arrow = Color::rgb(0xf2, 0xc8, 0x11);
