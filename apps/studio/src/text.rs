@@ -485,6 +485,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("{0} Tasks", "งานของ {0}"),
     ("The words {0} shows:", "ข้อความที่ {0} แสดง:"),
     ("Pictures (PNG, JPEG, BMP, GIF)", "รูปภาพ (PNG, JPEG, BMP, GIF)"),
+    ("Split", "แบ่งหน้าต่าง"),
 ];
 
 #[cfg(test)]

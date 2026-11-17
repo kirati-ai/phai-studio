@@ -324,7 +324,7 @@ impl Canvas {
         let pts = [(m + size[0], top + size[1] / 2), (m + size[0], top + size[1]), (m + size[0] / 2, top + size[1])];
         for (h, (x, y)) in self.form_handles.iter().zip(pts) {
             win::move_to(*h, scale(x, dpi) - hs / 2 + hs / 2, scale(y, dpi) - hs / 2 + hs / 2, hs, hs);
-            win::show(*h, s.selected.is_none());
+            win::show(*h, s.selected.is_none() && s.doc.code.is_none());
         }
     }
 
@@ -961,7 +961,7 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         // An editor on the canvas says its text changed; an editor takes the canvas's whole size.
         wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::CHANGED => {
             if let Some(s) = studio() {
-                s.code_changed();
+                s.code_changed_in(HWND(l.0 as *mut _));
             }
             LRESULT(0)
         }
@@ -1020,8 +1020,8 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             LRESULT(0)
         }
         wm::WM_SIZE => {
-            if let Some(code) = studio().and_then(|s| s.doc.code) {
-                win::move_to(code, 0, 0, win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
+            if let Some(s) = studio() {
+                s.place_editors(win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
             }
             LRESULT(0)
         }
