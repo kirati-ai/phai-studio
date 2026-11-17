@@ -934,6 +934,44 @@ pub fn tree_add(h: HWND, parent: isize, text: &str, image: i32, data: isize) -> 
     unsafe { wm::SendMessageW(h, TVM_INSERTITEMW, None, Some(LPARAM(&ins as *const _ as isize))).0 }
 }
 
+/// Fills a tree from lines: two spaces (or a tab) before a line put it under the line above with
+/// one less. The items' numbers are their line numbers.
+pub fn tree_items(h: HWND, lines: &[&str]) {
+    tree_clear(h);
+    let mut parents: Vec<isize> = Vec::new();
+    for (n, line) in lines.iter().enumerate() {
+        let raw = line.replace('\t', "  ");
+        let depth = (raw.len() - raw.trim_start().len()) / 2;
+        parents.truncate(depth);
+        let under = parents.last().copied().unwrap_or(0);
+        let item = tree_add(h, under, raw.trim(), 0, n as isize);
+        parents.push(item);
+        if under != 0 {
+            tree_expand(h, under);
+        }
+    }
+}
+
+/// A timer on window `h`: every `ms` milliseconds its window hears `WM_TIMER` with `id`, from now
+/// when `on`. [`timer_start`] and [`timer_stop`] turn it on and off later.
+pub fn timer(h: HWND, id: i32, ms: u32, on: bool) {
+    if on {
+        timer_start(h, id, ms);
+    }
+}
+
+pub fn timer_start(h: HWND, id: i32, ms: u32) {
+    unsafe {
+        wm::SetTimer(Some(h), id as usize, ms.max(1), None);
+    }
+}
+
+pub fn timer_stop(h: HWND, id: i32) {
+    unsafe {
+        let _ = wm::KillTimer(Some(h), id as usize);
+    }
+}
+
 /// Empties the tree.
 pub fn tree_clear(h: HWND) {
     unsafe {

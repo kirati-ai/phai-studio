@@ -54,6 +54,9 @@ pub mod glyph {
     pub const SLIDER: u16 = 0xE9E9; // Equalizer
     pub const PROGRESS: u16 = 0xE9D9; // Diagnostic
     pub const TEXTAREA: u16 = 0xE70B; // QuickNote
+    pub const TREE: u16 = 0xE8B7; // Folder
+    pub const PICTURE: u16 = 0xE8B9;
+    pub const TIMER: u16 = 0xE916; // Stopwatch
     pub const COLOR: u16 = 0xE790;
     pub const BACK: u16 = 0xE72B;
     pub const FORWARD: u16 = 0xE72A;

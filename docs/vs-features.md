@@ -28,9 +28,9 @@
 | ★ | Lock Controls: ทั้งฟอร์ม (Format > Lock) และราย control (Properties > Locked = True - เมาส์และลูกศรไม่ย้าย/ไม่ปรับขนาด, ไม่มีผลกับโปรแกรมจริง) | ✅ |
 | ★ | Dock / Anchor (ตัวแก้แบบภาพ) | ✅ |
 | ★ | Control: DateTimePicker, NumericUpDown, TrackBar, ProgressBar, TextBox หลายบรรทัด | ✅ |
-| | Control: PictureBox, Timer, MenuStrip ในฟอร์ม, TreeView, RichTextBox, DataGridView | ⬜ |
+| | Control: Tree view (รายการเว้นหน้าบรรทัด, on_select), Picture (PNG/JPEG/BMP/GIF ผ่าน WIC ย่อให้พอดีคงสัดส่วน), Timer (on_tick ทุก Interval ms) - ทั้งในหน้าออกแบบ, โค้ดที่สร้าง และโปรแกรมที่ build แล้ว | 🟡 (ยังไม่มี RichTextBox, DataGridView; เมนูอยู่ในตัวแก้เมนูแล้ว) |
 | ★ | Smart tags | ⬜ |
-| ★ | Component tray (ของที่มองไม่เห็น เช่น Timer) | ⬜ |
+| ★ | Component tray: แถบใต้ฟอร์มแสดง Timer เป็นชิปพร้อมไอคอน คลิกเพื่อเลือก, Properties แสดง Interval/Enabled | ✅ |
 | | Document Outline (View, Ctrl+Alt+T): ต้นไม้ของ control ในฟอร์ม ตัวที่อยู่ใน Group/Tabs อยู่ใต้มัน มีไอคอนตาม Toolbox เลือกในต้นไม้ = เลือกบนฟอร์ม และกลับกัน | ✅ |
 | | TableLayout / FlowLayout | ⬜ |
 | | ตัวแก้เมนู/toolbar | ✅ (แบบข้อความ) |

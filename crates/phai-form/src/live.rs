@@ -109,6 +109,19 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
         Kind::Number => win::number(parent, id, font, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
         Kind::Progress => win::progress(parent, id, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
         Kind::Slider => win::slider(parent, id, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
+        Kind::Tree => {
+            let h = win::tree(parent, id, font);
+            let items: Vec<&str> = c.items.iter().map(String::as_str).collect();
+            win::tree_items(h, &items);
+            h
+        }
+        Kind::Picture => phai_ui::picture::picture(parent, id, c.image.as_deref().unwrap_or("")),
+        // A component has no window on the form: a hidden stand-in keeps the controls' order.
+        Kind::Timer => {
+            let h = win::label(parent, "", id, font);
+            win::show(h, false);
+            h
+        }
     };
     win::set_css(h, c.class.as_deref().unwrap_or(""), &c.id);
     if let Some(own) = c.own_css() {
@@ -145,7 +158,7 @@ pub fn build(parent: HWND, f: &FormFile, font: HFONT, page: usize) -> Live {
     for (i, c) in f.control.iter().enumerate() {
         let own = c.font_size.map(|pt| win::font(parent, pt, false)).unwrap_or(form_font);
         let h = make(parent, c, control_id(i), own);
-        if c.visible == Some(false) || c.page.is_some_and(|p| p != page) {
+        if c.visible == Some(false) || c.page.is_some_and(|p| p != page) || c.kind.is_component() {
             win::show(h, false);
         }
         layout.add(h, item(parent, c, h));

@@ -81,10 +81,21 @@ pub enum Kind {
     Progress,
     Slider,
     Textarea,
+    /// A tree of items, indented lines.
+    Tree,
+    /// A picture from a file.
+    Picture,
+    /// A component, not a control: something happens every so many milliseconds.
+    Timer,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Statusbar];
+    pub const ALL: [Kind; 18] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Statusbar, Kind::Timer];
+
+    /// A component: nothing on the form itself - Visual Studio puts it in the tray below.
+    pub fn is_component(self) -> bool {
+        self == Kind::Timer
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -102,6 +113,9 @@ impl Kind {
             Kind::Number => "number",
             Kind::Progress => "progress",
             Kind::Slider => "slider",
+            Kind::Tree => "tree",
+            Kind::Picture => "picture",
+            Kind::Timer => "timer",
             Kind::Textarea => "textarea",
         }
     }
@@ -123,6 +137,9 @@ impl Kind {
             Kind::Number => (80, 23),
             Kind::Progress => (200, 20),
             Kind::Slider => (200, 30),
+            Kind::Tree => (200, 150),
+            Kind::Picture => (120, 90),
+            Kind::Timer => (32, 32),
             Kind::Textarea => (240, 90),
         }
     }
@@ -132,7 +149,8 @@ impl Kind {
         match self {
             Kind::Button | Kind::Checkbox | Kind::Radio => Some("on_click"),
             Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider => Some("on_change"),
-            Kind::List => Some("on_select"),
+            Kind::List | Kind::Tree => Some("on_select"),
+            Kind::Timer => Some("on_tick"),
             _ => None,
         }
     }
@@ -183,6 +201,12 @@ pub struct Control {
     pub on_change: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_select: Option<String>,
+    /// A picture's file, relative to the project (or the program) or absolute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// A timer's method, every interval.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_tick: Option<String>,
     /// Points for this control's words, over the form's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<i32>,
@@ -256,9 +280,13 @@ impl Control {
             max: None,
             value: None,
             locked: None,
+            image: None,
+            on_tick: None,
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
+            Kind::Tree => c.items = vec!["Root".into(), "  First".into(), "  Second".into()],
+            Kind::Timer => c.value = Some(1000),
             Kind::List => c.columns = vec![("Name".into(), 120), ("Value".into(), 100)],
             Kind::Tabs => c.tabs = vec!["General".into(), "Advanced".into()],
             Kind::Statusbar => {
@@ -297,6 +325,7 @@ impl Control {
         match self.kind.event()? {
             "on_click" => self.on_click.as_deref(),
             "on_change" => self.on_change.as_deref(),
+            "on_tick" => self.on_tick.as_deref(),
             _ => self.on_select.as_deref(),
         }
     }
@@ -305,6 +334,7 @@ impl Control {
         match self.kind.event() {
             Some("on_click") => self.on_click = name,
             Some("on_change") => self.on_change = name,
+            Some("on_tick") => self.on_tick = name,
             Some(_) => self.on_select = name,
             None => {}
         }
@@ -453,7 +483,7 @@ impl FormFile {
                 }
             }
             let docked = c.dock.as_deref().is_some_and(|d| d != "none");
-            if !docked && c.bounds.is_none() {
+            if !docked && c.bounds.is_none() && !c.kind.is_component() {
                 out.push((format!("{} has no bounds", c.id), at.clone()));
             }
             if let Some([_, _, w, h]) = c.bounds {
@@ -468,7 +498,8 @@ impl FormFile {
                 handlers.insert(h.clone());
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
-            out.extend(wrong("items", c.items.is_empty() || c.kind == Kind::Combo));
+            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree)));
+            out.extend(wrong("image", c.image.is_none() || c.kind == Kind::Picture));
             out.extend(wrong("columns", c.columns.is_empty() || c.kind == Kind::List));
             out.extend(wrong("tabs", c.tabs.is_empty() || c.kind == Kind::Tabs));
             out.extend(wrong("parts", c.parts.is_empty() || c.kind == Kind::Statusbar));
@@ -478,7 +509,7 @@ impl FormFile {
             let ranged = matches!(c.kind, Kind::Number | Kind::Progress | Kind::Slider);
             out.extend(wrong("min", c.min.is_none() || ranged));
             out.extend(wrong("max", c.max.is_none() || ranged));
-            out.extend(wrong("value", c.value.is_none() || ranged));
+            out.extend(wrong("value", c.value.is_none() || ranged || c.kind == Kind::Timer));
             if ranged && c.min.unwrap_or(0) > c.max.unwrap_or(100) {
                 out.push((format!("{}: min is more than max", c.id), at.clone()));
             }
@@ -493,7 +524,7 @@ impl FormFile {
                 out.push((format!("{}: radius 0 to 50", c.id), at.clone()));
             }
             if let Some(e) = c.kind.event() {
-                for (name, v) in [("on_click", &c.on_click), ("on_change", &c.on_change), ("on_select", &c.on_select)] {
+                for (name, v) in [("on_click", &c.on_click), ("on_change", &c.on_change), ("on_select", &c.on_select), ("on_tick", &c.on_tick)] {
                     if v.is_some() && name != e {
                         out.push((format!("a {} has {e}, not {name}", c.kind.name()), at.clone()));
                     }
@@ -614,6 +645,39 @@ pub fn snake(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn trees_pictures_and_timers_are_read_and_written() {
+        let src = "format = 1
+[form]
+name = \"Main\"
+title = \"T\"
+size = [480, 320]
+
+[[control]]
+kind = \"tree\"
+id = \"places\"
+bounds = [11, 45, 200, 200]
+items = [\"Thailand\", \"  Bangkok\"]
+on_select = \"place_chosen\"
+
+[[control]]
+kind = \"picture\"
+id = \"logo\"
+bounds = [230, 45, 160, 120]
+image = \"logo.png\"
+
+[[control]]
+kind = \"timer\"
+id = \"clock\"
+value = 1000
+on_tick = \"clock_ticked\"
+";
+        let f = FormFile::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
+        assert_eq!(f.control[0].items, ["Thailand", "  Bangkok"], "a tree keeps its indent");
+        assert_eq!(f.control[2].handler(), Some("clock_ticked"));
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap_or_else(|e| panic!("{e:?}")), f);
+    }
+
     use super::*;
 
     pub const EXAMPLE: &str = include_str!("../../../apps/sample/src/main_window.phaiform");

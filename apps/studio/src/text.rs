@@ -462,6 +462,16 @@ pub static THAI: &[(&str, &str)] = &[
     ("Document Outline", "โครงร่างเอกสาร"),
     ("Toggle Outlining Expansion", "พับ/ขยายบล็อกนี้"),
     ("Toggle All Outlining", "พับ/ขยายทั้งหมด"),
+    ("Tree view", "มุมมองต้นไม้"),
+    ("Picture", "รูปภาพ"),
+    ("Timer", "ตัวจับเวลา"),
+    ("Tick", "ทุกช่วงเวลา (Tick)"),
+    ("Interval", "ช่วงเวลา"),
+    ("Milliseconds between ticks - 1000 is a second.", "มิลลิวินาทีระหว่างแต่ละครั้ง - 1000 คือหนึ่งวินาที"),
+    ("Whether it ticks from when the window opens.", "เริ่มจับเวลาตั้งแต่หน้าต่างเปิดหรือไม่"),
+    ("Image", "รูป"),
+    ("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.", "ไฟล์รูป: PNG, JPEG, BMP หรือ GIF - จากโฟลเดอร์โปรเจกต์ หรือพาธเต็ม"),
+    ("Components", "คอมโพเนนต์"),
 ];
 
 #[cfg(test)]

@@ -503,6 +503,9 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Number => t("Number"),
         Kind::Progress => t("Progress bar"),
         Kind::Slider => t("Slider"),
+        Kind::Tree => t("Tree view"),
+        Kind::Picture => t("Picture"),
+        Kind::Timer => t("Timer"),
     }
 }
 
@@ -526,6 +529,9 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Number => glyph::NUMBER,
             Kind::Progress => glyph::PROGRESS,
             Kind::Slider => glyph::SLIDER,
+            Kind::Tree => glyph::TREE,
+            Kind::Picture => glyph::PICTURE,
+            Kind::Timer => glyph::TIMER,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -969,6 +975,10 @@ impl Studio {
                         Ok(a) => c.anchor = phai_form::anchor_text(a),
                         Err(_) => return,
                     },
+                    Key::Value if c.kind == Kind::Timer => match num {
+                        Some(n) if n >= 1 => c.value = Some(n),
+                        _ => return,
+                    },
                     Key::Min | Key::Max | Key::Value => {
                         let Some(n) = num else { return };
                         let (mut lo, mut hi, mut v) = (c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0));
@@ -985,8 +995,11 @@ impl Studio {
                         c.max = (hi != 100).then_some(hi);
                         c.value = (v != 0).then_some(v);
                     }
+                    Key::Image => c.image = (!text.trim().is_empty()).then(|| text.trim().replace('\\', "/")),
                     Key::Items => match c.kind {
                         Kind::Combo => c.items = list(),
+                        // A tree's lines keep their indent: it is the tree.
+                        Kind::Tree => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
                         Kind::Tabs => c.tabs = list(),
                         Kind::List => {
                             c.columns = list().into_iter().map(|s| match s.rsplit_once(':') {
@@ -1006,6 +1019,9 @@ impl Studio {
     }
 
     pub fn rebuild(&mut self) {
+        // Pictures with a relative path are the project's.
+        let base = self.doc.path.as_deref().and_then(cargo::project_of);
+        phai_ui::picture::set_base(base.as_deref());
         if let Some(c) = self.canvas.as_mut() {
             c.rebuild();
         }
@@ -2084,6 +2100,7 @@ impl Studio {
             Some(c) => {
                 let [x, y, w, h] = c.rect();
                 match c.dock.as_deref() {
+                    _ if c.kind.is_component() => format!("{} · {}", c.id, kind_label(c.kind)),
                     Some(d) => format!("{} · {d}", c.id),
                     None => format!("{} · {x}, {y} · {w} × {h}", c.id),
                 }
