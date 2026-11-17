@@ -4426,7 +4426,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -4490,6 +4490,12 @@ fn main() {
             s.tray_height_changed();
         }
         // `--dock-toolbox top|right|bottom|float`: the toolbox moved as a drag would - checked by picture.
+        // `--goto LINE:COLUMN`: the caret there in the open code - for checking by picture.
+        if let Some((l, c)) = args.iter().position(|a| a == "--goto").and_then(|i| args.get(i + 1)).and_then(|p| p.split_once(':')) {
+            if let (Some(h), Ok(l), Ok(c)) = (s.doc.code, l.parse(), c.parse()) {
+                phai_editor::view::go_to(h, l, c);
+            }
+        }
         // `--dock-side left|right`: the side panes against that edge, as a drag of their caption puts them.
         if let Some(d) = args.iter().position(|a| a == "--dock-side").and_then(|i| args.get(i + 1)) {
             s.dock_side(if d == "left" { Dock::Left } else { Dock::Right });

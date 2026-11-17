@@ -542,6 +542,86 @@ impl Model {
     }
 }
 
+/// The bracket beside the caret at `at` (after it first, then before it) and the one that
+/// matches it, as byte offsets - brackets in strings, character literals and comments left out.
+pub fn matching_brace(text: &str, at: usize) -> Option<(usize, usize)> {
+    let b = text.as_bytes();
+    // The brackets that are code, in order.
+    let mut code: Vec<usize> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                i += 2;
+                while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
+                    i += 1;
+                }
+                i += 2;
+                continue;
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    i += if b[i] == b'\\' { 2 } else { 1 };
+                }
+            }
+            // 'x' and '\n' are characters; 'a in a lifetime is not.
+            b'\'' if b.get(i + 2) == Some(&b'\'') && b.get(i + 1) != Some(&b'\\') => i += 2,
+            b'\'' if b.get(i + 1) == Some(&b'\\') => {
+                i += 2;
+                while i < b.len() && b[i] != b'\'' {
+                    i += 1;
+                }
+            }
+            b'(' | b')' | b'[' | b']' | b'{' | b'}' => code.push(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    let open = |c: u8| matches!(c, b'(' | b'[' | b'{');
+    let pair = |c: u8| match c {
+        b'(' => b')',
+        b'[' => b']',
+        b'{' => b'}',
+        b')' => b'(',
+        b']' => b'[',
+        _ => b'{',
+    };
+    let k = code.iter().position(|&p| p == at).or_else(|| code.iter().position(|&p| p + 1 == at))?;
+    let c = b[code[k]];
+    let mut depth = 0i32;
+    if open(c) {
+        for &p in &code[k + 1..] {
+            if b[p] == c {
+                depth += 1;
+            } else if b[p] == pair(c) {
+                if depth == 0 {
+                    return Some((code[k], p));
+                }
+                depth -= 1;
+            }
+        }
+    } else {
+        for &p in code[..k].iter().rev() {
+            if b[p] == c {
+                depth += 1;
+            } else if b[p] == pair(c) {
+                if depth == 0 {
+                    return Some((p, code[k]));
+                }
+                depth -= 1;
+            }
+        }
+    }
+    None
+}
+
 /// Every place `query` is in `text`, as byte ranges; `case` false finds it in any case.
 pub fn find_all(text: &str, query: &str, case: bool) -> Vec<(usize, usize)> {
     if query.is_empty() {
@@ -642,6 +722,18 @@ mod tests {
         m.caret = text.len();
         m.anchor = m.caret;
         m
+    }
+
+    #[test]
+    fn brackets_match_past_strings_and_comments() {
+        let t = "fn f(a: [u8; 2]) { let s = \"(}\"; // )\n g('(', a[0]) }";
+        let open = t.find('{').unwrap();
+        assert_eq!(matching_brace(t, open), Some((open, t.len() - 1)), "the string's and the comment's brackets are passed over");
+        assert_eq!(matching_brace(t, t.len()), Some((open, t.len() - 1)), "the caret just after a bracket");
+        let call = t.find("g(").unwrap() + 1;
+        assert_eq!(matching_brace(t, call).map(|(_, b)| &t[b..]), Some(") }"), "'(' is a character");
+        assert_eq!(matching_brace(t, 1), None, "no bracket beside the caret");
+        assert_eq!(matching_brace("a[0", 1), None, "none to match");
     }
 
     #[test]

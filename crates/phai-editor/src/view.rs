@@ -964,6 +964,9 @@ fn paint(h: HWND, v: &mut View) {
         let gutter = v.gutter();
         let (sa, sb) = v.model.selection();
         let caret_line = v.model.buf.position(v.model.caret).0;
+        // The bracket by the caret and its match, boxed as Visual Studio shows them.
+        let braces = if sa == sb { crate::model::matching_brace(&v.model.buf.text(), v.model.caret) } else { None };
+        let brace_bg = theme::current().var_color("--brace").unwrap_or(if dark { Color::rgb(0x3e, 0x52, 0x6b) } else { Color::rgb(0xdb, 0xe0, 0xe6) });
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         let page = v.visible_lines(h) + 1;
         for line in v.top..(v.top + page).min(v.model.buf.line_count()) {
@@ -983,6 +986,14 @@ fn paint(h: HWND, v: &mut View) {
                     let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
                     let x1 = gutter + v.width_of(dc, &s[..b]) - v.left;
                     win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, hit_bg);
+                }
+            }
+            if let Some((p, q)) = braces {
+                for at in [p, q].into_iter().filter(|a| *a >= start && *a < start + s.len()) {
+                    let a = at - start;
+                    let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
+                    let x1 = gutter + v.width_of(dc, &s[..a + 1]) - v.left;
+                    win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, brace_bg);
                 }
             }
             // The selection on this line, end of line included when it runs on.
