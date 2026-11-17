@@ -86,7 +86,7 @@
 | ★ | แถบ Standard: ย้อนกลับ/ไปข้างหน้า, โปรเจกต์ใหม่, ฟอร์มใหม่, เปิด, บันทึก, บันทึกทั้งหมด, Undo/Redo, กล่อง Debug/Release, ▶ ชื่อโปรเจกต์, Stop, Build | ✅ |
 | ★ | แถบ Layout: จัดตามเส้นตาราง, จัดแนว 6 แบบ, ขนาดเท่ากัน/ตามเส้นตาราง, ระยะแนวนอน/ตั้ง (เท่ากัน/เพิ่ม/ลด/ชิด), กึ่งกลางฟอร์ม, หน้า/หลัง, Tab order; ปุ่มเป็นสีเทาเมื่อใช้ไม่ได้ | ✅ |
 | | ▾ ท้ายแถบ: Add or Remove Buttons (ติ๊กเปิด/ปิดทีละปุ่ม จำไว้ครั้งหน้า), Reset Toolbar | ✅ |
-| ★ | เมนู Build: Build/Rebuild/Clean Solution (ทั้ง workspace), Run Code Analysis (cargo clippy, Alt+F11), Build/Rebuild/Clean/Analysis ของโปรเจกต์, Debug/Release; เมนู Debug: Start (F5), Start Without Debugging (Ctrl+F5), Stop | ✅ (ยังไม่มี Batch Build) |
+| ★ | เมนู Build: Build/Rebuild/Clean Solution (ทั้ง workspace), Run Code Analysis (cargo clippy, Alt+F11), Build/Rebuild/Clean/Analysis ของโปรเจกต์, Debug/Release; เมนู Debug: Start (F5), Start Without Debugging (Ctrl+F5), Stop | Batch Build (ติ๊กโปรเจกต์ × Debug/Release แล้ว Build/Rebuild/Clean ทีละตัว) ✅ |
 | | แถบเครื่องมืออยู่ในถาด: ที่จับลากย้ายตามแถว ข้ามแถว หรือขึ้นไปวางข้างแถบอื่น, » แสดงปุ่มที่ไม่พอที่ | ✅ |
 | ★ | ปุ่มบนหัวแผง: ▾ Window Position (Dock / Auto Hide / Hide), 📌 Auto Hide, × ปิด | ✅ |
 | ★ | ลากหัวแผงไปติดขอบซ้าย/ขวา/บน/ล่าง หรือลอย (Toolbox; กล่องสีบอกตำแหน่ง, Esc ยกเลิก, ดับเบิลคลิกหัวหน้าต่างลอยเพื่อกลับ) | รูปเพชรนำทางตอนลาก: ลูกศรกลางขอบทั้งสี่และเข็มทิศกลางจอ ชี้ตัวไหนติดขอบนั้น ตัวที่ชี้อยู่สว่างขึ้น ✅ ; แผง Project/Server Explorer/Properties ลากหัวไปไว้ซ้ายหรือขวาได้ (ไปด้วยกันทั้งชุด) | ✅ (แผงขวายังลอยหรือไปบน/ล่างไม่ได้) |

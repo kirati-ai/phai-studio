@@ -371,6 +371,69 @@ pub fn run_job(window: HWND, project: PathBuf, job: Job, whole: bool, then_run: 
     });
 }
 
+/// The projects of a workspace: the folders its `[workspace] members` name (a `*` at the end of
+/// one taken as every folder with a Cargo.toml there), or the workspace itself when it is a
+/// package with none.
+pub fn workspace_members(ws: &Path) -> Vec<PathBuf> {
+    let text = std::fs::read_to_string(ws.join("Cargo.toml")).unwrap_or_default();
+    let mut out = Vec::new();
+    if let Some(i) = text.find("members") {
+        let rest = &text[i..];
+        if let (Some(a), Some(b)) = (rest.find('['), rest.find(']')) {
+            for m in rest[a + 1..b].split(',').map(|s| s.trim().trim_matches('"')).filter(|s| !s.is_empty()) {
+                if let Some(dir) = m.strip_suffix("/*") {
+                    let mut found: Vec<PathBuf> = std::fs::read_dir(ws.join(dir)).map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.join("Cargo.toml").is_file()).collect()).unwrap_or_default();
+                    found.sort();
+                    out.extend(found);
+                } else if ws.join(m).join("Cargo.toml").is_file() {
+                    out.push(ws.join(m));
+                }
+            }
+        }
+    }
+    if out.is_empty() && package_name(ws).is_some() {
+        out.push(ws.to_path_buf());
+    }
+    out
+}
+
+/// Batch Build: each (project, Release?) built one after another with `job`, as one outcome -
+/// every diagnostic, ok only when all were.
+pub fn run_batch(window: HWND, list: Vec<(PathBuf, bool)>, job: Job) {
+    let target = window.0 as isize;
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let mut all = Outcome { job, ok: true, ..Default::default() };
+        for (project, release) in list {
+            let mut out = Outcome { job, ok: true, ..Default::default() };
+            let package = package_name(&project);
+            post_line(target, format!("------ {} {} ------", package.as_deref().unwrap_or("?"), if release { "Release" } else { "Debug" }));
+            for args in job_args(job, false, package.as_deref(), release) {
+                step(target, &project, &args, &mut out);
+                if !out.ok || out.no_cargo {
+                    break;
+                }
+            }
+            all.ok &= out.ok;
+            all.no_cargo |= out.no_cargo;
+            all.diagnostics.extend(out.diagnostics);
+            if out.cargo_error.is_some() {
+                all.cargo_error = out.cargo_error;
+            }
+            if out.no_cargo {
+                break;
+            }
+        }
+        all.seconds = started.elapsed().as_secs_f32();
+        let boxed = Box::into_raw(Box::new(all));
+        unsafe {
+            if wm::PostMessageW(Some(HWND(target as *mut _)), WM_BUILD_DONE, WPARAM(0), LPARAM(boxed as isize)).is_err() {
+                drop(Box::from_raw(boxed));
+            }
+        }
+    });
+}
+
 /// One run of Cargo: its output to the Output pane, its JSON diagnostics into `out`.
 fn step(target: isize, project: &Path, args: &[String], out: &mut Outcome) {
     {
@@ -513,5 +576,15 @@ mod tests {
         assert_eq!(t[1].outcome, "ignored");
         assert_eq!((t[2].outcome.as_str(), t[2].message.as_str()), ("FAILED", "assertion `left == right` failed"));
         assert_eq!(job_args(Job::Test, false, Some("app"), false), vec![vec!["test".to_string(), "--message-format=json".into(), "-p".into(), "app".into()]]);
+    }
+
+    #[test]
+    fn a_workspace_lists_its_projects() {
+        // This repository's own workspace, from the studio's folder.
+        let ws = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        let names: Vec<String> = workspace_members(&ws).iter().filter_map(|p| package_name(p)).collect();
+        for want in ["phai-ui", "phai-studio", "phai-setup", "phai-pack"] {
+            assert!(names.iter().any(|n| n == want), "{want} in {names:?}");
+        }
     }
 }
