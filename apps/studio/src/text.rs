@@ -412,6 +412,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Match case", "ตรงตัวพิมพ์"),
     ("Find in Files - {0}", "ค้นหาในไฟล์ - {0}"),
     ("{0} matches in {1} files", "พบ {0} แห่งใน {1} ไฟล์"),
+    ("Task List", "รายการงาน"),
+    ("{0} tasks in {1} files", "งาน {0} รายการใน {1} ไฟล์"),
 ];
 
 #[cfg(test)]
