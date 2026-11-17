@@ -34,6 +34,111 @@ pub fn target_at(pt: POINT, area: RECT, zone: i32, float_size: (i32, i32)) -> Ta
     Target::Float(RECT { left: pt.x - 40, top: pt.y - 12, right: pt.x - 40 + float_size.0, bottom: pt.y - 12 + float_size.1 })
 }
 
+/// The dock guides, as Visual Studio shows them while a pane is dragged: an arrow at the middle
+/// of each edge of `area`, and a compass of four arrows round its centre - each `size` square.
+/// The pointer over one puts the pane against that edge.
+pub fn guides(area: RECT, size: i32) -> Vec<(Dock, RECT)> {
+    let sq = |x: i32, y: i32| RECT { left: x, top: y, right: x + size, bottom: y + size };
+    let (cx, cy) = ((area.left + area.right) / 2 - size / 2, (area.top + area.bottom) / 2 - size / 2);
+    let m = size / 3;
+    vec![
+        (Dock::Left, sq(area.left + m, cy)),
+        (Dock::Right, sq(area.right - m - size, cy)),
+        (Dock::Top, sq(cx, area.top + m)),
+        (Dock::Bottom, sq(cx, area.bottom - m - size)),
+        (Dock::Left, sq(cx - size, cy)),
+        (Dock::Right, sq(cx + size, cy)),
+        (Dock::Top, sq(cx, cy - size)),
+        (Dock::Bottom, sq(cx, cy + size)),
+    ]
+}
+
+/// The guide under the pointer, if any.
+pub fn guide_at(pt: POINT, guides: &[(Dock, RECT)]) -> Option<Dock> {
+    guides.iter().find(|(_, r)| pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom).map(|(d, _)| *d)
+}
+
+/// One guide's window: `dock` says which way its arrow points. Shown without taking the focus.
+pub fn guide_window(owner: HWND, dock: Dock, r: RECT) -> HWND {
+    let class = win::register("PhaiDockGuide", Some(guide_proc), None);
+    unsafe {
+        let ex = wm::WS_EX_LAYERED | wm::WS_EX_TRANSPARENT | wm::WS_EX_TOOLWINDOW | wm::WS_EX_TOPMOST | wm::WS_EX_NOACTIVATE;
+        let h = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP, r.left, r.top, r.right - r.left, r.bottom - r.top, Some(owner), None, Some(win::instance()), None).unwrap_or_default();
+        let _ = wm::SetLayeredWindowAttributes(h, COLORREF(0), 235, wm::LWA_ALPHA);
+        let which = match dock {
+            Dock::Left => 0,
+            Dock::Right => 1,
+            Dock::Top => 2,
+            _ => 3,
+        };
+        wm::SetWindowLongPtrW(h, wm::GWLP_USERDATA, which);
+        let _ = wm::ShowWindow(h, wm::SW_SHOWNOACTIVATE);
+        h
+    }
+}
+
+/// A guide lit (the pointer over it) or not.
+pub fn light_guide(h: HWND, on: bool) {
+    unsafe {
+        let v = wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA);
+        let now = (v & 3) | if on { 4 } else { 0 };
+        if now != v {
+            wm::SetWindowLongPtrW(h, wm::GWLP_USERDATA, now);
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+extern "system" fn guide_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_PAINT => unsafe {
+            let mut ps = Gdi::PAINTSTRUCT::default();
+            let dc = Gdi::BeginPaint(h, &mut ps);
+            let mut r = RECT::default();
+            let _ = wm::GetClientRect(h, &mut r);
+            let v = wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA);
+            let lit = v & 4 != 0;
+            let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+            let back = win::window_background();
+            let line = theme::current().var_color("--border").unwrap_or(Color::rgb(0xa0, 0xa0, 0xa0));
+            win::fill(dc, &r, line);
+            let inner = RECT { left: r.left + 1, top: r.top + 1, right: r.right - 1, bottom: r.bottom - 1 };
+            win::fill(dc, &inner, if lit { accent } else { back });
+            // A small box with an arrow towards the edge, as Visual Studio draws it.
+            let (w, hh) = (r.right, r.bottom);
+            let u = w / 8;
+            let ink = if lit { back } else { accent };
+            let pts: [POINT; 3] = match v & 3 {
+                0 => [POINT { x: 2 * u, y: hh / 2 }, POINT { x: 4 * u, y: hh / 2 - 2 * u }, POINT { x: 4 * u, y: hh / 2 + 2 * u }],
+                1 => [POINT { x: w - 2 * u, y: hh / 2 }, POINT { x: w - 4 * u, y: hh / 2 - 2 * u }, POINT { x: w - 4 * u, y: hh / 2 + 2 * u }],
+                2 => [POINT { x: w / 2, y: 2 * u }, POINT { x: w / 2 - 2 * u, y: 4 * u }, POINT { x: w / 2 + 2 * u, y: 4 * u }],
+                _ => [POINT { x: w / 2, y: hh - 2 * u }, POINT { x: w / 2 - 2 * u, y: hh - 4 * u }, POINT { x: w / 2 + 2 * u, y: hh - 4 * u }],
+            };
+            let brush = Gdi::CreateSolidBrush(COLORREF(ink.colorref()));
+            let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, COLORREF(ink.colorref()));
+            let ob = Gdi::SelectObject(dc, brush.into());
+            let op = Gdi::SelectObject(dc, pen.into());
+            let _ = Gdi::Polygon(dc, &pts);
+            // The strip the pane would take, beside the arrow.
+            let strip = match v & 3 {
+                0 => RECT { left: 4 * u + u, top: 2 * u, right: w - 2 * u, bottom: hh - 2 * u },
+                1 => RECT { left: 2 * u, top: 2 * u, right: w - 5 * u, bottom: hh - 2 * u },
+                2 => RECT { left: 2 * u, top: 5 * u, right: w - 2 * u, bottom: hh - 2 * u },
+                _ => RECT { left: 2 * u, top: 2 * u, right: w - 2 * u, bottom: hh - 5 * u },
+            };
+            let _ = Gdi::FrameRect(dc, &strip, brush);
+            Gdi::SelectObject(dc, ob);
+            Gdi::SelectObject(dc, op);
+            let _ = Gdi::DeleteObject(brush.into());
+            let _ = Gdi::DeleteObject(pen.into());
+            let _ = Gdi::EndPaint(h, &ps);
+            LRESULT(0)
+        },
+        wm::WM_ERASEBKGND => LRESULT(1),
+        _ => win::def(h, msg, w, l),
+    }
+}
+
 /// The box shown for a target: the strip of `area` an edge would give (`across` wide, `down` high).
 pub fn preview_rect(t: Target, area: RECT, across: i32, down: i32) -> RECT {
     match t {
@@ -131,6 +236,11 @@ mod tests {
         assert_eq!(at(500, 690), Target::Edge(Dock::Bottom));
         assert!(matches!(at(500, 400), Target::Float(_)));
         assert!(matches!(at(500, 50), Target::Float(_)));
+        // A guide under the pointer wins: the compass's right arrow, in the middle.
+        let g = guides(area, 40);
+        assert_eq!(guide_at(POINT { x: 500 + 40, y: 400 }, &g), Some(Dock::Right));
+        assert_eq!(guide_at(POINT { x: 20, y: 400 }, &g), Some(Dock::Left));
+        assert_eq!(guide_at(POINT { x: 500, y: 400 }, &g), None, "the compass's middle is no guide");
         let r = preview_rect(Target::Edge(Dock::Top), area, 200, 180);
         assert_eq!((r.top, r.bottom, r.left, r.right), (100, 280, 0, 1000));
     }

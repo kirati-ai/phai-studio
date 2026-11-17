@@ -2758,6 +2758,8 @@ impl Studio {
             let (across, down) = (win::px(self.hwnd, self.toolbox_w), win::px(self.hwnd, self.toolbox_h));
             let zone = win::px(self.hwnd, 56);
             let preview = docking::preview_window(self.hwnd);
+            let guide_rects = docking::guides(area, win::px(self.hwnd, 36));
+            let mut guide_windows: Vec<HWND> = vec![];
             km::SetCapture(self.hwnd);
             let mut target: Option<docking::Target> = None;
             let mut msg = wm::MSG::default();
@@ -2772,7 +2774,17 @@ impl Studio {
                         if target.is_none() && (pt.x - start.x).abs() < 6 && (pt.y - start.y).abs() < 6 {
                             continue;
                         }
-                        let t = docking::target_at(pt, area, zone, (across, win::px(self.hwnd, 460)));
+                        // The guides show once the drag begins; the one under the pointer lights.
+                        if guide_windows.is_empty() {
+                            guide_windows = guide_rects.iter().map(|(d, r)| docking::guide_window(self.hwnd, *d, *r)).collect();
+                        }
+                        for (g, (_, r)) in guide_windows.iter().zip(&guide_rects) {
+                            docking::light_guide(*g, pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom);
+                        }
+                        let t = match docking::guide_at(pt, &guide_rects) {
+                            Some(d) => docking::Target::Edge(d),
+                            None => docking::target_at(pt, area, zone, (across, win::px(self.hwnd, 460))),
+                        };
                         let r = docking::preview_rect(t, area, across, down);
                         let _ = wm::SetWindowPos(preview, Some(wm::HWND_TOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, wm::SWP_NOACTIVATE | wm::SWP_SHOWWINDOW);
                         target = Some(t);
@@ -2791,6 +2803,9 @@ impl Studio {
             }
             let _ = km::ReleaseCapture();
             let _ = wm::DestroyWindow(preview);
+            for g in guide_windows {
+                let _ = wm::DestroyWindow(g);
+            }
             if let Some(t) = target {
                 self.dock_toolbox(t);
             }
@@ -4310,7 +4325,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -4459,6 +4474,34 @@ fn main() {
             if let Some(t) = args.iter().position(|a| a == "--show-rows").and_then(|i| args.get(i + 1)).cloned() {
                 s.show_table_rows(0, "main", &t);
             }
+        }
+        // `--guide-shot DIR`: the dock guides drawn, one plain and one lit, as pictures in DIR.
+        if let Some(dir) = args.iter().position(|a| a == "--guide-shot").and_then(|i| args.get(i + 1)) {
+            let size = win::px(hwnd, 36);
+            for (n, (d, lit)) in [(Dock::Left, false), (Dock::Bottom, true)].into_iter().enumerate() {
+                let g = docking::guide_window(hwnd, d, RECT { left: 40 + n as i32 * 80, top: 40, right: 40 + n as i32 * 80 + size, bottom: 40 + size });
+                docking::light_guide(g, lit);
+                // See-through windows photograph black: solid for the picture.
+                unsafe {
+                    let ex = wm::GetWindowLongPtrW(g, wm::GWL_EXSTYLE);
+                    wm::SetWindowLongPtrW(g, wm::GWL_EXSTYLE, ex & !(wm::WS_EX_LAYERED.0 as isize));
+                    let _ = Gdi::RedrawWindow(Some(g), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_UPDATENOW);
+                    // A moment for the screen to put it together, messages handled meanwhile.
+                    let mut m = wm::MSG::default();
+                    for _ in 0..40 {
+                        while wm::PeekMessageW(&mut m, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                            let _ = wm::TranslateMessage(&m);
+                            wm::DispatchMessageW(&m);
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                }
+                let _ = phai_ui::shot::save(g, &Path::new(dir).join(format!("guide{n}.png")));
+                unsafe {
+                    let _ = wm::DestroyWindow(g);
+                }
+            }
+            std::process::exit(0);
         }
         // `--publishtest`: Build > Publish without the questions; prints where the setup went.
         if args.iter().any(|a| a == "--publishtest") {
