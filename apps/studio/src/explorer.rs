@@ -40,6 +40,8 @@ const ID_PROPS_CAPTION: i32 = 411;
 const ID_SIDE_SPLIT: i32 = 412;
 const ID_SERVERS_CAPTION: i32 = 413;
 const ID_SIDE_SPLIT2: i32 = 414;
+const ID_OUTLINE_CAPTION: i32 = 415;
+const ID_SIDE_SPLIT3: i32 = 416;
 
 /// The right-hand side: two docked panes, the project explorer above the properties, each with
 /// its caption and close button, a splitter between them.
@@ -53,6 +55,9 @@ struct Side {
     pub explorer_on: bool,
     pub props_on: bool,
     pub servers_on: bool,
+    /// Document Outline: shown, and its height when a pane lies below it.
+    pub outline_on: bool,
+    outline_h: i32,
 }
 
 #[derive(Clone, Copy)]
@@ -65,6 +70,9 @@ struct SideParts {
     servers_caption: HWND,
     servers: HWND,
     split2: HWND,
+    outline_caption: HWND,
+    outline: HWND,
+    split3: HWND,
 }
 
 impl Side {
@@ -74,15 +82,20 @@ impl Side {
         let Some(p) = self.parts else { return };
         let mut l = Layout::new((280, 600));
         let item = |h: i32, dock: Dock| Item { bounds: Rect::new(0, 0, 0, h), dock, anchor: Anchor::default() };
-        // Project, Server Explorer, Properties - each caption, body, shown, height.
-        let panes = [(p.explorer_caption, p.tree, self.explorer_on, self.explorer_h), (p.servers_caption, p.servers, self.servers_on, self.servers_h), (p.props_caption, p.props, self.props_on, 0)];
-        let shown: Vec<usize> = (0..3).filter(|k| panes[*k].2).collect();
+        // Project, Server Explorer, Document Outline, Properties - each caption, body, shown, height.
+        let panes = [
+            (p.explorer_caption, p.tree, self.explorer_on, self.explorer_h),
+            (p.servers_caption, p.servers, self.servers_on, self.servers_h),
+            (p.outline_caption, p.outline, self.outline_on && !p.outline.is_invalid(), self.outline_h),
+            (p.props_caption, p.props, self.props_on, 0),
+        ];
+        let shown: Vec<usize> = (0..4).filter(|k| panes[*k].2).collect();
         for (k, (c, b, on, _)) in panes.iter().enumerate() {
             let _ = k;
             win::show(*c, *on);
             win::show(*b, *on);
         }
-        let splits = [p.split, p.split2];
+        let splits = [p.split, p.split2, p.split3];
         for s in splits {
             win::show(s, false);
         }
@@ -93,8 +106,8 @@ impl Side {
             l.add(b, if last { item(0, Dock::Fill) } else { item(h, Dock::Top) });
             if !last {
                 // The splitter under a pane sizes that pane: the first under Project, the
-                // second under Server Explorer.
-                let s = if *k == 0 { splits[0] } else { splits[1] };
+                // second under Server Explorer, the third under Document Outline.
+                let s = splits[(*k).min(2)];
                 win::show(s, true);
                 l.add(s, item(6, Dock::Top));
             }
@@ -124,20 +137,22 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 180, servers_h: 200, explorer_on: true, props_on: true, servers_on: false }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 180, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200 }));
         h
     }
 }
 
 /// Makes the panes of the side: the explorer's caption and tree, a splitter, the properties'
 /// caption and the properties.
-pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, servers: HWND, font: HFONT) {
+pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, servers: HWND, outline: HWND, font: HFONT) {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
         let split = phai_ui::controls::splitter(side, ID_SIDE_SPLIT, false);
         let split2 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT2, false);
         let props_caption = phai_ui::controls::caption(side, t("Properties"), ID_PROPS_CAPTION, font);
         let servers_caption = phai_ui::controls::caption(side, t("Server Explorer"), ID_SERVERS_CAPTION, font);
-        s.parts = Some(SideParts { explorer_caption: heading, tree, split, props_caption, props, servers_caption, servers, split2 });
+        let outline_caption = phai_ui::controls::caption(side, t("Document Outline"), ID_OUTLINE_CAPTION, font);
+        let split3 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT3, false);
+        s.parts = Some(SideParts { explorer_caption: heading, tree, split, props_caption, props, servers_caption, servers, split2, outline_caption, outline, split3 });
         s.arrange(side);
     }
 }
@@ -149,6 +164,19 @@ pub fn show_servers(side: HWND, on: bool) -> bool {
         s.arrange(side);
     }
     on
+}
+
+/// Shows or hides Document Outline; whether it shows now.
+pub fn show_outline(side: HWND, on: bool) -> bool {
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        s.outline_on = on;
+        s.arrange(side);
+    }
+    on
+}
+
+pub fn outline_shown(side: HWND) -> bool {
+    unsafe { win::state::<Side>(side) }.is_some_and(|s| s.outline_on)
 }
 
 pub fn servers_shown(side: HWND) -> bool {
@@ -165,6 +193,7 @@ pub fn relabel_side(side: HWND) {
     if let Some(p) = unsafe { win::state::<Side>(side) }.and_then(|s| s.parts) {
         win::set_text(p.props_caption, t("Properties"));
         win::set_text(p.servers_caption, t("Server Explorer"));
+        win::set_text(p.outline_caption, t("Document Outline"));
     }
 }
 
@@ -177,6 +206,15 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             LRESULT(0)
         }
         // A pane's caption buttons - ▾, the pin, × - are the studio's to answer.
+        wm::WM_COMMAND if win::loword(w.0) as i32 == ID_OUTLINE_CAPTION => {
+            if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE {
+                show_outline(h, false);
+                if let Some(st) = studio() {
+                    st.rebuild_menu_pub();
+                }
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if win::loword(w.0) as i32 == ID_SERVERS_CAPTION => {
             // Server Explorer: × hides it; it docks and hides with nothing else.
             if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE {
@@ -197,7 +235,9 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         phai_ui::controls::WM_SPLIT => {
             if let Some(s) = unsafe { win::state::<Side>(h) } {
                 let d = phai_ui::layout::unscale(l.0 as i32, win::dpi(h));
-                if w.0 as i32 == ID_SIDE_SPLIT2 {
+                if w.0 as i32 == ID_SIDE_SPLIT3 {
+                    s.outline_h = (s.outline_h + d).clamp(60, 900);
+                } else if w.0 as i32 == ID_SIDE_SPLIT2 {
                     s.servers_h = (s.servers_h + d).clamp(60, 900);
                 } else {
                     s.explorer_h = (s.explorer_h + d).clamp(60, 900);
@@ -209,6 +249,18 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            if hdr.idFrom == crate::outline::ID_OUTLINE_TREE as usize {
+                const TVN_SELCHANGEDW: u32 = (-451i32) as u32;
+                if hdr.code == cc::NM_CUSTOMDRAW {
+                    return win::tree_custom_draw(l);
+                }
+                if hdr.code == TVN_SELCHANGEDW {
+                    if let Some(st) = studio() {
+                        st.outline_picked();
+                    }
+                }
+                return LRESULT(0);
+            }
             if hdr.idFrom == crate::servers::ID_SERVERS_TREE as usize {
                 const TVN_ITEMEXPANDINGW: u32 = (-454i32) as u32;
                 if let Some(sv) = studio().and_then(|s| s.servers.as_mut()) {

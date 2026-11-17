@@ -459,6 +459,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Continue without code →", "ทำต่อโดยไม่เปิดโค้ด →"),
     ("Show this window when Phai Studio starts", "แสดงหน้าต่างนี้เมื่อเปิด Phai Studio"),
     ("Start Window", "หน้าต่างเริ่มต้น"),
+    ("Document Outline", "โครงร่างเอกสาร"),
 ];
 
 #[cfg(test)]
