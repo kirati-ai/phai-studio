@@ -1513,13 +1513,17 @@ pub fn rebar_fit(rb: HWND) {
     unsafe {
         let n = wm::SendMessageW(rb, 0x040C /* RB_GETBANDCOUNT */, None, None).0.max(0) as usize;
         for i in 0..n {
-            let mut get = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_CHILD | cc::RBBIM_ID | cc::RBBIM_STYLE, ..Default::default() };
+            let mut get = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_CHILD | cc::RBBIM_ID | cc::RBBIM_STYLE | cc::RBBIM_IDEALSIZE, ..Default::default() };
             wm::SendMessageW(rb, 0x041C /* RB_GETBANDINFOW */, Some(WPARAM(i)), Some(LPARAM(&mut get as *mut _ as isize)));
             if get.hwndChild.is_invalid() {
                 continue;
             }
             // Its place in the tray stays: only the sizes change.
             let mut info = band_info(get.hwndChild, get.wID, false);
+            // Unchanged: nothing to lay out again.
+            if info.cxIdeal == get.cxIdeal {
+                continue;
+            }
             info.fMask = cc::RBBIM_CHILDSIZE | cc::RBBIM_IDEALSIZE;
             wm::SendMessageW(rb, 0x040B /* RB_SETBANDINFOW */, Some(WPARAM(i)), Some(LPARAM(&info as *const _ as isize)));
         }
@@ -1627,6 +1631,10 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         if old_dim != 0 {
             let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old_dim as _)));
         }
+        // Hidden buttons stay hidden across the rebuild.
+        // (A button not there yet answers -1, not "no": ask only of those that are.)
+        let there = |c: i32| wm::SendMessageW(h, 0x0419 /* TB_COMMANDTOINDEX */, Some(WPARAM(c as usize)), None).0 >= 0;
+        let hidden: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && there(*c) && wm::SendMessageW(h, 0x040C /* TB_ISBUTTONHIDDEN */, Some(WPARAM(*c as usize)), None).0 > 0).collect();
         // Greyed buttons stay greyed across the rebuild, as toggles pressed in stay pressed in.
         let greyed: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && wm::SendMessageW(h, 0x0409 /* TB_ISBUTTONENABLED */, Some(WPARAM(*c as usize)), None).0 == 0 && wm::SendMessageW(h, 0x0419 /* TB_COMMANDTOINDEX */, Some(WPARAM(*c as usize)), None).0 >= 0).collect();
         let pressed: Vec<i32> = items.iter().map(|(c, _, _)| *c).filter(|c| *c != 0 && wm::SendMessageW(h, 0x040A /* TB_ISBUTTONCHECKED */, Some(WPARAM(*c as usize)), None).0 != 0).collect();
@@ -1661,6 +1669,9 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         }
         for c in greyed {
             wm::SendMessageW(h, 0x0401 /* TB_ENABLEBUTTON */, Some(WPARAM(c as usize)), Some(LPARAM(0)));
+        }
+        for c in hidden {
+            wm::SendMessageW(h, 0x0404 /* TB_HIDEBUTTON */, Some(WPARAM(c as usize)), Some(LPARAM(1)));
         }
         // A column: every button on a row of its own, one of the group chosen at a time.
         if COLUMNS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.contains(&(h.0 as isize))) {
@@ -1733,6 +1744,27 @@ pub fn toolbar_item_rect(h: HWND, index: usize) -> RECT {
     let mut r = RECT::default();
     unsafe {
         wm::SendMessageW(h, 0x041D /* TB_GETITEMRECT */, Some(WPARAM(index)), Some(LPARAM(&mut r as *mut _ as isize)));
+    }
+    r
+}
+
+/// A toolbar button shown or hidden - Add or Remove Buttons.
+pub fn toolbar_show_button(h: HWND, command: i32, on: bool) {
+    unsafe {
+        wm::SendMessageW(h, 0x0404 /* TB_HIDEBUTTON */, Some(WPARAM(command as usize)), Some(LPARAM(!on as isize)));
+    }
+}
+
+/// Whether a toolbar button is shown.
+pub fn toolbar_button_shown(h: HWND, command: i32) -> bool {
+    unsafe { wm::SendMessageW(h, 0x040C /* TB_ISBUTTONHIDDEN */, Some(WPARAM(command as usize)), None).0 == 0 }
+}
+
+/// Where a toolbar button is, by its command, in the toolbar's client pixels.
+pub fn toolbar_button_rect(h: HWND, command: i32) -> RECT {
+    let mut r = RECT::default();
+    unsafe {
+        wm::SendMessageW(h, 0x0433 /* TB_GETRECT */, Some(WPARAM(command as usize)), Some(LPARAM(&mut r as *mut _ as isize)));
     }
     r
 }

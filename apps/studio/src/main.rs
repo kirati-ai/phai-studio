@@ -77,6 +77,18 @@ const ID_NAV_FORWARD: i32 = 213;
 const ID_LAYOUT_BAR: i32 = 214;
 /// The tray the toolbars lie in, each with a grip to drag it.
 const ID_REBAR: i32 = 215;
+const ID_BUILD_ALL: i32 = 216;
+const ID_REBUILD_ALL: i32 = 217;
+const ID_CLEAN_ALL: i32 = 218;
+const ID_ANALYSE_ALL: i32 = 219;
+const ID_REBUILD: i32 = 220;
+const ID_CLEAN: i32 = 221;
+const ID_ANALYSE: i32 = 222;
+/// Start Without Debugging (Ctrl+F5) - the same as Start, Phai having no debugger yet.
+const ID_RUN_NODEBUG: i32 = 223;
+/// The ▾ at the end of each bar: Add or Remove Buttons.
+const ID_CUSTOM_STD: i32 = 224;
+const ID_CUSTOM_LAYOUT: i32 = 225;
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
 /// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
@@ -363,6 +375,7 @@ fn toolbar_items() -> Vec<(i32, &'static str, u16)> {
         (ID_PREVIEW, t("Preview"), glyph::MONITOR),
         (ID_THEME_TOGGLE, t("Theme"), glyph::BRIGHTNESS),
         (ID_LANG, t("Language"), glyph::LANGUAGE),
+        (ID_CUSTOM_STD, t("Add or Remove Buttons"), glyph::DROPDOWN),
     ]
 }
 
@@ -404,6 +417,7 @@ fn layout_items() -> Vec<(i32, &'static str, u16)> {
         (ID_BACK, t("Send to back"), glyph::LAY_BACK),
         (0, "", 0),
         (ID_TAB_ORDER, t("Tab order"), glyph::LAY_TAB_ORDER),
+        (ID_CUSTOM_LAYOUT, t("Add or Remove Buttons"), glyph::DROPDOWN),
     ]
 }
 
@@ -516,16 +530,29 @@ fn build_menu() -> HMENU {
             }
         }
         sub(t("F&ormat"), fmt);
-        let proj = wm::CreatePopupMenu().unwrap_or_default();
-        add(proj, ID_BUILD, t("Build"), "Ctrl+B");
-        add(proj, ID_RUN, t("Run"), "F5");
-        add(proj, ID_STOP, t("Stop"), "Shift+F5");
-        sep(proj);
-        add(proj, ID_DEBUG, "Debug", "");
-        add(proj, ID_RELEASE, "Release", "");
+        // Build, as Visual Studio's: the whole workspace (its Solution), then the one project.
+        let project = studio().and_then(|s| s.doc.path.as_deref().and_then(cargo::project_of)).and_then(|p| cargo::package_name(&p).or_else(|| p.file_name().map(|n| n.to_string_lossy().to_string()))).unwrap_or_else(|| t("project").to_string());
+        let build = wm::CreatePopupMenu().unwrap_or_default();
+        add(build, ID_BUILD_ALL, t("Build Solution"), "Ctrl+Shift+B");
+        add(build, ID_REBUILD_ALL, t("Rebuild Solution"), "");
+        add(build, ID_CLEAN_ALL, t("Clean Solution"), "");
+        add(build, ID_ANALYSE_ALL, t("Run Code Analysis on Solution"), "Alt+F11");
+        sep(build);
+        add(build, ID_BUILD, &tf("Build {0}", &[&project]), "Ctrl+B");
+        add(build, ID_REBUILD, &tf("Rebuild {0}", &[&project]), "");
+        add(build, ID_CLEAN, &tf("Clean {0}", &[&project]), "");
+        add(build, ID_ANALYSE, &tf("Run Code Analysis on {0}", &[&project]), "");
+        sep(build);
+        add(build, ID_DEBUG, "Debug", "");
+        add(build, ID_RELEASE, "Release", "");
         let release = studio().is_some_and(|s| s.release);
-        wm::CheckMenuItem(proj, if release { ID_RELEASE } else { ID_DEBUG } as u32, wm::MF_CHECKED.0);
-        sub(t("&Project"), proj);
+        wm::CheckMenuItem(build, if release { ID_RELEASE } else { ID_DEBUG } as u32, wm::MF_CHECKED.0);
+        sub(t("&Build"), build);
+        let debug = wm::CreatePopupMenu().unwrap_or_default();
+        add(debug, ID_RUN, t("Start"), "F5");
+        add(debug, ID_RUN_NODEBUG, t("Start Without Debugging"), "Ctrl+F5");
+        add(debug, ID_STOP, t("Stop"), "Shift+F5");
+        sub(t("&Debug"), debug);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
         add(th, ID_THEME_IMPORT, t("Import CSS..."), "");
@@ -1704,6 +1731,15 @@ impl Studio {
 
     /// Saves, then builds the project the form is in; `then_run` starts the program after.
     fn start_build(&mut self, then_run: bool) {
+        self.start_job_run(cargo::Job::Build, false, then_run);
+    }
+
+    /// The Build menu: `job` for the form's project, or for its whole workspace (`whole`).
+    fn start_job(&mut self, job: cargo::Job, whole: bool) {
+        self.start_job_run(job, whole, false);
+    }
+
+    fn start_job_run(&mut self, job: cargo::Job, whole: bool, then_run: bool) {
         if self.building {
             return;
         }
@@ -1714,7 +1750,8 @@ impl Studio {
         if self.doc.dirty && !self.save(false) {
             return;
         }
-        let Some(dir) = cargo::project_of(&path) else {
+        let found = if whole { cargo::workspace_of(&path) } else { cargo::project_of(&path) };
+        let Some(dir) = found else {
             win::message(Some(self.hwnd), t("This form is not in a Cargo project - make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
             return;
         };
@@ -1722,13 +1759,17 @@ impl Studio {
             self.stop();
         }
         self.building = true;
-        controls::status_text(self.status, 0, t("Building..."));
+        controls::status_text(self.status, 0, match job {
+            cargo::Job::Clean => t("Cleaning..."),
+            cargo::Job::Analyse => t("Running code analysis..."),
+            _ => t("Building..."),
+        });
         if let Some(b) = self.bottom.as_ref() {
             b.clear_output();
             b.show_tab(1);
         }
         self.show_errors(true);
-        cargo::build(self.hwnd, dir, then_run, self.release);
+        cargo::run_job(self.hwnd, dir, job, whole, then_run, self.release);
     }
 
     fn stop(&mut self) {
@@ -1769,6 +1810,8 @@ impl Studio {
         win::toolbar_enable(self.layout_bar, ID_BACK, design && n >= 1);
         win::toolbar_enable(self.layout_bar, ID_TAB_ORDER, design);
         win::toolbar_check(self.layout_bar, ID_TAB_ORDER, self.canvas.as_ref().is_some_and(|c| c.tab_mode()));
+        // Start's words change the bar's length: the tray must know, or its » never shows.
+        win::rebar_fit(self.rebar);
     }
 
     /// Remembers where the caret is before a jump - F12, a reference, an error - for Navigate
@@ -1963,6 +2006,70 @@ impl Studio {
         }
         self.layout.apply(self.hwnd);
         self.rebuild_menu();
+    }
+
+    /// A bar's ▾: Add or Remove Buttons - every button with a tick when it shows; one clicked
+    /// shows or hides, and the choice is kept for the next time. Reset puts them all back.
+    fn customise_bar(&mut self, bar: HWND, own: i32, items: Vec<(i32, &'static str, u16)>) {
+        let mut r = win::toolbar_button_rect(bar, own);
+        unsafe {
+            let mut pt = windows::Win32::Foundation::POINT { x: r.left, y: r.bottom };
+            let _ = Gdi::ClientToScreen(bar, &mut pt);
+            r.left = pt.x;
+            r.bottom = pt.y;
+            let m = wm::CreatePopupMenu().unwrap_or_default();
+            let sub = wm::CreatePopupMenu().unwrap_or_default();
+            let buttons: Vec<(i32, &str)> = items.iter().filter(|(c, _, _)| *c != 0 && *c != own).map(|(c, l, _)| (*c, *l)).collect();
+            for (k, (cmd, label)) in buttons.iter().enumerate() {
+                let w = wide(label);
+                let on = win::toolbar_button_shown(bar, *cmd);
+                let _ = wm::AppendMenuW(sub, wm::MF_STRING | if on { wm::MF_CHECKED } else { wm::MF_UNCHECKED }, k + 1, PCWSTR(w.as_ptr()));
+            }
+            let w = wide(t("Add or Remove Buttons"));
+            let _ = wm::AppendMenuW(m, wm::MF_POPUP, sub.0 as usize, PCWSTR(w.as_ptr()));
+            let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, PCWSTR::null());
+            let w = wide(t("Reset Toolbar"));
+            const RESET: usize = 9999;
+            let _ = wm::AppendMenuW(m, wm::MF_STRING, RESET, PCWSTR(w.as_ptr()));
+            let chosen = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, r.left, r.bottom, None, self.hwnd, None).0 as usize;
+            let _ = wm::DestroyMenu(m);
+            if chosen == RESET {
+                for (cmd, _) in &buttons {
+                    win::toolbar_show_button(bar, *cmd, true);
+                }
+            } else if let Some((cmd, _)) = chosen.checked_sub(1).and_then(|k| buttons.get(k)) {
+                win::toolbar_show_button(bar, *cmd, !win::toolbar_button_shown(bar, *cmd));
+            } else {
+                return;
+            }
+        }
+        self.remember_hidden();
+        self.say_bars();
+    }
+
+    /// The buttons hidden on both bars, kept in the settings for the next start.
+    fn remember_hidden(&self) {
+        let mut hidden: Vec<String> = Vec::new();
+        for (bar, items) in [(self.toolbar, toolbar_items()), (self.layout_bar, layout_items())] {
+            for (cmd, _, _) in items {
+                if cmd != 0 && !win::toolbar_button_shown(bar, cmd) {
+                    hidden.push(cmd.to_string());
+                }
+            }
+        }
+        remember_setting("hidden_buttons", &hidden.join(","));
+    }
+
+    /// The buttons hidden last time, hidden again.
+    fn restore_hidden(&self) {
+        let hidden: Vec<i32> = setting("hidden_buttons").unwrap_or_default().split(',').filter_map(|n| n.trim().parse().ok()).collect();
+        for (bar, items) in [(self.toolbar, toolbar_items()), (self.layout_bar, layout_items())] {
+            for (cmd, _, _) in items {
+                if hidden.contains(&cmd) {
+                    win::toolbar_show_button(bar, cmd, false);
+                }
+            }
+        }
     }
 
     /// The tray's rows changed - a bar dragged onto another row, or up beside the other: the panes
@@ -2323,12 +2430,24 @@ impl Studio {
         let warnings = self.diagnostics.len() - errors;
         // Problems show their list; a clean build leaves its output on screen.
         if let Some(b) = self.bottom.as_ref() {
-            b.add_line(&format!("{} ({:.1} s)", if out.ok { t("Build succeeded") } else { t("Build failed") }, out.seconds));
+            let said = match (out.job, out.ok) {
+                (cargo::Job::Clean, true) => t("Clean succeeded"),
+                (cargo::Job::Clean, false) => t("Clean failed"),
+                (cargo::Job::Analyse, true) => t("Code analysis succeeded"),
+                (cargo::Job::Analyse, false) => t("Code analysis failed"),
+                (_, true) => t("Build succeeded"),
+                (_, false) => t("Build failed"),
+            };
+            b.add_line(&format!("{said} ({:.1} s)", out.seconds));
             if !self.diagnostics.is_empty() {
                 b.show_tab(0);
             }
         }
-        if out.ok {
+        if out.ok && out.job == cargo::Job::Clean {
+            controls::status_text(self.status, 0, &tf("Cleaned in {0} s", &[&format!("{:.1}", out.seconds)]));
+        } else if out.ok && out.job == cargo::Job::Analyse {
+            controls::status_text(self.status, 0, &tf("Code analysis: {0} errors, {1} warnings", &[&errors, &warnings]));
+        } else if out.ok {
             controls::status_text(self.status, 0, &tf("Built in {0} s - {1} warnings", &[&format!("{:.1}", out.seconds), &warnings]));
             if out.then_run {
                 match out.executable.as_deref().map(cargo::run) {
@@ -2476,7 +2595,16 @@ impl Studio {
             ID_THEME_IMPORT => self.theme_import(),
             ID_NEW_PROJECT => self.new_project(),
             ID_BUILD => self.start_build(false),
-            ID_RUN => self.start_build(true),
+            ID_RUN | ID_RUN_NODEBUG => self.start_build(true),
+            ID_BUILD_ALL => self.start_job(cargo::Job::Build, true),
+            ID_REBUILD_ALL => self.start_job(cargo::Job::Rebuild, true),
+            ID_CLEAN_ALL => self.start_job(cargo::Job::Clean, true),
+            ID_ANALYSE_ALL => self.start_job(cargo::Job::Analyse, true),
+            ID_REBUILD => self.start_job(cargo::Job::Rebuild, false),
+            ID_CLEAN => self.start_job(cargo::Job::Clean, false),
+            ID_ANALYSE => self.start_job(cargo::Job::Analyse, false),
+            ID_CUSTOM_STD => self.customise_bar(self.toolbar, ID_CUSTOM_STD, toolbar_items()),
+            ID_CUSTOM_LAYOUT => self.customise_bar(self.layout_bar, ID_CUSTOM_LAYOUT, layout_items()),
             ID_STOP => self.stop(),
             n if (ID_TEMPLATE..ID_TEMPLATE + phai_design::templates::Template::ALL.len() as i32).contains(&n) => {
                 let tpl = phai_design::templates::Template::ALL[(n - ID_TEMPLATE) as usize];
@@ -2751,7 +2879,7 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         cargo::WM_BUILD_DONE => {
             let out = unsafe { Box::from_raw(l.0 as *mut cargo::Outcome) };
             if BUILD_TEST.load(Ordering::Relaxed) && std::env::var_os("PHAI_SHOT").is_none() {
-                println!("ok={} seconds={:.1} exe={:?} no_cargo={} cargo_error={:?}", out.ok, out.seconds, out.executable, out.no_cargo, out.cargo_error);
+                println!("job={:?} ok={} seconds={:.1} exe={:?} no_cargo={} cargo_error={:?}", out.job, out.ok, out.seconds, out.executable, out.no_cargo, out.cargo_error);
                 for d in &out.diagnostics {
                     println!("{} {}:{}:{} {}", if d.error { "error" } else { "warning" }, d.file.as_ref().map(|f| f.display().to_string()).unwrap_or_default(), d.line, d.column, d.message);
                 }
@@ -2803,8 +2931,20 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
 
 /// Shortcuts, before a box can take the key: Ctrl+N/O/S/Z/Y and F5.
 fn shortcut(msg: &wm::MSG) -> Option<i32> {
+    // Alt+F11: Run Code Analysis on Solution.
+    if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x7A {
+        return Some(ID_ANALYSE_ALL);
+    }
     if msg.message != wm::WM_KEYDOWN {
         return None;
+    }
+    let shift = unsafe { km::GetKeyState(0x10) } < 0;
+    if unsafe { km::GetKeyState(0x11) } < 0 {
+        match msg.wParam.0 {
+            0x42 if shift => return Some(ID_BUILD_ALL),
+            0x74 => return Some(ID_RUN_NODEBUG),
+            _ => {}
+        }
     }
     let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
     let in_box = !unsafe { km::GetFocus() }.0.is_null() && win::kind_of(unsafe { km::GetFocus() }) == Some(win::Kind::Edit);
@@ -3029,6 +3169,7 @@ fn main() {
         s.props = Some(props);
         s.explorer = Some(explorer);
         s.canvas = Some(canvas);
+        s.restore_hidden();
         win::theme_frame(hwnd);
         let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 1100), bottom: win::px(hwnd, 700) };
         let st = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;
@@ -3036,7 +3177,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -3159,6 +3300,16 @@ fn main() {
         if args.iter().any(|a| a == "--buildtest") {
             BUILD_TEST.store(true, Ordering::Relaxed);
             s.start_build(false);
+        }
+        // `--jobtest clean|rebuild|analyse|solution`: a Build menu job, printed as --buildtest prints.
+        if let Some(j) = args.iter().position(|a| a == "--jobtest").and_then(|i| args.get(i + 1)) {
+            BUILD_TEST.store(true, Ordering::Relaxed);
+            match j.as_str() {
+                "clean" => s.start_job(cargo::Job::Clean, false),
+                "rebuild" => s.start_job(cargo::Job::Rebuild, false),
+                "analyse" => s.start_job(cargo::Job::Analyse, false),
+                _ => s.start_job(cargo::Job::Build, true),
+            }
         }
         // The loop: shortcuts first, then Tab between boxes, then everything else.
         if std::env::var("PHAI_SHOT").is_ok() {
