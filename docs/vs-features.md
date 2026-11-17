@@ -42,7 +42,7 @@
 |---|---|---|
 | ★ | IntelliSense หลัง `.` `::`, Ctrl+Space | ✅ (rust-analyzer) |
 | ★ | Quick Info (hover) | ✅ |
-| ★ | Parameter Info (Ctrl+Shift+Space) | ⬜ |
+| ★ | Parameter Info (Ctrl+Shift+Space, และเมื่อพิมพ์ ( หรือ ,): signature ของฟังก์ชันใต้เคอร์เซอร์ พารามิเตอร์ที่กำลังพิมพ์อยู่ใน «» พร้อมคำอธิบาย ปิดเมื่อพิมพ์ ) หรือ Esc - ทดสอบกับ rust-analyzer จริง | ✅ |
 | ★ | เส้นหยักใต้ error / warning | ✅ |
 | ★ | Quick Actions (Ctrl+.) | ⬜ |
 | ★ | Go To Definition (F12, Ctrl+click; Edit menu), Peek Definition (Alt+F12: โค้ดตรงที่ประกาศในหน้าต่างใต้บรรทัด ไม่ต้องเปลี่ยนไฟล์, Esc ปิด) - ทดสอบกับ rust-analyzer จริง | ✅ (peek ยังแก้โค้ดในหน้าต่างไม่ได้) |

@@ -169,7 +169,8 @@ impl Lsp {
                         "publishDiagnostics": {},
                         "definition": { "linkSupport": true },
                         "references": {},
-                        "rename": { "prepareSupport": true }
+                        "rename": { "prepareSupport": true },
+                        "signatureHelp": { "signatureInformation": { "parameterInformation": { "labelOffsetSupport": true } } }
                     },
                     "workspace": { "workspaceEdit": { "documentChanges": true } },
                     "general": { "positionEncodings": ["utf-16"] }
@@ -243,6 +244,11 @@ impl Lsp {
         self.at("textDocument/definition", path, line, character, json!({}))
     }
 
+    /// What the call the caret is in takes, and which of it the caret is at (Parameter Info).
+    pub fn signature_help(&mut self, path: &Path, line: u32, character: u32) -> i64 {
+        self.at("textDocument/signatureHelp", path, line, character, json!({}))
+    }
+
     /// Every place the thing at a place is used, its definition too (Shift+F12).
     pub fn references(&mut self, path: &Path, line: u32, character: u32) -> i64 {
         self.at("textDocument/references", path, line, character, json!({ "context": { "includeDeclaration": true } }))
@@ -310,6 +316,44 @@ pub fn hover_text(result: &Value) -> Option<String> {
     let text: Vec<&str> = raw.lines().filter(|l| !l.trim_start().starts_with("```")).collect();
     let t = text.join("\n").trim().to_string();
     (!t.is_empty()).then_some(t)
+}
+
+/// Parameter Info's words: the signature, the parameter the caret is at marked with `«»`, and
+/// under it what that parameter or the function is, when the server says.
+pub fn signature_text(result: &Value) -> Option<String> {
+    let sigs = result.get("signatures")?.as_array()?;
+    let k = result.get("activeSignature").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let sig = sigs.get(k).or(sigs.first())?;
+    let label = sig.get("label")?.as_str()?.to_string();
+    let active = sig.get("activeParameter").or(result.get("activeParameter")).and_then(Value::as_u64).map(|n| n as usize);
+    let params = sig.get("parameters").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut shown = label.clone();
+    if let Some(p) = active.and_then(|a| params.get(a)) {
+        // A parameter's label: offsets into the signature (UTF-16), or its words.
+        let span = match p.get("label") {
+            Some(Value::Array(a)) if a.len() == 2 => {
+                let u: Vec<u16> = label.encode_utf16().collect();
+                let (a, b) = (a[0].as_u64().unwrap_or(0) as usize, a[1].as_u64().unwrap_or(0) as usize);
+                (b <= u.len() && a <= b).then(|| (String::from_utf16_lossy(&u[..a]).len(), String::from_utf16_lossy(&u[..b]).len()))
+            }
+            Some(Value::String(s)) => label.find(s.as_str()).map(|i| (i, i + s.len())),
+            _ => None,
+        };
+        if let Some((a, b)) = span {
+            shown = format!("{}«{}»{}", &label[..a], &label[a..b], &label[b..]);
+        }
+    }
+    let doc = |v: Option<&Value>| match v {
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(Value::Object(o)) => o.get("value").and_then(Value::as_str).map(str::to_string),
+        _ => None,
+    };
+    let more = active.and_then(|a| params.get(a)).and_then(|p| doc(p.get("documentation"))).or_else(|| doc(sig.get("documentation")));
+    if let Some(m) = more.map(|m| m.lines().filter(|l| !l.trim_start().starts_with("```")).take(6).collect::<Vec<_>>().join("\n")).filter(|m| !m.trim().is_empty()) {
+        shown.push('\n');
+        shown.push_str(m.trim());
+    }
+    Some(shown)
 }
 
 /// A completion's label and the text it puts in.

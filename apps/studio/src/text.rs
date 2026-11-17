@@ -414,6 +414,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("{0} matches in {1} files", "พบ {0} แห่งใน {1} ไฟล์"),
     ("Task List", "รายการงาน"),
     ("{0} tasks in {1} files", "งาน {0} รายการใน {1} ไฟล์"),
+    ("Parameter Info", "ข้อมูลพารามิเตอร์"),
 ];
 
 #[cfg(test)]

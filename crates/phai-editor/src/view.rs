@@ -32,6 +32,8 @@ pub const REFERENCES: u16 = 0x0305;
 pub const BREAKPOINTS: u16 = 0x0306;
 /// Peek Definition was asked for (Alt+F12) at [`caret_lsp`]: see [`show_peek`].
 pub const PEEK: u16 = 0x0307;
+/// Parameter Info was asked for (Ctrl+Shift+Space, or `(` / `,` typed) at [`caret_lsp`].
+pub const SIGNATURE: u16 = 0x0308;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -1182,6 +1184,10 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
         hide_tip(v);
         return true;
     }
+    if vk == 0x20 && ctrl && unsafe { km::GetKeyState(0x10) } < 0 {
+        notify(h, SIGNATURE);
+        return true;
+    }
     if vk == 0x20 && ctrl {
         notify(h, COMPLETE);
         return true;
@@ -1417,6 +1423,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     v.model.type_text(&s);
                     changed(h);
                     // A member or a path asks for completions; typing on narrows the open list.
+                    if s == "(" || s == "," {
+                        notify(h, SIGNATURE);
+                    } else if s == ")" {
+                        if let Some(v) = view(h) {
+                            hide_tip(v);
+                        }
+                    }
                     if s == "." || (s == ":" && before_colon) {
                         notify(h, COMPLETE);
                     } else if v.list.is_some() {
