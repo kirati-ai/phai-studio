@@ -150,6 +150,7 @@ const ID_BM_PREV: i32 = 267;
 const ID_BM_CLEAR: i32 = 268;
 const ID_PROJECT_PROPS: i32 = 269;
 const ID_MANAGE_CRATES: i32 = 270;
+const ID_SNIPPET: i32 = 271;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -823,6 +824,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
         add(edit, ID_GO_TO_ALL, t("Go to All..."), "Ctrl+T");
+        add(edit, ID_SNIPPET, t("Insert Snippet..."), "Ctrl+K, Ctrl+X");
         add(edit, ID_BM_TOGGLE, t("Toggle Bookmark"), "Ctrl+K, Ctrl+K");
         add(edit, ID_BM_NEXT, t("Next Bookmark"), "Ctrl+K, Ctrl+N");
         add(edit, ID_BM_PREV, t("Previous Bookmark"), "Ctrl+K, Ctrl+P");
@@ -4598,6 +4600,23 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_SNIPPET => match self.code_shown() {
+                Some(h) => unsafe {
+                    // Every snippet, its word and its first line, as a menu under the caret.
+                    let m = wm::CreatePopupMenu().unwrap_or_default();
+                    for (i, (word, body)) in phai_editor::model::SNIPPETS.iter().enumerate() {
+                        let label = wide(&format!("{word}	{}", body.lines().next().unwrap_or_default().replace("$0", "").replace('&', "&&")));
+                        let _ = wm::AppendMenuW(m, wm::MF_STRING, i + 1, PCWSTR(label.as_ptr()));
+                    }
+                    let (x, y) = phai_editor::view::caret_screen(h);
+                    let n = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, self.hwnd, None).0 as usize;
+                    let _ = wm::DestroyMenu(m);
+                    if let Some((word, _)) = n.checked_sub(1).and_then(|i| phai_editor::model::SNIPPETS.get(i)) {
+                        phai_editor::view::insert_snippet(h, word);
+                    }
+                },
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_BM_TOGGLE | ID_BM_NEXT | ID_BM_PREV | ID_BM_CLEAR => match self.code_shown() {
                 Some(h) => {
                     use phai_editor::view::Bookmark;
@@ -5327,6 +5346,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     (0x4B, 0x43, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+C
                     (0x4B, 0x55, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+U
                     (0x4B, 0x4B, true) => Some(ID_BM_TOGGLE),  // Ctrl+K, Ctrl+K
+                    (0x4B, 0x58, true) => Some(ID_SNIPPET),    // Ctrl+K, Ctrl+X
                     (0x4B, 0x4E, true) => Some(ID_BM_NEXT),    // Ctrl+K, Ctrl+N
                     (0x4B, 0x50, true) => Some(ID_BM_PREV),    // Ctrl+K, Ctrl+P
                     (0x4B, 0x4C, true) => Some(ID_BM_CLEAR),   // Ctrl+K, Ctrl+L

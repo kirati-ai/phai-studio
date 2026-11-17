@@ -1001,6 +1001,15 @@ pub fn bookmarks(h: HWND) -> Vec<usize> {
     view(h).map(|v| v.bookmarks.iter().map(|b| b + 1).collect()).unwrap_or_default()
 }
 
+/// Insert Snippet: the snippet's word typed at the caret and made its code.
+pub fn insert_snippet(h: HWND, word: &str) {
+    if let Some(v) = view(h) {
+        v.model.insert(word);
+        v.model.expand_snippet();
+        changed(h);
+    }
+}
+
 /// How many carets there are - for checking.
 pub fn caret_count(h: HWND) -> usize {
     view(h).map(|v| 1 + v.model.extra.len()).unwrap_or(0)
@@ -1768,6 +1777,8 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     let shift = unsafe { km::GetKeyState(0x10) } < 0;
                     if v.model.caret != v.model.anchor && v.model.selected_text().contains('\n') || shift {
                         v.model.indent_lines(shift);
+                    } else if v.lang == Language::Rust && v.model.expand_snippet() {
+                        // A snippet's word before the caret: its code.
                     } else {
                         let (line, col) = v.model.buf.position(v.model.caret);
                         let chars = v.model.buf.line(line)[..col].chars().count();
