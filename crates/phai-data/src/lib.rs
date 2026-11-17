@@ -8,6 +8,7 @@
 //! this computer can read it back) - see [`protect`] and [`unprotect`].
 
 pub mod pg;
+pub mod schema;
 pub mod sqlite;
 pub mod wire;
 
@@ -189,7 +190,7 @@ impl Connection {
         }
     }
 
-    fn strings(&self, database: Option<&str>, sql: &str, params: &[Option<&str>]) -> Result<Vec<Vec<String>>, String> {
+    pub(crate) fn strings(&self, database: Option<&str>, sql: &str, params: &[Option<&str>]) -> Result<Vec<Vec<String>>, String> {
         let r = if params.is_empty() { self.run(database, sql, usize::MAX)?.into_iter().next().map(|(r, _)| r).unwrap_or_default() } else { self.run_params(database, sql, params, usize::MAX)?.0 };
         Ok(r.rows.into_iter().map(|row| row.into_iter().map(|v| v.unwrap_or_default()).collect()).collect())
     }
