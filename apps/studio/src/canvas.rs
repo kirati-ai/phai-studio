@@ -1020,6 +1020,13 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        // The split's divider dragged: the upper pane takes or gives the room.
+        phai_ui::controls::WM_SPLIT => {
+            if let Some(s) = studio() {
+                s.split_dragged(l.0 as i32);
+            }
+            LRESULT(0)
+        }
         wm::WM_SIZE => {
             if let Some(s) = studio() {
                 s.place_editors(win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);

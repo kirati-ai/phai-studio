@@ -139,6 +139,7 @@ const ID_FOLD: i32 = 258;
 const ID_FOLD_ALL: i32 = 259;
 const ID_SPLIT: i32 = 260;
 const ID_BATCH_BUILD: i32 = 261;
+const ID_NEW_WINDOW: i32 = 262;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -341,6 +342,11 @@ pub struct Studio {
     /// Split: a second editor of the code file in front, below the first; each shows its own
     /// part, and what is typed in one is in both.
     pub split_view: Option<HWND>,
+    /// The split's divider, and the upper pane's share of the room, thousandths.
+    split_bar: Option<HWND>,
+    split_share: i32,
+    /// New Window: the code file in front, also in windows of their own - (window, editor).
+    pub windows: Vec<(HWND, HWND)>,
     /// Document Outline's tree.
     outline: Option<outline::Outline>,
     /// The last Run Tests, as the Tests list shows them.
@@ -454,6 +460,35 @@ fn task_words(line: &str) -> bool {
     let Some(i) = line.find("//") else { return false };
     let rest = line[i..].trim_start_matches('/').trim_start_matches('!').trim_start();
     ["TODO", "FIXME", "HACK", "UNDONE"].iter().any(|w| rest.starts_with(w) && !rest[w.len()..].starts_with(|c: char| c.is_alphanumeric()))
+}
+
+/// A code file's window of its own (New Window): its editor fills it, and says what it does to
+/// the canvas, as the editor on the canvas does.
+extern "system" fn code_window_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_SIZE => {
+            if let Some(e) = studio().and_then(|s| s.windows.iter().find(|(f, _)| *f == h).map(|(_, e)| *e)) {
+                win::move_to(e, 0, 0, win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
+            }
+            LRESULT(0)
+        }
+        wm::WM_COMMAND => {
+            if let Some(c) = studio().and_then(|s| s.canvas.as_ref().map(|c| c.hwnd)) {
+                unsafe { wm::SendMessageW(c, msg, Some(w), Some(l)) };
+            }
+            LRESULT(0)
+        }
+        wm::WM_CLOSE => {
+            if let Some(s) = studio() {
+                s.windows.retain(|(f, _)| *f != h);
+            }
+            unsafe {
+                let _ = wm::DestroyWindow(h);
+            }
+            LRESULT(0)
+        }
+        _ => win::def(h, msg, w, l),
+    }
 }
 
 /// What Peek Definition shows: the file and line, then the code from the line before the
@@ -720,6 +755,7 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
         add(view, ID_SPLIT, t("Split"), "");
+        add(view, ID_NEW_WINDOW, t("New Window"), "");
         if studio().is_some_and(|s| s.split_view.is_some()) {
             wm::CheckMenuItem(view, ID_SPLIT as u32, wm::MF_CHECKED.0);
         }
@@ -1458,6 +1494,7 @@ impl Studio {
     /// The form on the canvas, packed away into its tab.
     fn stash(&mut self) {
         self.unsplit();
+        self.close_windows();
         let doc = std::mem::replace(&mut self.doc, Doc::new(FormFile::new("MainWindow"), None));
         self.tabs[self.active] = Tab { doc, undo: std::mem::take(&mut self.undo), redo: std::mem::take(&mut self.redo), selected: self.selected.take() };
     }
@@ -2136,6 +2173,7 @@ impl Studio {
         };
         let Some(parent) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
         let second = phai_editor::view::create(parent, 901, &phai_editor::view::text(h), &path.to_string_lossy());
+        self.split_bar = Some(controls::splitter(parent, 902, false));
         phai_editor::view::set_breakpoints(second, &phai_editor::view::breakpoints(h));
         self.split_view = Some(second);
         self.relayout_editors();
@@ -2148,6 +2186,9 @@ impl Studio {
         if let Some(h) = self.split_view.take() {
             unsafe {
                 let _ = wm::DestroyWindow(h);
+                if let Some(b) = self.split_bar.take() {
+                    let _ = wm::DestroyWindow(b);
+                }
             }
             self.relayout_editors();
         }
@@ -2168,9 +2209,13 @@ impl Studio {
         match self.split_view {
             Some(second) => {
                 let gap = win::px(self.hwnd, 6);
-                let top = (h - gap) / 2;
+                let top = ((h - gap) as i64 * self.split_share as i64 / 1000) as i32;
                 win::move_to(code, 0, 0, w, top);
                 win::move_to(second, 0, top + gap, w, h - top - gap);
+                if let Some(b) = self.split_bar {
+                    win::move_to(b, 0, top, w, gap);
+                    win::show(b, true);
+                }
                 win::show(second, true);
                 // Above the form designer's surface, which stays behind the code.
                 unsafe {
@@ -2182,12 +2227,10 @@ impl Studio {
         }
         // Both drawn again where they now are, and only the strip between them on the canvas -
         // the canvas does not clip its children, so its background must not go over them.
-        if let Some(c) = self.canvas.as_ref().map(|c| c.hwnd) {
+        if self.canvas.is_some() {
             unsafe {
-                if self.split_view.is_some() {
-                    let gap = win::px(self.hwnd, 6);
-                    let top = (h - gap) / 2;
-                    let _ = Gdi::InvalidateRect(Some(c), Some(&RECT { left: 0, top, right: w, bottom: top + gap }), true);
+                if let Some(b) = self.split_bar {
+                    let _ = Gdi::InvalidateRect(Some(b), None, true);
                 }
                 let _ = Gdi::InvalidateRect(Some(code), None, false);
                 if let Some(second) = self.split_view {
@@ -2197,19 +2240,65 @@ impl Studio {
         }
     }
 
-    /// An editor's text changed: the other half of a split takes it, and the first goes on as
-    /// any change does.
+    /// The split's divider dragged `d` device pixels: the upper pane's share again.
+    pub fn split_dragged(&mut self, d: i32) {
+        let Some(c) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetClientRect(c, &mut r);
+        }
+        let room = (r.bottom - win::px(self.hwnd, 6)).max(1);
+        let top = (room as i64 * self.split_share as i64 / 1000) as i32 + d;
+        self.split_share = ((top.clamp(room / 10, room - room / 10) as i64 * 1000 / room as i64) as i32).clamp(100, 900);
+        self.place_editors(r.right, r.bottom);
+    }
+
+    /// New Window: the code file in front in a window of its own, to put anywhere - another
+    /// screen; what is typed in it is in the file's tab too, and the other way round.
+    fn new_window(&mut self) {
+        let (Some(h), Some(path)) = (self.code_shown(), self.doc.path.clone()) else {
+            controls::status_text(self.status, 0, t("Open a code file first"));
+            return;
+        };
+        let class = win::register("PhaiCodeWindow", Some(code_window_proc), None);
+        let title = win::wide(&format!("{} - Phai Studio", path.file_name().unwrap_or_default().to_string_lossy()));
+        unsafe {
+            let mut r = RECT::default();
+            let _ = wm::GetWindowRect(self.hwnd, &mut r);
+            let frame = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, r.left + 60, r.top + 60, (r.right - r.left) * 2 / 3, (r.bottom - r.top) * 2 / 3, Some(self.hwnd), None, Some(win::instance()), None).unwrap_or_default();
+            let editor = phai_editor::view::create(frame, 903, &phai_editor::view::text(h), &path.to_string_lossy());
+            let (l, c) = phai_editor::view::caret_position(h);
+            phai_editor::view::go_to(editor, l, c);
+            win::theme_frame(frame);
+            win::show_top(frame);
+            let mut cr = RECT::default();
+            let _ = wm::GetClientRect(frame, &mut cr);
+            win::move_to(editor, 0, 0, cr.right, cr.bottom);
+            self.windows.push((frame, editor));
+        }
+    }
+
+    fn close_windows(&mut self) {
+        for (frame, _) in std::mem::take(&mut self.windows) {
+            unsafe {
+                let _ = wm::DestroyWindow(frame);
+            }
+        }
+    }
+
+    /// An editor's text changed: the others showing the file - a split's other half, its own
+    /// windows - take it, and the first goes on as any change does.
     pub fn code_changed_in(&mut self, from: HWND) {
-        match (self.split_view, self.doc.code) {
-            (Some(second), Some(code)) if from == second => {
-                phai_editor::view::replace_whole(code, &phai_editor::view::text(second));
-            }
-            (second, _) => {
-                self.code_changed();
-                if let (Some(second), Some(code)) = (second, self.doc.code) {
-                    phai_editor::view::replace_whole(second, &phai_editor::view::text(code));
-                }
-            }
+        let Some(code) = self.doc.code else { return };
+        let others: Vec<HWND> = self.split_view.into_iter().chain(self.windows.iter().map(|(_, e)| *e)).collect();
+        if others.contains(&from) {
+            phai_editor::view::replace_whole(code, &phai_editor::view::text(from));
+            return;
+        }
+        self.code_changed();
+        let text = phai_editor::view::text(code);
+        for h in others {
+            phai_editor::view::replace_whole(h, &text);
         }
     }
 
@@ -4134,6 +4223,7 @@ impl Studio {
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
+            ID_NEW_WINDOW => self.new_window(),
             ID_SPLIT => {
                 self.toggle_split();
                 self.rebuild_menu();
@@ -5037,6 +5127,9 @@ fn main() {
             test_results: vec![],
             outline: None,
             split_view: None,
+            split_bar: None,
+            split_share: 500,
+            windows: vec![],
             config,
             nav: vec![],
             nav_at: 0,
@@ -5190,6 +5283,19 @@ fn main() {
             if let Some(i) = s.selected {
                 let c = &s.doc.form.control[i];
                 println!("now: dock={:?} locked={:?}", c.dock, c.locked);
+            }
+        }
+        // `--new-window`: the code file in front also in a window of its own; words typed there
+        // are printed back from the tab's editor.
+        if args.iter().any(|a| a == "--new-window") {
+            s.command(ID_NEW_WINDOW);
+            if let (Some(&(_, e)), Some(code)) = (s.windows.first(), s.doc.code) {
+                phai_editor::view::go_to(e, 1, 1);
+                for u in "// from the window\n".encode_utf16() {
+                    let u = if u == 10 { 13 } else { u };
+                    wm::SendMessageW(e, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
+                }
+                println!("tab starts: {}", phai_editor::view::text(code).lines().next().unwrap_or_default());
             }
         }
         // `--split`: the code file in front split in two - checked by picture; with `--split-type`
