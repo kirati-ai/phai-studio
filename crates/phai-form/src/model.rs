@@ -96,10 +96,13 @@ pub enum Kind {
     Rich,
     /// A grid of cells to change in place: columns, then rows the program adds.
     Grid,
+    /// A component: the menu a right-click on a control opens - its items `id | label`.
+    #[serde(rename = "contextmenu")]
+    ContextMenu,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 22] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer];
+    pub const ALL: [Kind; 23] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -108,7 +111,7 @@ impl Kind {
 
     /// A component: nothing on the form itself - Visual Studio puts it in the tray below.
     pub fn is_component(self) -> bool {
-        self == Kind::Timer
+        matches!(self, Kind::Timer | Kind::ContextMenu)
     }
 
     pub fn name(self) -> &'static str {
@@ -134,6 +137,7 @@ impl Kind {
             Kind::Table => "table",
             Kind::Rich => "richtext",
             Kind::Grid => "grid",
+            Kind::ContextMenu => "contextmenu",
             Kind::Textarea => "textarea",
         }
     }
@@ -161,6 +165,7 @@ impl Kind {
             Kind::Flow | Kind::Table => (240, 120),
             Kind::Rich => (240, 120),
             Kind::Grid => (300, 150),
+            Kind::ContextMenu => (32, 32),
             Kind::Textarea => (240, 90),
         }
     }
@@ -225,6 +230,9 @@ pub struct Control {
     /// A picture's file, relative to the project (or the program) or absolute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// The context menu a right-click on this control opens: a contextmenu component's id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_menu: Option<String>,
     /// A table panel's number of columns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cols: Option<i32>,
@@ -307,6 +315,7 @@ impl Control {
             image: None,
             on_tick: None,
             cols: None,
+            context_menu: None,
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
@@ -314,6 +323,7 @@ impl Control {
             Kind::Timer => c.value = Some(1000),
             Kind::Table => c.cols = Some(2),
             Kind::Grid => c.columns = vec![("Name".into(), 140), ("Value".into(), 120)],
+            Kind::ContextMenu => c.items = vec!["copy_clicked | Copy".into(), "paste_clicked | Paste".into()],
             Kind::List => c.columns = vec![("Name".into(), 120), ("Value".into(), 100)],
             Kind::Tabs => c.tabs = vec!["General".into(), "Advanced".into()],
             Kind::Statusbar => {
@@ -348,6 +358,19 @@ impl Control {
     }
 
     /// The handler name of this control's one event, whichever field holds it.
+    /// A context menu's items: (method, label), from its `id | label` lines; `-` a separator
+    /// (an empty method).
+    pub fn menu_items(&self) -> Vec<(String, String)> {
+        self.items
+            .iter()
+            .map(|l| match l.split_once('|') {
+                Some((id, label)) => (id.trim().to_string(), label.trim().to_string()),
+                None if l.trim() == "-" => (String::new(), String::new()),
+                None => (l.trim().to_string(), l.trim().to_string()),
+            })
+            .collect()
+    }
+
     pub fn handler(&self) -> Option<&str> {
         match self.kind.event()? {
             "on_click" => self.on_click.as_deref(),
@@ -525,7 +548,12 @@ impl FormFile {
                 handlers.insert(h.clone());
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
-            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree)));
+            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu)));
+            if let Some(m) = &c.context_menu {
+                if !self.control.iter().any(|x| x.kind == Kind::ContextMenu && &x.id == m) {
+                    out.push((format!("{}: no context menu {m}", c.id), at.clone()));
+                }
+            }
             out.extend(wrong("image", c.image.is_none() || c.kind == Kind::Picture));
             out.extend(wrong("cols", c.cols.is_none() || c.kind == Kind::Table));
             out.extend(wrong("columns", c.columns.is_empty() || matches!(c.kind, Kind::List | Kind::Grid)));
@@ -616,6 +644,11 @@ impl FormFile {
         for c in &self.control {
             if let Some(h) = c.handler() {
                 add(h);
+            }
+            if c.kind == Kind::ContextMenu {
+                for (id, _) in c.menu_items().into_iter().filter(|(id, _)| !id.is_empty()) {
+                    add(&id);
+                }
             }
         }
         out

@@ -57,6 +57,9 @@ pub mod glyph {
     pub const TREE: u16 = 0xE8B7; // Folder
     pub const PICTURE: u16 = 0xE8B9;
     pub const TIMER: u16 = 0xE916; // Stopwatch
+    pub const MENU_BAR: u16 = 0xE700; // GlobalNavigationButton
+    pub const TOOLBAR: u16 = 0xEC7A; // DeveloperTools
+    pub const MENU_CONTEXT: u16 = 0xE712; // More
     pub const COLOR: u16 = 0xE790;
     pub const BACK: u16 = 0xE72B;
     pub const FORWARD: u16 = 0xE72A;

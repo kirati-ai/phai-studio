@@ -248,10 +248,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Flow | Kind::Table => format!("win::panel(hwnd, {id}, false)"),
             Kind::Rich => format!("phai_ui::grid::richtext(hwnd, {id}, {font}, {})", lit(&text_of(c))),
             Kind::Grid => format!("phai_ui::grid::grid(hwnd, {id}, {font}, &[{}])", c.columns.iter().map(|(s, n)| format!("(t({}), {n})", lit(s))).collect::<Vec<_>>().join(", ")),
+            // A context menu is the window's own too: made when a right-click asks for it.
+            Kind::ContextMenu => "hwnd".to_string(),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
             Kind::Timer => format!("{{ win::timer(hwnd, {id}, {}, {}); hwnd }}", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
-        if c.kind == Kind::Timer {
+        if c.kind.is_component() {
             let _ = writeln!(w, "        let {} = {make};", c.id);
             continue;
         }
@@ -400,7 +402,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            let (id, code) = (win::loword(w.0) as i32, win::hiword(w.0));");
     let _ = writeln!(w, "            let Host {{ ui, events }} = host;");
     let _ = writeln!(w, "            match id {{");
-    for h in handlers.iter().filter(|h| f.menu.iter().flat_map(|m| &m.items).any(|it| it.id.as_deref() == Some(h.as_str())) || f.toolbar.iter().any(|t| &t.id == *h)) {
+    let in_context = |h: &str| f.control.iter().filter(|c| c.kind == Kind::ContextMenu).any(|c| c.menu_items().iter().any(|(id, _)| id == h));
+    for h in handlers.iter().filter(|h| f.menu.iter().flat_map(|m| &m.items).any(|it| it.id.as_deref() == Some(h.as_str())) || f.toolbar.iter().any(|t| &t.id == *h) || in_context(h)) {
         let _ = writeln!(w, "                {} => events.{h}(ui),", const_name(h));
     }
     for c in &f.control {
@@ -433,6 +436,34 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
+    // A right-click on a control with a context menu: the menu, its choice coming as WM_COMMAND.
+    let with_menu: Vec<&Control> = f.control.iter().filter(|c| c.context_menu.is_some()).collect();
+    if !with_menu.is_empty() {
+        let _ = writeln!(w, "        wm::WM_CONTEXTMENU => {{");
+        let _ = writeln!(w, "            let from = w.0 as isize;");
+        let _ = writeln!(w, "            let (x, y) = (win::loword(l.0 as usize) as i16 as i32, win::hiword(l.0 as usize) as i16 as i32);");
+        for c in with_menu {
+            let Some(menu) = f.control.iter().find(|m| m.kind == Kind::ContextMenu && Some(&m.id) == c.context_menu.as_ref()) else { continue };
+            let _ = writeln!(w, "            if from == host.ui.{}.0 as isize {{", c.id);
+            let _ = writeln!(w, "                unsafe {{");
+            let _ = writeln!(w, "                    let m = wm::CreatePopupMenu().unwrap_or_default();");
+            for (id, label) in menu.menu_items() {
+                if id.is_empty() {
+                    let _ = writeln!(w, "                    let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);");
+                } else {
+                    let _ = writeln!(w, "                    let s = wide(t({}));", lit(&label));
+                    let _ = writeln!(w, "                    let _ = wm::AppendMenuW(m, wm::MF_STRING, {} as usize, PCWSTR(s.as_ptr()));", const_name(&id));
+                }
+            }
+            let _ = writeln!(w, "                    let _ = wm::TrackPopupMenu(m, wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, hwnd, None);");
+            let _ = writeln!(w, "                    let _ = wm::DestroyMenu(m);");
+            let _ = writeln!(w, "                }}");
+            let _ = writeln!(w, "                return LRESULT(0);");
+            let _ = writeln!(w, "            }}");
+        }
+        let _ = writeln!(w, "            win::def(hwnd, msg, w, l)");
+        let _ = writeln!(w, "        }}");
+    }
     let timers: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::Timer && c.on_tick.is_some()).collect();
     if !timers.is_empty() {
         let _ = writeln!(w, "        wm::WM_TIMER => {{");

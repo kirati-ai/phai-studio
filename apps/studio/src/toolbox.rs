@@ -43,7 +43,7 @@ fn group_of(k: Kind) -> usize {
     match k {
         Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table => 1,
         Kind::Statusbar => 2,
-        Kind::Timer => 3,
+        Kind::Timer | Kind::ContextMenu => 3,
         _ => 0,
     }
 }
@@ -108,7 +108,12 @@ fn fill(h: HWND) {
     s.lines.clear();
     for (g, _) in groups().iter().enumerate() {
         // The group's tools by name, as Visual Studio sorts them; the Pointer above them.
-        let mut mine: Vec<(i32, String, u16)> = tools.iter().filter(|(id, _, _)| crate::tool_kind(*id).is_some_and(|k| group_of(k) == g)).map(|(id, n, gl)| (*id, n.to_string(), *gl)).collect();
+        // Menu bar and Toolbar are no kind of control: they belong with the menus.
+        let group = |id: i32| match id {
+            crate::ID_TOOL_MENUBAR | crate::ID_TOOL_TOOLBAR => Some(2),
+            _ => crate::tool_kind(id).map(group_of),
+        };
+        let mut mine: Vec<(i32, String, u16)> = tools.iter().filter(|(id, _, _)| group(*id) == Some(g)).map(|(id, n, gl)| (*id, n.to_string(), *gl)).collect();
         if !query.is_empty() {
             mine.retain(|(id, n, _)| n.to_lowercase().contains(&query) || crate::tool_kind(*id).is_some_and(|k| k.name().contains(&query)));
             if mine.is_empty() {

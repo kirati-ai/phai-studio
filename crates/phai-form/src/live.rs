@@ -123,7 +123,7 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             phai_ui::grid::grid(parent, id, font, &cols)
         }
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
-        Kind::Timer => {
+        Kind::Timer | Kind::ContextMenu => {
             let h = win::label(parent, "", id, font);
             win::show(h, false);
             h
