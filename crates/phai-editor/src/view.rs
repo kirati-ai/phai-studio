@@ -95,6 +95,8 @@ struct View {
     rows: Vec<usize>,
     /// The find bar's choices: case, whole word, regular expression - kept while the file is open.
     opts: crate::model::FindOpts,
+    /// Code lenses: a line, the place they speak of, their words ("3 references").
+    lenses: Vec<(usize, (u32, u32), String)>,
     /// Bookmarked lines, from 0.
     bookmarks: Vec<usize>,
     /// Alt+drag: where the box began, (line, column in characters).
@@ -289,7 +291,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1010,6 +1012,32 @@ pub fn insert_snippet(h: HWND, word: &str) {
     }
 }
 
+/// The code lenses to show: (line from 0, the place they speak of, their words).
+pub fn set_lenses(h: HWND, lenses: Vec<(u32, (u32, u32), String)>) {
+    if let Some(v) = view(h) {
+        v.lenses = lenses.into_iter().map(|(l, at, w)| (l as usize, at, w)).collect();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// The code lens under a point, if one is there: the place it speaks of.
+fn lens_at(h: HWND, v: &View, x: i32, y: i32) -> Option<(u32, u32)> {
+    let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize);
+    let (_, at, words) = v.lenses.iter().find(|(l, _, _)| *l == line)?;
+    unsafe {
+        let dc = Gdi::GetDC(Some(h));
+        let old = Gdi::SelectObject(dc, v.font.into());
+        let s = v.model.buf.line(line);
+        let x0 = v.gutter() + v.width_of(dc, &s) - v.left + v.char_w * 3;
+        let x1 = x0 + v.width_of(dc, words);
+        Gdi::SelectObject(dc, old);
+        Gdi::ReleaseDC(Some(h), dc);
+        (x >= x0 && x <= x1).then_some(*at)
+    }
+}
+
 /// How many carets there are - for checking.
 pub fn caret_count(h: HWND) -> usize {
     view(h).map(|v| 1 + v.model.extra.len()).unwrap_or(0)
@@ -1294,6 +1322,13 @@ fn paint(h: HWND, v: &mut View) {
                     let _ = Gdi::ExtTextOutW(dc, x, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
                 }
                 x += pw;
+            }
+            // Code lenses after the line, quiet, as Visual Studio shows them above it.
+            if let Some((_, _, words)) = v.lenses.iter().find(|(l, _, _)| *l == line) {
+                let x0 = x + v.char_w * 3;
+                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
+                let text = wide_of(words);
+                let _ = Gdi::ExtTextOutW(dc, x0, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
             }
             // Wavy lines under what the language server found.
             for m in v.marks.iter().filter(|m| m.to > start && m.from <= start + s.len()) {
@@ -1890,6 +1925,17 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     // A click in the margin: a breakpoint on that line, or none.
                     let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize).min(v.model.buf.line_count().saturating_sub(1));
                     toggle_line(h, v, line);
+                    return LRESULT(0);
+                } else if msg == wm::WM_LBUTTONDOWN && lens_at(h, v, x, y).is_some() {
+                    // A click on a code lens: its references, as Shift+F12 lists them.
+                    if let Some(at) = lens_at(h, v, x, y) {
+                        let _ = km::SetFocus(Some(h));
+                        let line = v.model.buf.line(at.0 as usize);
+                        v.model.caret = v.model.buf.line_start(at.0 as usize) + crate::lsp::from_lsp(&line, at.1);
+                        v.model.anchor = v.model.caret;
+                        moved(h);
+                        notify(h, REFERENCES);
+                    }
                     return LRESULT(0);
                 } else if msg == wm::WM_LBUTTONDOWN && x >= v.gutter() - v.char_w * 3 && x < v.gutter() - v.char_w / 2 {
                     // A click on a folding box: the block folds or opens.
