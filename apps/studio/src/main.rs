@@ -5036,7 +5036,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: the start window, once the window is up - unless switched off,
@@ -5145,6 +5145,19 @@ fn main() {
         // `--outline`: Document Outline shown - checked by picture.
         if args.iter().any(|a| a == "--outline") {
             s.command(ID_VIEW_OUTLINE);
+        }
+        // `--box L:C-L:C`: a box selection in the open code, then words typed into it - checked by picture.
+        if let Some(b) = args.iter().position(|a| a == "--box").and_then(|i| args.get(i + 1)) {
+            let parse = |p: &str| p.split_once(':').and_then(|(l, c)| Some((l.parse().ok()?, c.parse().ok()?)));
+            if let (Some(h), Some((a, z))) = (s.doc.code, b.split_once('-')) {
+                if let (Some(a), Some(z)) = (parse(a), parse(z)) {
+                    phai_editor::view::box_select(h, a, z);
+                    for u in "new_".encode_utf16() {
+                        wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
+                    }
+                    println!("{} carets", phai_editor::view::caret_count(h));
+                }
+            }
         }
         // `--fold-all`: every block in the open code folded - checked by picture.
         if args.iter().any(|a| a == "--fold-all") {

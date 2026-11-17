@@ -91,6 +91,8 @@ struct View {
     folded: Vec<(usize, usize)>,
     /// The lines shown, one per row on screen, in order - every line when nothing is folded.
     rows: Vec<usize>,
+    /// Alt+drag: where the box began, (line, column in characters).
+    box_from: Option<(usize, usize)>,
     /// The tip is a Peek Definition: it stays while the pointer moves, until Esc or a change.
     peeking: bool,
     list: Option<Box<crate::popup::Popup>>,
@@ -278,7 +280,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -935,6 +937,19 @@ pub fn toggle_all_folds(h: HWND) {
     }
 }
 
+/// How many carets there are - for checking.
+pub fn caret_count(h: HWND) -> usize {
+    view(h).map(|v| 1 + v.model.extra.len()).unwrap_or(0)
+}
+
+/// Box selection from (line, column) to (line, column), lines and columns from 1 - for checking.
+pub fn box_select(h: HWND, from: (usize, usize), to: (usize, usize)) {
+    if let Some(v) = view(h) {
+        v.model.box_select((from.0 - 1, from.1 - 1), (to.0 - 1, to.1 - 1));
+        moved(h);
+    }
+}
+
 /// How many lines are folded away now - for checking.
 pub fn hidden_lines(h: HWND) -> usize {
     view(h).map(|v| v.model.buf.line_count() - v.rows.len().min(v.model.buf.line_count())).unwrap_or(0)
@@ -1176,6 +1191,23 @@ fn paint(h: HWND, v: &mut View) {
                 }
                 win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, select_bg);
             }
+            // The other carets' selections, and the carets themselves as thin bars.
+            for &(c, a) in &v.model.extra {
+                let (ea, eb) = (c.min(a), c.max(a));
+                if eb > ea && eb >= start && ea <= start + s.len() {
+                    let a0 = ea.max(start) - start;
+                    let b0 = eb.min(start + s.len()) - start;
+                    let x0 = gutter + v.width_of(dc, &s[..a0]) - v.left;
+                    let x1 = gutter + v.width_of(dc, &s[..b0]) - v.left;
+                    win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, select_bg);
+                }
+                if c >= start && c <= start + s.len() {
+                    let cx = gutter + v.width_of(dc, &s[..c - start]) - v.left;
+                    if cx >= gutter {
+                        win::fill(dc, &RECT { left: cx, top: y, right: cx + win::px(h, 2), bottom: y + v.line_h }, win::window_text());
+                    }
+                }
+            }
             // The text, token by token.
             let (tokens, _) = line_tokens(v.lang, &s, v.comments.get(line).copied().unwrap_or(false));
             let mut x = gutter - v.left;
@@ -1364,6 +1396,23 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
                 return true;
             }
             0x25 | 0x27 | 0x24 | 0x23 | 0x21 | 0x22 => v.list = None,
+            _ => {}
+        }
+    }
+    // Several carets: Esc leaves the main one, Delete works at each, a move leaves the main one.
+    if !v.model.extra.is_empty() {
+        match vk {
+            0x1B => {
+                v.model.extra.clear();
+                moved(h);
+                return true;
+            }
+            0x2E => {
+                v.model.delete_all();
+                changed(h);
+                return true;
+            }
+            0x21..=0x28 => v.model.extra.clear(),
             _ => {}
         }
     }
@@ -1570,6 +1619,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         }
         // Alt+Up and Alt+Down: the lines move, as in Visual Studio.
+        // Shift+Alt+.: the next place of the chosen words gets a caret too.
+        wm::WM_SYSKEYDOWN if w.0 == 0xBE && unsafe { km::GetKeyState(0x10) } < 0 => {
+            if v.model.add_next_match() {
+                moved(h);
+            }
+            LRESULT(0)
+        }
         // Alt+F12: Peek Definition.
         wm::WM_SYSKEYDOWN if w.0 == 0x7B => {
             notify(h, PEEK);
@@ -1595,6 +1651,26 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 return LRESULT(0);
             }
             let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+            // Several carets: what is typed goes to each.
+            if !v.model.extra.is_empty() {
+                match unit {
+                    0x08 => v.model.backspace_all(),
+                    0x0D => v.model.type_all("\n"),
+                    0x09 => v.model.type_all("    "),
+                    u if u < 0x20 || ctrl && u < 0x80 => return LRESULT(0),
+                    0xD800..=0xDBFF => {
+                        v.high_surrogate = Some(unit);
+                        return LRESULT(0);
+                    }
+                    0xDC00..=0xDFFF => match v.high_surrogate.take() {
+                        Some(hi) => v.model.type_all(&String::from_utf16_lossy(&[hi, unit])),
+                        None => return LRESULT(0),
+                    },
+                    u => v.model.type_all(&String::from_utf16_lossy(&[u])),
+                }
+                changed(h);
+                return LRESULT(0);
+            }
             match unit {
                 0x08 => {
                     v.model.backspace();
@@ -1723,6 +1799,31 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         toggle_fold(h, line);
                         return LRESULT(0);
                     }
+                } else if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x11) < 0 && km::GetKeyState(0x12) < 0 {
+                    // Ctrl+Alt+click: one more caret there.
+                    let _ = km::SetFocus(Some(h));
+                    v.model.extra.push((v.model.caret, v.model.anchor));
+                    v.model.caret = at;
+                    v.model.anchor = at;
+                    moved(h);
+                    return LRESULT(0);
+                } else if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x12) < 0 {
+                    // Alt+drag: a box - a caret and selection on every line it covers.
+                    let _ = km::SetFocus(Some(h));
+                    km::SetCapture(h);
+                    v.dragging = true;
+                    v.model.extra.clear();
+                    let (line, col) = v.model.buf.position(at);
+                    let chars = v.model.buf.line(line)[..col].chars().count();
+                    v.box_from = Some((line, chars));
+                    v.model.caret = at;
+                    v.model.anchor = at;
+                } else if msg == wm::WM_MOUSEMOVE && v.box_from.is_some() {
+                    let from = v.box_from.unwrap_or((0, 0));
+                    let (line, _) = v.model.buf.position(at);
+                    // The column under the pointer, even past a short line's end.
+                    let col = ((x - v.gutter() + v.left) as f32 / v.char_w.max(1) as f32).round().max(0.0) as usize;
+                    v.model.box_select(from, (line, col));
                 } else if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x11) < 0 {
                     // Ctrl+click: to where the thing clicked is defined, as F12.
                     let _ = km::SetFocus(Some(h));
@@ -1735,6 +1836,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     let _ = km::SetFocus(Some(h));
                     km::SetCapture(h);
                     v.dragging = true;
+                    v.model.extra.clear();
                     let shift = km::GetKeyState(0x10) < 0;
                     v.model.caret = at;
                     if !shift {
@@ -1749,6 +1851,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_LBUTTONUP => {
             v.dragging = false;
+            v.box_from = None;
             unsafe {
                 let _ = km::ReleaseCapture();
             }
