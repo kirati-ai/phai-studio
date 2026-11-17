@@ -134,3 +134,4 @@
 | | Code snippets: พิมพ์คำสั้น (fn, for, if, ifl, match, struct, impl, test, tests, main, pln ...) แล้วกด Tab ได้โค้ดทั้งก้อนตามระยะเยื้อง, Edit > Insert Snippet (Ctrl+K, Ctrl+X) | ✅ |
 | | View Call Hierarchy (Ctrl+K, Ctrl+T): ใครเรียกฟังก์ชันที่เคอร์เซอร์อยู่ จาก rust-analyzer แสดงในรายการ References ดับเบิลคลิกไปที่นั่น (การเรียกในมาโครอย่าง println! rust-analyzer ไม่นับ) | ✅ |
 | | Error List กรอง Errors (n) / Warnings (n) ที่ขวาของแท็บ ติ๊กเพื่อซ่อน/แสดง; F8 และดับเบิลคลิกไปตามรายการที่กรองแล้ว | ✅ |
+| | Immediate Window (Debug, Ctrl+Alt+I): พิมพ์นิพจน์ระหว่างหยุดดีบัก (ชื่อตัวแปร, order.total, x > 5) Enter แล้วได้ค่าและชนิดใต้บรรทัด - ทดสอบกับโปรแกรมจริง | ✅ |
