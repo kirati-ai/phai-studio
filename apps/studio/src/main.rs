@@ -401,6 +401,9 @@ pub struct Studio {
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
+    /// rust-analyzer still loading: its diagnostics held until it is quiet, the last of each file's.
+    lsp_loading: bool,
+    held_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
     /// The last code coverage found: each file's lines and counts.
     coverage: Vec<coverage::FileCoverage>,
     /// What the Memory window shows: an address or a variable.
@@ -1971,9 +1974,38 @@ impl Studio {
             }
             return;
         }
+        if std::env::var_os("PHAI_PRINT_DIAGS").is_some() && (msg["method"] == "textDocument/publishDiagnostics" || msg["method"] == "experimental/serverStatus") {
+            println!("{}: {}", msg["method"].as_str().unwrap_or(""), msg["params"]);
+        }
+        // Still loading (the project, the standard library): its findings wait - "unresolved macro
+        // `println!`" is only that it has not read std yet. Once quiet, the last of each are shown.
+        if msg["method"] == "experimental/serverStatus" {
+            let quiet = msg["params"]["quiescent"].as_bool().unwrap_or(true);
+            self.lsp_loading = !quiet;
+            if quiet {
+                for (path, diags) in std::mem::take(&mut self.held_diagnostics) {
+                    self.show_lsp_diagnostics(&path, &diags);
+                }
+            }
+            return;
+        }
         if let Some((path, diags)) = phai_editor::lsp::diagnostics_of(&msg) {
-            if let Some(h) = self.editor_of(&path) {
-                phai_editor::view::set_diagnostics(h, &diags);
+            if self.lsp_loading {
+                self.held_diagnostics.insert(path, diags);
+                return;
+            }
+            self.show_lsp_diagnostics(&path, &diags);
+        }
+    }
+
+    /// rust-analyzer's findings for a file drawn under its code; the counts said when it is in front.
+    fn show_lsp_diagnostics(&mut self, path: &Path, diags: &[phai_editor::lsp::Diagnostic]) {
+        if std::env::var_os("PHAI_PRINT_DIAGS").is_some() {
+            println!("shown: {} for {}", diags.len(), path.file_name().unwrap_or_default().to_string_lossy());
+        }
+        {
+            if let Some(h) = self.editor_of(path) {
+                phai_editor::view::set_diagnostics(h, diags);
                 if Some(h) == self.doc.code {
                     let (e, w) = phai_editor::view::diagnostic_counts(h);
                     controls::status_text(self.status, 0, &tf("{0} errors, {1} warnings", &[&e, &w]));
@@ -6522,6 +6554,8 @@ fn main() {
             blame: vec![],
             memory_at: String::new(),
             coverage: vec![],
+            lsp_loading: false,
+            held_diagnostics: Default::default(),
             frames: vec![],
             servers: None,
             watches: vec![],
