@@ -23,6 +23,7 @@ mod docking;
 mod servers;
 mod designer;
 mod gitpane;
+mod startwin;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -131,6 +132,7 @@ const ID_QUICK_ACTIONS: i32 = 252;
 const ID_RUN_TESTS: i32 = 253;
 const ID_RUN_ALL_TESTS: i32 = 254;
 const ID_GIT_CHANGES: i32 = 255;
+const ID_START_WINDOW: i32 = 256;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -690,6 +692,7 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_TASK_LIST, t("Task List"), "");
+        add(view, ID_START_WINDOW, t("Start Window"), "");
         if studio().is_some_and(|s| explorer::servers_shown(s.side)) {
             wm::CheckMenuItem(view, ID_VIEW_SERVERS as u32, wm::MF_CHECKED.0);
         }
@@ -1768,6 +1771,25 @@ impl Studio {
         let found = find_in_tree(&root, &what, case, 5000);
         self.found_words = "{0} matches in {1} files";
         self.show_references(found);
+    }
+
+    /// The start window: open a recent form or file, open another, make a new project, or go on.
+    fn start_window(&mut self) {
+        let again = setting("start_window").is_none_or(|v| v != "0");
+        let (choice, again) = startwin::run(self.hwnd, recent_files(), again);
+        remember_setting("start_window", if again { "1" } else { "0" });
+        match choice {
+            startwin::Choice::Recent(p) => {
+                if p.extension().is_some_and(|e| e == "phaiform") {
+                    self.open_path(&p);
+                } else {
+                    self.open_code(&p);
+                }
+            }
+            startwin::Choice::OpenFile => self.command(ID_OPEN),
+            startwin::Choice::NewProject => self.new_project(),
+            startwin::Choice::Continue => {}
+        }
     }
 
     /// Task List: every `// TODO`, `FIXME`, `HACK` and `UNDONE` comment in the solution's code, in
@@ -3791,6 +3813,7 @@ impl Studio {
             ID_FORMAT_DOC => self.format_document(),
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_START_WINDOW => self.start_window(),
             ID_RUN_TESTS => self.start_job(cargo::Job::Test, false),
             ID_GIT_CHANGES => {
                 let from = self.doc.path.clone().or_else(|| std::env::current_dir().ok());
@@ -4743,6 +4766,12 @@ fn main() {
         let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
+            // Opened with nothing: the start window, once the window is up - unless switched off,
+            // or a test runs (`--start` asks for it anyway).
+            let testing = args.iter().skip(1).any(|a| a.starts_with("--") && a != "--start") || std::env::var_os("PHAI_SHOT").is_some();
+            if (args.iter().any(|a| a == "--start") || !testing) && setting("start_window").is_none_or(|v| v != "0") {
+                let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_START_WINDOW as usize), LPARAM(0));
+            }
         }
         for p in &forms {
             if p.ends_with(".phaiform") {
