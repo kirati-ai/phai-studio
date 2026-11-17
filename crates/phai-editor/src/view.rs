@@ -84,6 +84,13 @@ struct View {
     hover: Option<(usize, i32, i32)>,
     tracking: bool,
     tip: Option<Box<crate::popup::Popup>>,
+    /// Places that can fold, (first line, last line), worked out for `regions_for` edits.
+    regions: Vec<(usize, usize)>,
+    regions_for: usize,
+    /// The folded ones, by first line: their lines after the first are hidden.
+    folded: Vec<(usize, usize)>,
+    /// The lines shown, one per row on screen, in order - every line when nothing is folded.
+    rows: Vec<usize>,
     /// The tip is a Peek Definition: it stays while the pointer moves, until Esc or a change.
     peeking: bool,
     list: Option<Box<crate::popup::Popup>>,
@@ -143,8 +150,55 @@ impl View {
 
     fn gutter(&self) -> i32 {
         let digits = self.model.buf.line_count().to_string().len().max(3) as i32;
-        // Room at the left for a breakpoint's dot and the debugger's arrow.
-        self.line_h + digits * self.char_w + self.char_w * 2
+        // Room at the left for a breakpoint's dot and the debugger's arrow; at the right, the
+        // folding boxes.
+        self.line_h + digits * self.char_w + self.char_w * 4
+    }
+
+    /// The fold regions and the rows shown again, when the text changed.
+    fn refresh_rows(&mut self) {
+        let n = self.model.buf.line_count();
+        if self.regions_for != self.edits || self.rows.is_empty() || self.rows.last().is_some_and(|l| *l >= n) {
+            if self.regions_for != self.edits {
+                self.regions = crate::model::fold_regions(&self.model.buf.text());
+                self.regions_for = self.edits;
+                // A fold whose block is gone opens; one still there keeps to its block's end.
+                let regions = &self.regions;
+                self.folded = self.folded.iter().filter_map(|(a, _)| regions.iter().find(|(r, _)| r == a).copied()).collect();
+            }
+            self.rows = (0..n).filter(|l| !self.folded.iter().any(|(a, z)| l > a && l <= z)).collect();
+        }
+    }
+
+    /// The row a line is on - a hidden line's, the row of the fold that hides it.
+    fn row_of(&self, line: usize) -> usize {
+        // Not worked out yet (before the first paint): nothing is folded.
+        if self.rows.is_empty() {
+            return line;
+        }
+        match self.rows.binary_search(&line) {
+            Ok(r) => r,
+            Err(r) => r.saturating_sub(1),
+        }
+    }
+
+    /// The line on a row.
+    fn line_of(&self, row: usize) -> usize {
+        if self.rows.is_empty() {
+            return row.min(self.model.buf.line_count().saturating_sub(1));
+        }
+        self.rows.get(row).or(self.rows.last()).copied().unwrap_or(0)
+    }
+
+    fn row_count(&self) -> usize {
+        if self.rows.is_empty() {
+            return self.model.buf.line_count().max(1);
+        }
+        self.rows.len().max(1)
+    }
+
+    fn is_hidden(&self, line: usize) -> bool {
+        self.folded.iter().any(|(a, z)| line > *a && line <= *z)
     }
 
     fn visible_lines(&self, h: HWND) -> usize {
@@ -174,13 +228,13 @@ impl View {
         let (line, col) = self.model.buf.position(self.model.caret);
         let s = self.model.buf.line(line);
         let x = self.gutter() + self.width_of(dc, &s[..col]) - self.left;
-        let y = (line as i32 - self.top as i32) * self.line_h;
+        let y = (self.row_of(line) as i32 - self.top as i32) * self.line_h;
         (x, y)
     }
 
     /// The byte offset under a point in the client area.
     fn offset_at(&self, dc: HDC, x: i32, y: i32) -> usize {
-        let line = (self.top as i32 + (y / self.line_h.max(1)).max(0)) as usize;
+        let line = self.line_of(self.top + (y / self.line_h.max(1)).max(0) as usize);
         let line = line.min(self.model.buf.line_count() - 1);
         let s = self.model.buf.line(line);
         let target = x - self.gutter() + self.left;
@@ -224,7 +278,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -726,10 +780,11 @@ pub fn select_lsp(h: HWND, start: (u32, u32), end: (u32, u32)) {
         };
         v.model.anchor = at(start);
         v.model.caret = at(end);
-        let line = start.0 as usize;
+        unfold_at(v, start.0 as usize);
+        let row = v.row_of(start.0 as usize);
         let page = v.visible_lines(h);
-        if line < v.top || line >= v.top + page {
-            v.top = line.saturating_sub(5);
+        if row < v.top || row >= v.top + page {
+            v.top = row.saturating_sub(5);
         }
         update_scroll(h);
         place_caret(h);
@@ -785,9 +840,11 @@ pub fn set_current(h: HWND, line: Option<u32>) {
     let Some(v) = view(h) else { return };
     v.current = line.filter(|l| *l > 0).map(|l| l as usize - 1);
     if let Some(l) = v.current {
+        unfold_at(v, l);
         let page = v.visible_lines(h);
-        if l < v.top || l >= v.top + page {
-            v.top = l.saturating_sub(page / 3);
+        let row = v.row_of(l);
+        if row < v.top || row >= v.top + page {
+            v.top = row.saturating_sub(page / 3);
             update_scroll(h);
         }
         v.model.caret = v.model.buf.line_start(l.min(v.model.buf.line_count() - 1));
@@ -806,6 +863,81 @@ pub fn move_lines(h: HWND, up: bool) {
             changed(h);
         }
     }
+}
+
+/// Opens the fold that hides `line`, if one does.
+fn unfold_at(v: &mut View, line: usize) {
+    if v.is_hidden(line) {
+        v.folded.retain(|(a, z)| !(line > *a && line <= *z));
+        v.rows.clear();
+        v.refresh_rows();
+    }
+}
+
+/// Folds the block that starts at `line`, or opens it.
+fn toggle_fold(h: HWND, line: usize) {
+    let Some(v) = view(h) else { return };
+    v.refresh_rows();
+    if let Some(i) = v.folded.iter().position(|(a, _)| *a == line) {
+        v.folded.remove(i);
+    } else if let Some(&r) = v.regions.iter().find(|(a, _)| *a == line) {
+        v.folded.push(r);
+        v.folded.sort();
+        // The caret inside goes to the block's first line.
+        let (cl, _) = v.model.buf.position(v.model.caret);
+        if cl > r.0 && cl <= r.1 {
+            v.model.caret = v.model.buf.line_start(r.0) + v.model.buf.line(r.0).len();
+            v.model.anchor = v.model.caret;
+        }
+    }
+    v.rows.clear();
+    v.refresh_rows();
+    v.top = v.top.min(v.row_count().saturating_sub(1));
+    update_scroll(h);
+    place_caret(h);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// Ctrl+M, Ctrl+M: the innermost block the caret is in (or starts) folds, or opens.
+pub fn toggle_fold_at_caret(h: HWND) {
+    let Some(v) = view(h) else { return };
+    v.refresh_rows();
+    let (line, _) = v.model.buf.position(v.model.caret);
+    let r = v.folded.iter().find(|(a, _)| *a == line).copied().or_else(|| v.regions.iter().filter(|(a, z)| *a <= line && line <= *z).max_by_key(|(a, _)| *a).copied());
+    if let Some((a, _)) = r {
+        toggle_fold(h, a);
+    }
+}
+
+/// Ctrl+M, Ctrl+L: everything folded opens; else every block folds.
+pub fn toggle_all_folds(h: HWND) {
+    let Some(v) = view(h) else { return };
+    v.refresh_rows();
+    if v.folded.is_empty() {
+        v.folded = v.regions.clone();
+        let (cl, _) = v.model.buf.position(v.model.caret);
+        if v.is_hidden(cl) {
+            v.model.caret = 0;
+            v.model.anchor = 0;
+        }
+    } else {
+        v.folded.clear();
+    }
+    v.rows.clear();
+    v.refresh_rows();
+    v.top = v.top.min(v.row_count().saturating_sub(1));
+    update_scroll(h);
+    place_caret(h);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// How many lines are folded away now - for checking.
+pub fn hidden_lines(h: HWND) -> usize {
+    view(h).map(|v| v.model.buf.line_count() - v.rows.len().min(v.model.buf.line_count())).unwrap_or(0)
 }
 
 /// Ctrl+D: the line (or the chosen part) again.
@@ -842,7 +974,8 @@ pub fn go_to(h: HWND, line: usize, column: usize) {
         let col = s.char_indices().nth(column.saturating_sub(1)).map(|(i, _)| i).unwrap_or(s.len());
         v.model.caret = v.model.buf.line_start(l) + col;
         v.model.anchor = v.model.caret;
-        v.top = l.saturating_sub(5);
+        unfold_at(v, l);
+        v.top = v.row_of(l).saturating_sub(5);
         update_scroll(h);
         place_caret(h);
         unsafe {
@@ -856,7 +989,7 @@ fn update_scroll(h: HWND) {
     let Some(v) = view(h) else { return };
     let page = v.visible_lines(h);
     unsafe {
-        let si = wm::SCROLLINFO { cbSize: std::mem::size_of::<wm::SCROLLINFO>() as u32, fMask: wm::SIF_ALL, nMin: 0, nMax: (v.model.buf.line_count() + page.saturating_sub(1)) as i32, nPage: page as u32, nPos: v.top as i32, nTrackPos: 0 };
+        let si = wm::SCROLLINFO { cbSize: std::mem::size_of::<wm::SCROLLINFO>() as u32, fMask: wm::SIF_ALL, nMin: 0, nMax: (v.row_count() + page.saturating_sub(1)) as i32, nPage: page as u32, nPos: v.top as i32, nTrackPos: 0 };
         windows::Win32::UI::Controls::SetScrollInfo(h, wm::SB_VERT, &si, true);
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
@@ -870,11 +1003,17 @@ fn update_scroll(h: HWND) {
 fn place_caret(h: HWND) {
     let Some(v) = view(h) else { return };
     let (line, _) = v.model.buf.position(v.model.caret);
+    // The caret in a folded block opens it, as Visual Studio does.
+    if v.is_hidden(line) {
+        unfold_at(v, line);
+    }
+    v.refresh_rows();
+    let row = v.row_of(line);
     let page = v.visible_lines(h);
-    if line < v.top {
-        v.top = line;
-    } else if line >= v.top + page {
-        v.top = line + 1 - page;
+    if row < v.top {
+        v.top = row;
+    } else if row >= v.top + page {
+        v.top = row + 1 - page;
     }
     unsafe {
         let dc = Gdi::GetDC(Some(h));
@@ -889,7 +1028,7 @@ fn place_caret(h: HWND) {
             v.left += x - (r.right - v.char_w * 2) + v.char_w * 8;
         }
         (x, _) = v.caret_point(dc);
-        let y = (line as i32 - v.top as i32) * v.line_h;
+        let y = (row as i32 - v.top as i32) * v.line_h;
         Gdi::SelectObject(dc, old);
         Gdi::ReleaseDC(Some(h), dc);
         let _ = wm::SetCaretPos(x, y);
@@ -997,8 +1136,10 @@ fn paint(h: HWND, v: &mut View) {
         let brace_bg = theme::current().var_color("--brace").unwrap_or(if dark { Color::rgb(0x3e, 0x52, 0x6b) } else { Color::rgb(0xdb, 0xe0, 0xe6) });
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         let page = v.visible_lines(h) + 1;
-        for line in v.top..(v.top + page).min(v.model.buf.line_count()) {
-            let y = (line - v.top) as i32 * v.line_h;
+        v.refresh_rows();
+        for row in v.top..(v.top + page).min(v.row_count()) {
+            let line = v.line_of(row);
+            let y = (row - v.top) as i32 * v.line_h;
             let s = v.model.buf.line(line);
             let start = v.model.buf.line_start(line);
             // The line the debugger stopped at, in yellow, as Visual Studio shows it.
@@ -1073,7 +1214,33 @@ fn paint(h: HWND, v: &mut View) {
             // The gutter on top, so text scrolled left goes under it.
             win::fill(dc, &RECT { left: 0, top: y, right: gutter - v.char_w / 2, bottom: y + v.line_h }, bg);
             let n = wide_of(&(line + 1).to_string());
-            let mut nr = RECT { left: 0, top: y + win::px(h, 2), right: gutter - v.char_w, bottom: y + v.line_h };
+            let mut nr = RECT { left: 0, top: y + win::px(h, 2), right: gutter - v.char_w * 3, bottom: y + v.line_h };
+            // A block that can fold: a small box, − open, + folded; a folded one shows … after its line.
+            if let Some(&(a, z)) = v.regions.iter().find(|(a, _)| *a == line) {
+                let folded = v.folded.iter().any(|(f, _)| *f == a);
+                let bs = (v.char_w * 3 / 2).max(win::px(h, 9));
+                let bx = gutter - v.char_w * 5 / 2;
+                let by = y + (v.line_h - bs) / 2;
+                let frame = RECT { left: bx, top: by, right: bx + bs, bottom: by + bs };
+                win::fill(dc, &frame, muted);
+                win::fill(dc, &RECT { left: bx + 1, top: by + 1, right: bx + bs - 1, bottom: by + bs - 1 }, bg);
+                let t = 1.max(win::px(h, 1));
+                win::fill(dc, &RECT { left: bx + 2 * t + 1, top: by + bs / 2 - t / 2, right: bx + bs - 2 * t - 1, bottom: by + bs / 2 - t / 2 + t }, muted);
+                if folded {
+                    win::fill(dc, &RECT { left: bx + bs / 2 - t / 2, top: by + 2 * t + 1, right: bx + bs / 2 - t / 2 + t, bottom: by + bs - 2 * t - 1 }, muted);
+                    let s_line = v.model.buf.line(line);
+                    let x_end = gutter + v.width_of(dc, &s_line) - v.left + v.char_w;
+                    let last = v.model.buf.line(z);
+                    let label = format!("…{}", last.trim());
+                    let lw = v.width_of(dc, &label) + v.char_w;
+                    let tag = RECT { left: x_end, top: y + win::px(h, 2), right: x_end + lw, bottom: y + v.line_h - win::px(h, 1) };
+                    win::fill(dc, &tag, muted);
+                    win::fill(dc, &RECT { left: tag.left + 1, top: tag.top + 1, right: tag.right - 1, bottom: tag.bottom - 1 }, bg);
+                    Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
+                    let lt = wide_of(&label);
+                    let _ = Gdi::ExtTextOutW(dc, x_end + v.char_w / 2, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(lt.as_ptr()), lt.len() as u32, None);
+                }
+            }
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(if line == caret_line { win::window_text() } else { muted }.colorref()));
             let mut nn = n.clone();
             Gdi::DrawTextW(dc, &mut nn, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
@@ -1277,7 +1444,24 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
         _ => None,
     };
     if let Some(m) = m {
+        let up = matches!(m, Move::Up | Move::PageUp(_));
         v.model.move_caret(m, shift);
+        // Up or down into a folded block: past it, not into it.
+        let (line, _) = v.model.buf.position(v.model.caret);
+        if matches!(m, Move::Up | Move::Down | Move::PageUp(_) | Move::PageDown(_)) && v.is_hidden(line) {
+            if let Some(&(a, z)) = v.folded.iter().find(|(a, z)| line > *a && line <= *z) {
+                let to = if up { a } else { (z + 1).min(v.model.buf.line_count() - 1) };
+                let to = if !up && v.is_hidden(to) { a } else { to };
+                let s = v.model.buf.line(to);
+                v.model.caret = v.model.buf.line_start(to) + s.len().min(v.model.caret - v.model.buf.line_start(line)).min(s.len());
+                while !s.is_char_boundary(v.model.caret - v.model.buf.line_start(to)) {
+                    v.model.caret -= 1;
+                }
+                if !shift {
+                    v.model.anchor = v.model.caret;
+                }
+            }
+        }
         moved(h);
         return true;
     }
@@ -1529,9 +1713,16 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 Gdi::ReleaseDC(Some(h), dc);
                 if msg == wm::WM_LBUTTONDOWN && x < v.line_h + win::px(h, 4) {
                     // A click in the margin: a breakpoint on that line, or none.
-                    let line = (v.top + (y / v.line_h.max(1)).max(0) as usize).min(v.model.buf.line_count().saturating_sub(1));
+                    let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize).min(v.model.buf.line_count().saturating_sub(1));
                     toggle_line(h, v, line);
                     return LRESULT(0);
+                } else if msg == wm::WM_LBUTTONDOWN && x >= v.gutter() - v.char_w * 3 && x < v.gutter() - v.char_w / 2 {
+                    // A click on a folding box: the block folds or opens.
+                    let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize);
+                    if v.regions.iter().any(|(a, _)| *a == line) {
+                        toggle_fold(h, line);
+                        return LRESULT(0);
+                    }
                 } else if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x11) < 0 {
                     // Ctrl+click: to where the thing clicked is defined, as F12.
                     let _ = km::SetFocus(Some(h));
@@ -1584,7 +1775,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         wm::WM_MOUSEWHEEL => {
             let delta = (w.0 >> 16) as i16 as i32;
             let lines = -(delta / 40);
-            v.top = (v.top as i64 + lines as i64).clamp(0, v.model.buf.line_count().saturating_sub(1) as i64) as usize;
+            v.top = (v.top as i64 + lines as i64).clamp(0, v.row_count().saturating_sub(1) as i64) as usize;
             update_scroll(h);
             place_caret(h);
             unsafe {

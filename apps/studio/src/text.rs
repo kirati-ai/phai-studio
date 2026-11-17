@@ -460,6 +460,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Show this window when Phai Studio starts", "แสดงหน้าต่างนี้เมื่อเปิด Phai Studio"),
     ("Start Window", "หน้าต่างเริ่มต้น"),
     ("Document Outline", "โครงร่างเอกสาร"),
+    ("Toggle Outlining Expansion", "พับ/ขยายบล็อกนี้"),
+    ("Toggle All Outlining", "พับ/ขยายทั้งหมด"),
 ];
 
 #[cfg(test)]
