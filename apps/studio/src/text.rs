@@ -562,6 +562,12 @@ pub static THAI: &[(&str, &str)] = &[
     ("Impl", "Impl (การทำงานของชนิด)"),
     ("1 reference", "ใช้ 1 แห่ง"),
     ("{0} references", "ใช้ {0} แห่ง"),
+    ("Diagnostic Tools", "เครื่องมือวินิจฉัย"),
+    ("Show Diagnostic Tools", "แสดงเครื่องมือวินิจฉัย"),
+    ("Process Memory", "หน่วยความจำของโปรแกรม"),
+    ("CPU (% of all processors)", "CPU (% ของทุกตัวประมวลผล)"),
+    ("The program has ended.", "โปรแกรมจบแล้ว"),
+    ("Run the program (F5 or Ctrl+F5) to see its memory and processor use here.", "รันโปรแกรม (F5 หรือ Ctrl+F5) เพื่อดูหน่วยความจำและการใช้ CPU ที่นี่"),
 ];
 
 #[cfg(test)]
