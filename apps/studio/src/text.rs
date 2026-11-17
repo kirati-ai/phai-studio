@@ -491,6 +491,10 @@ pub static THAI: &[(&str, &str)] = &[
     ("How many equal columns the controls in it are laid in.", "จำนวนคอลัมน์เท่า ๆ กันที่ใช้วาง control ข้างใน"),
     ("Rich text box", "กล่องข้อความหลายรูปแบบ"),
     ("Data grid", "ตารางข้อมูล"),
+    ("Batch Build...", "สร้างเป็นชุด..."),
+    ("Batch Build", "สร้างเป็นชุด"),
+    ("Build, Rebuild or Clean:", "Build, Rebuild หรือ Clean:"),
+    ("Batch Build: {0} builds", "สร้างเป็นชุด: {0} รายการ"),
 ];
 
 #[cfg(test)]

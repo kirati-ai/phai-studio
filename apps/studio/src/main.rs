@@ -138,6 +138,7 @@ const ID_VIEW_OUTLINE: i32 = 257;
 const ID_FOLD: i32 = 258;
 const ID_FOLD_ALL: i32 = 259;
 const ID_SPLIT: i32 = 260;
+const ID_BATCH_BUILD: i32 = 261;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -775,6 +776,7 @@ fn build_menu() -> HMENU {
         add(build, ID_BUILD_ALL, t("Build Solution"), "Ctrl+Shift+B");
         add(build, ID_REBUILD_ALL, t("Rebuild Solution"), "");
         add(build, ID_CLEAN_ALL, t("Clean Solution"), "");
+        add(build, ID_BATCH_BUILD, t("Batch Build..."), "");
         add(build, ID_ANALYSE_ALL, t("Run Code Analysis on Solution"), "Alt+F11");
         sep(build);
         add(build, ID_BUILD, &tf("Build {0}", &[&project]), "Ctrl+B");
@@ -1956,6 +1958,59 @@ impl Studio {
             startwin::Choice::NewProject => self.new_project(),
             startwin::Choice::Continue => {}
         }
+    }
+
+    /// Batch Build, as Visual Studio's: every project of the solution in Debug and in Release,
+    /// ticked to build; Build, Rebuild or Clean them one after another.
+    fn batch_build(&mut self) {
+        if self.building {
+            return;
+        }
+        let Some(ws) = self.doc.path.as_deref().and_then(cargo::workspace_of) else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        let ws = std::path::absolute(if ws.as_os_str().is_empty() { Path::new(".") } else { &ws }).unwrap_or(ws);
+        let members = cargo::workspace_members(&ws);
+        let mine = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| std::path::absolute(p).ok());
+        let mut rows: Vec<(PathBuf, bool, String)> = Vec::new();
+        for m in &members {
+            let name = cargo::package_name(m).unwrap_or_else(|| m.file_name().unwrap_or_default().to_string_lossy().to_string());
+            for release in [false, true] {
+                rows.push((m.clone(), release, format!("{name} - {}", if release { "Release" } else { "Debug" })));
+            }
+        }
+        if rows.is_empty() {
+            return;
+        }
+        // `PHAI_BATCH=job`: every project in Debug, without the questions - for testing.
+        let (chosen, job) = if let Ok(j) = std::env::var("PHAI_BATCH") {
+            let job = if j == "clean" { cargo::Job::Clean } else { cargo::Job::Build };
+            (rows.iter().filter(|r| !r.1).map(|r| (r.0.clone(), r.1)).collect::<Vec<_>>(), job)
+        } else {
+            let mut fields: Vec<phai_ui::dialogs::Field> = rows.iter().map(|(p, release, label)| phai_ui::dialogs::Field::Check(label, !release && Some(p) == mine.as_ref())).collect();
+            let how = t("Build, Rebuild or Clean:");
+            let build_word = "Build".to_string();
+            fields.push(phai_ui::dialogs::Field::Text(how, &build_word));
+            let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Batch Build"), &fields) else { return };
+            let job = match a.last().map(|s| s.trim().to_lowercase()).as_deref() {
+                Some("rebuild") => cargo::Job::Rebuild,
+                Some("clean") => cargo::Job::Clean,
+                _ => cargo::Job::Build,
+            };
+            (rows.iter().zip(&a).filter(|(_, v)| *v == "1").map(|(r, _)| (r.0.clone(), r.1)).collect(), job)
+        };
+        if chosen.is_empty() {
+            return;
+        }
+        self.building = true;
+        controls::status_text(self.status, 0, &tf("Batch Build: {0} builds", &[&chosen.len()]));
+        if let Some(b) = self.bottom.as_ref() {
+            b.clear_output();
+            b.show_tab(1);
+        }
+        self.show_errors(true);
+        cargo::run_batch(self.hwnd, chosen, job);
     }
 
     /// Task List: every `// TODO`, `FIXME`, `HACK` and `UNDONE` comment in the solution's code, in
@@ -4078,6 +4133,7 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_BATCH_BUILD => self.batch_build(),
             ID_SPLIT => {
                 self.toggle_split();
                 self.rebuild_menu();
@@ -5321,6 +5377,10 @@ fn main() {
                 "rebuild" => s.start_job(cargo::Job::Rebuild, false),
                 "analyse" => s.start_job(cargo::Job::Analyse, false),
                 "test" => s.start_job(cargo::Job::Test, false),
+                "batch" => {
+                    std::env::set_var("PHAI_BATCH", "build");
+                    s.command(ID_BATCH_BUILD);
+                }
                 _ => s.start_job(cargo::Job::Build, true),
             }
         }
