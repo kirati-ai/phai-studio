@@ -115,5 +115,7 @@
 | | คัดลอกโค้ดสำหรับโปรแกรม: struct ของแถว + ฟังก์ชันอ่านทั้งตาราง (รหัสผ่านจากตัวแปรแวดล้อม) | ✅ |
 | ★ | แก้ข้อมูลในตาราง: ดับเบิลคลิกช่องเพื่อแก้, คลิกขวา เพิ่มแถว / ลบแถว (ระบุแถวด้วย primary key) | ✅ |
 | ★ | Prepared statements (COM_STMT_PREPARE/EXECUTE, ค่าแยกจาก SQL กัน SQL injection) | ✅ |
-| | ออกแบบตาราง, PostgreSQL / SQLite (SQL Server ไม่ทำ: ต้องซื้อซอฟต์แวร์) | ⬜ |
+| ★ | PostgreSQL (โปรโตคอลเขียนเอง: TLS, SCRAM-SHA-256, MD5, $1 parameters) และ SQLite (ไฟล์ ผ่าน rusqlite) ใน Server Explorer — SQL Server ไม่ทำ: ต้องซื้อซอฟต์แวร์ | ✅ |
+| ★ | ตารางใหม่ / ออกแบบตาราง: เปิดคิวรีพร้อม CREATE TABLE ตามภาษาของฐานข้อมูลนั้น และตัวอย่าง ALTER TABLE ให้แก้แล้วรัน | ✅ |
+| | ตัวออกแบบตารางแบบตาราง (grid) เหมือน VS, foreign keys, indexes | ⬜ |
 

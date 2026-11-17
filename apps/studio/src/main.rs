@@ -3397,6 +3397,10 @@ fn set_list_cell(list: HWND, row: usize, col: usize, text: &str) {
     }
 }
 
+pub fn file_dialog_pub(owner: HWND, save: bool, description: &str, pattern: &str, suggested: &str) -> Option<PathBuf> {
+    file_dialog(owner, save, description, pattern, suggested)
+}
+
 pub fn settings_dir_pub() -> Option<PathBuf> {
     settings_dir()
 }
@@ -3985,7 +3989,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -4117,6 +4121,10 @@ fn main() {
                 if let Some(sv) = s.servers.as_mut() {
                     sv.expand_first();
                 }
+            }
+            // `--show-rows TABLE`: the first connection's table in Results, as Show Table Data.
+            if let Some(t) = args.iter().position(|a| a == "--show-rows").and_then(|i| args.get(i + 1)).cloned() {
+                s.show_table_rows(0, "main", &t);
             }
         }
         // `--debugtest`: see `debug_test_step`.
