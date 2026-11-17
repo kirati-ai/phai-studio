@@ -573,9 +573,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "phai-pack"
+version = "0.1.0"
+dependencies = [
+ "miniz_oxide 0.8.9",
+]
+
+[[package]]
 name = "phai-sample"
 version = "0.1.0"
 dependencies = [
+ "phai-ui",
+ "windows",
+]
+
+[[package]]
+name = "phai-setup"
+version = "0.1.0"
+dependencies = [
+ "phai-pack",
  "phai-ui",
  "windows",
 ]
@@ -589,6 +605,7 @@ dependencies = [
  "phai-design",
  "phai-editor",
  "phai-form",
+ "phai-pack",
  "phai-ui",
  "serde",
  "serde_json",

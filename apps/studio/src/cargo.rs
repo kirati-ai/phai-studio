@@ -85,6 +85,33 @@ pub fn package_name(project: &Path) -> Option<String> {
     None
 }
 
+/// A project's version, from its `Cargo.toml` - `version.workspace = true` taken from the
+/// workspace's own.
+pub fn package_version(project: &Path) -> Option<String> {
+    let read = |p: &Path, section: &str| -> Option<String> {
+        let text = std::fs::read_to_string(p.join("Cargo.toml")).ok()?;
+        let mut inside = false;
+        for line in text.lines().map(str::trim) {
+            if line.starts_with('[') {
+                inside = line == section;
+            } else if inside {
+                if let Some(v) = line.strip_prefix("version") {
+                    let v = v.trim_start().strip_prefix('=')?.trim();
+                    return Some(v.trim_matches('"').to_string());
+                }
+            }
+        }
+        None
+    };
+    match read(project, "[package]") {
+        Some(v) if !v.contains("workspace") && !v.starts_with('{') => Some(v),
+        _ => {
+            let ws = workspace_of(&project.join("Cargo.toml"))?;
+            read(&ws, "[workspace.package]")
+        }
+    }
+}
+
 /// Cargo's arguments for one step of a job: the subcommand and its flags. `whole` is every
 /// project of the workspace (Visual Studio's Solution), else the one project `package`.
 pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> Vec<Vec<String>> {

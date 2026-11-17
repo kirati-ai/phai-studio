@@ -112,6 +112,7 @@ const EVAL_TIP: u64 = 1000;
 const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
 /// `--design`: opens the Table Designer once the loop runs.
 const ID_DESIGN_TEST: i32 = 239;
+const ID_PUBLISH: i32 = 240;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -305,6 +306,8 @@ pub struct Studio {
     conds: Vec<(PathBuf, u32, String)>,
     /// The data tip asked for, and the editor and words it is for.
     tip: Option<(u64, HWND, String)>,
+    /// Publish: what to pack once the Release build is done.
+    publish_after_build: Option<phai_pack::Manifest>,
     /// The table Results shows, when it shows one (Show Table Data): its rows can be changed.
     table_view: Option<TableView>,
     /// Query files, by path: the connection and database each runs in.
@@ -349,6 +352,8 @@ pub struct Studio {
 }
 
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// `--publishtest`: Publish without asking, then end.
+static PUBLISH_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// `--debugtest`: 0 off, then how many stops so far plus one.
 static DEBUG_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 /// How far `--lsptest` has come: 0-1 the definition, 2 the references, 3 the rename, 4 done.
@@ -616,6 +621,8 @@ fn build_menu() -> HMENU {
         add(build, ID_REBUILD, &tf("Rebuild {0}", &[&project]), "");
         add(build, ID_CLEAN, &tf("Clean {0}", &[&project]), "");
         add(build, ID_ANALYSE, &tf("Run Code Analysis on {0}", &[&project]), "");
+        sep(build);
+        add(build, ID_PUBLISH, &tf("Publish {0}...", &[&project]), "");
         sep(build);
         add(build, ID_DEBUG, "Debug", "");
         add(build, ID_RELEASE, "Release", "");
@@ -2138,6 +2145,86 @@ impl Studio {
         }
     }
 
+    /// Publish: asks what the product is called and by whom, builds it as Release, then makes
+    /// a setup program and a portable folder of it in the project's `publish` folder.
+    fn publish(&mut self) {
+        let Some(path) = self.doc.path.clone() else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Some(dir) = cargo::project_of(&path) else { return };
+        let package = cargo::package_name(&dir).unwrap_or_else(|| "program".into());
+        let version = cargo::package_version(&dir).unwrap_or_else(|| "0.1.0".into());
+        // What was said last time, kept beside the project.
+        let saved = std::fs::read_to_string(dir.join("phai-publish.txt")).unwrap_or_default();
+        let get = |k: &str| saved.lines().find_map(|l| l.strip_prefix(&format!("{k}=")).map(str::to_string));
+        let name = get("name").unwrap_or_else(|| package.clone());
+        let publisher = get("publisher").unwrap_or_default();
+        let desktop = get("desktop").map(|d| d == "1").unwrap_or(true);
+        let answers = if std::env::var_os("PHAI_PUBLISH_TEST").is_some() {
+            vec![name, version, publisher, (desktop as u8).to_string()]
+        } else {
+            let fields = [
+                phai_ui::dialogs::Field::Text(t("Product name"), &name),
+                phai_ui::dialogs::Field::Text(t("Version"), &version),
+                phai_ui::dialogs::Field::Text(t("Publisher"), &publisher),
+                phai_ui::dialogs::Field::Check(t("Offer a desktop shortcut"), desktop),
+            ];
+            let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Publish {0}", &[&package]), &fields) else { return };
+            a
+        };
+        let _ = std::fs::write(dir.join("phai-publish.txt"), format!("name={}\npublisher={}\ndesktop={}\n", answers[0].trim(), answers[2].trim(), answers[3]));
+        self.publish_after_build = Some(phai_pack::Manifest { name: answers[0].trim().to_string(), version: answers[1].trim().to_string(), publisher: answers[2].trim().to_string(), desktop: answers[3] == "1", ..Default::default() });
+        let was = self.release;
+        self.release = true;
+        self.start_job_run(cargo::Job::Build, false, false);
+        self.release = was;
+        if !self.building {
+            self.publish_after_build = None;
+        }
+    }
+
+    /// The Release build done: the setup program and the portable folder made of it.
+    fn finish_publish(&mut self, mut m: phai_pack::Manifest, exe: &Path) {
+        let fail = |s: &mut Studio, e: String| {
+            if PUBLISH_TEST.load(Ordering::Relaxed) {
+                println!("publish failed: {e}");
+                std::process::exit(2);
+            }
+            win::message(Some(s.hwnd), &e, t("Publish"), wm::MB_ICONWARNING);
+        };
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else { return };
+        let stub_path = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("phai-setup.exe")));
+        let Some(stub) = stub_path.as_ref().and_then(|p| std::fs::read(p).ok()) else {
+            return fail(self, t("phai-setup.exe is not beside Phai Studio, so no setup program can be made.").to_string());
+        };
+        let Ok(bytes) = std::fs::read(exe) else { return fail(self, format!("{} cannot be read", exe.display())) };
+        let exe_name = exe.file_name().unwrap_or_default().to_string_lossy().to_string();
+        m.exe = exe_name.clone();
+        let out = dir.join("publish");
+        let base = format!("{}-{}", m.safe_name().replace(' ', "-"), m.version);
+        let setup_path = out.join(format!("{base}-setup.exe"));
+        let portable = out.join(format!("{base}-portable"));
+        let written = std::fs::create_dir_all(&portable)
+            .and_then(|_| std::fs::write(&setup_path, phai_pack::pack(&stub, &m, &[(exe_name.clone(), bytes.clone())])))
+            .and_then(|_| std::fs::write(portable.join(&exe_name), &bytes));
+        if let Err(e) = written {
+            return fail(self, e.to_string());
+        }
+        let size = std::fs::metadata(&setup_path).map(|m| m.len()).unwrap_or(0);
+        let said = tf("Published: {0} ({1} KB) and a portable folder", &[&setup_path.file_name().unwrap_or_default().to_string_lossy(), &(size / 1024)]);
+        if let Some(b) = self.bottom.as_ref() {
+            b.add_line(&said);
+            b.add_line(&setup_path.display().to_string());
+        }
+        self.say_status(&said);
+        if PUBLISH_TEST.load(Ordering::Relaxed) {
+            println!("published {}", setup_path.display());
+            std::process::exit(0);
+        }
+        open_with_windows(&out.to_string_lossy());
+    }
+
     /// F5: build the project as Debug, then run it under the debugger.
     fn start_debugging(&mut self) {
         let was = self.release;
@@ -3087,6 +3174,23 @@ impl Studio {
         }
         let errors = self.diagnostics.iter().filter(|d| d.error).count();
         let warnings = self.diagnostics.len() - errors;
+        // Publish: built as Release, now packed.
+        if let Some(m) = self.publish_after_build.take() {
+            if out.ok {
+                if let Some(b) = self.bottom.as_ref() {
+                    b.add_line(&format!("{} ({:.1} s)", t("Build succeeded"), out.seconds));
+                }
+                match out.executable.clone() {
+                    Some(exe) => self.finish_publish(m, &exe),
+                    None => controls::status_text(self.status, 0, t("The project has no program to run")),
+                }
+                return;
+            }
+            if PUBLISH_TEST.load(Ordering::Relaxed) {
+                println!("publish: the build failed");
+                std::process::exit(3);
+            }
+        }
         // F5: built, now run under the debugger.
         if std::mem::take(&mut self.debug_after_build) && out.ok {
             if let Some(b) = self.bottom.as_ref() {
@@ -3310,6 +3414,7 @@ impl Studio {
                 }
             }
             ID_EXECUTE => self.execute_query(),
+            ID_PUBLISH => self.publish(),
             ID_DESIGN_TEST => {
                 let t = DESIGN_TEST.lock().unwrap_or_else(|e| e.into_inner()).take();
                 let owner = self.hwnd;
@@ -3986,6 +4091,7 @@ fn main() {
             tip: None,
             queries: std::collections::HashMap::new(),
             table_view: None,
+            publish_after_build: None,
             config,
             nav: vec![],
             nav_at: 0,
@@ -4193,6 +4299,12 @@ fn main() {
             if let Some(t) = args.iter().position(|a| a == "--show-rows").and_then(|i| args.get(i + 1)).cloned() {
                 s.show_table_rows(0, "main", &t);
             }
+        }
+        // `--publishtest`: Build > Publish without the questions; prints where the setup went.
+        if args.iter().any(|a| a == "--publishtest") {
+            PUBLISH_TEST.store(true, Ordering::Relaxed);
+            std::env::set_var("PHAI_PUBLISH_TEST", "1");
+            s.command(ID_PUBLISH);
         }
         // `--debugtest`: see `debug_test_step`.
         if args.iter().any(|a| a == "--debugtest") {

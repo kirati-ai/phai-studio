@@ -21,6 +21,7 @@ phai-design = { path = "../../crates/phai-design" }
 phai-editor = { path = "../../crates/phai-editor" }
 phai-debug = { path = "../../crates/phai-debug" }
 phai-data = { path = "../../crates/phai-data" }
+phai-pack = { path = "../../crates/phai-pack" }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Com",
