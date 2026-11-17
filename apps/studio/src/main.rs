@@ -413,7 +413,7 @@ fn is_task(path: &Path, line: u32) -> bool {
         return false;
     }
     thread_local! {
-        static CACHE: std::cell::RefCell<(PathBuf, Vec<String>)> = std::cell::RefCell::new((PathBuf::new(), vec![]));
+        static CACHE: std::cell::RefCell<(PathBuf, Vec<String>)> = const { std::cell::RefCell::new((PathBuf::new(), vec![])) };
     }
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
