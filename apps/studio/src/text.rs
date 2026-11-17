@@ -549,6 +549,10 @@ pub static THAI: &[(&str, &str)] = &[
     ("{0} crates found", "พบ {0} crate"),
     ("Description", "คำอธิบาย"),
     ("Insert Snippet...", "แทรก Snippet..."),
+    ("View Call Hierarchy", "ดูลำดับการเรียก (Call Hierarchy)"),
+    ("Put the caret on a function's name first", "วางเคอร์เซอร์บนชื่อฟังก์ชันก่อน"),
+    ("{0} calls in {1} files", "เรียก {0} แห่งใน {1} ไฟล์"),
+    ("Calls to {0}: {1}", "ที่เรียก {0}: {1} แห่ง"),
 ];
 
 #[cfg(test)]

@@ -260,6 +260,16 @@ impl Lsp {
         self.request("textDocument/codeAction", params)
     }
 
+    /// The function at a place, as Call Hierarchy starts from it.
+    pub fn prepare_calls(&mut self, path: &Path, line: u32, character: u32) -> i64 {
+        self.at("textDocument/prepareCallHierarchy", path, line, character, json!({}))
+    }
+
+    /// Who calls the function `item` (from a prepareCallHierarchy answer).
+    pub fn incoming_calls(&mut self, item: Value) -> i64 {
+        self.request("callHierarchy/incomingCalls", json!({ "item": item }))
+    }
+
     /// The solution's symbols whose names match `query` (Go to All).
     pub fn workspace_symbols(&mut self, query: &str) -> i64 {
         self.request("workspace/symbol", json!({ "query": query }))
@@ -479,6 +489,21 @@ pub fn locations_of(result: &Value) -> Vec<Location> {
         Value::Object(_) => one(result).into_iter().collect(),
         _ => vec![],
     }
+}
+
+/// The places that call a function, from an incomingCalls answer: each call's place, and the
+/// name of the function it is in.
+pub fn calls_of(result: &Value) -> Vec<(Location, String)> {
+    let mut out = Vec::new();
+    for c in result.as_array().into_iter().flatten() {
+        let from = &c["from"];
+        let Some(path) = from["uri"].as_str().and_then(path_of) else { continue };
+        let name = from["name"].as_str().unwrap_or("").to_string();
+        for r in c["fromRanges"].as_array().into_iter().flatten() {
+            out.push((Location { path: path.clone(), start: position(&r["start"]), end: position(&r["end"]) }, name.clone()));
+        }
+    }
+    out
 }
 
 /// A symbol of a `workspace/symbol` answer: its name, its kind in words, where it is.
