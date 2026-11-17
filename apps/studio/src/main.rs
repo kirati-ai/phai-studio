@@ -280,6 +280,8 @@ enum Ask {
     Actions,
     /// Go to All's symbols.
     Symbols,
+    /// Document Outline of a code file: its symbols.
+    Outline,
     /// Call Hierarchy: the function at the caret, then who calls it.
     PrepareCalls,
     Calls(String),
@@ -1295,6 +1297,18 @@ impl Studio {
         if !explorer::outline_shown(self.side) {
             return;
         }
+        // A code file: its symbols, from the language server.
+        if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
+            if path.extension().is_some_and(|e| e == "rs") {
+                if let Some(l) = self.lsp_for(&path) {
+                    let id = l.document_symbols(&path);
+                    self.asked.insert(id, (h, Ask::Outline));
+                }
+            } else if let Some(o) = self.outline.as_mut() {
+                o.fill_code(&path.file_name().unwrap_or_default().to_string_lossy(), &[]);
+            }
+            return;
+        }
         if let Some(o) = self.outline.as_mut() {
             o.fill(&self.doc.form, self.selected);
         }
@@ -1307,6 +1321,11 @@ impl Studio {
             return;
         }
         let Some(n) = win::tree_selected(o.tree) else { return };
+        // A code file's symbol: there in the editor.
+        if let (Some(h), Some(&at)) = (self.doc.code, usize::try_from(n).ok().and_then(|i| o.places.get(i))) {
+            phai_editor::view::select_lsp(h, at, at);
+            return;
+        }
         let pick = (n >= 0).then_some(n as usize);
         if pick != self.selected {
             self.select(pick);
@@ -1740,6 +1759,7 @@ impl Studio {
                 if Some(h) == self.doc.code {
                     let (e, w) = phai_editor::view::diagnostic_counts(h);
                     controls::status_text(self.status, 0, &tf("{0} errors, {1} warnings", &[&e, &w]));
+                    self.refresh_outline();
                 }
             }
         }
@@ -1766,6 +1786,28 @@ impl Studio {
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
             Ask::Actions => self.choose_action(h, phai_editor::lsp::actions_of(&result)),
+            Ask::Outline => {
+                let symbols = phai_editor::lsp::doc_symbols_of(&result);
+                if std::env::var_os("PHAI_OUTLINE_TEST").is_some() && !symbols.is_empty() {
+                    fn names(list: &[phai_editor::lsp::DocSymbol], out: &mut Vec<String>, depth: usize) {
+                        for s in list {
+                            out.push(format!("{}{} ({})", "  ".repeat(depth), s.name, s.kind));
+                            names(&s.children, out, depth + 1);
+                        }
+                    }
+                    let mut out = Vec::new();
+                    names(&symbols, &mut out, 0);
+                    println!("outline:\n{}", out.join("\n"));
+                    LSP_TEST.store(9, Ordering::Relaxed);
+                    if std::env::var_os("PHAI_SHOT").is_none() {
+                        std::process::exit(0);
+                    }
+                }
+                let file = self.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if let (Some(o), true) = (self.outline.as_mut(), self.doc.code == Some(h)) {
+                    o.fill_code(&file, &symbols);
+                }
+            }
             Ask::PrepareCalls => match result.as_array().and_then(|a| a.first()).cloned() {
                 Some(item) => {
                     let name = item["name"].as_str().unwrap_or("").to_string();
@@ -1934,6 +1976,15 @@ impl Studio {
             0 | 1 if std::env::var_os("PHAI_CALLS_TEST").is_some() => {
                 phai_editor::view::go_to(h, 1, 5);
                 self.command(ID_CALLS);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
+            // `PHAI_OUTLINE_TEST`: Document Outline of the code file, asked until it answers.
+            0 | 1 if std::env::var_os("PHAI_OUTLINE_TEST").is_some() => {
+                if !explorer::outline_shown(self.side) {
+                    self.command(ID_VIEW_OUTLINE);
+                } else {
+                    self.refresh_outline();
+                }
                 LSP_TEST.store(1, Ordering::Relaxed);
             }
             // `PHAI_SIG_TEST`: Parameter Info inside the call on line 2, asked until it answers.
@@ -2658,6 +2709,8 @@ impl Studio {
         self.load_theme();
         if self.doc.code.is_none() {
             self.rebuild();
+        } else {
+            self.refresh_outline();
         }
         self.refresh_props();
         self.say_title();

@@ -16,6 +16,8 @@ pub struct Outline {
     /// The tree item of each control, by its index in the form.
     items: Vec<isize>,
     root: isize,
+    /// Showing a code file: each item's place in it (the item's number is its index here).
+    pub places: Vec<(u32, u32)>,
     /// While the tree is filled or chosen in from the form: its notices are not choices.
     pub quiet: std::cell::Cell<bool>,
 }
@@ -30,16 +32,42 @@ impl Outline {
         let tree = win::tree(side, ID_OUTLINE_TREE, font);
         let mut icons = vec![glyph::FORM];
         icons.extend(crate::toolbox_items().iter().map(|(_, _, g)| *g));
+        // A code file's symbols: the file, then code.
+        icons.extend([glyph::CODE, glyph::DOCUMENT]);
         win::tree_icons(tree, &icons);
-        Outline { tree, items: vec![], root: 0, quiet: std::cell::Cell::new(false) }
+        Outline { tree, items: vec![], root: 0, places: vec![], quiet: std::cell::Cell::new(false) }
     }
 
     fn icon_of(k: Kind) -> i32 {
         crate::toolbox_items().iter().position(|(id, _, _)| crate::tool_kind(*id) == Some(k)).map(|p| p as i32 + 1).unwrap_or(0)
     }
 
+    /// A code file's outline: the file at the top, its types and functions under it, nested.
+    pub fn fill_code(&mut self, file: &str, symbols: &[phai_editor::lsp::DocSymbol]) {
+        self.quiet.set(true);
+        win::tree_clear(self.tree);
+        self.places.clear();
+        self.items.clear();
+        let icons = crate::toolbox_items().len() as i32 + 1;
+        self.root = win::tree_add(self.tree, 0, file, icons + 1, -1);
+        fn add(o: &mut Outline, under: isize, list: &[phai_editor::lsp::DocSymbol], icon: i32) {
+            for s in list {
+                let item = win::tree_add(o.tree, under, &format!("{}  ({})", s.name, phai_ui::text::t(s.kind)), icon, o.places.len() as isize);
+                o.places.push(s.start);
+                add(o, item, &s.children, icon);
+                if !s.children.is_empty() {
+                    win::tree_expand(o.tree, item);
+                }
+            }
+        }
+        add(self, self.root, symbols, icons);
+        win::tree_expand(self.tree, self.root);
+        self.quiet.set(false);
+    }
+
     /// The tree again from the form: the form at the top, its controls under it.
     pub fn fill(&mut self, form: &FormFile, selected: Option<usize>) {
+        self.places.clear();
         self.quiet.set(true);
         win::tree_clear(self.tree);
         self.root = win::tree_add(self.tree, 0, &format!("{}  ({})", form.form.name, phai_ui::text::t("Form")), 0, -1);
