@@ -382,8 +382,12 @@ pub struct Studio {
     bottom_split: HWND,
     /// Design pixels: the side panes' width and the bottom pane's height.
     side_w: i32,
-    /// The side panes' edge: right, as Visual Studio has them, or left when dragged there.
-    side_dock: Dock,
+    /// The side panes' edge: right, as Visual Studio has them, or wherever dragged.
+    pub side_dock: Dock,
+    /// The side panes' height when at the top or bottom, design pixels.
+    side_h: i32,
+    /// The side panes' own window, while they float.
+    pub side_float: Option<HWND>,
     bottom_h: i32,
     toolbox_on: bool,
     bottom_on: bool,
@@ -3558,25 +3562,93 @@ impl Studio {
     /// Dragging Project, Server Explorer or Properties by its caption: the side panes go together
     /// to the left or the right edge.
     fn drag_side(&mut self) {
-        if let Some(docking::Target::Edge(d)) = self.drag_target(self.side_w, self.side_w, &[Dock::Left, Dock::Right], false) {
-            self.dock_side(d);
+        if let Some(t) = self.drag_target(self.side_w, self.side_h, &[Dock::Left, Dock::Right, Dock::Top, Dock::Bottom], true) {
+            self.dock_side(t);
         }
     }
 
-    /// The side panes against `d` - left or right - with their splitter on the inner side.
-    pub fn dock_side(&mut self, d: Dock) {
-        if !matches!(d, Dock::Left | Dock::Right) || d == self.side_dock {
-            return;
+    /// The side panes against an edge - their splitter on the inner side, turned the right way -
+    /// or in a window of their own. Where they are is remembered for next time.
+    pub fn dock_side(&mut self, target: docking::Target) {
+        let side = self.side;
+        // Out of a floating window first: back among the main window's children, before the splitter.
+        if let Some(f) = self.side_float.take() {
+            unsafe {
+                let _ = wm::SetParent(side, Some(self.hwnd));
+                let _ = wm::DestroyWindow(f);
+            }
+            let at = self.layout.items.iter().position(|(h, _)| *h == self.side_split).unwrap_or(0);
+            self.layout.items.insert(at, (side, Item { bounds: Rect::new(0, 0, 0, 0), dock: self.side_dock, anchor: Anchor::default() }));
         }
-        self.side_dock = d;
-        let (side, split) = (self.side, self.side_split);
-        for h in [side, split] {
-            if let Some(i) = self.item(h) {
-                i.dock = d;
+        match target {
+            docking::Target::Edge(d) => {
+                let d = if matches!(d, Dock::Left | Dock::Right | Dock::Top | Dock::Bottom) { d } else { Dock::Right };
+                self.side_dock = d;
+                let across = matches!(d, Dock::Left | Dock::Right);
+                let old = self.side_split;
+                let split = controls::splitter(self.hwnd, ID_SPLIT_SIDE, across);
+                if let Some(e) = self.layout.items.iter_mut().find(|(h, _)| *h == old) {
+                    e.0 = split;
+                    e.1.dock = d;
+                }
+                unsafe {
+                    let _ = wm::DestroyWindow(old);
+                }
+                self.side_split = split;
+                if let Some(i) = self.item(side) {
+                    i.dock = d;
+                }
+                let any = { let (e, p) = explorer::side_panes(side); e || p };
+                self.size_side(any);
+                win::show(side, any);
+                win::show(split, any);
+                remember_setting("side_dock", match d {
+                    Dock::Left => "left",
+                    Dock::Top => "top",
+                    Dock::Bottom => "bottom",
+                    _ => "right",
+                });
+            }
+            docking::Target::Float(r) => {
+                self.layout.items.retain(|(h, _)| *h != side);
+                if let Some(i) = self.item(self.side_split) {
+                    i.bounds.w = 0;
+                    i.bounds.h = 0;
+                }
+                win::show(self.side_split, false);
+                let f = docking::float_window(self.hwnd, t("Properties"), r);
+                unsafe {
+                    let _ = wm::SetParent(side, Some(f));
+                }
+                let mut c = RECT::default();
+                unsafe {
+                    let _ = wm::GetClientRect(f, &mut c);
+                }
+                win::move_to(side, 0, 0, c.right, c.bottom);
+                win::show(side, true);
+                win::show(f, true);
+                self.side_float = Some(f);
+                remember_setting("side_dock", "float");
             }
         }
         self.layout.apply(self.hwnd);
         self.refresh_strips();
+        self.rebuild_menu();
+    }
+
+    /// The side panes' room in the layout as they are docked: their width at the left or right,
+    /// their height at the top or bottom; none when hidden.
+    fn size_side(&mut self, on: bool) {
+        let across = matches!(self.side_dock, Dock::Left | Dock::Right);
+        let (side, split, w, h) = (self.side, self.side_split, self.side_w, self.side_h);
+        if let Some(i) = self.item(side) {
+            i.bounds.w = if on && across { w } else { 0 };
+            i.bounds.h = if on && !across { h } else { 0 };
+        }
+        if let Some(i) = self.item(split) {
+            i.bounds.w = if on && across { 6 } else { 0 };
+            i.bounds.h = if on && !across { 6 } else { 0 };
+        }
     }
 
     /// The drag a pane's caption starts: a shaded box where the pane would go, the dock guides
@@ -3684,6 +3756,12 @@ impl Studio {
             docking::Target::Edge(d) => {
                 let d = if matches!(d, Dock::Left | Dock::Right | Dock::Top | Dock::Bottom) { d } else { Dock::Left };
                 self.toolbox_dock = d;
+                remember_setting("toolbox_dock", match d {
+                    Dock::Right => "right",
+                    Dock::Top => "top",
+                    Dock::Bottom => "bottom",
+                    _ => "left",
+                });
                 // A splitter that drags the right way: across for a side, down for top or bottom.
                 let across = matches!(d, Dock::Left | Dock::Right);
                 let old = self.toolbox_split;
@@ -3910,22 +3988,17 @@ impl Studio {
                 if on == self.auto_right {
                     return;
                 }
-                if on {
-                    self.dock_side(Dock::Right);
+                if on && (self.side_dock != Dock::Right || self.side_float.is_some()) {
+                    self.dock_side(docking::Target::Edge(Dock::Right));
                 }
                 self.auto_right = on;
-                let (side, split, w) = (self.side, self.side_split, self.side_w);
+                let (side, split) = (self.side, self.side_split);
                 if on {
                     self.right_saved = explorer::side_panes(side);
                 } else {
                     explorer::show_side_panes(side, self.right_saved.0, self.right_saved.1);
                 }
-                if let Some(i) = self.item(side) {
-                    i.bounds.w = if on { 0 } else { w };
-                }
-                if let Some(i) = self.item(split) {
-                    i.bounds.w = if on { 0 } else { 6 };
-                }
+                self.size_side(!on);
                 win::show(side, !on);
                 win::show(split, !on);
                 if let Some((a, b)) = explorer::side_captions(side) {
@@ -4074,15 +4147,14 @@ impl Studio {
                     p = on;
                 }
                 let any = explorer::show_side_panes(self.side, e, p);
-                let (side, split, w) = (self.side, self.side_split, self.side_w);
-                if let Some(i) = self.item(side) {
-                    i.bounds.w = if any { w } else { 0 };
-                }
-                if let Some(i) = self.item(split) {
-                    i.bounds.w = if any { 6 } else { 0 };
+                let (side, split) = (self.side, self.side_split);
+                if let Some(f) = self.side_float {
+                    win::show(f, any);
+                } else {
+                    self.size_side(any);
+                    win::show(split, any);
                 }
                 win::show(side, any);
-                win::show(split, any);
             }
             Pane::Output => {
                 self.bottom_on = on;
@@ -4113,12 +4185,13 @@ impl Studio {
             }
             self.size_toolbox(true);
         } else if id == ID_SPLIT_SIDE {
-            let d = if self.side_dock == Dock::Left { -d } else { d };
-            self.side_w = (self.side_w - d).clamp(180, 900);
-            let (side, w) = (self.side, self.side_w);
-            if let Some(i) = self.item(side) {
-                i.bounds.w = w;
+            match self.side_dock {
+                Dock::Left => self.side_w = (self.side_w + d).clamp(180, 900),
+                Dock::Right => self.side_w = (self.side_w - d).clamp(180, 900),
+                Dock::Top => self.side_h = (self.side_h + d).clamp(120, 900),
+                _ => self.side_h = (self.side_h - d).clamp(120, 900),
             }
+            self.size_side(true);
         } else {
             self.bottom_h = (self.bottom_h - d).clamp(60, 900);
             let (bh, h) = (self.bottom.as_ref().map(|b| b.hwnd).unwrap_or_default(), self.bottom_h);
@@ -5263,6 +5336,8 @@ fn main() {
             bottom_split: HWND::default(),
             side_w: 280,
             side_dock: Dock::Right,
+            side_h: 260,
+            side_float: None,
             bottom_h: ERRORS_HEIGHT,
             toolbox_on: true,
             bottom_on: false,
@@ -5466,9 +5541,31 @@ fn main() {
                 phai_editor::view::go_to(h, l, c);
             }
         }
+        // Where the side panes and the toolbox were last time.
+        if !args.iter().any(|a| a == "--dock-side" || a == "--dock-toolbox") && std::env::var_os("PHAI_SHOT").is_none() {
+            match setting("side_dock").as_deref() {
+                Some("left") => s.dock_side(docking::Target::Edge(Dock::Left)),
+                Some("top") => s.dock_side(docking::Target::Edge(Dock::Top)),
+                Some("bottom") => s.dock_side(docking::Target::Edge(Dock::Bottom)),
+                _ => {}
+            }
+            match setting("toolbox_dock").as_deref() {
+                Some("right") => s.dock_toolbox(docking::Target::Edge(Dock::Right)),
+                Some("top") => s.dock_toolbox(docking::Target::Edge(Dock::Top)),
+                Some("bottom") => s.dock_toolbox(docking::Target::Edge(Dock::Bottom)),
+                _ => {}
+            }
+        }
         // `--dock-side left|right`: the side panes against that edge, as a drag of their caption puts them.
         if let Some(d) = args.iter().position(|a| a == "--dock-side").and_then(|i| args.get(i + 1)) {
-            s.dock_side(if d == "left" { Dock::Left } else { Dock::Right });
+            let t = match d.as_str() {
+                "left" => docking::Target::Edge(Dock::Left),
+                "top" => docking::Target::Edge(Dock::Top),
+                "bottom" => docking::Target::Edge(Dock::Bottom),
+                "float" => docking::Target::Float(RECT { left: win::px(hwnd, 700), top: win::px(hwnd, 200), right: win::px(hwnd, 1000), bottom: win::px(hwnd, 700) }),
+                _ => docking::Target::Edge(Dock::Right),
+            };
+            s.dock_side(t);
         }
         if let Some(d) = args.iter().position(|a| a == "--dock-toolbox").and_then(|i| args.get(i + 1)) {
             let t = match d.as_str() {
