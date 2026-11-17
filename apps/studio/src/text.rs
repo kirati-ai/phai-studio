@@ -496,6 +496,11 @@ pub static THAI: &[(&str, &str)] = &[
     ("Build, Rebuild or Clean:", "Build, Rebuild หรือ Clean:"),
     ("Batch Build: {0} builds", "สร้างเป็นชุด: {0} รายการ"),
     ("New Window", "หน้าต่างใหม่"),
+    ("Staged", "Staged แล้ว"),
+    ("Stage", "เตรียม (Stage)"),
+    ("Unstage", "เลิก Stage"),
+    ("Commit Staged ({0})", "Commit ที่ Stage ไว้ ({0})"),
+    ("Choose the files first.", "เลือกไฟล์ก่อน"),
 ];
 
 #[cfg(test)]
