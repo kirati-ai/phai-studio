@@ -24,11 +24,12 @@ pub const ID_SHOW_WARNINGS: i32 = 521;
 pub const ID_IMMEDIATE: i32 = 522;
 pub const ID_IMMEDIATE_INPUT: i32 = 523;
 pub const ID_DIAGNOSTICS: i32 = 524;
+pub const ID_BREAKPOINTS: i32 = 525;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
-/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools.
-fn labels() -> [&'static str; 10] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools")]
+/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints.
+fn labels() -> [&'static str; 11] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints")]
 }
 
 pub struct Bottom {
@@ -48,6 +49,7 @@ pub struct Bottom {
     pub immediate: HWND,
     pub immediate_input: HWND,
     pub diagnostics: HWND,
+    pub breakpoints: HWND,
     layout: Layout,
 }
 
@@ -100,7 +102,14 @@ impl Bottom {
         layout.add(immediate_input, Item { bounds: Rect::new(0, 114, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
         let diagnostics = crate::diag::view(hwnd, ID_DIAGNOSTICS);
         layout.add(diagnostics, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, layout });
+        let breakpoints = win::list(hwnd, ID_BREAKPOINTS, font, &[(t("Name"), 260), (t("Condition"), 220), (t("Hit Count"), 160), (t("File"), 380)]);
+        unsafe {
+            use windows::Win32::UI::Controls as cc;
+            // A tick on each: whether it stops the program.
+            wm::SendMessageW(breakpoints, cc::LVM_SETEXTENDEDLISTVIEWSTYLE, Some(WPARAM(0x4)), Some(LPARAM(0x4 /* LVS_EX_CHECKBOXES */)));
+        }
+        layout.add(breakpoints, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -124,6 +133,7 @@ impl Bottom {
         win::show(self.immediate, i == 8);
         win::show(self.immediate_input, i == 8);
         win::show(self.diagnostics, i == 9);
+        win::show(self.breakpoints, i == 10);
     }
 
     pub fn relabel(&self) {
@@ -194,7 +204,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         (wm::WM_NOTIFY, _) => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
-            if hdr.code == cc::NM_DBLCLK {
+            // The Breakpoints window's ticks and its Delete key are the studio's to act on too.
+            let from_breakpoints = unsafe { wm::GetDlgCtrlID(hdr.hwndFrom) } == ID_BREAKPOINTS && (hdr.code == cc::LVN_ITEMCHANGED || hdr.code == cc::LVN_KEYDOWN);
+            if hdr.code == cc::NM_DBLCLK || from_breakpoints {
                 if let Ok(p) = unsafe { wm::GetParent(h) } {
                     return unsafe { wm::SendMessageW(p, msg, Some(w), Some(l)) };
                 }

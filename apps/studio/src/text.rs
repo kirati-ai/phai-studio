@@ -580,6 +580,14 @@ pub static THAI: &[(&str, &str)] = &[
     ("Path", "ที่อยู่"),
     ("Filter processes:", "กรองโปรเซส:"),
     ("{0} processes", "{0} โปรเซส"),
+    ("Breakpoints", "เบรกพอยต์"),
+    ("Breakpoints Window", "หน้าต่างเบรกพอยต์"),
+    ("Hit Count", "จำนวนครั้งที่ผ่าน"),
+    ("{0}, line {1}", "{0}, บรรทัด {1}"),
+    ("(no condition)", "(ไม่มีเงื่อนไข)"),
+    ("when {0} is true", "เมื่อ {0} เป็นจริง"),
+    ("break always", "หยุดทุกครั้ง"),
+    ("Condition", "เงื่อนไข"),
 ];
 
 #[cfg(test)]
