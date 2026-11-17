@@ -558,6 +558,34 @@ impl Model {
         self.extra = sels;
     }
 
+    /// Tab after a snippet's word: the word made its code, at the line's indent, the caret where
+    /// the snippet says - one undo step. False when the word before the caret is no snippet's.
+    pub fn expand_snippet(&mut self) -> bool {
+        if self.caret != self.anchor {
+            return false;
+        }
+        let (line, col) = self.buf.position(self.caret);
+        let text = self.buf.line(line);
+        let before = &text[..col];
+        let start = before.char_indices().rev().take_while(|(_, c)| c.is_alphanumeric() || *c == '_').last().map(|(i, _)| i).unwrap_or(col);
+        let word = &before[start..];
+        // Only a word standing alone: `foo.fn` or `xfor` is not a snippet.
+        if word.is_empty() || before[..start].chars().last().is_some_and(|c| c == '.' || c == ':' || c.is_alphanumeric()) {
+            return false;
+        }
+        let Some((_, body)) = SNIPPETS.iter().find(|(k, _)| *k == word) else { return false };
+        let indent: String = text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        let body = body.replace('\n', &format!("\n{indent}"));
+        let at = body.find("$0").unwrap_or(body.len());
+        let body = body.replace("$0", "");
+        let from = self.buf.line_start(line) + start;
+        self.anchor = from;
+        self.insert(&body);
+        self.caret = from + at;
+        self.anchor = self.caret;
+        true
+    }
+
     /// The lines the selection (or the caret) is on: a selection ending at a line's start leaves
     /// that line out.
     fn chosen_lines(&self) -> (usize, usize) {
@@ -773,6 +801,29 @@ fn matching_in(b: &[u8], code: &[usize], at: usize) -> Option<(usize, usize)> {
     }
     None
 }
+
+/// Rust code snippets, as Visual Studio's: a short word, then Tab, and the code is there - `$0`
+/// where the caret goes.
+pub const SNIPPETS: &[(&str, &str)] = &[
+    ("fn", "fn $0() {\n}"),
+    ("pfn", "pub fn $0() {\n}"),
+    ("if", "if $0 {\n}"),
+    ("ifl", "if let Some($0) = {\n}"),
+    ("ife", "if $0 {\n} else {\n}"),
+    ("for", "for $0 in  {\n}"),
+    ("while", "while $0 {\n}"),
+    ("loop", "loop {\n    $0\n}"),
+    ("match", "match $0 {\n    _ => {}\n}"),
+    ("struct", "struct $0 {\n}"),
+    ("enum", "enum $0 {\n}"),
+    ("impl", "impl $0 {\n}"),
+    ("test", "#[test]\nfn $0() {\n}"),
+    ("tests", "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn $0() {\n    }\n}"),
+    ("main", "fn main() {\n    $0\n}"),
+    ("pln", "println!(\"{}\", $0);"),
+    ("ok", "Ok($0)"),
+    ("derive", "#[derive(Debug, Clone$0)]"),
+];
 
 /// The find bar's choices.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1146,6 +1197,22 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(m.find("one", true, true), "and round again");
         assert_eq!(m.selection(), (0, 3));
         assert!(!m.find("three", true, true));
+    }
+
+    #[test]
+    fn a_snippet_word_and_tab_make_its_code() {
+        let mut m = Model::new("fn main() {\n    for\n}");
+        m.caret = "fn main() {\n    for".len();
+        m.anchor = m.caret;
+        assert!(m.expand_snippet());
+        assert_eq!(m.buf.text(), "fn main() {\n    for  in  {\n    }\n}", "at the line's indent");
+        assert_eq!(&m.buf.text()[..m.caret], "fn main() {\n    for ", "the caret where the snippet says");
+        m.undo();
+        assert_eq!(m.buf.text(), "fn main() {\n    for\n}", "one undo step");
+        let mut m = Model::new("x.fn");
+        m.caret = 4;
+        m.anchor = 4;
+        assert!(!m.expand_snippet(), "a method name is not a snippet");
     }
 
     #[test]

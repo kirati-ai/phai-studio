@@ -548,6 +548,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Searching crates.io...", "กำลังค้นหาใน crates.io..."),
     ("{0} crates found", "พบ {0} crate"),
     ("Description", "คำอธิบาย"),
+    ("Insert Snippet...", "แทรก Snippet..."),
 ];
 
 #[cfg(test)]
