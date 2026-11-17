@@ -377,13 +377,13 @@ impl Props {
         if c.kind == Kind::Picture {
             v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
         }
-        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree) {
+        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree | Kind::Grid) {
             let items = match c.kind {
                 Kind::Combo | Kind::Tree => c.items.join("\n"),
                 Kind::Tabs => c.tabs.join("\n"),
                 _ => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
             };
-            v.push(p(t("Data"), Key::Items, if c.kind == Kind::List { t("Columns") } else { t("Items") }, items, Ed::Dialog, t("One a line; a list's columns as Name:width.")));
+            v.push(p(t("Data"), Key::Items, if matches!(c.kind, Kind::List | Kind::Grid) { t("Columns") } else { t("Items") }, items, Ed::Dialog, t("One a line; a list's columns as Name:width.")));
         }
         if !docked {
             v.extend([

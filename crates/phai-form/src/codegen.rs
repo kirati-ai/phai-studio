@@ -246,6 +246,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Tree => format!("{{ let h = win::tree(hwnd, {id}, {font}); win::tree_items(h, &[{}]); h }}", c.items.iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
             Kind::Picture => format!("phai_ui::picture::picture(hwnd, {id}, {})", lit(c.image.as_deref().unwrap_or(""))),
             Kind::Flow | Kind::Table => format!("win::panel(hwnd, {id}, false)"),
+            Kind::Rich => format!("phai_ui::grid::richtext(hwnd, {id}, {font}, {})", lit(&text_of(c))),
+            Kind::Grid => format!("phai_ui::grid::grid(hwnd, {id}, {font}, &[{}])", c.columns.iter().map(|(s, n)| format!("(t({}), {n})", lit(s))).collect::<Vec<_>>().join(", ")),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
             Kind::Timer => format!("{{ win::timer(hwnd, {id}, {}, {}); hwnd }}", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
@@ -410,7 +412,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                     let _ = writeln!(w, "                {id} if code == 0 => {call},");
                 }
             }
-            Kind::Edit | Kind::Textarea | Kind::Number | Kind::Date | Kind::Slider => {
+            Kind::Edit | Kind::Textarea | Kind::Number | Kind::Date | Kind::Slider | Kind::Rich | Kind::Grid => {
                 if let Some(call) = call {
                     let _ = writeln!(w, "                {id} if code == 0x0300 => {call}, // EN_CHANGE, win::VALUE_CHANGED");
                 }

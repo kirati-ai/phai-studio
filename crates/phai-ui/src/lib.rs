@@ -20,6 +20,7 @@
 
 pub mod controls;
 pub mod dialogs;
+pub mod grid;
 pub mod icon;
 pub mod layout;
 pub mod picture;
