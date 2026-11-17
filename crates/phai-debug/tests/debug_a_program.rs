@@ -93,6 +93,18 @@ fn break_step_and_read_locals() {
     assert_eq!(local(&locals, "name"), "\"phai\"");
     assert_eq!(local(&locals, "text"), "\"ไผ่\"");
 
+    // Watch: paths and comparisons, while paused.
+    s.send(Command::Evaluate { id: 7, exprs: vec!["text".into(), "y > 41".into(), "x == y".into(), "nothing".into()] });
+    let vars = loop {
+        if let Event::Values { id: 7, vars } = rx.recv_timeout(Duration::from_secs(20)).expect("no values") {
+            break vars;
+        }
+    };
+    assert_eq!(vars[0].value, "\"ไผ่\"");
+    assert_eq!(vars[1].value, "true");
+    assert_eq!(vars[2].value, "false");
+    assert!(vars[3].value.contains("no `nothing`"), "{vars:?}");
+
     s.send(Command::Continue);
     loop {
         match rx.recv_timeout(Duration::from_secs(20)).expect("no end") {
@@ -103,6 +115,35 @@ fn break_step_and_read_locals() {
             Event::Stopped { reason, line, .. } => panic!("stopped again: {reason} at {line}"),
             _ => {}
         }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_condition_decides_whether_a_breakpoint_stops() {
+    let dir = std::env::temp_dir().join(format!("phai-debug-cond-{}", std::process::id()));
+    let Some(exe) = build(&dir) else { return };
+    let src = dir.join("main.rs");
+    for (cond, stops) in [("x < 5", false), ("x == 40", true)] {
+        let (tx, rx) = channel();
+        let s = Session::launch(&exe, &dir, vec![(src.clone(), 7)], move |e| {
+            let _ = tx.send(e);
+        });
+        s.send(Command::Conditions(vec![(src.clone(), 7, cond.into())]));
+        let mut stopped = false;
+        loop {
+            match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+                Event::Stopped { line, .. } => {
+                    assert_eq!(line, 7);
+                    stopped = true;
+                    s.send(Command::Continue);
+                }
+                Event::Exited(_) => break,
+                Event::Failed(e) => panic!("{e}"),
+                _ => {}
+            }
+        }
+        assert_eq!(stopped, stops, "condition {cond}");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
