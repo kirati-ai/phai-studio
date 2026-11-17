@@ -249,7 +249,7 @@ fn cargo_run(h: HWND, args: &[&str]) {
     let said = match out {
         Ok(o) => {
             let words = String::from_utf8_lossy(&o.stderr);
-            let line = words.lines().map(str::trim).filter(|l| !l.is_empty()).last().unwrap_or("").to_string();
+            let line = words.lines().map(str::trim).rfind(|l| !l.is_empty()).unwrap_or("").to_string();
             if o.status.success() {
                 d.changed = true;
                 line
