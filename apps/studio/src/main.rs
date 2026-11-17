@@ -1028,6 +1028,99 @@ impl Studio {
         self.refresh_outline();
     }
 
+    /// The smart tag clicked: the chosen control's common tasks, as a menu by the tag.
+    pub fn smart_tag(&mut self) {
+        let Some(i) = self.selected else { return };
+        let Some(c) = self.doc.form.control.get(i).cloned() else { return };
+        const TEXT: usize = 1;
+        const ITEMS: usize = 2;
+        const IMAGE: usize = 3;
+        const DOCK: usize = 4;
+        const EVENT: usize = 5;
+        const LOCK: usize = 6;
+        let mut tasks: Vec<(usize, String)> = Vec::new();
+        if c.kind.has_text() {
+            tasks.push((TEXT, t("Edit Text...").to_string()));
+        }
+        match c.kind {
+            Kind::List => tasks.push((ITEMS, t("Edit Columns...").to_string())),
+            Kind::Combo | Kind::Tree => tasks.push((ITEMS, t("Edit Items...").to_string())),
+            Kind::Tabs => tasks.push((ITEMS, t("Edit Tabs...").to_string())),
+            Kind::Picture => tasks.push((IMAGE, t("Choose Image...").to_string())),
+            _ => {}
+        }
+        if matches!(c.kind, Kind::List | Kind::Tree | Kind::Textarea | Kind::Picture | Kind::Group | Kind::Tabs) {
+            tasks.push((DOCK, if c.dock.as_deref() == Some("fill") { t("Undock in Parent Container") } else { t("Dock in Parent Container") }.to_string()));
+        }
+        if let Some(e) = c.kind.event() {
+            let name = match e {
+                "on_click" => t("Click"),
+                "on_change" => t("Change"),
+                "on_tick" => t("Tick"),
+                _ => t("Select"),
+            };
+            tasks.push((EVENT, tf("Write the {0} Method", &[&name])));
+        }
+        tasks.push((LOCK, if c.locked == Some(true) { t("Unlock") } else { t("Lock") }.to_string()));
+        // `PHAI_TAG=n`: the n-th task, without the menu - for testing; its titles printed.
+        let chosen = if let Ok(n) = std::env::var("PHAI_TAG") {
+            println!("tasks: {}", tasks.iter().map(|(_, s)| s.as_str()).collect::<Vec<_>>().join(" | "));
+            n.parse::<usize>().ok().and_then(|n| tasks.get(n)).map(|(id, _)| *id).unwrap_or(0)
+        } else {
+            unsafe {
+                let m = wm::CreatePopupMenu().unwrap_or_default();
+                let w = wide(&tf("{0} Tasks", &[&kind_label(c.kind)]));
+                let _ = wm::AppendMenuW(m, wm::MF_STRING | wm::MF_GRAYED, 0, PCWSTR(w.as_ptr()));
+                let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, PCWSTR::null());
+                for (id, label) in &tasks {
+                    let w = wide(label);
+                    let _ = wm::AppendMenuW(m, wm::MF_STRING, *id, PCWSTR(w.as_ptr()));
+                }
+                let mut pt = windows::Win32::Foundation::POINT::default();
+                let _ = wm::GetCursorPos(&mut pt);
+                let n = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, pt.x, pt.y, None, self.hwnd, None).0 as usize;
+                let _ = wm::DestroyMenu(m);
+                n
+            }
+        };
+        let set = |s: &mut Studio, key: Key, value: &str| {
+            s.checkpoint();
+            s.apply(key, value);
+            if let Some(p) = s.props.as_mut() {
+                p.refresh();
+            }
+        };
+        match chosen {
+            TEXT => {
+                if let Some(v) = phai_ui::dialogs::ask(Some(self.hwnd), t("Edit Text..."), &tf("The words {0} shows:", &[&c.id]), c.text.as_deref().unwrap_or(""), false) {
+                    set(self, Key::Text, &v);
+                }
+            }
+            ITEMS => {
+                let now = match c.kind {
+                    Kind::Tabs => c.tabs.join("\n"),
+                    Kind::List => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
+                    _ => c.items.join("\n"),
+                };
+                if let Some(v) = phai_ui::dialogs::ask_lines(Some(self.hwnd), &tf("{0} Tasks", &[&kind_label(c.kind)]), t("One a line; a list's columns as Name:width."), &now) {
+                    set(self, Key::Items, &v);
+                }
+            }
+            IMAGE => {
+                if let Some(p) = file_dialog(self.hwnd, false, t("Pictures (PNG, JPEG, BMP, GIF)"), "*.png;*.jpg;*.jpeg;*.bmp;*.gif", "") {
+                    // Inside the project: kept relative, so the project can move.
+                    let base = self.doc.path.as_deref().and_then(cargo::project_of);
+                    let shown = base.as_deref().and_then(|b| p.strip_prefix(b).ok()).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_else(|| p.to_string_lossy().to_string());
+                    set(self, Key::Image, &shown);
+                }
+            }
+            DOCK => set(self, Key::Dock, if c.dock.as_deref() == Some("fill") { "none" } else { "fill" }),
+            EVENT => self.add_handler_for_selected(),
+            LOCK => set(self, Key::Locked, if c.locked == Some(true) { "False" } else { "True" }),
+            _ => {}
+        }
+    }
+
     /// Document Outline again from the form, when it shows.
     pub fn refresh_outline(&mut self) {
         if !explorer::outline_shown(self.side) {
@@ -4919,6 +5012,14 @@ fn main() {
         if args.iter().any(|a| a == "--task-list") {
             s.task_list();
             println!("{} tasks", s.references.len());
+        }
+        // `--smart-tag`: the chosen control's smart tag, as a click on it does (`PHAI_TAG=n` picks a task).
+        if args.iter().any(|a| a == "--smart-tag") {
+            s.smart_tag();
+            if let Some(i) = s.selected {
+                let c = &s.doc.form.control[i];
+                println!("now: dock={:?} locked={:?}", c.dock, c.locked);
+            }
         }
         // `--outline`: Document Outline shown - checked by picture.
         if args.iter().any(|a| a == "--outline") {

@@ -53,6 +53,8 @@ pub fn origin(f: &phai_form::FormFile) -> (i32, i32) {
 /// Positions snap to this many design pixels.
 pub const GRID: i32 = 4;
 const HANDLE: i32 = 7;
+/// The smart tag's size, design pixels.
+const TAG: i32 = 15;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Drag {
@@ -73,6 +75,8 @@ pub struct Canvas {
     toolbar: Option<HWND>,
     handles: Vec<HWND>,
     form_handles: Vec<HWND>,
+    /// The smart tag: the small ▸ by the chosen control that opens its common tasks.
+    tag: HWND,
     /// Corner marks on the chosen controls other than the first.
     marks: Vec<HWND>,
     /// The chosen controls and where each was when a move began.
@@ -114,7 +118,7 @@ impl Canvas {
             wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
-        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![] }
+        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], tag: HWND::default(), marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![] }
     }
 
     /// Builds the form again from the model: size, controls, handles.
@@ -146,6 +150,14 @@ impl Canvas {
         let (_, _, handle_class) = register_classes();
         self.handles = (0..8).map(|_| create_child(&handle_class, self.surface, WINDOW_EX_STYLE(0))).collect();
         self.form_handles = (0..3).map(|_| create_child(&handle_class, self.hwnd, WINDOW_EX_STYLE(0))).collect();
+        if !self.tag.is_invalid() {
+            unsafe {
+                let _ = wm::DestroyWindow(self.tag);
+            }
+        }
+        let tag_class = win::register("PhaiSmartTag", Some(tag_proc), None);
+        self.tag = create_child(&tag_class, self.surface, WINDOW_EX_STYLE(0));
+        win::show(self.tag, false);
         unsafe {
             wm::SendMessageW(self.surface, wm::WM_SETREDRAW, Some(WPARAM(1)), None);
             let _ = Gdi::RedrawWindow(Some(self.hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_ERASE | Gdi::RDW_ALLCHILDREN | Gdi::RDW_FRAME);
@@ -290,6 +302,19 @@ impl Canvas {
                 None => win::show(*h, false),
             }
         }
+        // The smart tag at the chosen control's top-right corner, when it has tasks.
+        let tagged = matches!(self.drag, Drag::None) && s.also.is_empty() && s.selected.is_some_and(|i| s.doc.form.control.get(i).is_some_and(|c| !c.kind.is_component()));
+        match (shown, tagged) {
+            (Some(r), true) => {
+                let (x, y) = self.tag_point(r);
+                let ts = scale(TAG, dpi);
+                win::move_to(self.tag, scale(x, dpi), scale(y, dpi), ts, ts);
+                unsafe {
+                    let _ = wm::SetWindowPos(self.tag, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE | wm::SWP_SHOWWINDOW);
+                }
+            }
+            _ => win::show(self.tag, false),
+        }
         // The form's own handles, outside it on the canvas: right, bottom-right, bottom.
         let size = match self.drag {
             Drag::Form { now, .. } => now,
@@ -301,6 +326,11 @@ impl Canvas {
             win::move_to(*h, scale(x, dpi) - hs / 2 + hs / 2, scale(y, dpi) - hs / 2 + hs / 2, hs, hs);
             win::show(*h, s.selected.is_none());
         }
+    }
+
+    /// Where the smart tag goes for a control at `r`: just outside its top-right corner.
+    fn tag_point(&self, r: [i32; 4]) -> (i32, i32) {
+        (r[0] + r[2] + HANDLE / 2 + 2, r[1] - HANDLE / 2)
     }
 
     /// The form's size as shown now - while its edge is dragged, the dragged size.
@@ -375,6 +405,17 @@ impl Canvas {
                 self.tab_click(i);
             }
             return;
+        }
+        // The smart tag: the chosen control's tasks.
+        if let Some(i) = s.selected.filter(|_| unsafe { wm::IsWindowVisible(self.tag) }.as_bool()) {
+            let (tx, ty) = self.tag_point(self.rect_of(i));
+            if p.0 >= tx && p.0 < tx + TAG && p.1 >= ty && p.1 < ty + TAG {
+                unsafe {
+                    let _ = km::ReleaseCapture();
+                }
+                s.smart_tag();
+                return;
+            }
         }
         if let Some(kind) = s.tool {
             let at = (snap(p.0), snap(p.1));
@@ -1090,6 +1131,38 @@ extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             Gdi::DrawTextW(dc, &mut w16, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(font.into());
+            let _ = Gdi::EndPaint(h, &ps);
+            LRESULT(0)
+        },
+        _ => win::def(h, msg, w, l),
+    }
+}
+
+/// The smart tag: a small box with ▸, as Visual Studio's; a click on it goes to the surface below.
+extern "system" fn tag_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_NCHITTEST => LRESULT(-1),
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_PAINT => unsafe {
+            let mut ps = Gdi::PAINTSTRUCT::default();
+            let dc = Gdi::BeginPaint(h, &mut ps);
+            let mut r = RECT::default();
+            let _ = wm::GetClientRect(h, &mut r);
+            let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+            win::fill(dc, &r, accent);
+            let inner = RECT { left: r.left + 1, top: r.top + 1, right: r.right - 1, bottom: r.bottom - 1 };
+            win::fill(dc, &inner, Color::rgb(255, 255, 255));
+            // ▸, drawn: a small triangle pointing right.
+            let (cx, cy, k) = (r.right / 2, r.bottom / 2, (r.bottom / 5).max(2));
+            let pts = [windows::Win32::Foundation::POINT { x: cx - k / 2, y: cy - k }, windows::Win32::Foundation::POINT { x: cx - k / 2, y: cy + k }, windows::Win32::Foundation::POINT { x: cx + k, y: cy }];
+            let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(accent.colorref()));
+            let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, windows::Win32::Foundation::COLORREF(accent.colorref()));
+            let (ob, op) = (Gdi::SelectObject(dc, brush.into()), Gdi::SelectObject(dc, pen.into()));
+            let _ = Gdi::Polygon(dc, &pts);
+            Gdi::SelectObject(dc, ob);
+            Gdi::SelectObject(dc, op);
+            let _ = Gdi::DeleteObject(brush.into());
+            let _ = Gdi::DeleteObject(pen.into());
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

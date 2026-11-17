@@ -87,7 +87,7 @@ struct Picture {
 pub fn picture(parent: HWND, id: i32, path: &str) -> HWND {
     let class = win::register("PhaiPicture", Some(proc_), None);
     let h = unsafe {
-        wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE, 0, 0, 10, 10, Some(parent), Some(wm::HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
+        wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(wm::HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
     };
     win::set_state(h, Box::new(Picture { image: None }));
     set_picture(h, path);
