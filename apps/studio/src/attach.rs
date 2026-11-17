@@ -209,6 +209,7 @@ mod tests {
         let list = processes(exe.parent());
         let found = list.iter().any(|p| p.pid == child.id());
         let _ = child.kill();
+        let _ = child.wait();
         assert!(found, "a program just started is in the list");
         assert!(list.iter().all(|p| p.pid != std::process::id()), "Phai Studio leaves itself out");
     }

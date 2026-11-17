@@ -588,6 +588,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("when {0} is true", "เมื่อ {0} เป็นจริง"),
     ("break always", "หยุดทุกครั้ง"),
     ("Condition", "เงื่อนไข"),
+    ("Threads", "เธรด"),
+    ("Threads Window", "หน้าต่างเธรด"),
+    ("(no name)", "(ไม่มีชื่อ)"),
 ];
 
 #[cfg(test)]

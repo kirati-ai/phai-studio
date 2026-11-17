@@ -161,6 +161,7 @@ const ID_DIAG_TOOLS: i32 = 274;
 const ID_ATTACH: i32 = 275;
 const ID_DETACH: i32 = 276;
 const ID_BREAKPOINTS_WIN: i32 = 277;
+const ID_THREADS_WIN: i32 = 278;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -377,6 +378,8 @@ pub struct Studio {
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
+    /// The Threads window's rows: each thread's id.
+    thread_ids: Vec<u32>,
     /// The call stack of the last stop, for a double-click in its list.
     frames: Vec<phai_debug::Frame>,
     /// Server Explorer: the data connections.
@@ -970,6 +973,7 @@ fn build_menu() -> HMENU {
         add(debug, ID_IMMEDIATE, t("Immediate Window"), "Ctrl+Alt+I");
         add(debug, ID_DIAG_TOOLS, t("Show Diagnostic Tools"), "Ctrl+Alt+F2");
         add(debug, ID_BREAKPOINTS_WIN, t("Breakpoints Window"), "Ctrl+Alt+B");
+        add(debug, ID_THREADS_WIN, t("Threads Window"), "Ctrl+Alt+H");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
@@ -3779,7 +3783,18 @@ impl Studio {
     fn show_debug_event(&mut self, e: phai_debug::Event) {
         use phai_debug::Event;
         match e {
-            Event::Stopped { reason, file, line, frames, locals } => {
+            Event::Stopped { reason, file, line, frames, locals, threads } => {
+                if let Some(b) = self.bottom.as_ref() {
+                    use windows::Win32::UI::Controls as cc;
+                    unsafe {
+                        wm::SendMessageW(b.threads, cc::LVM_DELETEALLITEMS, None, None);
+                    }
+                    for th in &threads {
+                        let name = if th.name.is_empty() { t("(no name)") } else { th.name.as_str() };
+                        win::list_add(b.threads, &[if th.current { "→" } else { "" }, &th.id.to_string(), name, &th.location]);
+                    }
+                }
+                self.thread_ids = threads.iter().map(|th| th.id).collect();
                 self.paused = true;
                 self.clear_debug_line();
                 if let Some(f) = file.as_ref().filter(|f| f.is_file()) {
@@ -3935,9 +3950,10 @@ impl Studio {
     /// stops printed; being photographed, it stays at the second stop, else it stops the program.
     fn debug_test_step(&mut self, e: &phai_debug::Event) {
         match e {
-            phai_debug::Event::Stopped { reason, line, locals, .. } => {
+            phai_debug::Event::Stopped { reason, line, locals, threads, .. } => {
                 let vars: Vec<String> = locals.iter().map(|v| format!("{}={}", v.name, v.value)).collect();
                 println!("stopped {reason} at line {line}: {}", vars.join(", "));
+                println!("threads: {}", threads.iter().map(|t| format!("{} {}", if t.name.is_empty() { "-" } else { &t.name }, t.location)).collect::<Vec<_>>().join("; "));
                 let n = DEBUG_TEST.fetch_add(1, Ordering::Relaxed);
                 // `PHAI_IMMEDIATE=expr`: asked in the Immediate window at the first stop.
                 if n == 1 {
@@ -3951,7 +3967,8 @@ impl Studio {
                     self.watches = vec!["x".into(), "y".into(), "y > 41".into()];
                     self.refresh_watch();
                     if let Some(b) = self.bottom.as_ref() {
-                        b.show_tab(6);
+                        // `PHAI_DEBUG_TAB`: another tab in the picture (11 Threads).
+                        b.show_tab(std::env::var("PHAI_DEBUG_TAB").ok().and_then(|v| v.parse().ok()).unwrap_or(6));
                     }
                 }
                 if let Some(d) = &self.debug {
@@ -5009,6 +5026,12 @@ impl Studio {
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_ATTACH => self.attach_to_process(),
+            ID_THREADS_WIN => {
+                self.show_pane(Pane::Output, true);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(11);
+                }
+            }
             ID_BREAKPOINTS_WIN => {
                 self.show_pane(Pane::Output, true);
                 self.fill_breakpoints();
@@ -5623,6 +5646,14 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
                 return LRESULT(0);
             }
+            if s.bottom.as_ref().is_some_and(|b| b.threads == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                // Switch to Thread: its call stack and locals shown, the steps taken on it.
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if let (Some(id), Some(d), true) = (s.thread_ids.get(it.iItem.max(0) as usize), &s.debug, s.paused) {
+                    d.send(phai_debug::Command::Thread(*id));
+                }
+                return LRESULT(0);
+            }
             if s.bottom.as_ref().is_some_and(|b| b.breakpoints == hdr.hwndFrom) {
                 match hdr.code {
                     cc::LVN_ITEMCHANGED => {
@@ -5858,6 +5889,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x71 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DIAG_TOOLS),
             0x50 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_ATTACH),
             0x42 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_BREAKPOINTS_WIN),
+            0x48 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_THREADS_WIN),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -6067,6 +6099,7 @@ fn main() {
             bp_off: vec![],
             bp_rows: vec![],
             bp_filling: false,
+            thread_ids: vec![],
             frames: vec![],
             servers: None,
             watches: vec![],

@@ -33,6 +33,9 @@ pub enum Command {
     Stop,
     /// Let the program go on alone, the debugger gone from it (Detach All).
     Detach,
+    /// While paused: look at this thread instead - its stack and locals said again by a
+    /// [`Event::Stopped`] (reason `thread`), and the steps taken on it.
+    Thread(u32),
     /// The breakpoints, every one, as file and line from 1.
     Breakpoints(Vec<(PathBuf, u32)>),
     /// Conditions on breakpoints - file, line, `x > 5` - each stopping only when it holds.
@@ -43,6 +46,18 @@ pub enum Command {
     /// While paused: a number, `bool` or `char` given a new value, as Visual Studio lets a
     /// value in Locals be typed over. Answered by [`Event::ValueSet`].
     SetValue { expr: String, value: String },
+}
+
+/// A thread of the paused program, as the Threads window lists it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Thread {
+    pub id: u32,
+    /// Its name (`main`, or what `thread::Builder::name` gave it); empty when it has none.
+    pub name: String,
+    /// Where it is: its innermost function in the program's own code, else its innermost.
+    pub location: String,
+    /// The thread looked at - stopped in, or switched to.
+    pub current: bool,
 }
 
 /// A frame of the call stack: the function, and where in the source when the PDB says.
@@ -66,7 +81,7 @@ pub struct Var {
 pub enum Event {
     /// The program is paused: why (`breakpoint`, `step`, `panic`, `pause`, an exception), where,
     /// its call stack, and the locals of its top frame.
-    Stopped { reason: String, file: Option<PathBuf>, line: u32, frames: Vec<Frame>, locals: Vec<Var> },
+    Stopped { reason: String, file: Option<PathBuf>, line: u32, frames: Vec<Frame>, locals: Vec<Var>, threads: Vec<Thread> },
     /// It runs again.
     Running,
     /// A breakpoint asked for at a line with no code moved to this line (or went nowhere: 0).
@@ -177,6 +192,8 @@ enum StepKind {
 
 #[derive(Clone, Debug)]
 struct Step {
+    /// The thread being stepped: another passing the same code is not the step.
+    tid: u32,
     kind: StepKind,
     from: Option<(String, u32)>,
     rsp: u64,
@@ -212,6 +229,8 @@ struct Engine {
     attached: bool,
     /// Detach asked for while paused: done once the event is let go.
     detaching: bool,
+    /// The thread the program began with: Windows gives it no name.
+    main_thread: u32,
 }
 
 /// The program file of a running process, if it may be looked at.
@@ -297,6 +316,20 @@ fn same_file(a: &Path, b: &Path) -> bool {
     n(a) == n(b)
 }
 
+/// A thread's name, as `SetThreadDescription` gave it (Rust names its threads so).
+fn thread_name(h: HANDLE) -> String {
+    unsafe {
+        match windows::Win32::System::Threading::GetThreadDescription(h) {
+            Ok(p) if !p.is_null() => {
+                let s = p.to_string().unwrap_or_default();
+                let _ = windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(p.0 as _)));
+                s
+            }
+            _ => String::new(),
+        }
+    }
+}
+
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
@@ -327,7 +360,7 @@ impl Engine {
     }
 
     fn new(process: HANDLE, exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say, attached: bool) -> Engine {
-        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false }
+        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0 }
     }
 
     /// Attach to Process: the debugger joins a program already running. Windows then tells of its
@@ -413,6 +446,7 @@ impl Engine {
                     CREATE_PROCESS_DEBUG_EVENT => {
                         let info = ev.u.CreateProcessInfo;
                         self.threads.insert(tid, info.hThread);
+                        self.main_thread = tid;
                         self.load_symbols(info.hFile, info.lpBaseOfImage as u64);
                         if !info.hFile.is_invalid() {
                             let _ = CloseHandle(info.hFile);
@@ -422,10 +456,18 @@ impl Engine {
                         self.threads.insert(tid, ev.u.CreateThread.hThread);
                     }
                     EXIT_THREAD_DEBUG_EVENT => {
+                        if std::env::var_os("PHAI_DEBUG_LOG").is_some() {
+                            eprintln!("thread {tid} ended: {} {}", ev.u.ExitThread.dwExitCode, self.threads.get(&tid).map(|h| thread_name(*h)).unwrap_or_default());
+                        }
                         self.threads.remove(&tid);
                     }
                     LOAD_DLL_DEBUG_EVENT => {
                         let f = ev.u.LoadDll.hFile;
+                        // Known to dbghelp, so a stack walks through it (a thread asleep in Windows)
+                        // and its functions have names.
+                        if !f.is_invalid() {
+                            let _ = SymLoadModuleExW(self.process, Some(f), PCWSTR::null(), PCWSTR::null(), ev.u.LoadDll.lpBaseOfDll as u64, 0, None, None);
+                        }
                         if !f.is_invalid() {
                             let _ = CloseHandle(f);
                         }
@@ -655,8 +697,9 @@ impl Engine {
                 c.0.Rip = addr;
                 self.write_byte(addr, bp.orig);
                 match bp.kind {
-                    Kind::Temp(rsp) if c.0.Rsp < rsp => {
-                        // The same place, deeper in a recursion: not the return waited for.
+                    Kind::Temp(rsp) if c.0.Rsp < rsp || self.step.as_ref().is_some_and(|s| s.tid != tid) => {
+                        // The same place, deeper in a recursion or on another thread: not the return
+                        // waited for.
                         c.0.EFlags |= TRAP_FLAG;
                         self.rearm = Some(addr);
                         self.set_context(tid, &c);
@@ -715,7 +758,7 @@ impl Engine {
                         self.write_byte(a, 0xCC);
                     }
                 }
-                if self.step.is_some() {
+                if self.step.as_ref().is_some_and(|s| s.tid == tid) {
                     self.step_tick(tid);
                 }
                 DBG_CONTINUE
@@ -753,6 +796,9 @@ impl Engine {
         // A call just made: the return address is on the stack, right after the call.
         let called = rsp + 8 == step.prev_rsp && self.read(rsp, 8).map(|b| u64::from_le_bytes(b.try_into().unwrap_or([0; 8]))).is_some_and(|ret| ret > step.prev_rip && ret <= step.prev_rip + 16);
         let here = self.line_of(rip);
+        if std::env::var_os("PHAI_DEBUG_LOG").is_some() {
+            eprintln!("tick {rip:#x} rsp {rsp:#x} (from rsp {:#x}) called {called} {:?}", step.rsp, here.as_ref().map(|(_, l, d)| (l, d)));
+        }
         let has_source = here.as_ref().is_some_and(|(f, _, _)| Path::new(f).is_file());
         if called && (step.kind == StepKind::Over || !has_source) {
             // Over the call: run to where it returns.
@@ -798,13 +844,34 @@ impl Engine {
     }
 
     /// Paused: tell what is where, then wait for what to do next.
+    /// Every thread: its name, and where it is.
+    fn thread_list(&self, current: u32) -> Vec<Thread> {
+        let mut ids: Vec<u32> = self.threads.keys().copied().collect();
+        ids.sort_by_key(|t| (*t != self.main_thread, *t));
+        ids.into_iter()
+            .map(|id| {
+                let frames = self.frames(id);
+                let mine = frames.iter().find(|f| f.file.as_ref().is_some_and(|p| self.resolve(&p.to_string_lossy()).starts_with(&self.cwd) && !p.to_string_lossy().contains("rustc")));
+                let location = mine.or(frames.first()).map(|f| f.function.clone()).unwrap_or_default();
+                let mut name = self.threads.get(&id).map(|h| thread_name(*h)).unwrap_or_default();
+                if name.is_empty() && id == self.main_thread {
+                    name = "main".into();
+                }
+                Thread { id, name, location, current: id == current }
+            })
+            .collect()
+    }
+
+    /// The program paused on thread `tid`: where, and what it holds, said; then what is asked.
     fn pause(&mut self, tid: u32, reason: &str) {
-        let frames = self.frames(tid);
-        let locals = self.locals(tid);
-        let (file, line) = frames.first().map(|f| (f.file.clone(), f.line)).unwrap_or((None, 0));
-        (self.say)(Event::Stopped { reason: reason.to_string(), file, line, frames, locals });
+        let mut tid = tid;
+        self.say_stopped(tid, reason);
         loop {
-            let Ok(cmd) = self.rx.recv() else {
+            let got = self.rx.recv();
+            if std::env::var_os("PHAI_DEBUG_LOG").is_some() {
+                eprintln!("paused on {tid}: {got:?}");
+            }
+            let Ok(cmd) = got else {
                 if self.attached {
                     self.detaching = true;
                 } else {
@@ -840,6 +907,13 @@ impl Engine {
                     continue;
                 }
                 Command::Pause => continue,
+                Command::Thread(t) => {
+                    if self.threads.contains_key(&t) {
+                        tid = t;
+                        self.say_stopped(tid, "thread");
+                    }
+                    continue;
+                }
                 Command::Detach => {
                     self.detaching = true;
                     return;
@@ -860,7 +934,7 @@ impl Engine {
                         _ => StepKind::Out,
                     };
                     let from = self.line_of(c.0.Rip).map(|(f, l, _)| (f, l));
-                    self.step = Some(Step { kind, from, rsp: c.0.Rsp, prev_rip: c.0.Rip, prev_rsp: c.0.Rsp });
+                    self.step = Some(Step { tid, kind, from, rsp: c.0.Rsp, prev_rip: c.0.Rip, prev_rsp: c.0.Rsp });
                     if kind == StepKind::Out {
                         // To where this function returns: the caller's place, a shallower stack.
                         match self.return_address(tid) {
@@ -876,6 +950,14 @@ impl Engine {
             (self.say)(Event::Running);
             return;
         }
+    }
+
+    fn say_stopped(&self, tid: u32, reason: &str) {
+        let frames = self.frames(tid);
+        let locals = self.locals(tid);
+        let threads = self.thread_list(tid);
+        let (file, line) = frames.first().map(|f| (f.file.clone(), f.line)).unwrap_or((None, 0));
+        (self.say)(Event::Stopped { reason: reason.to_string(), file, line, frames, locals, threads });
     }
 
     // --- the stack and the locals -------------------------------------------------------------
