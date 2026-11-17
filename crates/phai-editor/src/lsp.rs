@@ -180,7 +180,7 @@ impl Lsp {
                 },
                 "workspaceFolders": [{ "uri": uri_of(root), "name": "project" }],
                 // Type mistakes as you type, not only after `cargo check`.
-                "initializationOptions": { "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } } }
+                "initializationOptions": { "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } }, "lens": { "enable": true, "references": { "adt": { "enable": true }, "method": { "enable": true }, "trait": { "enable": true }, "enumVariant": { "enable": true } } } }
             }),
         );
         // rust-analyzer takes the notification as soon as it has answered `initialize`.
@@ -272,6 +272,16 @@ impl Lsp {
         self.request("callHierarchy/incomingCalls", json!({ "item": item }))
     }
 
+    /// A file's code lenses - "3 references" by a function - still to resolve.
+    pub fn code_lenses(&mut self, path: &Path) -> i64 {
+        self.request("textDocument/codeLens", json!({ "textDocument": { "uri": uri_of(path) } }))
+    }
+
+    /// One code lens worked out: its words.
+    pub fn resolve_lens(&mut self, lens: Value) -> i64 {
+        self.request("codeLens/resolve", lens)
+    }
+
     /// A file's symbols, nested as they are written (Document Outline for code).
     pub fn document_symbols(&mut self, path: &Path) -> i64 {
         self.request("textDocument/documentSymbol", json!({ "textDocument": { "uri": uri_of(path) } }))
@@ -280,6 +290,11 @@ impl Lsp {
     /// The solution's symbols whose names match `query` (Go to All).
     pub fn workspace_symbols(&mut self, query: &str) -> i64 {
         self.request("workspace/symbol", json!({ "query": query }))
+    }
+
+    /// Every place the thing at a place is used, its definition left out - a code lens's count.
+    pub fn uses(&mut self, path: &Path, line: u32, character: u32) -> i64 {
+        self.at("textDocument/references", path, line, character, json!({ "context": { "includeDeclaration": false } }))
     }
 
     /// Every place the thing at a place is used, its definition too (Shift+F12).
@@ -511,6 +526,17 @@ pub fn calls_of(result: &Value) -> Vec<(Location, String)> {
         }
     }
     out
+}
+
+/// A resolved code lens's line and words, kept only when it counts something (references,
+/// implementations) - Run and Debug are the studio's own.
+pub fn lens_of(v: &Value) -> Option<(u32, (u32, u32), String)> {
+    let title = v["command"]["title"].as_str()?.to_string();
+    if !title.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let start = position(&v["range"]["start"]);
+    Some((start.0, start, title))
 }
 
 /// A symbol of a file as written: its name, kind in words, where its name is, what is in it.

@@ -282,6 +282,9 @@ enum Ask {
     Symbols,
     /// Document Outline of a code file: its symbols.
     Outline,
+    /// Code lenses: the file's symbols, then the uses of each (the round, its line and place).
+    LensSymbols,
+    LensUses(u64, u32, (u32, u32)),
     /// Call Hierarchy: the function at the caret, then who calls it.
     PrepareCalls,
     Calls(String),
@@ -325,6 +328,9 @@ pub struct Studio {
     /// Build with `--release`.
     release: bool,
     diagnostics: Vec<cargo::Diagnostic>,
+    /// Code lenses as they come: the round they belong to, and those worked out.
+    lens_round: u64,
+    lenses: Vec<(u32, (u32, u32), String)>,
     /// The Error List's rows as filtered: each one's diagnostic.
     diag_rows: Vec<usize>,
     /// The last Find All References, as its list shows them.
@@ -1292,6 +1298,18 @@ impl Studio {
         }
     }
 
+    /// Code lenses for the code file in front: asked of the language server, then each worked out.
+    pub fn refresh_lenses(&mut self) {
+        let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) else { return };
+        if path.extension().is_none_or(|e| e != "rs") {
+            return;
+        }
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.document_symbols(&path);
+            self.asked.insert(id, (h, Ask::LensSymbols));
+        }
+    }
+
     /// Document Outline again from the form, when it shows.
     pub fn refresh_outline(&mut self) {
         if !explorer::outline_shown(self.side) {
@@ -1760,6 +1778,7 @@ impl Studio {
                     let (e, w) = phai_editor::view::diagnostic_counts(h);
                     controls::status_text(self.status, 0, &tf("{0} errors, {1} warnings", &[&e, &w]));
                     self.refresh_outline();
+                    self.refresh_lenses();
                 }
             }
         }
@@ -1786,6 +1805,45 @@ impl Studio {
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
             Ask::Actions => self.choose_action(h, phai_editor::lsp::actions_of(&result)),
+            Ask::LensSymbols => {
+                // A new round: its uses counted afresh for every function, method, type and trait.
+                self.lens_round += 1;
+                self.lenses.clear();
+                let round = self.lens_round;
+                fn counted(list: &[phai_editor::lsp::DocSymbol], out: &mut Vec<(u32, u32)>) {
+                    for s in list {
+                        if matches!(s.kind, "Function" | "Method" | "Struct" | "Enum" | "Trait" | "Class" | "Constant") {
+                            out.push(s.start);
+                        }
+                        counted(&s.children, out);
+                    }
+                }
+                let mut places = Vec::new();
+                counted(&phai_editor::lsp::doc_symbols_of(&result), &mut places);
+                if let Some(path) = self.doc.path.clone() {
+                    for at in places.into_iter().take(80) {
+                        if let Some(c) = self.lsp_for(&path) {
+                            let id = c.uses(&path, at.0, at.1);
+                            self.asked.insert(id, (h, Ask::LensUses(round, at.0, at)));
+                        }
+                    }
+                }
+                phai_editor::view::set_lenses(h, vec![]);
+            }
+            Ask::LensUses(round, line, at) => {
+                if round == self.lens_round {
+                    let n = result.as_array().map(|a| a.len()).unwrap_or(0);
+                    let words = if n == 1 { t("1 reference").to_string() } else { tf("{0} references", &[&n]) };
+                    self.lenses.retain(|x| x.0 != line);
+                    self.lenses.push((line, at, words));
+                    if std::env::var_os("PHAI_LENS_TEST").is_some() {
+                        let mut all = self.lenses.clone();
+                        all.sort();
+                        println!("lenses: {}", all.iter().map(|(l, _, w)| format!("line {} {w}", l + 1)).collect::<Vec<_>>().join(", "));
+                    }
+                    phai_editor::view::set_lenses(h, self.lenses.clone());
+                }
+            }
             Ask::Outline => {
                 let symbols = phai_editor::lsp::doc_symbols_of(&result);
                 if std::env::var_os("PHAI_OUTLINE_TEST").is_some() && !symbols.is_empty() {
@@ -1976,6 +2034,11 @@ impl Studio {
             0 | 1 if std::env::var_os("PHAI_CALLS_TEST").is_some() => {
                 phai_editor::view::go_to(h, 1, 5);
                 self.command(ID_CALLS);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
+            // `PHAI_LENS_TEST`: the code lenses asked for again and again; printed as they come.
+            0 | 1 if std::env::var_os("PHAI_LENS_TEST").is_some() => {
+                self.refresh_lenses();
                 LSP_TEST.store(1, Ordering::Relaxed);
             }
             // `PHAI_OUTLINE_TEST`: Document Outline of the code file, asked until it answers.
@@ -2711,6 +2774,7 @@ impl Studio {
             self.rebuild();
         } else {
             self.refresh_outline();
+            self.refresh_lenses();
         }
         self.refresh_props();
         self.say_title();
@@ -5712,6 +5776,8 @@ fn main() {
             release: false,
             diagnostics: vec![],
             diag_rows: vec![],
+            lens_round: 0,
+            lenses: vec![],
             references: vec![],
             building: false,
             running: None,

@@ -560,6 +560,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Immediate Window", "หน้าต่าง Immediate"),
     ("The program is not paused: start it with F5 and stop at a breakpoint.", "โปรแกรมไม่ได้หยุดอยู่: เริ่มด้วย F5 แล้วหยุดที่ breakpoint ก่อน"),
     ("Impl", "Impl (การทำงานของชนิด)"),
+    ("1 reference", "ใช้ 1 แห่ง"),
+    ("{0} references", "ใช้ {0} แห่ง"),
 ];
 
 #[cfg(test)]
