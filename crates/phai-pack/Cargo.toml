@@ -1,0 +1,16 @@
+[package]
+name = "phai-pack"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "A program's files packed onto the end of Phai's setup program, and read back by it"
+
+[lib]
+name = "phai_pack"
+path = "src/lib.rs"
+
+[dependencies]
+# Deflate, in Rust - no C library to build.
+miniz_oxide = "0.8"

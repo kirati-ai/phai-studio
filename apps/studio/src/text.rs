@@ -383,6 +383,15 @@ pub static THAI: &[(&str, &str)] = &[
     ("A foreign key needs a name, its columns, the table it refers to and as many of that table's columns.", "คีย์นอกต้องมีชื่อ คอลัมน์ ตารางที่อ้างถึง และคอลัมน์ของตารางนั้นจำนวนเท่ากัน"),
     ("A table needs a name and at least one column.", "ตารางต้องมีชื่อและคอลัมน์อย่างน้อยหนึ่งคอลัมน์"),
     ("Script as SQL", "สคริปต์เป็น SQL"),
+    ("Publish {0}...", "เผยแพร่ {0}..."),
+    ("Publish {0}", "เผยแพร่ {0}"),
+    ("Publish", "เผยแพร่"),
+    ("Product name", "ชื่อผลิตภัณฑ์"),
+    ("Version", "เวอร์ชัน"),
+    ("Publisher", "ผู้พัฒนา"),
+    ("Offer a desktop shortcut", "เสนอทางลัดบนเดสก์ท็อป"),
+    ("phai-setup.exe is not beside Phai Studio, so no setup program can be made.", "ไม่พบ phai-setup.exe ข้าง Phai Studio จึงสร้างตัวติดตั้งไม่ได้"),
+    ("Published: {0} ({1} KB) and a portable folder", "เผยแพร่แล้ว: {0} ({1} KB) และโฟลเดอร์แบบพกพา"),
 ];
 
 #[cfg(test)]
