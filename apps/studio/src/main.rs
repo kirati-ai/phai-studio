@@ -2138,10 +2138,23 @@ impl Studio {
             phai_editor::view::toggle_breakpoint(h);
         }
         let now = self.conds.iter().find(|(p, l, _)| phai_editor::lsp::same_path(p, &path) && *l == line).map(|(_, _, c)| c.clone()).unwrap_or_default();
-        let Some(c) = phai_ui::dialogs::ask(Some(self.hwnd), t("Breakpoint Condition"), &tf("Stop at line {0} only when this holds - x > 5, name == \"ไผ่\":", &[&line]), &now, false) else { return };
+        let (expr, hits) = phai_debug::split_condition(&now);
+        let hits_text = hits.map(|h| h.text()).unwrap_or_default();
+        let fields = [
+            phai_ui::dialogs::Field::Text(&tf("Stop at line {0} only when this holds - x > 5, name == \"ไผ่\":", &[&line]), &expr),
+            phai_ui::dialogs::Field::Text(t("Hit count - = 3, >= 3 or % 3 (every third time); empty for every time:"), &hits_text),
+        ];
+        let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Breakpoint Condition"), &fields) else { return };
+        let hits = match phai_debug::Hits::parse(&a[1]) {
+            Ok(h) => h,
+            Err(e) => {
+                win::message(Some(self.hwnd), &e, t("Breakpoint Condition"), wm::MB_ICONWARNING);
+                return;
+            }
+        };
         self.conds.retain(|(p, l, _)| !(phai_editor::lsp::same_path(p, &path) && *l == line));
-        if !c.trim().is_empty() {
-            self.conds.push((path.clone(), line, c.trim().to_string()));
+        if !a[0].trim().is_empty() || hits.is_some() {
+            self.conds.push((path.clone(), line, phai_debug::join_condition(&a[0], hits)));
         }
         self.show_conditions();
         self.send_breakpoints();
