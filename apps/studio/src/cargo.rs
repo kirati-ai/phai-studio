@@ -162,6 +162,69 @@ pub fn package_version(project: &Path) -> Option<String> {
     }
 }
 
+/// A `[package]` field of a project's Cargo.toml as written: `name`, `edition`, `description`...
+/// - its value without quotes; `authors` as the list's items joined by commas.
+pub fn package_field(project: &Path, key: &str) -> Option<String> {
+    let text = std::fs::read_to_string(project.join("Cargo.toml")).ok()?;
+    let mut inside = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            inside = line == "[package]";
+        } else if inside {
+            let Some(rest) = line.strip_prefix(key) else { continue };
+            let Some(v) = rest.trim_start().strip_prefix('=') else { continue };
+            let v = v.trim();
+            if v.starts_with('[') {
+                return Some(v.trim_matches(['[', ']']).split(',').map(|s| s.trim().trim_matches('"')).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", "));
+            }
+            return Some(v.trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
+/// The text of a Cargo.toml with a `[package]` field set (`value` empty: taken out). Its other
+/// lines, comments and order kept; a new field goes after the last one of `[package]`.
+pub fn with_package_field(text: &str, key: &str, value: &str, list: bool) -> String {
+    let quoted = |v: &str| format!("\"{}\"", v.replace('\\', "\\\\").replace('"', "\\\""));
+    let line = if list {
+        format!("{key} = [{}]", value.split(',').map(str::trim).filter(|s| !s.is_empty()).map(quoted).collect::<Vec<_>>().join(", "))
+    } else {
+        format!("{key} = {}", quoted(value))
+    };
+    let mut out: Vec<String> = Vec::new();
+    let (mut inside, mut done, mut last_field) = (false, false, None);
+    for l in text.lines() {
+        let t = l.trim();
+        if t.starts_with('[') {
+            if inside && !done && !value.trim().is_empty() {
+                let at = last_field.map(|i: usize| i + 1).unwrap_or(out.len());
+                out.insert(at, line.clone());
+                done = true;
+            }
+            inside = t == "[package]";
+        } else if inside {
+            let is_key = t.strip_prefix(key).is_some_and(|r| r.trim_start().starts_with('=') || r.starts_with('.'));
+            if is_key {
+                if !value.trim().is_empty() && !done {
+                    out.push(line.clone());
+                }
+                done = true;
+                continue;
+            }
+            if !t.is_empty() && !t.starts_with('#') {
+                last_field = Some(out.len());
+            }
+        }
+        out.push(l.to_string());
+    }
+    if inside && !done && !value.trim().is_empty() {
+        let at = last_field.map(|i| i + 1).unwrap_or(out.len());
+        out.insert(at, line);
+    }
+    out.join("\n") + "\n"
+}
+
 /// Cargo's arguments for one step of a job: the subcommand and its flags. `whole` is every
 /// project of the workspace (Visual Studio's Solution), else the one project `package`.
 pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> Vec<Vec<String>> {
@@ -586,5 +649,22 @@ mod tests {
         for want in ["phai-ui", "phai-studio", "phai-setup", "phai-pack"] {
             assert!(names.iter().any(|n| n == want), "{want} in {names:?}");
         }
+    }
+
+    #[test]
+    fn package_fields_are_set_in_place() {
+        let toml = "[package]\nname = \"shop\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nregex = \"1\"\n";
+        let t = with_package_field(toml, "version", "1.2.0", false);
+        assert!(t.contains("version = \"1.2.0\"") && !t.contains("0.1.0"));
+        let t = with_package_field(&t, "description", "A shop", false);
+        assert!(t.find("description").unwrap() < t.find("[dependencies]").unwrap(), "a new field stays in [package]");
+        let t = with_package_field(&t, "authors", "Monrak Net, Phai", true);
+        assert!(t.contains("authors = [\"Monrak Net\", \"Phai\"]"));
+        let t = with_package_field(&t, "description", "", false);
+        assert!(!t.contains("description"), "empty takes it out");
+        assert!(t.contains("regex = \"1\""), "the rest kept");
+        // version.workspace = true is replaced by a version of its own.
+        let w = with_package_field("[package]\nname = \"a\"\nversion.workspace = true\n", "version", "2.0.0", false);
+        assert!(w.contains("version = \"2.0.0\"") && !w.contains("workspace"));
     }
 }

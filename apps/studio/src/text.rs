@@ -525,6 +525,15 @@ pub static THAI: &[(&str, &str)] = &[
     ("Previous Bookmark", "บุ๊กมาร์กก่อนหน้า"),
     ("Clear Bookmarks", "ล้างบุ๊กมาร์ก"),
     ("No bookmarks in this file", "ไฟล์นี้ไม่มีบุ๊กมาร์ก"),
+    ("Manage Crates...", "จัดการ Crate..."),
+    ("{0} Properties...", "คุณสมบัติของ {0}..."),
+    ("{0} Properties", "คุณสมบัติของ {0}"),
+    ("Package name (the program's file name):", "ชื่อแพ็กเกจ (ชื่อไฟล์โปรแกรม):"),
+    ("Version:", "เวอร์ชัน:"),
+    ("Rust edition (2021 or 2024):", "Rust edition (2021 หรือ 2024):"),
+    ("Description:", "คำอธิบาย:"),
+    ("Authors (comma between):", "ผู้เขียน (คั่นด้วยจุลภาค):"),
+    ("A package name is letters, digits, - and _ only.", "ชื่อแพ็กเกจใช้ได้แค่ตัวอักษร ตัวเลข - และ _"),
 ];
 
 #[cfg(test)]
