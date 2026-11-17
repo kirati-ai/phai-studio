@@ -627,6 +627,14 @@ pub fn find_all(text: &str, query: &str, case: bool) -> Vec<(usize, usize)> {
     if query.is_empty() {
         return vec![];
     }
+    if !case {
+        // Lower case the same length as the text (ASCII, Thai, most): offsets carry over, and the
+        // plain search is quick.
+        let (lt, lq) = (text.to_lowercase(), query.to_lowercase());
+        if lt.len() == text.len() && lt.char_indices().map(|(i, _)| i).eq(text.char_indices().map(|(i, _)| i)) {
+            return find_all(&lt, &lq, true).into_iter().filter(|(a, b)| text.is_char_boundary(*a) && text.is_char_boundary(*b)).collect();
+        }
+    }
     let mut out = Vec::new();
     if case {
         let mut from = 0;

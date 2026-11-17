@@ -48,7 +48,7 @@
 | ★ | Go To Definition (F12, Ctrl+click; Edit menu), Peek Definition (Alt+F12: โค้ดตรงที่ประกาศในหน้าต่างใต้บรรทัด ไม่ต้องเปลี่ยนไฟล์, Esc ปิด) - ทดสอบกับ rust-analyzer จริง | ✅ (peek ยังแก้โค้ดในหน้าต่างไม่ได้) |
 | ★ | Find All References (Shift+F12) — References tab, double-click to go | ✅ |
 | ★ | Quick Find / Replace (Ctrl+F / Ctrl+H) | ✅ |
-| | Find in Files (Ctrl+Shift+F) | ⬜ |
+| | Find in Files (Ctrl+Shift+F, เมนู Edit): ทั้ง solution ข้าม target และโฟลเดอร์ซ่อน, ตรงตัวพิมพ์หรือไม่ก็ได้, ผลในรายการ References ดับเบิลคลิกเปิดตรงบรรทัด | ✅ |
 | ★ | Rename (F2; Edit menu) — every file, open ones as one undo step | ✅ |
 | | Comment toggle (Ctrl+/), ย้ายบรรทัด (Alt+↑↓ ไปพร้อมส่วนที่เลือก), ทำซ้ำบรรทัดหรือส่วนที่เลือก (Ctrl+D) - ย้อนกลับได้ทีละขั้น | ✅ |
 | | Multi-caret, box selection | ⬜ |
