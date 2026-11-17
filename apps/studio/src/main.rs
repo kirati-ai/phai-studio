@@ -5636,7 +5636,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: the start window, once the window is up - unless switched off,
@@ -5800,6 +5800,14 @@ fn main() {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
             }
+        }
+        // `--new-project DIR`: a new project made there, as File > New project does; its path printed.
+        if let Some(d) = args.iter().position(|a| a == "--new-project").and_then(|i| args.get(i + 1)) {
+            match project::create(Path::new(d)) {
+                Ok(form) => println!("project {} with phai-ui at {}", form.display(), project::phai_ui_path().display()),
+                Err(e) => println!("new project failed: {e}"),
+            }
+            std::process::exit(0);
         }
         // `--goto LINE:COLUMN`: the caret there in the open code - for checking by picture.
         if let Some((l, c)) = args.iter().position(|a| a == "--goto").and_then(|i| args.get(i + 1)).and_then(|p| p.split_once(':')) {

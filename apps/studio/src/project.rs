@@ -8,8 +8,12 @@ use phai_form::codegen;
 use phai_form::{Control, FormFile, Kind};
 use windows::Win32::Foundation::HWND;
 
-/// Where phai-ui is on this machine, for the new project's Cargo.toml - until it is published.
+/// Where phai-ui is on this machine, for the new project's Cargo.toml - until it is published:
+/// installed, beside Phai Studio (`phai-ui\` in its folder); else the source it was built from.
 pub fn phai_ui_path() -> PathBuf {
+    if let Some(installed) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("phai-ui"))).filter(|d| d.join("Cargo.toml").is_file()) {
+        return installed;
+    }
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("crates").join("phai-ui");
     here.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(here)
 }

@@ -130,3 +130,4 @@
 | | ค้นหา/แทนที่: ตรงตัวพิมพ์ (Aa), ทั้งคำ (ab|), regular expression (.*) แทนที่ด้วยกลุ่ม $1 ได้ | ✅ |
 | ★ | Project > Properties (Alt+F7): ชื่อแพ็กเกจ, เวอร์ชัน, Rust edition, คำอธิบาย, ผู้เขียน - เขียนลง Cargo.toml โดยไม่แตะส่วนอื่น | ✅ |
 | ★ | Project > Manage Crates (แบบ NuGet Package Manager): ค้นหา crates.io (ชื่อ, เวอร์ชันล่าสุด, ยอดดาวน์โหลด, คำอธิบาย), รายการ crate ที่ใช้อยู่, Add/Remove ด้วย cargo add / cargo remove - ทดสอบค้นหา เพิ่ม และลบจริง | ✅ |
+| ★ | ตัวติดตั้ง Phai Studio เอง: `dist/PhaiStudio-<เวอร์ชัน>-setup.exe` (cargo run --example make_installer) มี Phai Studio, phai-setup และไลบรารี phai-ui; โปรเจกต์ใหม่ใช้ phai-ui ที่ติดตั้งไว้ จึง build ได้บนเครื่องอื่น - ทดสอบติดตั้ง สร้างโปรเจกต์ build และถอนจริง | ✅ |

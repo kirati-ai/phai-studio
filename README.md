@@ -54,6 +54,27 @@ cargo run --release -p phai-studio
 File > New project... picks an empty folder and makes a project that builds as it is. Or open the
 sample: `cargo run -p phai-studio -- apps/sample/src/main_window.phaiform`.
 
+## Installing Phai Studio / ติดตั้ง Phai Studio
+
+1. Install Rust first - free, from <https://rustup.rs> (with the MSVC build tools it asks for).
+   Phai Studio builds your programs with it. / ติดตั้ง Rust ก่อน (ฟรี) จาก rustup.rs
+2. Run `PhaiStudio-<version>-setup.exe`. It installs for you alone, needs no administrator, and
+   puts Phai Studio in the Start menu (and on the desktop if you like). / รันไฟล์ setup ไม่ต้องใช้สิทธิ์ผู้ดูแลระบบ
+3. Remove it from Settings > Apps, as any program. / ถอนได้จาก Settings > Apps
+
+The setup carries Phai Studio, the setup program its Publish uses, and the phai-ui library new
+projects build with - so a project made on any computer builds there.
+
+Making the setup from the source:
+
+```
+cargo build --release -p phai-studio -p phai-setup
+cargo run --release -p phai-setup --example make_installer
+```
+
+It is written to `dist/PhaiStudio-<version>-setup.exe`. Quiet install: `/S`, another folder:
+`/D=C:\path`.
+
 ## The repository
 
 | | |
