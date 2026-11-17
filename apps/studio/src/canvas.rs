@@ -881,6 +881,12 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::BREAKPOINTS => {
+            if let Some(s) = studio() {
+                s.breakpoints_changed(HWND(l.0 as *mut _));
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::REFERENCES => {
             if let Some(s) = studio() {
                 s.lsp_references(HWND(l.0 as *mut _));
