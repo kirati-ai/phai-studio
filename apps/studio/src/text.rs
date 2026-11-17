@@ -602,6 +602,14 @@ pub static THAI: &[(&str, &str)] = &[
     ("C++ exception", "ข้อยกเว้น C++"),
     ("Exception Settings: {0}", "ตั้งค่าข้อยกเว้น: {0}"),
     ("nothing stops the program but breakpoints", "มีแต่ breakpoint ที่หยุดโปรแกรม"),
+    ("View History of This File...", "ดูประวัติของไฟล์นี้..."),
+    ("Show Line Blame", "แสดงผู้แก้บรรทัด (blame)"),
+    ("This file is not in a Git repository.", "ไฟล์นี้ไม่ได้อยู่ใน Git repository"),
+    ("Not committed yet", "ยังไม่ได้ commit"),
+    ("History - {0}", "ประวัติ - {0}"),
+    ("Commit", "คอมมิต"),
+    ("Author", "ผู้เขียน"),
+    ("No commit has this file yet.", "ยังไม่มี commit ใดที่มีไฟล์นี้"),
 ];
 
 #[cfg(test)]
