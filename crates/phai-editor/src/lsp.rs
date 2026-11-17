@@ -165,6 +165,8 @@ impl Lsp {
                 "capabilities": {
                     "textDocument": {
                         "hover": { "contentFormat": ["plaintext", "markdown"] },
+                        "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
+                        "codeLens": {},
                         "completion": { "completionItem": { "snippetSupport": false } },
                         "publishDiagnostics": {},
                         "definition": { "linkSupport": true },
@@ -268,6 +270,11 @@ impl Lsp {
     /// Who calls the function `item` (from a prepareCallHierarchy answer).
     pub fn incoming_calls(&mut self, item: Value) -> i64 {
         self.request("callHierarchy/incomingCalls", json!({ "item": item }))
+    }
+
+    /// A file's symbols, nested as they are written (Document Outline for code).
+    pub fn document_symbols(&mut self, path: &Path) -> i64 {
+        self.request("textDocument/documentSymbol", json!({ "textDocument": { "uri": uri_of(path) } }))
     }
 
     /// The solution's symbols whose names match `query` (Go to All).
@@ -504,6 +511,53 @@ pub fn calls_of(result: &Value) -> Vec<(Location, String)> {
         }
     }
     out
+}
+
+/// A symbol of a file as written: its name, kind in words, where its name is, what is in it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DocSymbol {
+    pub name: String,
+    pub kind: &'static str,
+    pub start: (u32, u32),
+    pub children: Vec<DocSymbol>,
+}
+
+/// The LSP's number for a kind of symbol, in words.
+pub fn kind_name(k: u64) -> &'static str {
+    match k {
+        2 => "Module",
+        5 => "Class",
+        6 | 9 => "Method",
+        8 => "Field",
+        10 => "Enum",
+        11 => "Trait",
+        12 => "Function",
+        13 => "Variable",
+        14 => "Constant",
+        19 => "Impl",
+        22 => "Enum member",
+        23 => "Struct",
+        26 => "Type",
+        _ => "Symbol",
+    }
+}
+
+/// A documentSymbol answer, nested; local variables left out, as an outline has no room for them.
+pub fn doc_symbols_of(result: &Value) -> Vec<DocSymbol> {
+    fn one(v: &Value) -> Option<DocSymbol> {
+        let kind = v.get("kind").and_then(Value::as_u64).unwrap_or(0);
+        if kind == 13 {
+            return None;
+        }
+        let range = v.get("selectionRange").or(v.get("range")).or(v.get("location").and_then(|l| l.get("range")))?;
+        Some(DocSymbol {
+            name: v.get("name")?.as_str()?.to_string(),
+            kind: kind_name(kind),
+            start: position(&range["start"]),
+            children: v.get("children").and_then(Value::as_array).map(|c| c.iter().filter_map(one).collect()).unwrap_or_default(),
+        })
+    }
+    result.as_array().map(|a| a.iter().filter_map(one).collect()).unwrap_or_default()
 }
 
 /// A symbol of a `workspace/symbol` answer: its name, its kind in words, where it is.
