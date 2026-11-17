@@ -126,3 +126,4 @@
 |---|---|---|
 | ★ | Go to All (Ctrl+T, เมนู Edit): พิมพ์ชื่อแล้วเจอทั้งไฟล์และสัญลักษณ์ในโค้ด (ฟังก์ชัน, struct ฯลฯ จาก rust-analyzer) ขึ้น/ลง/Enter ไปที่นั่น | ✅ |
 | ★ | Toolbox กลุ่ม Menus and toolbars: Menu bar (MenuStrip) และ Toolbar (ToolStrip) เปิดตัวแก้ของฟอร์ม, Context menu (ContextMenuStrip) เป็นคอมโพเนนต์ใน tray ใส่รายการ "เมธอด \| ข้อความ" แล้วเลือกให้ control ไหนก็ได้ใน Properties > Context menu - คลิกขวาในโปรแกรมแล้วขึ้นเมนู | ✅ |
+| | Bookmarks: Ctrl+K Ctrl+K ใส่/เอา, Ctrl+K Ctrl+N ถัดไป, Ctrl+K Ctrl+P ก่อนหน้า, Ctrl+K Ctrl+L ล้าง - ธงในขอบซ้าย ย้ายตามบรรทัดเมื่อแก้โค้ด | ✅ |

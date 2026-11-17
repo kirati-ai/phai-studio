@@ -143,6 +143,10 @@ const ID_BATCH_BUILD: i32 = 261;
 const ID_NEW_WINDOW: i32 = 262;
 const ID_CLOSE_PEEK: i32 = 263;
 const ID_GO_TO_ALL: i32 = 264;
+const ID_BM_TOGGLE: i32 = 265;
+const ID_BM_NEXT: i32 = 266;
+const ID_BM_PREV: i32 = 267;
+const ID_BM_CLEAR: i32 = 268;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -816,6 +820,10 @@ fn build_menu() -> HMENU {
         add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
         add(edit, ID_GO_TO_ALL, t("Go to All..."), "Ctrl+T");
+        add(edit, ID_BM_TOGGLE, t("Toggle Bookmark"), "Ctrl+K, Ctrl+K");
+        add(edit, ID_BM_NEXT, t("Next Bookmark"), "Ctrl+K, Ctrl+N");
+        add(edit, ID_BM_PREV, t("Previous Bookmark"), "Ctrl+K, Ctrl+P");
+        add(edit, ID_BM_CLEAR, t("Clear Bookmarks"), "Ctrl+K, Ctrl+L");
         add(edit, ID_MOVE_UP, t("Move Line Up"), "Alt+Up");
         add(edit, ID_MOVE_DOWN, t("Move Line Down"), "Alt+Down");
         sep(edit);
@@ -4528,6 +4536,21 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_BM_TOGGLE | ID_BM_NEXT | ID_BM_PREV | ID_BM_CLEAR => match self.code_shown() {
+                Some(h) => {
+                    use phai_editor::view::Bookmark;
+                    let what = match id {
+                        ID_BM_TOGGLE => Bookmark::Toggle,
+                        ID_BM_NEXT => Bookmark::Next,
+                        ID_BM_PREV => Bookmark::Previous,
+                        _ => Bookmark::Clear,
+                    };
+                    if !phai_editor::view::bookmark(h, what) {
+                        controls::status_text(self.status, 0, t("No bookmarks in this file"));
+                    }
+                }
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_NEW_WINDOW => self.new_window(),
@@ -5223,6 +5246,10 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     (0x4B, 0x44, true) => Some(ID_FORMAT_DOC), // Ctrl+K, Ctrl+D
                     (0x4B, 0x43, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+C
                     (0x4B, 0x55, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+U
+                    (0x4B, 0x4B, true) => Some(ID_BM_TOGGLE),  // Ctrl+K, Ctrl+K
+                    (0x4B, 0x4E, true) => Some(ID_BM_NEXT),    // Ctrl+K, Ctrl+N
+                    (0x4B, 0x50, true) => Some(ID_BM_PREV),    // Ctrl+K, Ctrl+P
+                    (0x4B, 0x4C, true) => Some(ID_BM_CLEAR),   // Ctrl+K, Ctrl+L
                     (0x4D, 0x4D, true) => Some(ID_FOLD),       // Ctrl+M, Ctrl+M
                     (0x4D, 0x4C, true) => Some(ID_FOLD_ALL),   // Ctrl+M, Ctrl+L
                     (0x52, 0x41, _) => Some(ID_RUN_ALL_TESTS), // Ctrl+R, A
@@ -5671,6 +5698,20 @@ fn main() {
                     }
                     println!("{} carets", phai_editor::view::caret_count(h));
                 }
+            }
+        }
+        // `--bookmarks`: lines 2 and 5 marked, then Next from line 1 twice - where it went printed.
+        if args.iter().any(|a| a == "--bookmarks") {
+            if let Some(h) = s.doc.code {
+                for l in [2, 5] {
+                    phai_editor::view::go_to(h, l, 1);
+                    s.command(ID_BM_TOGGLE);
+                }
+                phai_editor::view::go_to(h, 1, 1);
+                s.command(ID_BM_NEXT);
+                let first = phai_editor::view::caret_line(h);
+                s.command(ID_BM_NEXT);
+                println!("bookmarks {:?}, next {first} then {}", phai_editor::view::bookmarks(h), phai_editor::view::caret_line(h));
             }
         }
         // `--fold-all`: every block in the open code folded - checked by picture.

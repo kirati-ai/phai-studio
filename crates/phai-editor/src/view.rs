@@ -93,6 +93,8 @@ struct View {
     folded: Vec<(usize, usize)>,
     /// The lines shown, one per row on screen, in order - every line when nothing is folded.
     rows: Vec<usize>,
+    /// Bookmarked lines, from 0.
+    bookmarks: Vec<usize>,
     /// Alt+drag: where the box began, (line, column in characters).
     box_from: Option<(usize, usize)>,
     /// The tip is a Peek Definition: it stays while the pointer moves, until Esc or a change.
@@ -282,7 +284,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -939,6 +941,47 @@ pub fn toggle_all_folds(h: HWND) {
     }
 }
 
+/// Bookmarks: the caret's line marked or unmarked (Ctrl+K, Ctrl+K), the next or the one before
+/// (Ctrl+K, Ctrl+N / Ctrl+P, round the end), or all cleared (Ctrl+K, Ctrl+L).
+pub enum Bookmark {
+    Toggle,
+    Next,
+    Previous,
+    Clear,
+}
+
+pub fn bookmark(h: HWND, what: Bookmark) -> bool {
+    let Some(v) = view(h) else { return false };
+    let line = v.model.buf.position(v.model.caret).0;
+    match what {
+        Bookmark::Toggle => {
+            if let Some(i) = v.bookmarks.iter().position(|b| *b == line) {
+                v.bookmarks.remove(i);
+            } else {
+                v.bookmarks.push(line);
+                v.bookmarks.sort();
+            }
+        }
+        Bookmark::Clear => v.bookmarks.clear(),
+        Bookmark::Next | Bookmark::Previous => {
+            let next = matches!(what, Bookmark::Next);
+            let to = if next { v.bookmarks.iter().find(|b| **b > line).or(v.bookmarks.first()) } else { v.bookmarks.iter().rev().find(|b| **b < line).or(v.bookmarks.last()) };
+            let Some(&to) = to else { return false };
+            go_to(h, to + 1, 1);
+            return true;
+        }
+    }
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+    true
+}
+
+/// The bookmarked lines, from 1 - for checking.
+pub fn bookmarks(h: HWND) -> Vec<usize> {
+    view(h).map(|v| v.bookmarks.iter().map(|b| b + 1).collect()).unwrap_or_default()
+}
+
 /// How many carets there are - for checking.
 pub fn caret_count(h: HWND) -> usize {
     view(h).map(|v| 1 + v.model.extra.len()).unwrap_or(0)
@@ -1061,12 +1104,13 @@ fn changed(h: HWND) {
             let at = v.model.buf.position(v.model.caret).0;
             let d = now as isize - v.lines_were as isize;
             let from = if d > 0 { at as isize - d } else { at as isize };
-            for b in v.breakpoints.iter_mut() {
+            for b in v.breakpoints.iter_mut().chain(v.bookmarks.iter_mut()) {
                 if *b as isize > from {
                     *b = (*b as isize + d).max(0) as usize;
                 }
             }
             v.breakpoints.dedup();
+            v.bookmarks.dedup();
         }
         v.lines_were = now;
         v.edits += 1;
@@ -1281,6 +1325,14 @@ fn paint(h: HWND, v: &mut View) {
             // A breakpoint: a red dot in the margin; the debugger's place: a yellow arrow.
             let d = v.line_h - win::px(h, 6);
             let (bx, by) = (win::px(h, 3), y + (v.line_h - d) / 2);
+            // A bookmark: a small flag in the margin, where a breakpoint is not.
+            if v.bookmarks.contains(&line) && !v.breakpoints.contains(&line) {
+                let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+                let (fw, fh) = (d * 2 / 3, d);
+                win::fill(dc, &RECT { left: bx + d / 6, top: by, right: bx + d / 6 + fw, bottom: by + fh }, accent);
+                // Its notch at the bottom, as a ribbon.
+                win::fill(dc, &RECT { left: bx + d / 6 + fw / 2 - fw / 6, top: by + fh - fh / 4, right: bx + d / 6 + fw / 2 + fw / 6, bottom: by + fh }, if dark { Color::rgb(0x1e, 0x1e, 0x1e) } else { win::window_background() });
+            }
             if v.breakpoints.contains(&line) {
                 let red = Color::rgb(0xe5, 0x14, 0x00);
                 let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(red.colorref()));
