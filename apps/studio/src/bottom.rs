@@ -26,11 +26,14 @@ pub const ID_IMMEDIATE_INPUT: i32 = 523;
 pub const ID_DIAGNOSTICS: i32 = 524;
 pub const ID_BREAKPOINTS: i32 = 525;
 pub const ID_THREADS: i32 = 526;
+pub const ID_MEMORY_INPUT: i32 = 527;
+pub const ID_MEMORY: i32 = 528;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
-/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints, 11 threads.
-fn labels() -> [&'static str; 12] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads")]
+/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints, 11 threads,
+/// 12 memory.
+fn labels() -> [&'static str; 13] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads"), t("Memory")]
 }
 
 pub struct Bottom {
@@ -52,6 +55,8 @@ pub struct Bottom {
     pub diagnostics: HWND,
     pub breakpoints: HWND,
     pub threads: HWND,
+    pub memory: HWND,
+    pub memory_input: HWND,
     layout: Layout,
 }
 
@@ -113,7 +118,16 @@ impl Bottom {
         layout.add(breakpoints, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         let threads = win::list(hwnd, ID_THREADS, font, &[("", 28), (t("ID"), 80), (t("Name"), 200), (t("Location"), 520)]);
         layout.add(threads, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, layout });
+        // Memory: an address or a variable typed above, its bytes below as hex and as text.
+        let memory_input = win::edit(hwnd, "", ID_MEMORY_INPUT, font, false);
+        let memory = win::edit_lines(hwnd, "", ID_MEMORY, font);
+        unsafe {
+            wm::SendMessageW(memory, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
+            let _ = windows::Win32::UI::Shell::SetWindowSubclass(memory_input, Some(input_proc), 32, 0);
+        }
+        layout.add(memory_input, Item { bounds: Rect::new(0, 30, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: true, right: true, bottom: false } });
+        layout.add(memory, Item { bounds: Rect::new(0, 56, 800, 84), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -139,6 +153,8 @@ impl Bottom {
         win::show(self.diagnostics, i == 9);
         win::show(self.breakpoints, i == 10);
         win::show(self.threads, i == 11);
+        win::show(self.memory, i == 12);
+        win::show(self.memory_input, i == 12);
     }
 
     pub fn relabel(&self) {
@@ -171,14 +187,19 @@ impl Bottom {
 }
 
 /// The Immediate window's box: Enter asks the debugger what was typed.
-unsafe extern "system" fn input_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
+/// Enter in the Immediate window's box (31) or the Memory window's (32).
+unsafe extern "system" fn input_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, which: usize, _: usize) -> LRESULT {
     match msg {
         wm::WM_GETDLGCODE => LRESULT(4 /* DLGC_WANTALLKEYS */),
         wm::WM_KEYDOWN if w.0 == 0x0D => {
             let text = win::text_of(h);
-            win::set_text(h, "");
             if let Some(s) = crate::studio() {
-                s.immediate(text.trim());
+                if which == 32 {
+                    s.show_memory(text.trim());
+                } else {
+                    win::set_text(h, "");
+                    s.immediate(text.trim());
+                }
             }
             LRESULT(0)
         }

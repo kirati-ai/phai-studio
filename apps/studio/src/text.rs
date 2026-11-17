@@ -610,6 +610,13 @@ pub static THAI: &[(&str, &str)] = &[
     ("Commit", "คอมมิต"),
     ("Author", "ผู้เขียน"),
     ("No commit has this file yet.", "ยังไม่มี commit ใดที่มีไฟล์นี้"),
+    ("Memory", "หน่วยความจำ"),
+    ("Memory Window", "หน้าต่างหน่วยความจำ"),
+    ("New Data Breakpoint...", "เบรกพอยต์ข้อมูลใหม่..."),
+    ("New Data Breakpoint", "เบรกพอยต์ข้อมูลใหม่"),
+    ("A data breakpoint is set while the program is paused: it watches a variable that exists then.", "ตั้งเบรกพอยต์ข้อมูลได้ตอนโปรแกรมหยุดอยู่ เพราะจะเฝ้าดูตัวแปรที่มีอยู่ตอนนั้น"),
+    ("Break when this variable changes (a name, or a field: order.total):", "หยุดเมื่อตัวแปรนี้เปลี่ยน (ชื่อ หรือฟิลด์ เช่น order.total):"),
+    ("Data breakpoint: stops when {0} changes", "เบรกพอยต์ข้อมูล: หยุดเมื่อ {0} เปลี่ยน"),
 ];
 
 #[cfg(test)]

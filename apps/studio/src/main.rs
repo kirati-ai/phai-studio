@@ -166,6 +166,10 @@ const ID_THREADS_WIN: i32 = 278;
 const ID_EXCEPTIONS: i32 = 279;
 const ID_GIT_HISTORY: i32 = 280;
 const ID_GIT_BLAME: i32 = 281;
+const ID_MEMORY_WIN: i32 = 282;
+const ID_DATA_BP: i32 = 283;
+/// The Memory window's request.
+const EVAL_MEMORY: u64 = 3;
 
 /// Exception Settings: the Windows exceptions that can stop the program as soon as they happen.
 const EXCEPTIONS: [(u32, &str); 6] = [
@@ -392,6 +396,8 @@ pub struct Studio {
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
+    /// What the Memory window shows: an address or a variable.
+    memory_at: String,
     /// Git line blame: shown after the caret's line, each line's for the file in front.
     blame_on: bool,
     blame: Vec<String>,
@@ -992,6 +998,8 @@ fn build_menu() -> HMENU {
         add(debug, ID_BREAKPOINTS_WIN, t("Breakpoints Window"), "Ctrl+Alt+B");
         add(debug, ID_THREADS_WIN, t("Threads Window"), "Ctrl+Alt+H");
         add(debug, ID_EXCEPTIONS, t("Exception Settings..."), "Ctrl+Alt+E");
+        add(debug, ID_MEMORY_WIN, t("Memory Window"), "Ctrl+Alt+M");
+        add(debug, ID_DATA_BP, t("New Data Breakpoint..."), "");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
@@ -3452,13 +3460,7 @@ impl Studio {
         if row < 0 {
             return;
         }
-        let cell = |col: i32| -> String {
-            use windows::Win32::UI::Controls as cc;
-            let mut buf = vec![0u16; 512];
-            let mut item = cc::LVITEMW { iSubItem: col, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 512, ..Default::default() };
-            let n = unsafe { wm::SendMessageW(list, 0x1073 /* LVM_GETITEMTEXTW */, Some(WPARAM(row as usize)), Some(LPARAM(&mut item as *mut _ as isize))).0 } as usize;
-            String::from_utf16_lossy(&buf[..n.min(512)])
-        };
+        let cell = |col: i32| win::list_text(list, row as usize, col);
         let (name, value, ty) = (cell(0), cell(1), cell(2));
         let Some(new) = phai_ui::dialogs::ask(Some(self.hwnd), &tf("Change {0}", &[&name]), &tf("A new value for {0} ({1}):", &[&name, &ty]), &value, false) else { return };
         if new.trim() != value {
@@ -3750,6 +3752,42 @@ impl Studio {
         self.debug_session(exe, None);
     }
 
+    /// The Memory window shows what is at `at` - an address or a variable - now and at every stop.
+    pub fn show_memory(&mut self, at: &str) {
+        if !at.is_empty() {
+            self.memory_at = at.to_string();
+        }
+        let Some(b) = self.bottom.as_ref() else { return };
+        if win::text_of(b.memory_input) != self.memory_at {
+            win::set_text(b.memory_input, &self.memory_at);
+        }
+        match (&self.debug, self.paused, self.memory_at.is_empty()) {
+            (_, _, true) => {}
+            (Some(d), true, false) => d.send(phai_debug::Command::Memory { id: EVAL_MEMORY, at: self.memory_at.clone(), len: 256 }),
+            _ => win::set_text(b.memory, t("The program is not paused: start it with F5 and stop at a breakpoint.")),
+        }
+    }
+
+    /// Debug > New Data Breakpoint: stop when a variable changes - the local chosen in Locals by
+    /// default.
+    fn new_data_breakpoint(&mut self) {
+        use windows::Win32::UI::Controls as cc;
+        let (Some(d), true) = (&self.debug, self.paused) else {
+            win::message(Some(self.hwnd), t("A data breakpoint is set while the program is paused: it watches a variable that exists then."), t("New Data Breakpoint..."), wm::MB_ICONINFORMATION);
+            return;
+        };
+        let chosen = self.bottom.as_ref().map(|b| unsafe { wm::SendMessageW(b.locals, cc::LVM_GETNEXTITEM, Some(WPARAM(usize::MAX)), Some(LPARAM(2))).0 }).filter(|i| *i >= 0);
+        let name = chosen.and_then(|i| self.bottom.as_ref().map(|b| win::list_text(b.locals, i as usize, 0))).unwrap_or_default();
+        let expr = match std::env::var("PHAI_DATA_BP") {
+            Ok(e) => e,
+            Err(_) => match phai_ui::dialogs::ask(Some(self.hwnd), t("New Data Breakpoint"), t("Break when this variable changes (a name, or a field: order.total):"), &name, false) {
+                Some(e) if !e.trim().is_empty() => e.trim().to_string(),
+                _ => return,
+            },
+        };
+        d.send(phai_debug::Command::DataBreakpoint(expr));
+    }
+
     /// Exception Settings as remembered: whether a panic stops the program, and the exceptions
     /// that stop it at once.
     fn exceptions() -> phai_debug::Command {
@@ -3897,6 +3935,11 @@ impl Studio {
                     }
                 }
                 self.thread_ids = threads.iter().map(|th| th.id).collect();
+                if !self.memory_at.is_empty() {
+                    if let Some(d) = &self.debug {
+                        d.send(phai_debug::Command::Memory { id: EVAL_MEMORY, at: self.memory_at.clone(), len: 256 });
+                    }
+                }
                 self.paused = true;
                 self.clear_debug_line();
                 if let Some(f) = file.as_ref().filter(|f| f.is_file()) {
@@ -4026,6 +4069,33 @@ impl Studio {
                     }
                 }
             }
+            Event::Memory { result, .. } => {
+                let text = match result {
+                    Ok((addr, bytes)) => hex_dump(addr, &bytes),
+                    Err(e) => e,
+                };
+                if DEBUG_TEST.load(Ordering::Relaxed) > 0 {
+                    println!("memory: {}", text.lines().next().unwrap_or(""));
+                }
+                if let Some(b) = self.bottom.as_ref() {
+                    win::set_text(b.memory, &text);
+                }
+            }
+            Event::DataBreakpoint(result) => match result {
+                Ok(what) => {
+                    let said = tf("Data breakpoint: stops when {0} changes", &[&what]);
+                    if DEBUG_TEST.load(Ordering::Relaxed) > 0 {
+                        println!("{said}");
+                    }
+                    if let Some(b) = self.bottom.as_ref() {
+                        b.add_line(&said);
+                    }
+                    self.say_status(&said);
+                }
+                Err(e) => {
+                    win::message(Some(self.hwnd), &e, t("New Data Breakpoint..."), wm::MB_ICONINFORMATION);
+                }
+            },
             Event::Detached => {
                 self.debug = None;
                 self.paused = false;
@@ -4057,6 +4127,26 @@ impl Studio {
                 println!("stopped {reason} at line {line}: {}", vars.join(", "));
                 println!("threads: {}", threads.iter().map(|t| format!("{} {}", if t.name.is_empty() { "-" } else { &t.name }, t.location)).collect::<Vec<_>>().join("; "));
                 let n = DEBUG_TEST.fetch_add(1, Ordering::Relaxed);
+                // `PHAI_MEMORY=at`: the Memory window shown at the first stop; `PHAI_DATA_BP`: a
+                // data breakpoint set there, the line breakpoints taken away so it is what stops.
+                if n == 1 {
+                    if let Ok(at) = std::env::var("PHAI_MEMORY") {
+                        self.paused = true;
+                        self.show_memory(&at);
+                    }
+                    if std::env::var_os("PHAI_DATA_BP").is_some() {
+                        self.paused = true;
+                        self.new_data_breakpoint();
+                        if let Some(h) = self.doc.code {
+                            phai_editor::view::set_breakpoints(h, &[]);
+                        }
+                        if let Some(d) = &self.debug {
+                            d.send(phai_debug::Command::Breakpoints(vec![]));
+                            d.send(phai_debug::Command::Continue);
+                        }
+                        return;
+                    }
+                }
                 // `PHAI_IMMEDIATE=expr`: asked in the Immediate window at the first stop.
                 if n == 1 {
                     if let Ok(q) = std::env::var("PHAI_IMMEDIATE") {
@@ -5129,6 +5219,14 @@ impl Studio {
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_ATTACH => self.attach_to_process(),
             ID_EXCEPTIONS => self.exception_settings(),
+            ID_MEMORY_WIN => {
+                self.show_pane(Pane::Output, true);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(12);
+                    let _ = unsafe { km::SetFocus(Some(b.memory_input)) };
+                }
+            }
+            ID_DATA_BP => self.new_data_breakpoint(),
             ID_THREADS_WIN => {
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
@@ -5457,6 +5555,9 @@ impl Studio {
                     phai_editor::view::set_breakpoints(h, &[]);
                 }
                 self.bp_off.clear();
+                if let Some(d) = &self.debug {
+                    d.send(phai_debug::Command::ClearDataBreakpoints);
+                }
                 self.send_breakpoints();
                 self.mark_breakpoints();
                 self.fill_breakpoints();
@@ -5583,6 +5684,21 @@ fn settings_dir() -> Option<PathBuf> {
         return Some(PathBuf::from(d));
     }
     Some(PathBuf::from(std::env::var_os("APPDATA")?).join("Phai Studio"))
+}
+
+/// Bytes as the Memory window shows them: an address, sixteen bytes in hex, and as text.
+fn hex_dump(addr: u64, bytes: &[Option<u8>]) -> String {
+    let mut out = String::new();
+    for (row, chunk) in bytes.chunks(16).enumerate() {
+        let hex: Vec<String> = chunk.iter().map(|b| b.map(|b| format!("{b:02X}")).unwrap_or_else(|| "??".into())).collect();
+        let text: String = chunk.iter().map(|b| match b {
+            Some(c) if (0x20..0x7f).contains(c) => *c as char,
+            Some(_) => '.',
+            None => '?',
+        }).collect();
+        out.push_str(&format!("0x{:016X}  {:<47}  {text}\r\n", addr + row as u64 * 16, hex.join(" ")));
+    }
+    out
 }
 
 /// A remembered setting, `name=value` lines in `settings.txt`.
@@ -6006,6 +6122,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x42 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_BREAKPOINTS_WIN),
             0x48 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_THREADS_WIN),
             0x45 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_EXCEPTIONS),
+            0x4D if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_MEMORY_WIN),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -6218,6 +6335,7 @@ fn main() {
             thread_ids: vec![],
             blame_on: setting("blame").as_deref() == Some("1"),
             blame: vec![],
+            memory_at: String::new(),
             frames: vec![],
             servers: None,
             watches: vec![],

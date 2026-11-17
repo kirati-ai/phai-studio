@@ -831,6 +831,15 @@ pub fn list_add(h: HWND, cells: &[&str]) {
 }
 
 /// Selects one row of a list view - the others not - and scrolls it into view.
+/// The words in a list's cell: row and column from 0.
+pub fn list_text(h: HWND, row: usize, col: i32) -> String {
+    use windows::Win32::UI::Controls as cc;
+    let mut buf = vec![0u16; 512];
+    let mut item = cc::LVITEMW { iSubItem: col, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 512, ..Default::default() };
+    let n = unsafe { wm::SendMessageW(h, 0x1073 /* LVM_GETITEMTEXTW */, Some(WPARAM(row)), Some(LPARAM(&mut item as *mut _ as isize))).0 } as usize;
+    String::from_utf16_lossy(&buf[..n.min(512)])
+}
+
 pub fn list_select(h: HWND, row: usize) {
     use windows::Win32::UI::Controls as cc;
     unsafe {

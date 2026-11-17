@@ -37,6 +37,14 @@ pub enum Command {
     /// code, `0xC0000005` an access violation) that stop it as soon as they happen - before the
     /// program's own handlers see them. Others stop it only when nothing handles them.
     Exceptions { panics: bool, first_chance: Vec<u32> },
+    /// While paused: `len` bytes of memory at an address (`0x7ff6...`) or where a variable
+    /// (`total`, `order.items`) is - the Memory window. Answered by [`Event::Memory`].
+    Memory { id: u64, at: String, len: usize },
+    /// While paused: stop when the variable `expr` changes - a data breakpoint, on the
+    /// processor's own debug registers (four at most). Answered by [`Event::DataBreakpoint`].
+    DataBreakpoint(String),
+    /// Every data breakpoint taken away.
+    ClearDataBreakpoints,
     /// While paused: look at this thread instead - its stack and locals said again by a
     /// [`Event::Stopped`] (reason `thread`), and the steps taken on it.
     Thread(u32),
@@ -98,6 +106,10 @@ pub enum Event {
     Failed(String),
     /// The debugger let go of it; it runs on alone.
     Detached,
+    /// [`Command::Memory`] answered: the address, and each byte (`None` where it cannot be read).
+    Memory { id: u64, result: Result<(u64, Vec<Option<u8>>), String> },
+    /// [`Command::DataBreakpoint`] done - what it watches - or why not.
+    DataBreakpoint(Result<String, String>),
     /// The values asked for by [`Command::Evaluate`].
     Values { id: u64, vars: Vec<Var> },
     /// [`Command::SetValue`] done - the locals as they are now - or why not.
@@ -238,6 +250,8 @@ struct Engine {
     /// Exception Settings: see [`Command::Exceptions`].
     break_on_panic: bool,
     first_chance: Vec<u32>,
+    /// Data breakpoints: address, length (1, 2, 4 or 8) and what was asked - in DR0 to DR3.
+    watched: Vec<(u64, u64, String)>,
 }
 
 /// The program file of a running process, if it may be looked at.
@@ -367,7 +381,7 @@ impl Engine {
     }
 
     fn new(process: HANDLE, exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say, attached: bool) -> Engine {
-        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![] }
+        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![], watched: vec![] }
     }
 
     /// Attach to Process: the debugger joins a program already running. Windows then tells of its
@@ -432,6 +446,10 @@ impl Engine {
                         let _ = DebugBreakProcess(self.process);
                     },
                     Ok(Command::Breakpoints(list)) => self.set_breakpoints(list),
+                    Ok(Command::ClearDataBreakpoints) => {
+                        self.watched.clear();
+                        self.write_debug_registers();
+                    }
                     Ok(Command::Exceptions { panics, first_chance }) => {
                         self.break_on_panic = panics;
                         self.first_chance = first_chance;
@@ -465,6 +483,10 @@ impl Engine {
                     }
                     CREATE_THREAD_DEBUG_EVENT => {
                         self.threads.insert(tid, ev.u.CreateThread.hThread);
+                        // A new thread watches what the others do.
+                        if !self.watched.is_empty() {
+                            self.write_debug_registers();
+                        }
                     }
                     EXIT_THREAD_DEBUG_EVENT => {
                         if std::env::var_os("PHAI_DEBUG_LOG").is_some() {
@@ -676,7 +698,7 @@ impl Engine {
     fn context(&self, tid: u32) -> Option<Ctx> {
         let h = *self.threads.get(&tid)?;
         let mut c: Ctx = unsafe { std::mem::zeroed() };
-        c.0.ContextFlags = CONTEXT_FLAGS(0x0010_000B); // CONTEXT_FULL (AMD64)
+        c.0.ContextFlags = CONTEXT_FLAGS(0x0010_001B); // CONTEXT_FULL and the debug registers (AMD64)
         unsafe { GetThreadContext(h, &mut c.0) }.ok()?;
         Some(c)
     }
@@ -767,6 +789,17 @@ impl Engine {
                         DBG_CONTINUE
                     }
                 }
+            }
+            SINGLE_STEP if self.data_hit(tid).is_some() => {
+                let what = self.data_hit(tid).unwrap_or_default();
+                if let Some(mut c) = self.context(tid) {
+                    c.0.Dr6 = 0;
+                    self.set_context(tid, &c);
+                }
+                self.forget_temps();
+                self.step = None;
+                self.pause(tid, &format!("data breakpoint: {what} changed"));
+                DBG_CONTINUE
             }
             SINGLE_STEP => {
                 if let Some(a) = self.rearm.take() {
@@ -928,6 +961,21 @@ impl Engine {
                     continue;
                 }
                 Command::Pause => continue,
+                Command::Memory { id, at, len } => {
+                    let result = self.memory(tid, &at, len);
+                    (self.say)(Event::Memory { id, result });
+                    continue;
+                }
+                Command::DataBreakpoint(expr) => {
+                    let result = self.add_data_breakpoint(tid, &expr);
+                    (self.say)(Event::DataBreakpoint(result));
+                    continue;
+                }
+                Command::ClearDataBreakpoints => {
+                    self.watched.clear();
+                    self.write_debug_registers();
+                    continue;
+                }
                 Command::Exceptions { panics, first_chance } => {
                     self.break_on_panic = panics;
                     self.first_chance = first_chance;
@@ -976,6 +1024,87 @@ impl Engine {
             (self.say)(Event::Running);
             return;
         }
+    }
+
+    /// Where an address or a variable is: `0x...` as written, else the variable's place, and how
+    /// long its value is.
+    fn address_of(&self, tid: u32, at: &str) -> Result<(u64, u64), String> {
+        let at = at.trim();
+        if let Some(hex) = at.strip_prefix("0x").or_else(|| at.strip_prefix("0X")) {
+            return u64::from_str_radix(&hex.replace(['_', '`'], ""), 16).map(|a| (a, 8)).map_err(|_| format!("`{at}` is not an address"));
+        }
+        let (base, t, addr) = self.place(tid, at)?;
+        let types = Types { process: self.process, base, engine: self };
+        Ok((addr, types.len(t)))
+    }
+
+    /// The Memory window's bytes: `len` of them from an address or a variable.
+    fn memory(&self, tid: u32, at: &str, len: usize) -> Result<(u64, Vec<Option<u8>>), String> {
+        let (addr, _) = self.address_of(tid, at)?;
+        let mut out = Vec::with_capacity(len);
+        for row in 0..len.div_ceil(16) {
+            let a = addr + row as u64 * 16;
+            let n = 16.min(len - row * 16);
+            match self.read(a, n) {
+                Some(b) => out.extend(b.into_iter().map(Some)),
+                None => out.extend((0..n as u64).map(|i| self.read(a + i, 1).map(|b| b[0]))),
+            }
+        }
+        Ok((addr, out))
+    }
+
+    /// A data breakpoint on `expr`: its place and length given to the next free debug register.
+    fn add_data_breakpoint(&mut self, tid: u32, expr: &str) -> Result<String, String> {
+        let (addr, len) = self.address_of(tid, expr)?;
+        if self.watched.len() >= 4 {
+            return Err("four data breakpoints are all the processor has".into());
+        }
+        // The processor watches 1, 2, 4 or 8 bytes, aligned to their length.
+        let len = match len {
+            1 => 1,
+            2 => 2,
+            3 | 4 => 4,
+            _ => 8,
+        };
+        if addr % len != 0 {
+            return Err(format!("`{expr}` is not aligned for the processor to watch"));
+        }
+        self.watched.retain(|w| w.0 != addr);
+        self.watched.push((addr, len, expr.to_string()));
+        self.write_debug_registers();
+        Ok(format!("{expr} (0x{addr:X}, {len} bytes)"))
+    }
+
+    /// DR0-DR3 and DR7 of every thread set to the data breakpoints: each one written to.
+    fn write_debug_registers(&self) {
+        let mut dr7 = 0u64;
+        let mut regs = [0u64; 4];
+        for (i, (addr, len, _)) in self.watched.iter().enumerate().take(4) {
+            regs[i] = *addr;
+            let size = match len {
+                1 => 0b00,
+                2 => 0b01,
+                8 => 0b10,
+                _ => 0b11,
+            };
+            dr7 |= 1 << (2 * i); // enabled for this thread
+            dr7 |= 0b01 << (16 + 4 * i); // on a write
+            dr7 |= size << (18 + 4 * i);
+        }
+        let tids: Vec<u32> = self.threads.keys().copied().collect();
+        for tid in tids {
+            if let Some(mut c) = self.context(tid) {
+                (c.0.Dr0, c.0.Dr1, c.0.Dr2, c.0.Dr3) = (regs[0], regs[1], regs[2], regs[3]);
+                c.0.Dr7 = dr7;
+                self.set_context(tid, &c);
+            }
+        }
+    }
+
+    /// The data breakpoint a single-step exception on `tid` came from, if it did.
+    fn data_hit(&self, tid: u32) -> Option<String> {
+        let c = self.context(tid)?;
+        (0..self.watched.len().min(4)).find(|i| c.0.Dr6 & (1 << i) != 0).map(|i| self.watched[i].2.clone())
     }
 
     fn say_stopped(&self, tid: u32, reason: &str) {
