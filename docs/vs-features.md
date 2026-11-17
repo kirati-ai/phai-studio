@@ -45,7 +45,7 @@
 | ★ | Parameter Info (Ctrl+Shift+Space, และเมื่อพิมพ์ ( หรือ ,): signature ของฟังก์ชันใต้เคอร์เซอร์ พารามิเตอร์ที่กำลังพิมพ์อยู่ใน «» พร้อมคำอธิบาย ปิดเมื่อพิมพ์ ) หรือ Esc - ทดสอบกับ rust-analyzer จริง | ✅ |
 | ★ | เส้นหยักใต้ error / warning | ✅ |
 | ★ | Quick Actions (Ctrl+., เมนู Edit): การแก้ไขและปรับโครงสร้างจาก rust-analyzer เป็นเมนูใต้เคอร์เซอร์ การแก้ไขขึ้นก่อน เลือกแล้วแก้ทุกไฟล์ที่เกี่ยว - ทดสอบ Insert explicit type จริง | ✅ |
-| ★ | Go To Definition (F12, Ctrl+click; Edit menu), Peek Definition (Alt+F12: โค้ดตรงที่ประกาศในหน้าต่างใต้บรรทัด ไม่ต้องเปลี่ยนไฟล์, Esc ปิด) - ทดสอบกับ rust-analyzer จริง | ✅ (peek ยังแก้โค้ดในหน้าต่างไม่ได้) |
+| ★ | Go To Definition (F12, Ctrl+click; Edit menu), Peek Definition (Alt+F12: โค้ดตรงที่ประกาศในหน้าต่างใต้บรรทัด ไม่ต้องเปลี่ยนไฟล์, Esc ปิด) - ทดสอบกับ rust-analyzer จริง ; หน้าต่าง peek เป็นตัวแก้โค้ดจริง แก้ได้ - ไฟล์ที่เปิดเป็นแท็บอยู่เปลี่ยนตามทันที ไฟล์ที่ไม่ได้เปิดบันทึกเมื่อปิด peek | ✅ |
 | ★ | Find All References (Shift+F12) — References tab, double-click to go | ✅ |
 | ★ | Quick Find / Replace (Ctrl+F / Ctrl+H) | ✅ |
 | | Find in Files (Ctrl+Shift+F, เมนู Edit): ทั้ง solution ข้าม target และโฟลเดอร์ซ่อน, ตรงตัวพิมพ์หรือไม่ก็ได้, ผลในรายการ References ดับเบิลคลิกเปิดตรงบรรทัด | ✅ |
