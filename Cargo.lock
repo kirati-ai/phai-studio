@@ -104,6 +104,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "phai-debug"
+version = "0.1.0"
+dependencies = [
+ "windows",
+]
+
+[[package]]
 name = "phai-design"
 version = "0.1.0"
 dependencies = [

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/phai-ui", "crates/phai-form", "crates/phai-design", "crates/phai-editor", "apps/gallery", "apps/studio", "apps/sample"]
+members = ["crates/phai-ui", "crates/phai-form", "crates/phai-design", "crates/phai-editor", "crates/phai-debug", "apps/gallery", "apps/studio", "apps/sample"]
 
 [workspace.package]
 version = "0.1.0"
