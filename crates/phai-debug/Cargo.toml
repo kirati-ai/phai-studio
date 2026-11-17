@@ -12,6 +12,8 @@ name = "phai_debug"
 path = "src/lib.rs"
 
 [dependencies]
+# The Disassembly window's x86-64 decoder (MIT). Pinned to a long-standing release.
+iced-x86 = { version = "=1.21.0", default-features = false, features = ["std", "decoder", "intel"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
