@@ -19,6 +19,13 @@ sha2 = "0.10"
 rsa = "0.9"
 rand = "0.8"
 native-tls = "0.2"
+# PostgreSQL's SCRAM and MD5 proofs.
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+base64 = "0.22"
+md5 = { package = "md-5", version = "0.10" }
+# SQLite: the library itself, built in.
+rusqlite = { version = "0.32", features = ["bundled"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",
