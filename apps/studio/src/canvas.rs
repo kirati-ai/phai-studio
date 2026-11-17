@@ -31,6 +31,21 @@ pub fn chrome(f: &phai_form::FormFile) -> i32 {
     TITLE + if f.menu.is_empty() { 0 } else { MENU }
 }
 
+/// The component tray under the form, as Visual Studio's: one chip per component (a timer) -
+/// its index in the form and its rectangle, design pixels.
+pub fn tray_chips(f: &phai_form::FormFile, size: [i32; 2]) -> Vec<(usize, [i32; 4])> {
+    let (ox, top) = origin(f);
+    let y = top + size[1] + 24;
+    let mut x = ox;
+    let mut out = Vec::new();
+    for (i, c) in f.control.iter().enumerate().filter(|(_, c)| c.kind.is_component()) {
+        let w = c.id.chars().count() as i32 * 7 + 44;
+        out.push((i, [x, y, w, 28]));
+        x += w + 8;
+    }
+    out
+}
+
 /// Where the form's client area starts on the canvas, design pixels.
 pub fn origin(f: &phai_form::FormFile) -> (i32, i32) {
     (MARGIN, MARGIN + chrome(f))
@@ -225,8 +240,18 @@ impl Canvas {
         let shown = match self.drag {
             Drag::Create { from, to, .. } | Drag::Band { from, to } => Some(norm(from, to)),
             Drag::Resize { now, .. } => Some(now),
-            _ => s.selected.map(|i| moved(self.rect_of(i))),
+            // A component has no place on the form: its chip in the tray shows it chosen.
+            _ => s.selected.filter(|i| s.doc.form.control.get(*i).is_none_or(|c| !c.kind.is_component())).map(|i| moved(self.rect_of(i))),
         };
+        // The tray drawn again, its chosen chip with it.
+        let size = s.drag_size();
+        let chips = tray_chips(&s.doc.form, size);
+        if let (Some(first), Some(last)) = (chips.first(), chips.last()) {
+            let r = RECT { left: scale(first.1[0], dpi) - 2, top: scale(first.1[1], dpi) - 2, right: scale(last.1[0] + last.1[2], dpi) + 2, bottom: scale(last.1[1] + last.1[3], dpi) + 2 };
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(self.hwnd), Some(&r), true);
+            }
+        }
         // The others chosen: a small mark at each corner, as Visual Studio shows them.
         for h in self.marks.iter() {
             unsafe {
@@ -574,6 +599,12 @@ impl Canvas {
         unsafe {
             let _ = km::SetFocus(Some(self.surface));
         }
+        // A chip in the component tray: that component chosen.
+        if let Some((i, _)) = tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]) {
+            s.select(Some(i));
+            self.place_handles();
+            return;
+        }
         // The frame above the form: its menu bar opens the menus to edit, its title bar chooses the form.
         let inside_x = p.0 >= MARGIN && p.0 < MARGIN + size[0];
         if inside_x && p.1 >= MARGIN + TITLE && p.1 < top {
@@ -821,6 +852,35 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
                 Gdi::DrawTextW(dc, &mut words, &mut mr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             }
             x += lw;
+        }
+    }
+    // The component tray: a chip for each, its toolbox icon and name; the chosen one marked.
+    let chips = tray_chips(f, size);
+    if !chips.is_empty() {
+        let chosen = studio().and_then(|s| s.selected);
+        let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+        for (i, r) in &chips {
+            let c = &f.control[*i];
+            let rr = RECT { left: p(r[0]), top: p(r[1]), right: p(r[0] + r[2]), bottom: p(r[1] + r[3]) };
+            win::fill(dc, &rr, if chosen == Some(*i) { accent } else { border });
+            win::fill(dc, &RECT { left: rr.left + 1, top: rr.top + 1, right: rr.right - 1, bottom: rr.bottom - 1 }, window);
+            unsafe {
+                Gdi::SelectObject(dc, icons.into());
+                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(accent.colorref()));
+            }
+            let g = crate::toolbox_items().iter().find(|(id, _, _)| crate::tool_kind(*id) == Some(c.kind)).map(|(_, _, g)| *g).unwrap_or(0);
+            let mut gr = RECT { left: rr.left + p(6), top: rr.top, right: rr.left + p(26), bottom: rr.bottom };
+            let mut one = [g];
+            unsafe {
+                Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                Gdi::SelectObject(dc, font.into());
+                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
+            }
+            let mut tr = RECT { left: rr.left + p(30), top: rr.top, right: rr.right - p(4), bottom: rr.bottom };
+            let mut words: Vec<u16> = c.id.encode_utf16().collect();
+            unsafe {
+                Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+            }
         }
     }
     unsafe {

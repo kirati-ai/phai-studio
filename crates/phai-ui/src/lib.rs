@@ -22,6 +22,7 @@ pub mod controls;
 pub mod dialogs;
 pub mod icon;
 pub mod layout;
+pub mod picture;
 #[cfg(feature = "shot")]
 pub mod shot;
 pub mod text;

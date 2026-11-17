@@ -44,6 +44,7 @@ pub enum Key {
     Enabled,
     Visible,
     Locked,
+    Image,
     Checked,
     Password,
     Group,
@@ -285,6 +286,7 @@ impl Props {
                         let name = match e {
                             "on_click" => t("Click"),
                             "on_change" => t("Change"),
+                            "on_tick" => t("Tick"),
                             _ => t("Select"),
                         };
                         vec![p(t("Events"), Key::Event, name, c.handler().unwrap_or_default().to_string(), Ed::Choice(user_methods(), true), t("The method that runs when this happens. Double-click the control to write it."))]
@@ -317,6 +319,20 @@ impl Props {
             })
             .collect();
         };
+        // A timer: its name, how often, whether it runs from the start.
+        if c.kind == Kind::Timer {
+            return [
+                p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
+                p(t("Behavior"), Key::Value, t("Interval"), c.value.unwrap_or(1000).to_string(), Ed::Number, t("Milliseconds between ticks - 1000 is a second.")),
+                p(t("Behavior"), Key::Enabled, t("Enabled"), yes_no(c.enabled != Some(false)), bools.clone(), t("Whether it ticks from when the window opens.")),
+            ]
+            .into_iter()
+            .map(|mut q| {
+                q.set = is_set(q.key, &q.value);
+                q
+            })
+            .collect();
+        }
         let [x, y, w, h] = c.rect();
         let docked = c.dock.is_some();
         let has_text = c.kind.has_text() || c.kind == Kind::Statusbar;
@@ -354,9 +370,12 @@ impl Props {
             v.push(p(t("Data"), Key::Max, t("Maximum"), c.max.unwrap_or(100).to_string(), Ed::Number, t("The largest value.")));
             v.push(p(t("Data"), Key::Value, t("Value"), c.value.unwrap_or(0).to_string(), Ed::Number, t("The value when the window opens.")));
         }
-        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs) {
+        if c.kind == Kind::Picture {
+            v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
+        }
+        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree) {
             let items = match c.kind {
-                Kind::Combo => c.items.join("\n"),
+                Kind::Combo | Kind::Tree => c.items.join("\n"),
                 Kind::Tabs => c.tabs.join("\n"),
                 _ => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
             };

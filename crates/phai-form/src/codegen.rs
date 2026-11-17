@@ -243,7 +243,15 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Number => format!("win::number(hwnd, {id}, {font}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
             Kind::Progress => format!("win::progress(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
             Kind::Slider => format!("win::slider(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
+            Kind::Tree => format!("{{ let h = win::tree(hwnd, {id}, {font}); win::tree_items(h, &[{}]); h }}", c.items.iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
+            Kind::Picture => format!("phai_ui::picture::picture(hwnd, {id}, {})", lit(c.image.as_deref().unwrap_or(""))),
+            // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
+            Kind::Timer => format!("{{ win::timer(hwnd, {id}, {}, {}); hwnd }}", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
+        if c.kind == Kind::Timer {
+            let _ = writeln!(w, "        let {} = {make};", c.id);
+            continue;
+        }
         let _ = writeln!(w, "        let {} = {make};", c.id);
         let _ = writeln!(w, "        win::set_css({}, {}, {});", c.id, lit(c.class.as_deref().unwrap_or("")), lit(&c.id));
         if let Some(own) = c.own_css() {
@@ -381,6 +389,33 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
+    let timers: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::Timer && c.on_tick.is_some()).collect();
+    if !timers.is_empty() {
+        let _ = writeln!(w, "        wm::WM_TIMER => {{");
+        let _ = writeln!(w, "            let Host {{ ui, events }} = host;");
+        let _ = writeln!(w, "            match w.0 as i32 {{");
+        for c in timers {
+            let _ = writeln!(w, "                CONTROL_{} => events.{}(ui),", c.id.to_ascii_uppercase(), c.on_tick.as_deref().unwrap_or_default());
+        }
+        let _ = writeln!(w, "                _ => {{}}");
+        let _ = writeln!(w, "            }}");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    let trees: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::Tree && c.on_select.is_some()).collect();
+    if !trees.is_empty() {
+        let _ = writeln!(w, "        wm::WM_NOTIFY if unsafe {{ (*(l.0 as *const windows::Win32::UI::Controls::NMHDR)).code }} == (-451i32) as u32 => {{");
+        let _ = writeln!(w, "            // TVN_SELCHANGEDW: a tree's item chosen.");
+        let _ = writeln!(w, "            let from = unsafe {{ (*(l.0 as *const windows::Win32::UI::Controls::NMHDR)).idFrom }};");
+        let _ = writeln!(w, "            let Host {{ ui, events }} = host;");
+        for c in trees {
+            let _ = writeln!(w, "            if from == CONTROL_{} as usize {{", c.id.to_ascii_uppercase());
+            let _ = writeln!(w, "                events.{}(ui);", c.on_select.as_deref().unwrap_or_default());
+            let _ = writeln!(w, "            }}");
+        }
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
     let lists: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::List && c.on_select.is_some()).collect();
     if !lists.is_empty() {
         let _ = writeln!(w, "        wm::WM_NOTIFY => {{");

@@ -35,14 +35,15 @@ enum Line {
 }
 
 /// The groups, in order; a kind's group is where [`group_of`] puts it.
-fn groups() -> [&'static str; 3] {
-    [t("Common controls"), t("Containers"), t("Menus and toolbars")]
+fn groups() -> [&'static str; 4] {
+    [t("Common controls"), t("Containers"), t("Menus and toolbars"), t("Components")]
 }
 
 fn group_of(k: Kind) -> usize {
     match k {
         Kind::Group | Kind::Tabs => 1,
         Kind::Statusbar => 2,
+        Kind::Timer => 3,
         _ => 0,
     }
 }
