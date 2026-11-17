@@ -73,7 +73,8 @@
 
 | | ความสามารถ | สถานะ |
 |---|---|---|
-| ★ | Breakpoints, F10/F11/Shift+F11, Locals, Watch, Call Stack, data tips | ⬜ (ต้องใช้ debug adapter เช่น CodeLLDB/cppvsdbg) |
+| ★ | Breakpoints (F9, คลิกขอบซ้าย), F5 เริ่ม/ทำต่อ, F10/F11/Shift+F11, Break All, Shift+F5, หยุดเมื่อ panic, Locals (ตัวเลข bool char &str String struct), Call Stack, แถบ Debug — เขียนเองบน Windows debug API + dbghelp | ✅ |
+| | Watch, data tips (ชี้ตัวแปรดูค่า), conditional breakpoints, แก้ค่าตัวแปร | ⬜ |
 
 ## หน้าต่าง
 
@@ -83,7 +84,7 @@
 | ★ | แถบ Standard: ย้อนกลับ/ไปข้างหน้า, โปรเจกต์ใหม่, ฟอร์มใหม่, เปิด, บันทึก, บันทึกทั้งหมด, Undo/Redo, กล่อง Debug/Release, ▶ ชื่อโปรเจกต์, Stop, Build | ✅ |
 | ★ | แถบ Layout: จัดตามเส้นตาราง, จัดแนว 6 แบบ, ขนาดเท่ากัน/ตามเส้นตาราง, ระยะแนวนอน/ตั้ง (เท่ากัน/เพิ่ม/ลด/ชิด), กึ่งกลางฟอร์ม, หน้า/หลัง, Tab order; ปุ่มเป็นสีเทาเมื่อใช้ไม่ได้ | ✅ |
 | | ▾ ท้ายแถบ: Add or Remove Buttons (ติ๊กเปิด/ปิดทีละปุ่ม จำไว้ครั้งหน้า), Reset Toolbar | ✅ |
-| ★ | เมนู Build: Build/Rebuild/Clean Solution (ทั้ง workspace), Run Code Analysis (cargo clippy, Alt+F11), Build/Rebuild/Clean/Analysis ของโปรเจกต์, Debug/Release; เมนู Debug: Start (F5), Start Without Debugging (Ctrl+F5), Stop | ✅ (ยังไม่มี Pack/Publish, Batch Build, ดีบักเกอร์) |
+| ★ | เมนู Build: Build/Rebuild/Clean Solution (ทั้ง workspace), Run Code Analysis (cargo clippy, Alt+F11), Build/Rebuild/Clean/Analysis ของโปรเจกต์, Debug/Release; เมนู Debug: Start (F5), Start Without Debugging (Ctrl+F5), Stop | ✅ (ยังไม่มี Pack/Publish, Batch Build) |
 | | แถบเครื่องมืออยู่ในถาด: ที่จับลากย้ายตามแถว ข้ามแถว หรือขึ้นไปวางข้างแถบอื่น, » แสดงปุ่มที่ไม่พอที่ | ✅ |
 | ★ | ปุ่มบนหัวแผง: ▾ Window Position (Dock / Auto Hide / Hide), 📌 Auto Hide, × ปิด | ✅ |
 | ★ | ลากหัวแผงไปติดขอบซ้าย/ขวา/บน/ล่าง หรือลอย (Toolbox; กล่องสีบอกตำแหน่ง, Esc ยกเลิก, ดับเบิลคลิกหัวหน้าต่างลอยเพื่อกลับ) | 🟡 (แผงขวายังลากไม่ได้, ยังไม่มีรูปเพชรนำทาง) |

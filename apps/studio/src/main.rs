@@ -89,6 +89,16 @@ const ID_RUN_NODEBUG: i32 = 223;
 /// The ▾ at the end of each bar: Add or Remove Buttons.
 const ID_CUSTOM_STD: i32 = 224;
 const ID_CUSTOM_LAYOUT: i32 = 225;
+const ID_STEP_OVER: i32 = 226;
+const ID_STEP_INTO: i32 = 227;
+const ID_STEP_OUT: i32 = 228;
+const ID_TOGGLE_BP: i32 = 229;
+const ID_CLEAR_BPS: i32 = 230;
+const ID_BREAK_ALL: i32 = 231;
+const ID_DEBUG_BAR: i32 = 232;
+const BAND_DEBUG: u32 = 3;
+/// Posted by the debugger's thread for each thing it says; `LPARAM` is a `Box<phai_debug::Event>`.
+const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
 /// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
@@ -254,6 +264,16 @@ pub struct Studio {
     layout_bar: HWND,
     /// The tray both bars lie in.
     rebar: HWND,
+    /// The Debug bar: shown in the tray while a program is being debugged.
+    debug_bar: HWND,
+    /// The program under the debugger, whether it is paused, and a build that is to be debugged.
+    debug: Option<phai_debug::Session>,
+    paused: bool,
+    debug_after_build: bool,
+    /// Breakpoints by file - those of files not open as well - lines from 1.
+    bps: std::collections::HashMap<PathBuf, Vec<u32>>,
+    /// The call stack of the last stop, for a double-click in its list.
+    frames: Vec<phai_debug::Frame>,
     /// The Debug / Release box on the Standard bar.
     config: HWND,
     /// Places in code that F12, a reference or an error went from, for Navigate backward and
@@ -294,6 +314,8 @@ pub struct Studio {
 }
 
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// `--debugtest`: 0 off, then how many stops so far plus one.
+static DEBUG_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 /// How far `--lsptest` has come: 0-1 the definition, 2 the references, 3 the rename, 4 done.
 static LSP_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static STUDIO: AtomicPtr<Studio> = AtomicPtr::new(std::ptr::null_mut());
@@ -376,6 +398,19 @@ fn toolbar_items() -> Vec<(i32, &'static str, u16)> {
         (ID_THEME_TOGGLE, t("Theme"), glyph::BRIGHTNESS),
         (ID_LANG, t("Language"), glyph::LANGUAGE),
         (ID_CUSTOM_STD, t("Add or Remove Buttons"), glyph::DROPDOWN),
+    ]
+}
+
+/// The Debug bar: Continue, Break All, Stop, then the three steps.
+fn debug_items() -> Vec<(i32, &'static str, u16)> {
+    vec![
+        (ID_RUN, t("Continue"), glyph::PLAY),
+        (ID_BREAK_ALL, t("Break All"), glyph::PAUSE),
+        (ID_STOP, t("Stop Debugging"), glyph::STOP),
+        (0, "", 0),
+        (ID_STEP_INTO, t("Step Into"), glyph::STEP_INTO),
+        (ID_STEP_OVER, t("Step Over"), glyph::STEP_OVER),
+        (ID_STEP_OUT, t("Step Out"), glyph::STEP_OUT),
     ]
 }
 
@@ -549,9 +584,18 @@ fn build_menu() -> HMENU {
         wm::CheckMenuItem(build, if release { ID_RELEASE } else { ID_DEBUG } as u32, wm::MF_CHECKED.0);
         sub(t("&Build"), build);
         let debug = wm::CreatePopupMenu().unwrap_or_default();
-        add(debug, ID_RUN, t("Start"), "F5");
+        let paused = studio().is_some_and(|s| s.paused);
+        add(debug, ID_RUN, if paused { t("Continue") } else { t("Start Debugging") }, "F5");
         add(debug, ID_RUN_NODEBUG, t("Start Without Debugging"), "Ctrl+F5");
-        add(debug, ID_STOP, t("Stop"), "Shift+F5");
+        add(debug, ID_BREAK_ALL, t("Break All"), "Ctrl+Alt+Break");
+        add(debug, ID_STOP, t("Stop Debugging"), "Shift+F5");
+        sep(debug);
+        add(debug, ID_STEP_INTO, t("Step Into"), "F11");
+        add(debug, ID_STEP_OVER, t("Step Over"), "F10");
+        add(debug, ID_STEP_OUT, t("Step Out"), "Shift+F11");
+        sep(debug);
+        add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
+        add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
@@ -1098,6 +1142,9 @@ impl Studio {
         let (text, crlf) = phai_editor::buffer::normalize(&raw);
         let Some(parent) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
         let h = phai_editor::view::create(parent, 900, &text, &path.to_string_lossy());
+        if let Some(b) = self.bps.iter().find(|(p, _)| phai_editor::lsp::same_path(p, path)).map(|(_, b)| b.clone()) {
+            phai_editor::view::set_breakpoints(h, &b);
+        }
         let blank = self.doc.path.is_none() && !self.doc.dirty && self.doc.form.control.is_empty() && self.doc.code.is_none();
         if !blank {
             self.stash();
@@ -1734,6 +1781,203 @@ impl Studio {
         self.start_job_run(cargo::Job::Build, false, then_run);
     }
 
+    /// F5: build the project as Debug, then run it under the debugger.
+    fn start_debugging(&mut self) {
+        let was = self.release;
+        self.release = false;
+        self.debug_after_build = true;
+        self.start_job_run(cargo::Job::Build, false, false);
+        self.release = was;
+        if !self.building {
+            self.debug_after_build = false;
+        }
+    }
+
+    /// Every breakpoint, of open files and of those set before and closed.
+    fn all_breakpoints(&mut self) -> Vec<(PathBuf, u32)> {
+        let open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).collect();
+        for (p, h) in open {
+            self.bps.retain(|q, _| !phai_editor::lsp::same_path(q, &p));
+            let lines = phai_editor::view::breakpoints(h);
+            if !lines.is_empty() {
+                self.bps.insert(p, lines);
+            }
+        }
+        self.bps.iter().flat_map(|(p, ls)| ls.iter().map(move |l| (p.clone(), *l))).collect()
+    }
+
+    fn send_breakpoints(&mut self) {
+        let all = self.all_breakpoints();
+        if let Some(d) = &self.debug {
+            d.send(phai_debug::Command::Breakpoints(all));
+        }
+    }
+
+    /// An editor's breakpoints changed: kept, and the running program told.
+    pub fn breakpoints_changed(&mut self, _h: HWND) {
+        self.send_breakpoints();
+    }
+
+    fn launch_debugger(&mut self, exe: &Path) {
+        let bps = self.all_breakpoints();
+        let target = self.hwnd.0 as isize;
+        // It runs in its project, as `cargo run` runs it; the PDB names files from there.
+        let dir = self.doc.path.as_deref().and_then(cargo::project_of).or_else(|| exe.parent().map(Path::to_path_buf)).unwrap_or_default();
+        self.debug = Some(phai_debug::Session::launch(exe, &dir, bps, move |e| {
+            let boxed = Box::into_raw(Box::new(e));
+            unsafe {
+                if wm::PostMessageW(Some(HWND(target as *mut _)), WM_DEBUG, WPARAM(0), LPARAM(boxed as isize)).is_err() {
+                    drop(Box::from_raw(boxed));
+                }
+            }
+        }));
+        self.paused = false;
+        self.show_debug_bar(true);
+        controls::status_text(self.status, 0, &tf("Debugging {0}", &[&exe.file_name().unwrap_or_default().to_string_lossy()]));
+        self.rebuild_menu();
+    }
+
+    fn show_debug_bar(&mut self, on: bool) {
+        unsafe {
+            wm::SendMessageW(self.rebar, 0x0423 /* RB_SHOWBAND */, Some(WPARAM(2)), Some(LPARAM(on as isize)));
+        }
+        win::rebar_fit(self.rebar);
+        self.tray_height_changed();
+    }
+
+    fn clear_debug_line(&mut self) {
+        for h in self.tabs.iter().filter_map(|t| t.doc.code).chain(self.doc.code) {
+            phai_editor::view::set_current(h, None);
+        }
+    }
+
+    /// What the debugger says, on the window's thread.
+    fn debug_event(&mut self, e: phai_debug::Event) {
+        use phai_debug::Event;
+        if DEBUG_TEST.load(Ordering::Relaxed) > 0 {
+            self.debug_test_step(&e);
+        }
+        match e {
+            Event::Stopped { reason, file, line, frames, locals } => {
+                self.paused = true;
+                self.clear_debug_line();
+                if let Some(f) = file.as_ref().filter(|f| f.is_file()) {
+                    self.open_code(f);
+                    if let Some(h) = self.doc.code {
+                        phai_editor::view::set_current(h, Some(line));
+                    }
+                }
+                if let Some(b) = self.bottom.as_ref() {
+                    use windows::Win32::UI::Controls as cc;
+                    unsafe {
+                        wm::SendMessageW(b.locals, cc::LVM_DELETEALLITEMS, None, None);
+                        wm::SendMessageW(b.stack, cc::LVM_DELETEALLITEMS, None, None);
+                    }
+                    for v in &locals {
+                        win::list_add(b.locals, &[&v.name, &v.value, &v.ty]);
+                    }
+                    for f in &frames {
+                        let file = f.file.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                        let line = if f.line > 0 { f.line.to_string() } else { String::new() };
+                        win::list_add(b.stack, &[&f.function, &file, &line]);
+                    }
+                }
+                self.frames = frames;
+                self.show_pane(Pane::Output, true);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(3);
+                }
+                let why = match reason.as_str() {
+                    "breakpoint" => t("breakpoint"),
+                    "step" => t("step"),
+                    "panic" => t("panic"),
+                    "pause" => t("Break All"),
+                    r => r,
+                }
+                .to_string();
+                let place = file.as_ref().and_then(|f| f.file_name()).map(|n| format!("{}:{line}", n.to_string_lossy())).unwrap_or_default();
+                controls::status_text(self.status, 0, &tf("Paused - {0} - {1}", &[&why, &place]));
+                if std::env::var_os("PHAI_SHOT").is_none() {
+                    unsafe {
+                        let _ = wm::SetForegroundWindow(self.hwnd);
+                    }
+                }
+                self.rebuild_menu();
+            }
+            Event::Running => {
+                self.paused = false;
+                self.clear_debug_line();
+                controls::status_text(self.status, 0, t("Running"));
+                self.rebuild_menu();
+            }
+            Event::Output(text) => {
+                if let Some(b) = self.bottom.as_ref() {
+                    b.add_line(text.trim_end());
+                }
+            }
+            Event::BreakpointAt { file, asked, line } => {
+                let h = self.editor_of(&file);
+                let mut lines: Vec<u32> = h.map(phai_editor::view::breakpoints).unwrap_or_default();
+                lines.retain(|l| *l != asked);
+                if line > 0 {
+                    lines.push(line);
+                } else {
+                    controls::status_text(self.status, 0, &tf("No code at line {0}: that breakpoint will not be hit", &[&asked]));
+                }
+                if let Some(h) = h {
+                    phai_editor::view::set_breakpoints(h, &lines);
+                }
+            }
+            Event::Exited(code) => {
+                self.debug = None;
+                self.paused = false;
+                self.clear_debug_line();
+                self.show_debug_bar(false);
+                let said = tf("The program ended with code {0}", &[&code]);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.add_line(&said);
+                }
+                controls::status_text(self.status, 0, &said);
+                self.rebuild_menu();
+            }
+            Event::Failed(msg) => {
+                self.debug = None;
+                self.paused = false;
+                self.show_debug_bar(false);
+                win::message(Some(self.hwnd), &msg, t("The debugger could not start the program"), wm::MB_ICONWARNING);
+                self.rebuild_menu();
+            }
+        }
+    }
+
+    /// `--debugtest`: F5 with a breakpoint on line `PHAI_DEBUG_LINE` (7), then a Step Over, its
+    /// stops printed; being photographed, it stays at the second stop, else it stops the program.
+    fn debug_test_step(&mut self, e: &phai_debug::Event) {
+        match e {
+            phai_debug::Event::Stopped { reason, line, locals, .. } => {
+                let vars: Vec<String> = locals.iter().map(|v| format!("{}={}", v.name, v.value)).collect();
+                println!("stopped {reason} at line {line}: {}", vars.join(", "));
+                let n = DEBUG_TEST.fetch_add(1, Ordering::Relaxed);
+                if let Some(d) = &self.debug {
+                    if n == 1 {
+                        d.send(phai_debug::Command::StepOver);
+                    } else if std::env::var_os("PHAI_SHOT").is_none() {
+                        d.send(phai_debug::Command::Stop);
+                    }
+                }
+            }
+            phai_debug::Event::Exited(code) => {
+                println!("ended {code}");
+                std::process::exit(0);
+            }
+            phai_debug::Event::Failed(m) => {
+                println!("failed {m}");
+                std::process::exit(2);
+            }
+            _ => {}
+        }
+    }
+
     /// The Build menu: `job` for the form's project, or for its whole workspace (`whole`).
     fn start_job(&mut self, job: cargo::Job, whole: bool) {
         self.start_job_run(job, whole, false);
@@ -1792,7 +2036,8 @@ impl Studio {
     /// over its room, back and forward and the Layout bar usable only when they would do something.
     pub fn say_bars(&self) {
         let project = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
-        win::toolbar_text(self.toolbar, ID_RUN, project.as_deref().unwrap_or(t("Start")));
+        let start = if self.paused { t("Continue").to_string() } else { project.unwrap_or_else(|| t("Start").to_string()) };
+        win::toolbar_text(self.toolbar, ID_RUN, &start);
         let gap = toolbar_items().iter().position(|(_, l, _)| l.starts_with("gap:")).unwrap_or(0);
         let r = win::toolbar_item_rect(self.toolbar, gap);
         win::move_to(self.config, r.left, r.top + (r.bottom - r.top - win::px(self.toolbar, 24)) / 2, r.right - r.left, win::px(self.toolbar, 200));
@@ -2428,6 +2673,17 @@ impl Studio {
         }
         let errors = self.diagnostics.iter().filter(|d| d.error).count();
         let warnings = self.diagnostics.len() - errors;
+        // F5: built, now run under the debugger.
+        if std::mem::take(&mut self.debug_after_build) && out.ok {
+            if let Some(b) = self.bottom.as_ref() {
+                b.add_line(&format!("{} ({:.1} s)", t("Build succeeded"), out.seconds));
+            }
+            match out.executable.clone() {
+                Some(exe) => self.launch_debugger(&exe),
+                None => controls::status_text(self.status, 0, t("The project has no program to run")),
+            }
+            return;
+        }
         // Problems show their list; a clean build leaves its output on screen.
         if let Some(b) = self.bottom.as_ref() {
             let said = match (out.job, out.ok) {
@@ -2595,7 +2851,38 @@ impl Studio {
             ID_THEME_IMPORT => self.theme_import(),
             ID_NEW_PROJECT => self.new_project(),
             ID_BUILD => self.start_build(false),
-            ID_RUN | ID_RUN_NODEBUG => self.start_build(true),
+            ID_RUN_NODEBUG => self.start_build(true),
+            ID_RUN => match (&self.debug, self.paused) {
+                (Some(d), true) => d.send(phai_debug::Command::Continue),
+                (Some(_), false) => {}
+                (None, _) => self.start_debugging(),
+            },
+            ID_STEP_OVER | ID_STEP_INTO | ID_STEP_OUT => match (&self.debug, self.paused) {
+                (Some(d), true) => d.send(match id {
+                    ID_STEP_OVER => phai_debug::Command::StepOver,
+                    ID_STEP_INTO => phai_debug::Command::StepInto,
+                    _ => phai_debug::Command::StepOut,
+                }),
+                (None, _) if id != ID_STEP_OUT => self.start_debugging(),
+                _ => {}
+            },
+            ID_BREAK_ALL => {
+                if let (Some(d), false) = (&self.debug, self.paused) {
+                    d.send(phai_debug::Command::Pause);
+                }
+            }
+            ID_TOGGLE_BP => {
+                if let Some(h) = self.doc.code {
+                    phai_editor::view::toggle_breakpoint(h);
+                }
+            }
+            ID_CLEAR_BPS => {
+                self.bps.clear();
+                for h in self.tabs.iter().filter_map(|t| t.doc.code).chain(self.doc.code) {
+                    phai_editor::view::set_breakpoints(h, &[]);
+                }
+                self.send_breakpoints();
+            }
             ID_BUILD_ALL => self.start_job(cargo::Job::Build, true),
             ID_REBUILD_ALL => self.start_job(cargo::Job::Rebuild, true),
             ID_CLEAN_ALL => self.start_job(cargo::Job::Clean, true),
@@ -2605,7 +2892,10 @@ impl Studio {
             ID_ANALYSE => self.start_job(cargo::Job::Analyse, false),
             ID_CUSTOM_STD => self.customise_bar(self.toolbar, ID_CUSTOM_STD, toolbar_items()),
             ID_CUSTOM_LAYOUT => self.customise_bar(self.layout_bar, ID_CUSTOM_LAYOUT, layout_items()),
-            ID_STOP => self.stop(),
+            ID_STOP => match &self.debug {
+                Some(d) => d.send(phai_debug::Command::Stop),
+                None => self.stop(),
+            },
             n if (ID_TEMPLATE..ID_TEMPLATE + phai_design::templates::Template::ALL.len() as i32).contains(&n) => {
                 let tpl = phai_design::templates::Template::ALL[(n - ID_TEMPLATE) as usize];
                 let name = match tpl {
@@ -2650,6 +2940,7 @@ impl Studio {
     fn relabel(&mut self) {
         win::set_toolbar(self.toolbar, &toolbar_items());
         win::set_toolbar(self.layout_bar, &layout_items());
+        win::set_toolbar(self.debug_bar, &debug_items());
         win::rebar_fit(self.rebar);
         self.say_bars();
         toolbox::relabel(self.toolbox);
@@ -2849,6 +3140,18 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                     return LRESULT(0);
                 }
             }
+            if s.bottom.as_ref().is_some_and(|b| b.stack == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if let Some(f) = s.frames.get(it.iItem.max(0) as usize).cloned() {
+                    if let Some(file) = f.file.filter(|p| p.is_file()) {
+                        s.open_code(&file);
+                        if let Some(h) = s.doc.code {
+                            phai_editor::view::go_to(h, f.line as usize, 1);
+                        }
+                    }
+                }
+                return LRESULT(0);
+            }
             if s.bottom.as_ref().is_some_and(|b| b.refs == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
@@ -2874,6 +3177,11 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             if let Some(b) = s.bottom.as_ref() {
                 b.add_line(&line);
             }
+            LRESULT(0)
+        }
+        WM_DEBUG => {
+            let e = unsafe { Box::from_raw(l.0 as *mut phai_debug::Event) };
+            s.debug_event(*e);
             LRESULT(0)
         }
         cargo::WM_BUILD_DONE => {
@@ -2931,9 +3239,25 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
 
 /// Shortcuts, before a box can take the key: Ctrl+N/O/S/Z/Y and F5.
 fn shortcut(msg: &wm::MSG) -> Option<i32> {
-    // Alt+F11: Run Code Analysis on Solution.
+    // Alt+F11: Run Code Analysis on Solution. F10 comes as a system key: Step Over.
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x7A {
         return Some(ID_ANALYSE_ALL);
+    }
+    if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x79 {
+        return Some(ID_STEP_OVER);
+    }
+    if msg.message == wm::WM_KEYDOWN {
+        let shift = unsafe { km::GetKeyState(0x10) } < 0;
+        let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+        match msg.wParam.0 {
+            0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
+            0x78 => return Some(ID_TOGGLE_BP),
+            0x7A if shift => return Some(ID_STEP_OUT),
+            0x7A => return Some(ID_STEP_INTO),
+            0x13 if ctrl => return Some(ID_BREAK_ALL), // Ctrl+Alt+Break comes as Ctrl+Pause
+            0x03 => return Some(ID_BREAK_ALL),         // Ctrl+Break
+            _ => {}
+        }
     }
     if msg.message != wm::WM_KEYDOWN {
         return None;
@@ -3066,6 +3390,10 @@ fn main() {
         let layout_bar = win::toolbar(rebar, ID_LAYOUT_BAR, &layout_items());
         win::rebar_add(rebar, toolbar, BAND_STANDARD, false);
         win::rebar_add(rebar, layout_bar, BAND_LAYOUT, true);
+        // The Debug bar, as Visual Studio's: it shows while a program is being debugged.
+        let debug_bar = win::toolbar(rebar, ID_DEBUG_BAR, &debug_items());
+        win::rebar_add(rebar, debug_bar, BAND_DEBUG, false);
+        wm::SendMessageW(rebar, 0x0423 /* RB_SHOWBAND */, Some(WPARAM(2)), Some(LPARAM(0)));
         // The Debug / Release box lies over the room the Standard bar keeps for it.
         let config = win::combo(toolbar, ID_CONFIG, font, &["Debug", "Release"]);
         let toolbox = toolbox::new(hwnd, ID_TOOLBOX, font);
@@ -3115,6 +3443,12 @@ fn main() {
             toolbox_h: 200,
             layout_bar,
             rebar,
+            debug_bar,
+            debug: None,
+            paused: false,
+            debug_after_build: false,
+            bps: std::collections::HashMap::new(),
+            frames: vec![],
             config,
             nav: vec![],
             nav_at: 0,
@@ -3300,6 +3634,15 @@ fn main() {
         if args.iter().any(|a| a == "--buildtest") {
             BUILD_TEST.store(true, Ordering::Relaxed);
             s.start_build(false);
+        }
+        // `--debugtest`: see `debug_test_step`.
+        if args.iter().any(|a| a == "--debugtest") {
+            DEBUG_TEST.store(1, Ordering::Relaxed);
+            let line = std::env::var("PHAI_DEBUG_LINE").ok().and_then(|l| l.parse().ok()).unwrap_or(7);
+            if let Some(h) = s.doc.code {
+                phai_editor::view::set_breakpoints(h, &[line]);
+            }
+            s.command(ID_RUN);
         }
         // `--jobtest clean|rebuild|analyse|solution`: a Build menu job, printed as --buildtest prints.
         if let Some(j) = args.iter().position(|a| a == "--jobtest").and_then(|i| args.get(i + 1)) {

@@ -28,6 +28,8 @@ pub const DEFINITION: u16 = 0x0303;
 pub const RENAME: u16 = 0x0304;
 /// Find All References was asked for (Shift+F12) at [`caret_lsp`].
 pub const REFERENCES: u16 = 0x0305;
+/// A breakpoint was set or taken away (F9, or a click in the margin): see [`breakpoints`].
+pub const BREAKPOINTS: u16 = 0x0306;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -86,6 +88,12 @@ struct View {
     query: String,
     hits: Vec<(usize, usize)>,
     hits_for: usize,
+    /// Lines with a breakpoint, from 0.
+    breakpoints: Vec<usize>,
+    /// The line the debugger is stopped at, from 0.
+    current: Option<usize>,
+    /// Lines in the text at the last edit - for moving breakpoints with the lines they are on.
+    lines_were: usize,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -125,7 +133,8 @@ impl View {
 
     fn gutter(&self) -> i32 {
         let digits = self.model.buf.line_count().to_string().len().max(3) as i32;
-        digits * self.char_w + self.char_w * 2
+        // Room at the left for a breakpoint's dot and the debugger's arrow.
+        self.line_h + digits * self.char_w + self.char_w * 2
     }
 
     fn visible_lines(&self, h: HWND) -> usize {
@@ -205,7 +214,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0 }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -630,6 +639,65 @@ pub fn select_lsp(h: HWND, start: (u32, u32), end: (u32, u32)) {
     }
 }
 
+fn toggle_line(h: HWND, v: &mut View, line: usize) {
+    match v.breakpoints.iter().position(|l| *l == line) {
+        Some(i) => {
+            v.breakpoints.remove(i);
+        }
+        None => v.breakpoints.push(line),
+    }
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+    notify(h, BREAKPOINTS);
+}
+
+/// F9: a breakpoint on the caret's line, or none.
+pub fn toggle_breakpoint(h: HWND) {
+    if let Some(v) = view(h) {
+        let line = v.model.buf.position(v.model.caret).0;
+        toggle_line(h, v, line);
+    }
+}
+
+/// The lines with a breakpoint, from 1, in order.
+pub fn breakpoints(h: HWND) -> Vec<u32> {
+    let mut b: Vec<u32> = view(h).map(|v| v.breakpoints.iter().map(|l| *l as u32 + 1).collect()).unwrap_or_default();
+    b.sort_unstable();
+    b
+}
+
+/// Puts the breakpoints on these lines, from 1 - kept from before, or moved by the debugger.
+pub fn set_breakpoints(h: HWND, lines: &[u32]) {
+    if let Some(v) = view(h) {
+        v.breakpoints = lines.iter().filter(|l| **l > 0).map(|l| *l as usize - 1).collect();
+        v.breakpoints.dedup();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// Shows the debugger stopped at `line` (from 1) - a yellow line and arrow, scrolled into view -
+/// or nowhere.
+pub fn set_current(h: HWND, line: Option<u32>) {
+    let Some(v) = view(h) else { return };
+    v.current = line.filter(|l| *l > 0).map(|l| l as usize - 1);
+    if let Some(l) = v.current {
+        let page = v.visible_lines(h);
+        if l < v.top || l >= v.top + page {
+            v.top = l.saturating_sub(page / 3);
+            update_scroll(h);
+        }
+        v.model.caret = v.model.buf.line_start(l.min(v.model.buf.line_count() - 1));
+        v.model.anchor = v.model.caret;
+        place_caret(h);
+    }
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
 /// Comments the chosen lines or takes the comment off, as Ctrl+/ does.
 pub fn toggle_comment(h: HWND) {
     if let Some(v) = view(h) {
@@ -713,6 +781,20 @@ fn place_caret(h: HWND) {
 
 fn changed(h: HWND) {
     if let Some(v) = view(h) {
+        // Lines added or taken away above a breakpoint move it with its line.
+        let now = v.model.buf.line_count();
+        if v.lines_were != 0 && now != v.lines_were {
+            let at = v.model.buf.position(v.model.caret).0;
+            let d = now as isize - v.lines_were as isize;
+            let from = if d > 0 { at as isize - d } else { at as isize };
+            for b in v.breakpoints.iter_mut() {
+                if *b as isize > from {
+                    *b = (*b as isize + d).max(0) as usize;
+                }
+            }
+            v.breakpoints.dedup();
+        }
+        v.lines_were = now;
         v.edits += 1;
         v.version += 1;
         // Old marks point at text that moved; the server sends fresh ones.
@@ -798,6 +880,11 @@ fn paint(h: HWND, v: &mut View) {
             let y = (line - v.top) as i32 * v.line_h;
             let s = v.model.buf.line(line);
             let start = v.model.buf.line_start(line);
+            // The line the debugger stopped at, in yellow, as Visual Studio shows it.
+            if v.current == Some(line) {
+                let at = theme::current().var_color("--debug-line").unwrap_or(if dark { Color::rgb(0x5c, 0x52, 0x14) } else { Color::rgb(0xff, 0xf1, 0x9c) });
+                win::fill(dc, &RECT { left: gutter, top: y, right: w, bottom: y + v.line_h }, at);
+            }
             // Every place the find bar's words are, softly.
             if !v.hits.is_empty() {
                 let hit_bg = theme::current().var_color("--find").unwrap_or(if dark { Color::rgb(0x61, 0x51, 0x1e) } else { Color::rgb(0xff, 0xe9, 0x8f) });
@@ -861,6 +948,41 @@ fn paint(h: HWND, v: &mut View) {
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(if line == caret_line { win::window_text() } else { muted }.colorref()));
             let mut nn = n.clone();
             Gdi::DrawTextW(dc, &mut nn, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
+            // A breakpoint: a red dot in the margin; the debugger's place: a yellow arrow.
+            let d = v.line_h - win::px(h, 6);
+            let (bx, by) = (win::px(h, 3), y + (v.line_h - d) / 2);
+            if v.breakpoints.contains(&line) {
+                let red = Color::rgb(0xe5, 0x14, 0x00);
+                let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(red.colorref()));
+                let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, windows::Win32::Foundation::COLORREF(red.colorref()));
+                let (ob, op) = (Gdi::SelectObject(dc, brush.into()), Gdi::SelectObject(dc, pen.into()));
+                let _ = Gdi::Ellipse(dc, bx, by, bx + d, by + d);
+                Gdi::SelectObject(dc, ob);
+                Gdi::SelectObject(dc, op);
+                let _ = Gdi::DeleteObject(brush.into());
+                let _ = Gdi::DeleteObject(pen.into());
+            }
+            if v.current == Some(line) {
+                let arrow = Color::rgb(0xf2, 0xc8, 0x11);
+                let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(arrow.colorref()));
+                let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, windows::Win32::Foundation::COLORREF(Color::rgb(0x8a, 0x6d, 0x00).colorref()));
+                let (ob, op) = (Gdi::SelectObject(dc, brush.into()), Gdi::SelectObject(dc, pen.into()));
+                let m = by + d / 2;
+                let pts = [
+                    windows::Win32::Foundation::POINT { x: bx, y: m - d / 4 },
+                    windows::Win32::Foundation::POINT { x: bx + d / 2, y: m - d / 4 },
+                    windows::Win32::Foundation::POINT { x: bx + d / 2, y: by },
+                    windows::Win32::Foundation::POINT { x: bx + d, y: m },
+                    windows::Win32::Foundation::POINT { x: bx + d / 2, y: by + d },
+                    windows::Win32::Foundation::POINT { x: bx + d / 2, y: m + d / 4 },
+                    windows::Win32::Foundation::POINT { x: bx, y: m + d / 4 },
+                ];
+                let _ = Gdi::Polygon(dc, &pts);
+                Gdi::SelectObject(dc, ob);
+                Gdi::SelectObject(dc, op);
+                let _ = Gdi::DeleteObject(brush.into());
+                let _ = Gdi::DeleteObject(pen.into());
+            }
         }
         let _ = Gdi::BitBlt(screen, 0, 0, w, hgt, Some(dc), 0, 0, Gdi::SRCCOPY);
         Gdi::SelectObject(dc, old_font);
@@ -959,6 +1081,10 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
     }
     if vk == 0x71 && !shift && !ctrl {
         notify(h, RENAME);
+        return true;
+    }
+    if vk == 0x78 && !shift && !ctrl {
+        toggle_line(h, v, v.model.buf.position(v.model.caret).0);
         return true;
     }
     match (vk, ctrl) {
@@ -1227,7 +1353,12 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let at = v.offset_at(dc, x, y);
                 Gdi::SelectObject(dc, old);
                 Gdi::ReleaseDC(Some(h), dc);
-                if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x11) < 0 {
+                if msg == wm::WM_LBUTTONDOWN && x < v.line_h + win::px(h, 4) {
+                    // A click in the margin: a breakpoint on that line, or none.
+                    let line = (v.top + (y / v.line_h.max(1)).max(0) as usize).min(v.model.buf.line_count().saturating_sub(1));
+                    toggle_line(h, v, line);
+                    return LRESULT(0);
+                } else if msg == wm::WM_LBUTTONDOWN && km::GetKeyState(0x11) < 0 {
                     // Ctrl+click: to where the thing clicked is defined, as F12.
                     let _ = km::SetFocus(Some(h));
                     v.model.caret = at;

@@ -148,6 +148,8 @@ struct Engine {
     process: HANDLE,
     /// The program, and the folder its PDB is in.
     exe: PathBuf,
+    /// Where it runs - for Cargo, the project: the PDB names its files from there (`src\main.rs`).
+    cwd: PathBuf,
     threads: HashMap<u32, HANDLE>,
     bps: HashMap<u64, Bp>,
     wanted: Vec<(PathBuf, u32)>,
@@ -159,6 +161,12 @@ struct Engine {
     say: Say,
     /// Break All asked for: the next breakpoint Windows reports is ours.
     pausing: bool,
+}
+
+/// Whether two paths are one file, as Windows compares them: case and slashes aside.
+fn same_file(a: &Path, b: &Path) -> bool {
+    let n = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_start_matches(r"\?\").to_lowercase();
+    n(a) == n(b)
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -187,7 +195,7 @@ impl Engine {
         unsafe {
             let _ = CloseHandle(pi.hThread);
         }
-        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false })
+        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false })
     }
 
     fn run(&mut self) {
@@ -281,7 +289,7 @@ impl Engine {
                 eprintln!("symbols at {base:#x}: {got:#x} {:?}", windows::Win32::Foundation::GetLastError());
                 let mut m = IMAGEHLP_MODULEW64 { SizeOfStruct: std::mem::size_of::<IMAGEHLP_MODULEW64>() as u32, ..Default::default() };
                 let r = SymGetModuleInfoW64(self.process, base, &mut m);
-                eprintln!("module info {:?} type {:?} pdb {}", r, m.SymType, String::from_utf16_lossy(&m.LoadedPdbName).trim_end_matches(' '));
+                eprintln!("module info {:?} type {:?} pdb {}", r, m.SymType, String::from_utf16_lossy(&m.LoadedPdbName).trim_end_matches('\0'));
             }
         }
         if std::env::var_os("PHAI_DEBUG_LOG").is_some() {
@@ -351,15 +359,37 @@ impl Engine {
 
     /// The first address with code at `line` of `file`, or a little below when the line has none.
     fn line_address(&self, file: &Path, line: u32) -> Option<(u64, u32)> {
-        let f = wide(&file.to_string_lossy());
-        for l in line..line + 12 {
-            let mut info = IMAGEHLP_LINEW64 { SizeOfStruct: std::mem::size_of::<IMAGEHLP_LINEW64>() as u32, ..Default::default() };
-            let mut disp = 0i32;
-            if unsafe { SymGetLineFromNameW64(self.process, PCWSTR::null(), PCWSTR(f.as_ptr()), l, &mut disp, &mut info) }.is_ok() && info.LineNumber == l {
-                return Some((info.Address, l));
+        // The PDB may name the file in full, from the project (Cargo), or otherwise: the whole
+        // path first, then from the project, then ever shorter tails of it.
+        let mut names: Vec<String> = vec![file.to_string_lossy().to_string()];
+        if let Ok(rel) = file.strip_prefix(&self.cwd) {
+            names.push(rel.to_string_lossy().to_string());
+        }
+        let parts: Vec<String> = file.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
+        for k in (1..parts.len().min(4)).rev() {
+            names.push(parts[parts.len() - k..].join("\\"));
+        }
+        for name in names {
+            let f = wide(&name);
+            for l in line..line + 12 {
+                let mut info = IMAGEHLP_LINEW64 { SizeOfStruct: std::mem::size_of::<IMAGEHLP_LINEW64>() as u32, ..Default::default() };
+                let mut disp = 0i32;
+                if unsafe { SymGetLineFromNameW64(self.process, PCWSTR::null(), PCWSTR(f.as_ptr()), l, &mut disp, &mut info) }.is_ok() && info.LineNumber == l {
+                    // Only a line in this very file: a tail can match another one.
+                    let named = self.resolve(&from_wide(info.FileName));
+                    if same_file(&named, file) {
+                        return Some((info.Address, l));
+                    }
+                }
             }
         }
         None
+    }
+
+    /// A file as the PDB names it, made whole: a relative name is from where the program runs.
+    fn resolve(&self, name: &str) -> PathBuf {
+        let p = PathBuf::from(name);
+        if p.is_absolute() { p } else { self.cwd.join(p) }
     }
 
     fn set_breakpoints(&mut self, list: Vec<(PathBuf, u32)>) {
@@ -505,7 +535,7 @@ impl Engine {
         let mut info = IMAGEHLP_LINEW64 { SizeOfStruct: std::mem::size_of::<IMAGEHLP_LINEW64>() as u32, ..Default::default() };
         let mut disp = 0u32;
         unsafe { SymGetLineFromAddrW64(self.process, addr, &mut disp, &mut info) }.ok()?;
-        Some((from_wide(info.FileName), info.LineNumber, disp))
+        Some((self.resolve(&from_wide(info.FileName)).to_string_lossy().to_string(), info.LineNumber, disp))
     }
 
     /// One instruction further in a step: stop at a new line, step over calls, give up on code
@@ -740,7 +770,7 @@ unsafe extern "system" fn collect(info: *const SYMBOL_INFOW, _size: u32, user: *
         let i = &*info;
         let out = &mut *(user as *mut Vec<Found>);
         if i.Flags.0 & (SYMFLAG_LOCAL | SYMFLAG_PARAMETER) != 0 {
-            let name = String::from_utf16_lossy(std::slice::from_raw_parts(i.Name.as_ptr(), i.NameLen as usize)).trim_end_matches(' ').to_string();
+            let name = String::from_utf16_lossy(std::slice::from_raw_parts(i.Name.as_ptr(), i.NameLen as usize)).trim_end_matches('\0').to_string();
             out.push(Found { name, type_index: i.TypeIndex, mod_base: i.ModBase, flags: i.Flags.0, register: i.Register, address: i.Address });
         }
     }
@@ -765,7 +795,7 @@ impl SymBuf {
     }
     fn name(&mut self) -> String {
         let i = self.info();
-        unsafe { String::from_utf16_lossy(std::slice::from_raw_parts((*i).Name.as_ptr(), (*i).NameLen as usize)).trim_end_matches(' ').to_string() }
+        unsafe { String::from_utf16_lossy(std::slice::from_raw_parts((*i).Name.as_ptr(), (*i).NameLen as usize)).trim_end_matches('\0').to_string() }
     }
 }
 

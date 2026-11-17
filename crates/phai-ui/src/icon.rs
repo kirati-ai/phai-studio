@@ -87,6 +87,11 @@ pub mod glyph {
     pub const LAY_FRONT: u16 = 0x0195;
     pub const LAY_BACK: u16 = 0x0196;
     pub const LAY_TAB_ORDER: u16 = 0x0197;
+    // The debugger's steps, drawn as Visual Studio draws them: an arrow and the statement's dot.
+    pub const STEP_INTO: u16 = 0x01A0;
+    pub const STEP_OVER: u16 = 0x01A1;
+    pub const STEP_OUT: u16 = 0x01A2;
+    pub const PAUSE: u16 = 0xE769;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).
     pub const NAMES: &[(&str, u16)] = &[
@@ -108,6 +113,7 @@ pub mod glyph {
         ("LAY_NONE_ACROSS", LAY_NONE_ACROSS), ("LAY_SPACE_DOWN", LAY_SPACE_DOWN), ("LAY_MORE_DOWN", LAY_MORE_DOWN),
         ("LAY_LESS_DOWN", LAY_LESS_DOWN), ("LAY_NONE_DOWN", LAY_NONE_DOWN), ("LAY_CENTER_ACROSS", LAY_CENTER_ACROSS),
         ("LAY_CENTER_DOWN", LAY_CENTER_DOWN), ("LAY_FRONT", LAY_FRONT), ("LAY_BACK", LAY_BACK), ("LAY_TAB_ORDER", LAY_TAB_ORDER),
+        ("STEP_INTO", STEP_INTO), ("STEP_OVER", STEP_OVER), ("STEP_OUT", STEP_OUT), ("PAUSE", PAUSE),
     ];
 
     pub fn by_name(name: &str) -> Option<u16> {
@@ -228,6 +234,9 @@ pub fn shape_rects(g: u16) -> Option<Vec<(f32, f32, f32, f32)>> {
             v.extend(outline(6.0, 6.0, 9.0, 9.0));
             v
         }
+        STEP_INTO => vec![(7.5, 1.0, 1.0, 8.0), (5.5, 6.0, 5.0, 1.0), (6.5, 7.0, 3.0, 1.0), (7.5, 8.0, 1.0, 2.0), (6.5, 12.0, 3.0, 3.0)],
+        STEP_OVER => vec![(2.0, 4.0, 1.0, 4.0), (2.0, 3.0, 11.0, 1.0), (12.0, 3.0, 1.0, 5.0), (10.0, 6.0, 5.0, 1.0), (11.0, 7.0, 3.0, 1.0), (12.0, 8.0, 1.0, 1.0), (6.5, 12.0, 3.0, 3.0)],
+        STEP_OUT => vec![(7.5, 3.0, 1.0, 7.0), (5.5, 4.0, 5.0, 1.0), (6.5, 3.0, 3.0, 1.0), (7.5, 1.0, 1.0, 2.0), (6.5, 12.0, 3.0, 3.0)],
         LAY_TAB_ORDER => {
             let mut v = outline(1.0, 2.0, 14.0, 12.0);
             v.extend([(4.0, 5.0, 2.0, 6.0), (8.0, 5.0, 4.0, 1.0), (11.0, 5.0, 1.0, 3.0), (8.0, 7.5, 4.0, 1.0), (8.0, 7.5, 1.0, 3.5), (8.0, 10.0, 4.0, 1.0)]);
