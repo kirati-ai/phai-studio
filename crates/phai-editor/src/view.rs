@@ -123,6 +123,8 @@ struct View {
     conditional: Vec<usize>,
     /// Breakpoints turned off in the Breakpoints window: drawn hollow, not stopped at.
     disabled: Vec<usize>,
+    /// Code coverage: each measured line (from 0) and whether the tests ran it.
+    coverage: std::collections::HashMap<usize, bool>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -293,7 +295,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default() }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -399,6 +401,17 @@ pub fn caret_line(h: HWND) -> u32 {
 pub fn set_conditional(h: HWND, lines: &[u32]) {
     if let Some(v) = view(h) {
         v.conditional = lines.iter().filter(|l| **l > 0).map(|l| *l as usize - 1).collect();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// Code coverage to show: lines from 1 and whether they ran - a bar at the margin's left, green
+/// or red; none to take it away.
+pub fn set_coverage(h: HWND, lines: &[(u32, bool)]) {
+    if let Some(v) = view(h) {
+        v.coverage = lines.iter().filter(|(l, _)| *l > 0).map(|(l, ran)| (*l as usize - 1, *ran)).collect();
         unsafe {
             let _ = Gdi::InvalidateRect(Some(h), None, false);
         }
@@ -1404,6 +1417,11 @@ fn paint(h: HWND, v: &mut View) {
             // A breakpoint: a red dot in the margin; the debugger's place: a yellow arrow.
             let d = v.line_h - win::px(h, 6);
             let (bx, by) = (win::px(h, 3), y + (v.line_h - d) / 2);
+            // Code coverage: a bar at the very left, green where the tests ran the line, red not.
+            if let Some(ran) = v.coverage.get(&line) {
+                let c = if *ran { Color::rgb(0x2e, 0xa0, 0x43) } else { Color::rgb(0xd1, 0x34, 0x38) };
+                win::fill(dc, &RECT { left: 0, top: y, right: win::px(h, 3), bottom: y + v.line_h }, c);
+            }
             // A bookmark: a small flag in the margin, where a breakpoint is not.
             if v.bookmarks.contains(&line) && !v.breakpoints.contains(&line) {
                 let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));

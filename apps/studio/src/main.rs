@@ -31,6 +31,7 @@ mod diag;
 mod attach;
 mod githistory;
 mod merge;
+mod coverage;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -171,6 +172,7 @@ const ID_MEMORY_WIN: i32 = 282;
 const ID_DATA_BP: i32 = 283;
 const ID_DISASSEMBLY: i32 = 284;
 const ID_MERGE: i32 = 285;
+const ID_COVERAGE: i32 = 286;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -399,6 +401,8 @@ pub struct Studio {
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
+    /// The last code coverage found: each file's lines and counts.
+    coverage: Vec<coverage::FileCoverage>,
     /// What the Memory window shows: an address or a variable.
     memory_at: String,
     /// Git line blame: shown after the caret's line, each line's for the file in front.
@@ -1017,6 +1021,8 @@ fn build_menu() -> HMENU {
         let test = wm::CreatePopupMenu().unwrap_or_default();
         add(test, ID_RUN_TESTS, &tf("Run Tests of {0}", &[&project]), "Ctrl+R, T");
         add(test, ID_RUN_ALL_TESTS, t("Run All Tests"), "Ctrl+R, A");
+        sep(test);
+        add(test, ID_COVERAGE, t("Analyze Code Coverage for All Tests"), "");
         sub(t("&Test"), test);
         let gitm = wm::CreatePopupMenu().unwrap_or_default();
         add(gitm, ID_GIT_CHANGES, t("Git Changes..."), "Ctrl+Alt+G");
@@ -1372,6 +1378,88 @@ impl Studio {
             }
         }
         phai_editor::view::set_lenses(h, all);
+    }
+
+    /// Test > Analyze Code Coverage: the project's tests run with coverage (a wait shown), each
+    /// file's share of lines run listed, and the editors marked line by line.
+    fn analyze_coverage(&mut self) {
+        let Some(project) = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| std::path::absolute(p).ok()) else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Some(cargo) = cargo::find_cargo() else { return };
+        if let Err(why) = coverage::tools_ready(&cargo) {
+            // Offered, as Visual Studio offers a missing workload; installed by rustup itself.
+            let yes = std::env::var_os("PHAI_COVERAGE_TEST").is_none() && win::message(Some(self.hwnd), &format!("{why}\n\n{}", t("Install it now?")), t("Code Coverage"), wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES;
+            if !yes {
+                return;
+            }
+            let rustup = cargo.with_file_name("rustup.exe");
+            let ok = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Code Coverage"), t("Installing llvm-tools..."), move |_| {
+                use std::os::windows::process::CommandExt;
+                std::process::Command::new(rustup).args(["component", "add", "llvm-tools"]).creation_flags(0x0800_0000).status().is_ok_and(|s| s.success())
+            });
+            if ok != Some(true) {
+                return;
+            }
+        }
+        let p = project.clone();
+        let result = if std::env::var_os("PHAI_COVERAGE_TEST").is_some() {
+            Some(coverage::run(&p, &cargo))
+        } else {
+            phai_ui::dialogs::wait_for(Some(self.hwnd), t("Code Coverage"), t("Running the tests with code coverage..."), move |_| coverage::run(&p, &cargo))
+        };
+        let Some(result) = result else { return };
+        match result {
+            Ok(files) => {
+                self.coverage = files;
+                self.show_coverage();
+            }
+            Err(e) => {
+                if std::env::var_os("PHAI_COVERAGE_TEST").is_some() {
+                    println!("coverage failed: {e}");
+                }
+                win::message(Some(self.hwnd), &e, t("Code Coverage"), wm::MB_ICONWARNING);
+            }
+        }
+    }
+
+    /// The Code Coverage tab filled - all files, then each - and the open editors marked.
+    fn show_coverage(&mut self) {
+        let Some(list) = self.bottom.as_ref().map(|b| b.coverage) else { return };
+        unsafe {
+            wm::SendMessageW(list, windows::Win32::UI::Controls::LVM_DELETEALLITEMS, None, None);
+        }
+        let pct = |c: usize, n: usize| if n == 0 { "-".to_string() } else { format!("{:.1}%", c as f64 * 100.0 / n as f64) };
+        let (c, n) = self.coverage.iter().fold((0, 0), |(c, n), f| (c + f.covered(), n + f.lines.len()));
+        win::list_add(list, &[t("All files"), &c.to_string(), &n.to_string(), &pct(c, n)]);
+        let root = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| std::path::absolute(p).ok());
+        for f in &self.coverage {
+            let name = root.as_ref().and_then(|r| f.path.strip_prefix(r).ok()).unwrap_or(&f.path).to_string_lossy().to_string();
+            win::list_add(list, &[&name, &f.covered().to_string(), &f.lines.len().to_string(), &pct(f.covered(), f.lines.len())]);
+        }
+        if std::env::var_os("PHAI_COVERAGE_TEST").is_some() {
+            println!("coverage: {c} of {n} lines ({})", pct(c, n));
+            for f in &self.coverage {
+                println!("  {}: not run {:?}", f.path.file_name().unwrap_or_default().to_string_lossy(), f.lines.iter().filter(|(_, k)| *k == 0).map(|(l, _)| *l).collect::<Vec<_>>());
+            }
+        }
+        self.mark_coverage();
+        self.show_pane(Pane::Output, true);
+        if let Some(b) = self.bottom.as_ref() {
+            b.show_tab(14);
+        }
+        self.say_status(&tf("Code coverage: {0} of {1} lines run by the tests ({2})", &[&c, &n, &pct(c, n)]));
+    }
+
+    /// Each open editor's lines marked as the last coverage found them.
+    fn mark_coverage(&mut self) {
+        let open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).collect();
+        for (p, h) in open {
+            let p = std::path::absolute(&p).unwrap_or(p);
+            let lines: Vec<(u32, bool)> = self.coverage.iter().find(|f| phai_editor::lsp::same_path(&f.path, &p)).map(|f| f.lines.iter().map(|(l, n)| (*l, *n > 0)).collect()).unwrap_or_default();
+            phai_editor::view::set_coverage(h, &lines);
+        }
     }
 
     /// Git > Resolve Merge Conflicts: the Merge Editor on the file in front when it has conflicts,
@@ -2927,6 +3015,7 @@ impl Studio {
             self.refresh_lenses();
             self.mark_breakpoints();
             self.refresh_blame();
+            self.mark_coverage();
         }
         self.refresh_props();
         self.say_title();
@@ -5445,6 +5534,7 @@ impl Studio {
                 }
             }
             ID_RUN_ALL_TESTS => self.start_job(cargo::Job::Test, true),
+            ID_COVERAGE => self.analyze_coverage(),
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
@@ -5960,6 +6050,17 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
                 return LRESULT(0);
             }
+            if s.bottom.as_ref().is_some_and(|b| b.coverage == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                // A file of the coverage: opened, its lines marked.
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if it.iItem >= 1 {
+                    if let Some(f) = s.coverage.get(it.iItem as usize - 1).map(|f| f.path.clone()) {
+                        s.open_code(&f);
+                        s.mark_coverage();
+                    }
+                }
+                return LRESULT(0);
+            }
             if s.bottom.as_ref().is_some_and(|b| b.threads == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 // Switch to Thread: its call stack and locals shown, the steps taken on it.
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
@@ -6420,6 +6521,7 @@ fn main() {
             blame_on: setting("blame").as_deref() == Some("1"),
             blame: vec![],
             memory_at: String::new(),
+            coverage: vec![],
             frames: vec![],
             servers: None,
             watches: vec![],
@@ -6669,6 +6771,14 @@ fn main() {
             if let Some(h) = s.doc.code {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
+            }
+        }
+        // `--coverage-test`: Test > Analyze Code Coverage, its findings printed.
+        if args.iter().any(|a| a == "--coverage-test") {
+            std::env::set_var("PHAI_COVERAGE_TEST", "1");
+            s.command(ID_COVERAGE);
+            if std::env::var_os("PHAI_SHOT").is_none() {
+                std::process::exit(0);
             }
         }
         // `--merge-test`: Git > Resolve Merge Conflicts, settled as `PHAI_MERGE_TAKE` says.

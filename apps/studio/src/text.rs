@@ -637,6 +637,18 @@ pub static THAI: &[(&str, &str)] = &[
     ("Not yet settled", "ยังไม่ได้เลือก"),
     ("Conflict {0} of {1} - {2}; {3} left", "conflict ที่ {0} จาก {1} - {2}; เหลือ {3}"),
     ("{0}: merged and staged", "{0}: merge และ stage แล้ว"),
+    ("Code Coverage", "ความครอบคลุมของโค้ด"),
+    ("Analyze Code Coverage for All Tests", "วิเคราะห์ความครอบคลุมของโค้ดจากเทสต์ทั้งหมด"),
+    ("Covered", "ครอบคลุม"),
+    ("Lines", "บรรทัด"),
+    ("Coverage", "ความครอบคลุม"),
+    ("All files", "ทุกไฟล์"),
+    ("Install it now?", "ติดตั้งเลยไหม?"),
+    ("Installing llvm-tools...", "กำลังติดตั้ง llvm-tools..."),
+    ("Running the tests with code coverage...", "กำลังรันเทสต์พร้อมวัดความครอบคลุม..."),
+    ("Code coverage needs Rust's llvm-tools component (free). Install it with: rustup component add llvm-tools", "การวัดความครอบคลุมต้องใช้ llvm-tools ของ Rust (ฟรี) ติดตั้งด้วย: rustup component add llvm-tools"),
+    ("The project has no tests to measure.", "โปรเจกต์นี้ไม่มีเทสต์ให้วัด"),
+    ("Code coverage: {0} of {1} lines run by the tests ({2})", "ความครอบคลุม: เทสต์รัน {0} จาก {1} บรรทัด ({2})"),
 ];
 
 #[cfg(test)]
