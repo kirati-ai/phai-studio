@@ -22,6 +22,8 @@ const ID_CLOSE: i32 = 2;
 const ID_PULL: i32 = 20;
 const ID_PUSH: i32 = 21;
 const ID_REFRESH: i32 = 22;
+const ID_STAGE: i32 = 23;
+const ID_UNSTAGE: i32 = 24;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -44,6 +46,14 @@ pub fn changes_of(porcelain: &str) -> Vec<Change> {
             Change { code: l[..2].to_string(), path }
         })
         .collect()
+}
+
+impl Change {
+    /// Staged: its change is in the index, to go in the next commit.
+    pub fn staged(&self) -> bool {
+        let x = self.code.chars().next().unwrap_or(' ');
+        x != ' ' && x != '?'
+    }
 }
 
 /// A status in words.
@@ -110,13 +120,13 @@ pub fn open(owner: HWND, repo: PathBuf) {
         let font = win::font(hwnd, 0, false);
         let bold = win::font(hwnd, 0, true);
         let branch = win::label(hwnd, "", 0, bold);
-        let files = win::list(hwnd, ID_FILES, font, &[(t("Status"), 90), (t("File"), 420)]);
+        let files = win::list(hwnd, ID_FILES, font, &[(t("Status"), 90), (t("Staged"), 70), (t("File"), 380)]);
         let message_label = win::label(hwnd, t("Message:"), 0, font);
         let message = win::edit_lines(hwnd, "", ID_MESSAGE, font);
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
         wm::SendMessageW(output, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         let mut buttons = Vec::new();
-        for (id, label) in [(ID_COMMIT, t("Commit All")), (ID_PULL, t("Pull")), (ID_PUSH, t("Push")), (ID_REFRESH, t("Refresh")), (ID_CLOSE, t("Close"))] {
+        for (id, label) in [(ID_COMMIT, t("Commit All")), (ID_STAGE, t("Stage")), (ID_UNSTAGE, t("Unstage")), (ID_PULL, t("Pull")), (ID_PUSH, t("Push")), (ID_REFRESH, t("Refresh")), (ID_CLOSE, t("Close"))] {
             buttons.push((id, win::button(hwnd, label, id, font, id == ID_COMMIT)));
         }
         win::set_state(hwnd, Box::new(Pane { repo, branch, files, message_label, message, output, buttons, changes: vec![], done: false }));
@@ -126,6 +136,11 @@ pub fn open(owner: HWND, repo: PathBuf) {
         let _ = wm::GetWindowRect(owner, &mut r);
         let _ = wm::SetWindowPos(hwnd, None, r.left + (r.right - r.left - w) / 2, r.top + (r.bottom - r.top - h) / 2, w, h, wm::SWP_NOZORDER);
         win::theme_frame(hwnd);
+        // `PHAI_GIT_STAGE=n`: the n-th file staged first - for testing.
+        if let Some(n) = std::env::var("PHAI_GIT_STAGE").ok().and_then(|n| n.parse::<usize>().ok()) {
+            win::list_select(files, n);
+            stage(hwnd, true);
+        }
         // `PHAI_GIT_TEST=message`: committed at once, what Git then says printed - for testing.
         if let Ok(m) = std::env::var("PHAI_GIT_TEST") {
             win::set_text(message, &m);
@@ -168,13 +183,15 @@ fn refresh(h: HWND) {
         wm::SendMessageW(s.files, cc::LVM_DELETEALLITEMS, None, None);
     }
     for c in &s.changes {
-        win::list_add(s.files, &[status_words(&c.code), &c.path]);
+        win::list_add(s.files, &[status_words(&c.code), if c.staged() { "✓" } else { "" }, &c.path]);
     }
     if !ok {
         say(h, &out);
     }
     let n = s.changes.len();
-    let label = if n == 0 { t("Commit All").to_string() } else { tf("Commit All ({0})", &[&n]) };
+    let staged = s.changes.iter().filter(|c| c.staged()).count();
+    // Some staged: only they go in the commit, as Visual Studio's Commit Staged.
+    let label = if staged > 0 { tf("Commit Staged ({0})", &[&staged]) } else if n == 0 { t("Commit All").to_string() } else { tf("Commit All ({0})", &[&n]) };
     if let Some((_, b)) = s.buttons.iter().find(|(i, _)| *i == ID_COMMIT) {
         win::set_text(*b, &label);
     }
@@ -199,10 +216,13 @@ fn commit(h: HWND) {
         return;
     }
     let repo = s.repo.clone();
-    let (ok, out) = git(&repo, &["add", "-A"]);
-    if !ok {
-        say(h, &out);
-        return;
+    // Nothing staged: everything goes in. Some staged: only those.
+    if !s.changes.iter().any(|c| c.staged()) {
+        let (ok, out) = git(&repo, &["add", "-A"]);
+        if !ok {
+            say(h, &out);
+            return;
+        }
     }
     let (ok, out) = git(&repo, &["commit", "-m", &message]);
     say(h, &out);
@@ -211,6 +231,39 @@ fn commit(h: HWND) {
             win::set_text(s.message, "");
         }
     }
+    refresh(h);
+}
+
+/// The files chosen in the list.
+fn chosen(h: HWND) -> Vec<Change> {
+    let Some(s) = state(h) else { return vec![] };
+    let mut out = Vec::new();
+    let mut i: isize = -1;
+    loop {
+        i = unsafe { wm::SendMessageW(s.files, cc::LVM_GETNEXTITEM, Some(WPARAM(i as usize)), Some(LPARAM(2 /* LVNI_SELECTED */))).0 as isize };
+        if i < 0 {
+            break;
+        }
+        if let Some(c) = s.changes.get(i as usize) {
+            out.push(c.clone());
+        }
+    }
+    out
+}
+
+/// Stage or Unstage: the chosen files into the next commit, or out of it.
+fn stage(h: HWND, on: bool) {
+    let Some(s) = state(h) else { return };
+    let repo = s.repo.clone();
+    let files = chosen(h);
+    if files.is_empty() {
+        say(h, t("Choose the files first."));
+        return;
+    }
+    let mut args: Vec<&str> = if on { vec!["add", "--"] } else { vec!["restore", "--staged", "--"] };
+    args.extend(files.iter().map(|c| c.path.as_str()));
+    let (_, out) = git(&repo, &args);
+    say(h, &out);
     refresh(h);
 }
 
@@ -250,8 +303,8 @@ fn layout(h: HWND) {
     y += px(64) + gap;
     let button = |id: i32| s.buttons.iter().find(|(i, _)| *i == id).map(|(_, b)| *b).unwrap_or_default();
     let mut x = m;
-    for id in [ID_COMMIT, ID_PULL, ID_PUSH, ID_REFRESH] {
-        let bw = if id == ID_COMMIT { px(130) } else { bw };
+    for id in [ID_COMMIT, ID_STAGE, ID_UNSTAGE, ID_PULL, ID_PUSH, ID_REFRESH] {
+        let bw = if id == ID_COMMIT { px(150) } else { px(78) };
         win::move_to(button(id), x, y, bw, row + px(4));
         x += bw + gap;
     }
@@ -293,6 +346,8 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         wm::WM_COMMAND => {
             match win::loword(w.0) as i32 {
                 ID_COMMIT => commit(h),
+                ID_STAGE => stage(h, true),
+                ID_UNSTAGE => stage(h, false),
                 ID_PULL => sync(h, &["pull", "--ff-only"]),
                 ID_PUSH => sync(h, &["push"]),
                 ID_REFRESH => refresh(h),
