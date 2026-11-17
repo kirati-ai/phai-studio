@@ -504,6 +504,18 @@ pub static THAI: &[(&str, &str)] = &[
     ("Also include - files or folders of the project, comma between:", "ใส่ไฟล์อื่นด้วย - ไฟล์หรือโฟลเดอร์ในโปรเจกต์ คั่นด้วยจุลภาค:"),
     ("Install for everyone on the computer (asks for an administrator)", "ติดตั้งให้ทุกคนในเครื่อง (ขอสิทธิ์ผู้ดูแลระบบ)"),
     ("{0} is not in the project", "ไม่พบ {0} ในโปรเจกต์"),
+    ("Go to All", "ไปที่ทุกอย่าง"),
+    ("Go to All...", "ไปที่ทุกอย่าง..."),
+    ("Module", "โมดูล"),
+    ("Method", "เมธอด"),
+    ("Field", "ฟิลด์"),
+    ("Enum", "Enum"),
+    ("Trait", "Trait"),
+    ("Variable", "ตัวแปร"),
+    ("Constant", "ค่าคงที่"),
+    ("Enum member", "สมาชิก Enum"),
+    ("Struct", "Struct"),
+    ("Symbol", "สัญลักษณ์"),
 ];
 
 #[cfg(test)]
