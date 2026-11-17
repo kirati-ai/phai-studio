@@ -22,6 +22,7 @@ mod autohide;
 mod docking;
 mod servers;
 mod designer;
+mod gitpane;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -129,6 +130,7 @@ const ID_PARAM_INFO: i32 = 251;
 const ID_QUICK_ACTIONS: i32 = 252;
 const ID_RUN_TESTS: i32 = 253;
 const ID_RUN_ALL_TESTS: i32 = 254;
+const ID_GIT_CHANGES: i32 = 255;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -771,6 +773,9 @@ fn build_menu() -> HMENU {
         add(test, ID_RUN_TESTS, &tf("Run Tests of {0}", &[&project]), "Ctrl+R, T");
         add(test, ID_RUN_ALL_TESTS, t("Run All Tests"), "Ctrl+R, A");
         sub(t("&Test"), test);
+        let gitm = wm::CreatePopupMenu().unwrap_or_default();
+        add(gitm, ID_GIT_CHANGES, t("Git Changes..."), "Ctrl+Alt+G");
+        sub(t("&Git"), gitm);
         let data = wm::CreatePopupMenu().unwrap_or_default();
         add(data, ID_ADD_CONNECTION, t("Add Connection..."), "");
         add(data, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
@@ -3787,6 +3792,15 @@ impl Studio {
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
             ID_RUN_TESTS => self.start_job(cargo::Job::Test, false),
+            ID_GIT_CHANGES => {
+                let from = self.doc.path.clone().or_else(|| std::env::current_dir().ok());
+                match from.as_deref().and_then(gitpane::repository_of) {
+                    Some(repo) => gitpane::open(self.hwnd, repo),
+                    None => {
+                        win::message(Some(self.hwnd), t("This project is not in a Git repository. Run git init in its folder to start one."), t("Git Changes..."), wm::MB_ICONINFORMATION);
+                    }
+                }
+            }
             ID_RUN_ALL_TESTS => self.start_job(cargo::Job::Test, true),
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),
@@ -4449,6 +4463,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x45 if ctrl && shift => return Some(ID_EXECUTE),
             0x46 if ctrl && shift => return Some(ID_FIND_IN_FILES),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
+            0x47 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_GIT_CHANGES),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),

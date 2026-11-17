@@ -98,7 +98,7 @@
 
 | | ความสามารถ | สถานะ |
 |---|---|---|
-| ★ | Git Changes (stage, commit, push) | ⬜ |
+| ★ | Git Changes (เมนู Git, Ctrl+Alt+G): branch, ไฟล์ที่เปลี่ยน (แก้/ใหม่/ลบ/เปลี่ยนชื่อ), ดับเบิลคลิกดู diff, ช่องข้อความ, Commit All, Pull, Push, Refresh - ทดสอบ commit จริงใน repo ทดลอง | ✅ (ยังเลือก stage ทีละไฟล์ไม่ได้) |
 | | Start window | ⬜ |
 | | ธีมสว่าง/มืด, ฟอนต์ | ✅ |
 | | ไฟล์ล่าสุด | ✅ |
