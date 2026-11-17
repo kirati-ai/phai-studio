@@ -568,6 +568,18 @@ pub static THAI: &[(&str, &str)] = &[
     ("CPU (% of all processors)", "CPU (% ของทุกตัวประมวลผล)"),
     ("The program has ended.", "โปรแกรมจบแล้ว"),
     ("Run the program (F5 or Ctrl+F5) to see its memory and processor use here.", "รันโปรแกรม (F5 หรือ Ctrl+F5) เพื่อดูหน่วยความจำและการใช้ CPU ที่นี่"),
+    ("Attach to Process...", "แนบกับโปรเซส..."),
+    ("Attach to Process", "แนบกับโปรเซส"),
+    ("Detach All", "ปล่อยทั้งหมด"),
+    ("Attached to {0} ({1})", "แนบกับ {0} ({1}) แล้ว"),
+    ("Detached: the program runs on without the debugger", "ปล่อยแล้ว: โปรแกรมทำงานต่อโดยไม่มีดีบักเกอร์"),
+    ("Attach", "แนบ"),
+    ("Cancel", "ยกเลิก"),
+    ("Process", "โปรเซส"),
+    ("ID", "รหัส"),
+    ("Path", "ที่อยู่"),
+    ("Filter processes:", "กรองโปรเซส:"),
+    ("{0} processes", "{0} โปรเซส"),
 ];
 
 #[cfg(test)]

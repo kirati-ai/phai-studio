@@ -138,3 +138,4 @@
 | | Document Outline ของไฟล์โค้ด: struct, impl, ฟังก์ชัน, ฟิลด์ ซ้อนกันตามที่เขียน (จาก rust-analyzer) อัปเดตเองหลังแก้โค้ด คลิกแล้วไปที่นั่น | ✅ |
 | ★ | CodeLens: "ใช้ N แห่ง" ต่อท้ายบรรทัดของฟังก์ชัน, เมธอด, struct, enum, trait (นับจาก rust-analyzer) อัปเดตหลังแก้โค้ด คลิกแล้วได้รายการที่ใช้ | ✅ |
 | ★ | Diagnostic Tools (Debug > Show Diagnostic Tools, Ctrl+Alt+F2): กราฟหน่วยความจำ (private bytes) และ CPU (% ของทุกตัวประมวลผล) ของโปรแกรมที่รัน (F5 หรือ Ctrl+F5) เก็บค่าทุกครึ่งวินาที ย้อนหลังหนึ่งนาที | ✅ |
+| ★ | Attach to Process (Debug, Ctrl+Alt+P): เลือกโปรแกรมที่รันอยู่ (กรองตามชื่อ/รหัส โปรแกรมของโปรเจกต์ขึ้นก่อน) แล้วดีบักได้ทันที - breakpoint, step, locals; Stop Debugging หรือ Detach All ปล่อยให้โปรแกรมทำงานต่อ - ทดสอบแนบกับโปรแกรมที่วนอยู่จริง | ✅ |
