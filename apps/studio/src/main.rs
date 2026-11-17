@@ -199,6 +199,9 @@ const ID_THEME_IMPORT: i32 = 131;
 /// For the properties pane's Theme "…".
 pub const ID_THEME_IMPORT_PUB: i32 = ID_THEME_IMPORT;
 pub const ID_TOOL_PUB: i32 = ID_TOOL;
+/// The toolbox's Menu bar and Toolbar: not controls - the form has one of each, edited in place.
+pub const ID_TOOL_MENUBAR: i32 = 380;
+pub const ID_TOOL_TOOLBAR: i32 = 381;
 
 /// The kind a toolbox command puts on the form; `None` for the Pointer.
 pub fn tool_kind(id: i32) -> Option<Kind> {
@@ -624,12 +627,13 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Table => t("Table layout"),
         Kind::Rich => t("Rich text box"),
         Kind::Grid => t("Data grid"),
+        Kind::ContextMenu => t("Context menu"),
     }
 }
 
 /// The toolbox: the pointer, then every kind - its command, name and icon.
 pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
-    let mut v = vec![(ID_TOOL, t("Pointer"), glyph::POINTER)];
+    let mut v = vec![(ID_TOOL, t("Pointer"), glyph::POINTER), (ID_TOOL_MENUBAR, t("Menu bar"), glyph::MENU_BAR), (ID_TOOL_TOOLBAR, t("Toolbar"), glyph::TOOLBAR)];
     for (i, k) in Kind::ALL.iter().enumerate() {
         let g = match k {
             Kind::Label => glyph::FONT,
@@ -654,6 +658,7 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Table => glyph::LAY_GRID,
             Kind::Rich => glyph::DOCUMENT,
             Kind::Grid => glyph::APPS,
+            Kind::ContextMenu => glyph::MENU_CONTEXT,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -1085,6 +1090,7 @@ impl Studio {
                     },
                     Key::Enabled => c.enabled = (!yes).then_some(false),
                     Key::Locked => c.locked = yes.then_some(true),
+                    Key::ContextMenu => c.context_menu = (!text.trim().is_empty()).then(|| text.trim().to_string()),
                     Key::Cols => match num {
                         Some(n) if (1..=12).contains(&n) => c.cols = Some(n),
                         _ => return,
@@ -1131,6 +1137,7 @@ impl Studio {
                     Key::Image => c.image = (!text.trim().is_empty()).then(|| text.trim().replace('\\', "/")),
                     Key::Items => match c.kind {
                         Kind::Combo => c.items = list(),
+                        Kind::ContextMenu => c.items = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect(),
                         // A tree's lines keep their indent: it is the tree.
                         Kind::Tree => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
                         Kind::Tabs => c.tabs = list(),
@@ -4599,6 +4606,19 @@ impl Studio {
                 self.close_tab();
             }
             ID_TABS => {}
+            // Menu bar, Toolbar: the form's own, opened to edit (made when it has none), the
+            // pointer chosen again.
+            ID_TOOL_MENUBAR | ID_TOOL_TOOLBAR => {
+                self.tool = None;
+                toolbox::choose(self.toolbox, ID_TOOL);
+                if self.doc.code.is_none() {
+                    if id == ID_TOOL_MENUBAR {
+                        self.edit_menus();
+                    } else {
+                        self.edit_toolbar();
+                    }
+                }
+            }
             t if (ID_TOOL..=ID_TOOL + Kind::ALL.len() as i32).contains(&t) => {
                 self.tool = if t == ID_TOOL { None } else { Kind::ALL.get((t - ID_TOOL - 1) as usize).copied() };
             }

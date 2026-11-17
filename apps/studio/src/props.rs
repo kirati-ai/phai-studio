@@ -46,6 +46,7 @@ pub enum Key {
     Locked,
     Image,
     Cols,
+    ContextMenu,
     Checked,
     Password,
     Group,
@@ -320,6 +321,19 @@ impl Props {
             })
             .collect();
         };
+        // A context menu: its name and its items.
+        if c.kind == Kind::ContextMenu {
+            return [
+                p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
+                p(t("Data"), Key::Items, t("Items"), c.items.join("\n"), Ed::Dialog, t("One a line: method | label - the method runs when it is chosen; - alone a separator.")),
+            ]
+            .into_iter()
+            .map(|mut q| {
+                q.set = is_set(q.key, &q.value);
+                q
+            })
+            .collect();
+        }
         // A timer: its name, how often, whether it runs from the start.
         if c.kind == Kind::Timer {
             return [
@@ -370,6 +384,13 @@ impl Props {
             v.push(p(t("Data"), Key::Min, t("Minimum"), c.min.unwrap_or(0).to_string(), Ed::Number, t("The smallest value.")));
             v.push(p(t("Data"), Key::Max, t("Maximum"), c.max.unwrap_or(100).to_string(), Ed::Number, t("The largest value.")));
             v.push(p(t("Data"), Key::Value, t("Value"), c.value.unwrap_or(0).to_string(), Ed::Number, t("The value when the window opens.")));
+        }
+        // A context menu for any control, when the form has one.
+        let menus: Vec<String> = f.control.iter().filter(|m| m.kind == Kind::ContextMenu).map(|m| m.id.clone()).collect();
+        if !menus.is_empty() && !c.kind.is_component() {
+            let mut choices = vec![String::new()];
+            choices.extend(menus);
+            v.push(p(t("Behavior"), Key::ContextMenu, t("Context menu"), c.context_menu.clone().unwrap_or_default(), Ed::Choice(choices, false), t("The menu a right-click on it opens.")));
         }
         if c.kind == Kind::Table {
             v.push(p(t("Layout"), Key::Cols, t("Columns"), c.cols.unwrap_or(2).to_string(), Ed::Number, t("How many equal columns the controls in it are laid in.")));

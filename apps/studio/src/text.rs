@@ -516,6 +516,10 @@ pub static THAI: &[(&str, &str)] = &[
     ("Enum member", "สมาชิก Enum"),
     ("Struct", "Struct"),
     ("Symbol", "สัญลักษณ์"),
+    ("Context menu", "เมนูคลิกขวา"),
+    ("Menu bar", "แถบเมนู"),
+    ("The menu a right-click on it opens.", "เมนูที่ขึ้นเมื่อคลิกขวาที่ตัวนี้"),
+    ("One a line: method | label - the method runs when it is chosen; - alone a separator.", "บรรทัดละรายการ: เมธอด | ข้อความ - เลือกแล้วเมธอดนั้นทำงาน; - อย่างเดียวคือเส้นคั่น"),
 ];
 
 #[cfg(test)]
