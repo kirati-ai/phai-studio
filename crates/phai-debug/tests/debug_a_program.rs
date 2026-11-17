@@ -27,9 +27,13 @@ fn rustc() -> Option<PathBuf> {
 }
 
 fn build(dir: &Path) -> Option<PathBuf> {
+    build_text(dir, PROGRAM)
+}
+
+fn build_text(dir: &Path, program: &str) -> Option<PathBuf> {
     std::fs::create_dir_all(dir).ok()?;
     let src = dir.join("main.rs");
-    std::fs::write(&src, PROGRAM).ok()?;
+    std::fs::write(&src, program).ok()?;
     let exe = dir.join("prog.exe");
     let ok = std::process::Command::new(rustc()?).arg("-g").arg("-Copt-level=0").arg(&src).arg("-o").arg(&exe).current_dir(dir).status().ok()?.success();
     ok.then_some(exe)
@@ -160,6 +164,37 @@ fn a_condition_decides_whether_a_breakpoint_stops() {
             }
         }
         assert_eq!(stopped, stops, "condition {cond}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_hit_count_decides_which_time_a_breakpoint_stops() {
+    const LOOP: &str = "fn main() {\n    let mut sum = 0;\n    for i in 0..10 {\n        sum += i;\n    }\n    println!(\"{sum}\");\n}\n";
+    let dir = std::env::temp_dir().join(format!("phai-debug-hits-{}", std::process::id()));
+    let Some(exe) = build_text(&dir, LOOP) else { return };
+    let src = dir.join("main.rs");
+    // The 3rd time, every 4th time, and from the 9th: which `i` each stop sees.
+    for (hits, want) in [("= 3", vec!["2"]), ("% 4", vec!["3", "7"]), (">= 9", vec!["8", "9"])] {
+        let (tx, rx) = channel();
+        let s = Session::launch(&exe, &dir, vec![(src.clone(), 4)], move |e| {
+            let _ = tx.send(e);
+        });
+        let h = phai_debug::Hits::parse(hits).unwrap();
+        s.send(Command::Conditions(vec![(src.clone(), 4, phai_debug::join_condition("", h))]));
+        let mut seen = vec![];
+        loop {
+            match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+                Event::Stopped { locals, .. } => {
+                    seen.push(local(&locals, "i").to_string());
+                    s.send(Command::Continue);
+                }
+                Event::Exited(_) => break,
+                Event::Failed(e) => panic!("{e}"),
+                _ => {}
+            }
+        }
+        assert_eq!(seen, want, "hit count {hits}");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -176,6 +176,72 @@ struct Engine {
     /// Conditions by file and line, and by the address their breakpoint landed at.
     conds: Vec<(PathBuf, u32, String)>,
     cond_at: HashMap<u64, String>,
+    /// How many times each breakpoint was reached with its condition holding.
+    hits: HashMap<u64, u64>,
+}
+
+/// When a breakpoint stops by how many times it has been reached, as Visual Studio's Hit Count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hits {
+    /// `= 3`: the third time only.
+    Equal(u64),
+    /// `>= 3`: the third time and every time after.
+    AtLeast(u64),
+    /// `% 3`: every third time.
+    Multiple(u64),
+}
+
+impl Hits {
+    /// `= 3`, `3`, `>= 3`, `% 3` or `multiple of 3`; `Ok(None)` for nothing written.
+    pub fn parse(text: &str) -> Result<Option<Hits>, String> {
+        let t = text.trim();
+        if t.is_empty() {
+            return Ok(None);
+        }
+        let num = |s: &str| s.trim().parse::<u64>().ok().filter(|n| *n > 0).ok_or_else(|| format!("`{t}`: a hit count is = N, >= N or % N, N from 1"));
+        let h = if let Some(r) = t.strip_prefix(">=") {
+            Hits::AtLeast(num(r)?)
+        } else if let Some(r) = t.strip_prefix('%').or_else(|| t.strip_prefix("multiple of")) {
+            Hits::Multiple(num(r)?)
+        } else {
+            Hits::Equal(num(t.trim_start_matches("==").trim_start_matches('='))?)
+        };
+        Ok(Some(h))
+    }
+
+    pub fn text(&self) -> String {
+        match self {
+            Hits::Equal(n) => format!("= {n}"),
+            Hits::AtLeast(n) => format!(">= {n}"),
+            Hits::Multiple(n) => format!("% {n}"),
+        }
+    }
+
+    /// Whether the `count`th time reached stops.
+    pub fn stops(&self, count: u64) -> bool {
+        match *self {
+            Hits::Equal(n) => count == n,
+            Hits::AtLeast(n) => count >= n,
+            Hits::Multiple(n) => count.is_multiple_of(n),
+        }
+    }
+}
+
+/// A breakpoint's condition and hit count in the one text `Command::Conditions` carries:
+/// `#>= 3;x > 5`, or the expression alone.
+pub fn join_condition(expr: &str, hits: Option<Hits>) -> String {
+    match hits {
+        Some(h) => format!("#{};{}", h.text(), expr.trim()),
+        None => expr.trim().to_string(),
+    }
+}
+
+/// The text `join_condition` made, apart again: the expression (maybe empty) and the hit count.
+pub fn split_condition(cond: &str) -> (String, Option<Hits>) {
+    match cond.strip_prefix('#').and_then(|r| r.split_once(';')) {
+        Some((h, e)) => (e.trim().to_string(), Hits::parse(h).ok().flatten()),
+        None => (cond.trim().to_string(), None),
+    }
 }
 
 /// Whether two paths are one file, as Windows compares them: case and slashes aside.
@@ -210,7 +276,7 @@ impl Engine {
         unsafe {
             let _ = CloseHandle(pi.hThread);
         }
-        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new() })
+        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new() })
     }
 
     fn run(&mut self) {
@@ -521,7 +587,14 @@ impl Engine {
                         self.set_context(tid, &c);
                         // A condition that does not hold: on, as though no breakpoint were there.
                         if let Some(cond) = self.cond_at.get(&addr).cloned() {
-                            if self.holds(tid, &cond) == Some(false) {
+                            let (expr, hits) = split_condition(&cond);
+                            if !expr.is_empty() && self.holds(tid, &expr) == Some(false) {
+                                return DBG_CONTINUE;
+                            }
+                            // Counted only when the condition held; stops only on the count asked.
+                            let n = self.hits.entry(addr).or_insert(0);
+                            *n += 1;
+                            if hits.is_some_and(|h| !h.stops(*n)) {
                                 return DBG_CONTINUE;
                             }
                         }
@@ -640,6 +713,10 @@ impl Engine {
                     continue;
                 }
                 Command::Conditions(list) => {
+                    // Changed: counted afresh, as Visual Studio does.
+                    if list != self.conds {
+                        self.hits.clear();
+                    }
                     self.conds = list;
                     let w = self.wanted.clone();
                     self.set_breakpoints(w);
@@ -1282,6 +1359,20 @@ mod tests {
         assert!(compare("42", ">", "5") && !compare("42", "<", "5"));
         assert!(compare("phai", "==", "phai") && compare("10", "==", "10.0"));
         assert_eq!(unquote("\"ไผ่\""), "ไผ่");
+    }
+
+    #[test]
+    fn hit_counts_parse_and_ride_with_the_condition() {
+        assert_eq!(Hits::parse("3"), Ok(Some(Hits::Equal(3))));
+        assert_eq!(Hits::parse(">= 2"), Ok(Some(Hits::AtLeast(2))));
+        assert_eq!(Hits::parse("multiple of 4"), Ok(Some(Hits::Multiple(4))));
+        assert_eq!(Hits::parse(" "), Ok(None));
+        assert!(Hits::parse("% 0").is_err() && Hits::parse("abc").is_err());
+        assert!(Hits::Multiple(2).stops(4) && !Hits::Multiple(2).stops(3));
+        let c = join_condition("x > 5", Some(Hits::AtLeast(3)));
+        assert_eq!(split_condition(&c), ("x > 5".to_string(), Some(Hits::AtLeast(3))));
+        assert_eq!(split_condition("x > 5"), ("x > 5".to_string(), None));
+        assert_eq!(split_condition(&join_condition("", Some(Hits::Equal(2)))), (String::new(), Some(Hits::Equal(2))));
     }
 
     #[test]

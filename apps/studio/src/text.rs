@@ -397,6 +397,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Go To Next Error", "ไปยังข้อผิดพลาดถัดไป"),
     ("Go To Previous Error", "ไปยังข้อผิดพลาดก่อนหน้า"),
     ("No errors or warnings", "ไม่มีข้อผิดพลาดหรือคำเตือน"),
+    ("Hit count - = 3, >= 3 or % 3 (every third time); empty for every time:", "จำนวนครั้งที่ถึง - = 3, >= 3 หรือ % 3 (ทุกครั้งที่สาม); เว้นว่างเพื่อหยุดทุกครั้ง:"),
 ];
 
 #[cfg(test)]
