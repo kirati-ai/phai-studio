@@ -356,6 +356,8 @@ pub struct Studio {
     test_results: Vec<cargo::TestResult>,
     /// How the References list's count is said: references, or Find in Files' matches.
     found_words: &'static str,
+    /// Publish: the project's other files and folders to go with the program.
+    publish_include: Vec<String>,
     /// Publish: what to pack once the Release build is done.
     publish_after_build: Option<phai_pack::Manifest>,
     /// The table Results shows, when it shows one (Show Table Data): its rows can be changed.
@@ -533,6 +535,30 @@ extern "system" fn code_window_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
         }
         _ => win::def(h, msg, w, l),
     }
+}
+
+/// The pictures a project's forms show, by their paths in it - what Publish takes along unless
+/// told otherwise.
+fn pictures_of(project: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut stack = vec![project.join("src")];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for p in rd.flatten().map(|e| e.path()) {
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "phaiform") {
+                if let Ok(f) = std::fs::read_to_string(&p).map_err(|_| ()).and_then(|t| FormFile::parse(&t).map_err(|_| ())) {
+                    for c in f.control.iter().filter_map(|c| c.image.clone()) {
+                        if !std::path::Path::new(&c).is_absolute() && project.join(&c).exists() && !out.contains(&c) {
+                            out.push(c);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// What Peek Definition shows: the file and line, then the code from the line before the
@@ -3077,20 +3103,26 @@ impl Studio {
         let name = get("name").unwrap_or_else(|| package.clone());
         let publisher = get("publisher").unwrap_or_default();
         let desktop = get("desktop").map(|d| d == "1").unwrap_or(true);
+        let all_users = get("all_users").is_some_and(|d| d == "1");
+        // What else goes with the program: said before, or the pictures its forms show.
+        let include = get("include").unwrap_or_else(|| pictures_of(&dir).join(", "));
         let answers = if std::env::var_os("PHAI_PUBLISH_TEST").is_some() {
-            vec![name, version, publisher, (desktop as u8).to_string()]
+            vec![name, version, publisher, (desktop as u8).to_string(), include, (all_users as u8).to_string()]
         } else {
             let fields = [
                 phai_ui::dialogs::Field::Text(t("Product name"), &name),
                 phai_ui::dialogs::Field::Text(t("Version"), &version),
                 phai_ui::dialogs::Field::Text(t("Publisher"), &publisher),
                 phai_ui::dialogs::Field::Check(t("Offer a desktop shortcut"), desktop),
+                phai_ui::dialogs::Field::Text(t("Also include - files or folders of the project, comma between:"), &include),
+                phai_ui::dialogs::Field::Check(t("Install for everyone on the computer (asks for an administrator)"), all_users),
             ];
             let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Publish {0}", &[&package]), &fields) else { return };
             a
         };
-        let _ = std::fs::write(dir.join("phai-publish.txt"), format!("name={}\npublisher={}\ndesktop={}\n", answers[0].trim(), answers[2].trim(), answers[3]));
-        self.publish_after_build = Some(phai_pack::Manifest { name: answers[0].trim().to_string(), version: answers[1].trim().to_string(), publisher: answers[2].trim().to_string(), desktop: answers[3] == "1", ..Default::default() });
+        let _ = std::fs::write(dir.join("phai-publish.txt"), format!("name={}\npublisher={}\ndesktop={}\ninclude={}\nall_users={}\n", answers[0].trim(), answers[2].trim(), answers[3], answers[4].trim(), answers[5]));
+        self.publish_include = answers[4].split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        self.publish_after_build = Some(phai_pack::Manifest { name: answers[0].trim().to_string(), version: answers[1].trim().to_string(), publisher: answers[2].trim().to_string(), desktop: answers[3] == "1", all_users: answers[5] == "1", ..Default::default() });
         let was = self.release;
         self.release = true;
         self.start_job_run(cargo::Job::Build, false, false);
@@ -3121,9 +3153,35 @@ impl Studio {
         let base = format!("{}-{}", m.safe_name().replace(' ', "-"), m.version);
         let setup_path = out.join(format!("{base}-setup.exe"));
         let portable = out.join(format!("{base}-portable"));
-        let written = std::fs::create_dir_all(&portable)
-            .and_then(|_| std::fs::write(&setup_path, phai_pack::pack(&stub, &m, &[(exe_name.clone(), bytes.clone())])))
-            .and_then(|_| std::fs::write(portable.join(&exe_name), &bytes));
+        // The program, then what else was asked for - by their paths in the project.
+        let mut files = vec![(exe_name.clone(), bytes.clone())];
+        for inc in &self.publish_include {
+            let from = dir.join(inc);
+            let mut stack = vec![from.clone()];
+            while let Some(p) = stack.pop() {
+                if p.is_dir() {
+                    if let Ok(rd) = std::fs::read_dir(&p) {
+                        stack.extend(rd.flatten().map(|e| e.path()));
+                    }
+                } else if let (Ok(data), Ok(rel)) = (std::fs::read(&p), p.strip_prefix(&dir)) {
+                    let rel = rel.to_string_lossy().replace('\\', "/");
+                    if !files.iter().any(|(n, _)| *n == rel) {
+                        files.push((rel, data));
+                    }
+                }
+            }
+            if !from.exists() {
+                return fail(self, tf("{0} is not in the project", &[inc]));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&portable);
+        let mut written = std::fs::create_dir_all(&portable).and_then(|_| std::fs::write(&setup_path, phai_pack::pack(&stub, &m, &files)));
+        for (rel, data) in &files {
+            if written.is_ok() {
+                let at = portable.join(rel);
+                written = at.parent().map(std::fs::create_dir_all).unwrap_or(Ok(())).and_then(|_| std::fs::write(&at, data));
+            }
+        }
         if let Err(e) = written {
             return fail(self, e.to_string());
         }
@@ -3135,6 +3193,7 @@ impl Studio {
         }
         self.say_status(&said);
         if PUBLISH_TEST.load(Ordering::Relaxed) {
+            println!("files: {}", files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", "));
             println!("published {}", setup_path.display());
             std::process::exit(0);
         }
@@ -5315,6 +5374,7 @@ fn main() {
             queries: std::collections::HashMap::new(),
             table_view: None,
             publish_after_build: None,
+            publish_include: vec![],
             found_words: "{0} references in {1} files",
             test_results: vec![],
             outline: None,

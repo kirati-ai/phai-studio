@@ -19,13 +19,15 @@ pub struct Manifest {
     pub exe: String,
     /// Whether the setup offers a desktop shortcut ticked.
     pub desktop: bool,
+    /// Installed for everyone on the computer - in Program Files, asking for an administrator.
+    pub all_users: bool,
     /// Every file installed, relative - for the uninstaller to take away.
     pub files: Vec<String>,
 }
 
 impl Manifest {
     fn to_text(&self) -> String {
-        let mut s = format!("name={}\nversion={}\npublisher={}\nexe={}\ndesktop={}\n", self.name, self.version, self.publisher, self.exe, self.desktop as u8);
+        let mut s = format!("name={}\nversion={}\npublisher={}\nexe={}\ndesktop={}\nall_users={}\n", self.name, self.version, self.publisher, self.exe, self.desktop as u8, self.all_users as u8);
         for f in &self.files {
             s.push_str(&format!("file={f}\n"));
         }
@@ -42,6 +44,7 @@ impl Manifest {
                 "publisher" => m.publisher = v.into(),
                 "exe" => m.exe = v.into(),
                 "desktop" => m.desktop = v == "1",
+                "all_users" => m.all_users = v == "1",
                 "file" => m.files.push(v.into()),
                 _ => {}
             }
@@ -144,13 +147,14 @@ mod tests {
     #[test]
     fn packed_files_come_back_whole() {
         let stub = b"MZ pretend setup program".to_vec();
-        let m = Manifest { name: "ร้านค้า Shop".into(), version: "1.2.0".into(), publisher: "Monrak Net".into(), exe: "shop.exe".into(), desktop: true, files: vec![] };
+        let m = Manifest { name: "ร้านค้า Shop".into(), version: "1.2.0".into(), publisher: "Monrak Net".into(), exe: "shop.exe".into(), desktop: true, all_users: true, files: vec![] };
         let big: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
         let files = vec![("shop.exe".to_string(), big.clone()), ("data/readme.txt".to_string(), "ไผ่".as_bytes().to_vec())];
         let setup = pack(&stub, &m, &files);
         assert!(setup.len() < stub.len() + big.len(), "compressed");
         let (back, got) = unpack(&setup, true).unwrap();
         assert_eq!(back.name, "ร้านค้า Shop");
+        assert!(back.all_users);
         assert_eq!(back.files, ["shop.exe", "data/readme.txt"]);
         assert_eq!(got, files);
         assert_eq!(strip(&setup), &stub[..]);
