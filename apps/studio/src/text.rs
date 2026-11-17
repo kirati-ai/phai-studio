@@ -520,6 +520,11 @@ pub static THAI: &[(&str, &str)] = &[
     ("Menu bar", "แถบเมนู"),
     ("The menu a right-click on it opens.", "เมนูที่ขึ้นเมื่อคลิกขวาที่ตัวนี้"),
     ("One a line: method | label - the method runs when it is chosen; - alone a separator.", "บรรทัดละรายการ: เมธอด | ข้อความ - เลือกแล้วเมธอดนั้นทำงาน; - อย่างเดียวคือเส้นคั่น"),
+    ("Toggle Bookmark", "ใส่/เอาบุ๊กมาร์ก"),
+    ("Next Bookmark", "บุ๊กมาร์กถัดไป"),
+    ("Previous Bookmark", "บุ๊กมาร์กก่อนหน้า"),
+    ("Clear Bookmarks", "ล้างบุ๊กมาร์ก"),
+    ("No bookmarks in this file", "ไฟล์นี้ไม่มีบุ๊กมาร์ก"),
 ];
 
 #[cfg(test)]
