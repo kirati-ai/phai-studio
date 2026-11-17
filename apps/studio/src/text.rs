@@ -449,6 +449,16 @@ pub static THAI: &[(&str, &str)] = &[
     ("Git Changes...", "การเปลี่ยนแปลงใน Git..."),
     ("&Git", "&Git (กิต)"),
     ("This project is not in a Git repository. Run git init in its folder to start one.", "โปรเจกต์นี้ไม่ได้อยู่ใน Git repository - สั่ง git init ในโฟลเดอร์ของมันเพื่อเริ่ม"),
+    ("What would you like to do?", "วันนี้จะทำอะไรดี?"),
+    ("Open recent", "เปิดล่าสุด"),
+    ("Folder", "โฟลเดอร์"),
+    ("Nothing opened yet", "ยังไม่เคยเปิดอะไร"),
+    ("Get started", "เริ่มต้น"),
+    ("Open a form or code file...", "เปิดฟอร์มหรือไฟล์โค้ด..."),
+    ("Create a new project...", "สร้างโปรเจกต์ใหม่..."),
+    ("Continue without code →", "ทำต่อโดยไม่เปิดโค้ด →"),
+    ("Show this window when Phai Studio starts", "แสดงหน้าต่างนี้เมื่อเปิด Phai Studio"),
+    ("Start Window", "หน้าต่างเริ่มต้น"),
 ];
 
 #[cfg(test)]
