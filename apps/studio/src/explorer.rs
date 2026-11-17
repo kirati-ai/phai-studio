@@ -38,6 +38,8 @@ pub struct Explorer {
 const ID_EXPLORER_CAPTION: i32 = 410;
 const ID_PROPS_CAPTION: i32 = 411;
 const ID_SIDE_SPLIT: i32 = 412;
+const ID_SERVERS_CAPTION: i32 = 413;
+const ID_SIDE_SPLIT2: i32 = 414;
 
 /// The right-hand side: two docked panes, the project explorer above the properties, each with
 /// its caption and close button, a splitter between them.
@@ -46,8 +48,11 @@ struct Side {
     parts: Option<SideParts>,
     /// The explorer pane's height, design pixels.
     explorer_h: i32,
+    /// Server Explorer's height when a pane lies below it.
+    servers_h: i32,
     pub explorer_on: bool,
     pub props_on: bool,
+    pub servers_on: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -57,27 +62,42 @@ struct SideParts {
     split: HWND,
     props_caption: HWND,
     props: HWND,
+    servers_caption: HWND,
+    servers: HWND,
+    split2: HWND,
 }
 
 impl Side {
-    /// The panes again: those shown take their room, the last one shown fills the rest.
+    /// The panes again: those shown take their room, the last one shown fills the rest, a
+    /// splitter between each two.
     fn arrange(&mut self, side: HWND) {
         let Some(p) = self.parts else { return };
         let mut l = Layout::new((280, 600));
         let item = |h: i32, dock: Dock| Item { bounds: Rect::new(0, 0, 0, h), dock, anchor: Anchor::default() };
-        for (h, on) in [(p.explorer_caption, self.explorer_on), (p.tree, self.explorer_on), (p.split, self.explorer_on && self.props_on), (p.props_caption, self.props_on), (p.props, self.props_on)] {
-            win::show(h, on);
+        // Project, Server Explorer, Properties - each caption, body, shown, height.
+        let panes = [(p.explorer_caption, p.tree, self.explorer_on, self.explorer_h), (p.servers_caption, p.servers, self.servers_on, self.servers_h), (p.props_caption, p.props, self.props_on, 0)];
+        let shown: Vec<usize> = (0..3).filter(|k| panes[*k].2).collect();
+        for (k, (c, b, on, _)) in panes.iter().enumerate() {
+            let _ = k;
+            win::show(*c, *on);
+            win::show(*b, *on);
         }
-        if self.explorer_on {
-            l.add(p.explorer_caption, item(28, Dock::Top));
-            l.add(p.tree, if self.props_on { item(self.explorer_h, Dock::Top) } else { item(0, Dock::Fill) });
+        let splits = [p.split, p.split2];
+        for s in splits {
+            win::show(s, false);
         }
-        if self.explorer_on && self.props_on {
-            l.add(p.split, item(6, Dock::Top));
-        }
-        if self.props_on {
-            l.add(p.props_caption, item(28, Dock::Top));
-            l.add(p.props, item(0, Dock::Fill));
+        for (n, k) in shown.iter().enumerate() {
+            let (c, b, _, h) = panes[*k];
+            let last = n + 1 == shown.len();
+            l.add(c, item(28, Dock::Top));
+            l.add(b, if last { item(0, Dock::Fill) } else { item(h, Dock::Top) });
+            if !last {
+                // The splitter under a pane sizes that pane: the first under Project, the
+                // second under Server Explorer.
+                let s = if *k == 0 { splits[0] } else { splits[1] };
+                win::show(s, true);
+                l.add(s, item(6, Dock::Top));
+            }
         }
         self.layout = l;
         self.layout.apply(side);
@@ -104,20 +124,35 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 180, explorer_on: true, props_on: true }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 180, servers_h: 200, explorer_on: true, props_on: true, servers_on: false }));
         h
     }
 }
 
 /// Makes the panes of the side: the explorer's caption and tree, a splitter, the properties'
 /// caption and the properties.
-pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, font: HFONT) {
+pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, servers: HWND, font: HFONT) {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
         let split = phai_ui::controls::splitter(side, ID_SIDE_SPLIT, false);
+        let split2 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT2, false);
         let props_caption = phai_ui::controls::caption(side, t("Properties"), ID_PROPS_CAPTION, font);
-        s.parts = Some(SideParts { explorer_caption: heading, tree, split, props_caption, props });
+        let servers_caption = phai_ui::controls::caption(side, t("Server Explorer"), ID_SERVERS_CAPTION, font);
+        s.parts = Some(SideParts { explorer_caption: heading, tree, split, props_caption, props, servers_caption, servers, split2 });
         s.arrange(side);
     }
+}
+
+/// Shows or hides Server Explorer; whether it shows now.
+pub fn show_servers(side: HWND, on: bool) -> bool {
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        s.servers_on = on;
+        s.arrange(side);
+    }
+    on
+}
+
+pub fn servers_shown(side: HWND) -> bool {
+    unsafe { win::state::<Side>(side) }.is_some_and(|s| s.servers_on)
 }
 
 /// The explorer's and the properties' captions.
@@ -129,6 +164,7 @@ pub fn side_captions(side: HWND) -> Option<(HWND, HWND)> {
 pub fn relabel_side(side: HWND) {
     if let Some(p) = unsafe { win::state::<Side>(side) }.and_then(|s| s.parts) {
         win::set_text(p.props_caption, t("Properties"));
+        win::set_text(p.servers_caption, t("Server Explorer"));
     }
 }
 
@@ -141,6 +177,16 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             LRESULT(0)
         }
         // A pane's caption buttons - ▾, the pin, × - are the studio's to answer.
+        wm::WM_COMMAND if win::loword(w.0) as i32 == ID_SERVERS_CAPTION => {
+            // Server Explorer: × hides it; it docks and hides with nothing else.
+            if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE {
+                show_servers(h, false);
+                if let Some(st) = studio() {
+                    st.rebuild_menu_pub();
+                }
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if matches!(win::loword(w.0) as i32, ID_EXPLORER_CAPTION | ID_PROPS_CAPTION) => {
             let pane = if win::loword(w.0) as i32 == ID_EXPLORER_CAPTION { crate::Pane::Explorer } else { crate::Pane::Properties };
             if let Some(st) = studio() {
@@ -151,7 +197,11 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         phai_ui::controls::WM_SPLIT => {
             if let Some(s) = unsafe { win::state::<Side>(h) } {
                 let d = phai_ui::layout::unscale(l.0 as i32, win::dpi(h));
-                s.explorer_h = (s.explorer_h + d).clamp(60, 900);
+                if w.0 as i32 == ID_SIDE_SPLIT2 {
+                    s.servers_h = (s.servers_h + d).clamp(60, 900);
+                } else {
+                    s.explorer_h = (s.explorer_h + d).clamp(60, 900);
+                }
                 s.arrange(h);
             }
             LRESULT(0)
@@ -159,6 +209,39 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            if hdr.idFrom == crate::servers::ID_SERVERS_TREE as usize {
+                const TVN_ITEMEXPANDINGW: u32 = (-454i32) as u32;
+                if let Some(sv) = studio().and_then(|s| s.servers.as_mut()) {
+                    match hdr.code {
+                        cc::NM_DBLCLK => {
+                            sv.activate();
+                            return LRESULT(1);
+                        }
+                        cc::NM_RCLICK => {
+                            // The node under the pointer is the one the menu is for.
+                            let mut ht = cc::TVHITTESTINFO::default();
+                            unsafe {
+                                let _ = wm::GetCursorPos(&mut ht.pt);
+                                let _ = windows::Win32::Graphics::Gdi::ScreenToClient(hdr.hwndFrom, &mut ht.pt);
+                                let hit = wm::SendMessageW(hdr.hwndFrom, 0x1111 /* TVM_HITTEST */, None, Some(LPARAM(&mut ht as *mut _ as isize))).0;
+                                if hit != 0 {
+                                    wm::SendMessageW(hdr.hwndFrom, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9)), Some(LPARAM(hit)));
+                                }
+                            }
+                            sv.menu(h);
+                            return LRESULT(1);
+                        }
+                        TVN_ITEMEXPANDINGW => {
+                            let nm = unsafe { &*(l.0 as *const cc::NMTREEVIEWW) };
+                            if nm.action.0 & 2 != 0 {
+                                sv.expanding(nm.itemNew.hItem.0, nm.itemNew.lParam.0);
+                            }
+                            return LRESULT(0);
+                        }
+                        _ => {}
+                    }
+                }
+            }
             if hdr.idFrom == ID_TREE as usize {
                 if let Some(e) = studio().and_then(|s| s.explorer.as_mut()) {
                     match hdr.code {

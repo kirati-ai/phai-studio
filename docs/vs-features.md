@@ -102,3 +102,15 @@
 | | ไฟล์ล่าสุด | ✅ |
 | | Test Explorer (`cargo test`) | ⬜ |
 | | Publish / ตัวติดตั้ง | ⬜ |
+
+## ข้อมูล (Server Explorer)
+
+| | ความสามารถ | สถานะ |
+|---|---|---|
+| ★ | Server Explorer: Data Connections → เซิร์ฟเวอร์ MySQL/MariaDB → ฐานข้อมูล → ตาราง/วิว → คอลัมน์ (อ่านเมื่อเปิดกิ่ง) | ✅ |
+| ★ | Add Connection: เซิร์ฟเวอร์ พอร์ต ผู้ใช้ รหัสผ่าน ฐานข้อมูล, TLS, เชื่อใบรับรองของเซิร์ฟเวอร์เอง; ทดสอบก่อนเก็บ; รหัสผ่านเข้ารหัสด้วย DPAPI ของ Windows | ✅ |
+| ★ | ตัวคุยโปรโตคอล MySQL ของ Phai เอง: mysql_native_password, caching_sha2_password, sha256_password (RSA ไม่มี TLS), TLS ผ่าน SChannel | ✅ |
+| ★ | Show Table Data (1000 แถวแรก), New Query (ไฟล์ .sql) + Ctrl+Shift+E รัน, ผลในแท็บผลลัพธ์คิวรี | ✅ |
+| | คัดลอกโค้ดสำหรับโปรแกรม: struct ของแถว + ฟังก์ชันอ่านทั้งตาราง (รหัสผ่านจากตัวแปรแวดล้อม) | ✅ |
+| | แก้ข้อมูลในตาราง, ออกแบบตาราง, prepared statements, SQL Server / PostgreSQL / SQLite | ⬜ |
+

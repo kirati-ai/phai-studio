@@ -15,10 +15,11 @@ const ID_OUTPUT: i32 = 501;
 pub const ID_REFS: i32 = 502;
 pub const ID_LOCALS: i32 = 503;
 pub const ID_STACK: i32 = 504;
+pub const ID_RESULTS: i32 = 505;
 
-/// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack.
-fn labels() -> [&'static str; 5] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack")]
+/// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query results.
+fn labels() -> [&'static str; 6] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results")]
 }
 
 pub struct Bottom {
@@ -29,6 +30,7 @@ pub struct Bottom {
     pub refs: HWND,
     pub locals: HWND,
     pub stack: HWND,
+    pub results: HWND,
     layout: Layout,
 }
 
@@ -44,6 +46,7 @@ impl Bottom {
         let refs = win::list(hwnd, ID_REFS, font, &[(t("File"), 170), (t("Line"), 60), (t("Code"), 640)]);
         let locals = win::list(hwnd, ID_LOCALS, font, &[(t("Name"), 160), (t("Value"), 380), (t("Type"), 220)]);
         let stack = win::list(hwnd, ID_STACK, font, &[(t("Function"), 420), (t("File"), 200), (t("Line"), 60)]);
+        let results = win::list(hwnd, ID_RESULTS, font, &[("", 100)]);
         unsafe {
             wm::SendMessageW(output, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
@@ -54,7 +57,8 @@ impl Bottom {
         layout.add(refs, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(locals, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(stack, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, layout });
+        layout.add(results, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -70,6 +74,7 @@ impl Bottom {
         win::show(self.refs, i == 2);
         win::show(self.locals, i == 3);
         win::show(self.stack, i == 4);
+        win::show(self.results, i == 5);
     }
 
     pub fn relabel(&self) {
