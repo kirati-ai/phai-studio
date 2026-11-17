@@ -172,26 +172,42 @@ impl Servers {
         }
     }
 
-    /// Add Connection: server, port, user, password, database - tested before it is kept.
+    /// Add Connection: first which kind - MySQL, PostgreSQL, a SQLite file - then where and as
+    /// whom; tested before it is kept.
     pub fn add_connection(&mut self, owner: HWND, start: Option<Connection>) -> bool {
-        let c = start.unwrap_or(Connection { host: "localhost".into(), port: 3306, user: "root".into(), ..Default::default() });
-        let port = c.port.to_string();
-        let fields = [
-            Field::Text(t("Server"), &c.host),
-            Field::Text(t("Port"), &port),
-            Field::Text(t("User"), &c.user),
-            Field::Password(t("Password"), &c.password),
-            Field::Text(t("Database"), &c.database),
-            Field::Check(t("Encrypt the connection (TLS)"), c.ssl),
-            Field::Check(t("Trust the server's own certificate"), c.trust_cert),
-        ];
-        let Some(a) = dialogs::ask_fields(Some(owner), t("Add Connection - MySQL"), &fields) else { return false };
-        let new = Connection { host: a[0].trim().into(), port: a[1].trim().parse().unwrap_or(3306), user: a[2].trim().into(), password: a[3].clone(), database: a[4].trim().into(), ssl: a[5] == "1", trust_cert: a[6] == "1" };
+        let kind = match &start {
+            Some(c) => c.kind,
+            None => match win::popup(owner, &[(1, "MySQL / MariaDB"), (2, "PostgreSQL"), (3, t("SQLite file..."))]) {
+                1 => phai_data::Kind::MySql,
+                2 => phai_data::Kind::Postgres,
+                3 => phai_data::Kind::Sqlite,
+                _ => return false,
+            },
+        };
+        let new = if kind == phai_data::Kind::Sqlite {
+            // A file, as one is opened - or a new name, which SQLite makes.
+            let Some(path) = crate::file_dialog_pub(owner, true, "SQLite (*.db; *.sqlite; *.sqlite3)", "*.db;*.sqlite;*.sqlite3", "data.db") else { return false };
+            Connection { host: path.to_string_lossy().to_string(), kind, ..Default::default() }
+        } else {
+            let c = start.unwrap_or(Connection { host: "localhost".into(), port: kind.default_port(), user: if kind == phai_data::Kind::Postgres { "postgres".into() } else { "root".into() }, kind, ..Default::default() });
+            let port = c.port.to_string();
+            let fields = [
+                Field::Text(t("Server"), &c.host),
+                Field::Text(t("Port"), &port),
+                Field::Text(t("User"), &c.user),
+                Field::Password(t("Password"), &c.password),
+                Field::Text(t("Database"), &c.database),
+                Field::Check(t("Encrypt the connection (TLS)"), c.ssl),
+                Field::Check(t("Trust the server's own certificate"), c.trust_cert),
+            ];
+            let Some(a) = dialogs::ask_fields(Some(owner), &tf("Add Connection - {0}", &[&kind.name()]), &fields) else { return false };
+            Connection { host: a[0].trim().into(), port: a[1].trim().parse().unwrap_or(kind.default_port()), user: a[2].trim().into(), password: a[3].clone(), database: a[4].trim().into(), ssl: a[5] == "1", trust_cert: a[6] == "1", kind }
+        };
         let probe = new.clone();
-        match dialogs::wait_for(Some(owner), t("Add Connection - MySQL"), t("Connecting..."), move |_| probe.test()) {
+        match dialogs::wait_for(Some(owner), &tf("Add Connection - {0}", &[&kind.name()]), t("Connecting..."), move |_| probe.test()) {
             Some(Ok(version)) => {
                 if let Some(s) = studio() {
-                    s.say_status(&tf("Connected: MySQL {0}", &[&version]));
+                    s.say_status(&tf("Connected: {0} {1}", &[&kind.name(), &version]));
                 }
                 self.conns.push(new);
                 self.save();
@@ -214,13 +230,16 @@ impl Servers {
         const CODE: u32 = 4;
         const REFRESH: u32 = 5;
         const DELETE: u32 = 6;
+        const NEW_TABLE: u32 = 7;
+        const DESIGN: u32 = 8;
         let sel = self.selected();
         let kind = sel.as_ref().map(|(_, n)| n.kind.clone()).unwrap_or(Kind::Root);
         let items: Vec<(u32, &str)> = match kind {
             Kind::Root | Kind::Waiting => vec![(ADD, t("Add Connection..."))],
             Kind::Server => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete"))],
-            Kind::Database => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh"))],
-            Kind::Table { .. } | Kind::Column => vec![(ROWS, t("Show Table Data")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (REFRESH, t("Refresh"))],
+            Kind::Database => vec![(QUERY, t("New Query")), (NEW_TABLE, t("New Table...")), (REFRESH, t("Refresh"))],
+            Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (REFRESH, t("Refresh"))],
+            Kind::Table { view: true } => vec![(ROWS, t("Show Table Data")), (QUERY, t("New Query")), (REFRESH, t("Refresh"))],
         };
         match win::popup(owner, &items) {
             ADD => {
@@ -228,7 +247,28 @@ impl Servers {
             }
             QUERY => {
                 if let (Some((_, n)), Some(s)) = (sel, studio()) {
-                    let text = if n.table.is_empty() { String::new() } else { format!("SELECT * FROM {} LIMIT 100;\n", phai_data::quote(&n.table)) };
+                    let c = &self.conns[n.conn];
+                    let text = if n.table.is_empty() { String::new() } else { format!("SELECT * FROM {} LIMIT 100;\n", c.table_ref(&n.db, &n.table)) };
+                    s.new_query(n.conn, &n.db, &text);
+                }
+            }
+            NEW_TABLE => {
+                if let (Some((_, n)), Some(s)) = (sel, studio()) {
+                    let c = &self.conns[n.conn];
+                    let text = format!("-- {}\n{}", t("Change the columns, then Ctrl+Shift+E makes the table; Refresh shows it."), c.new_table_sql());
+                    s.new_query(n.conn, &n.db, &text);
+                }
+            }
+            DESIGN => {
+                if let (Some((_, n)), Some(s)) = (sel, studio()) {
+                    let c = self.conns[n.conn].clone();
+                    let text = match c.create_sql(&n.db, &n.table) {
+                        Ok(create) => {
+                            let commented: String = create.lines().map(|l| format!("-- {l}\n")).collect();
+                            format!("-- {}\n{commented}\n-- {}\n{}", t("The table as it is now:"), t("Take the -- off a change and Ctrl+Shift+E makes it:"), c.alter_examples(&n.db, &n.table))
+                        }
+                        Err(e) => format!("-- {e}\n"),
+                    };
                     s.new_query(n.conn, &n.db, &text);
                 }
             }

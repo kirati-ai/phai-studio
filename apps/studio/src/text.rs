@@ -337,6 +337,14 @@ pub static THAI: &[(&str, &str)] = &[
     ("Delete Row", "ลบแถว"),
     ("Delete the row {0} from {1}? This cannot be undone.", "ลบแถว {0} ออกจาก {1}? ย้อนกลับไม่ได้"),
     ("Add Row - {0}", "เพิ่มแถว - {0}"),
+    ("SQLite file...", "ไฟล์ SQLite..."),
+    ("Add Connection - {0}", "เพิ่มการเชื่อมต่อ - {0}"),
+    ("Connected: {0} {1}", "เชื่อมต่อแล้ว: {0} {1}"),
+    ("New Table...", "ตารางใหม่..."),
+    ("Design Table", "ออกแบบตาราง"),
+    ("Change the columns, then Ctrl+Shift+E makes the table; Refresh shows it.", "แก้คอลัมน์ แล้วกด Ctrl+Shift+E เพื่อสร้างตาราง กดรีเฟรชเพื่อดู"),
+    ("The table as it is now:", "ตารางตอนนี้:"),
+    ("Take the -- off a change and Ctrl+Shift+E makes it:", "ลบ -- หน้าคำสั่งที่ต้องการ แล้วกด Ctrl+Shift+E เพื่อแก้ตาราง:"),
 ];
 
 #[cfg(test)]
