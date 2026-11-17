@@ -24,6 +24,7 @@ mod servers;
 mod designer;
 mod gitpane;
 mod startwin;
+mod outline;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -133,6 +134,7 @@ const ID_RUN_TESTS: i32 = 253;
 const ID_RUN_ALL_TESTS: i32 = 254;
 const ID_GIT_CHANGES: i32 = 255;
 const ID_START_WINDOW: i32 = 256;
+const ID_VIEW_OUTLINE: i32 = 257;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -332,6 +334,8 @@ pub struct Studio {
     conds: Vec<(PathBuf, u32, String)>,
     /// The data tip asked for, and the editor and words it is for.
     tip: Option<(u64, HWND, String)>,
+    /// Document Outline's tree.
+    outline: Option<outline::Outline>,
     /// The last Run Tests, as the Tests list shows them.
     test_results: Vec<cargo::TestResult>,
     /// How the References list's count is said: references, or Find in Files' matches.
@@ -691,10 +695,14 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_PROPS, t("Properties"), "");
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
+        add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
         add(view, ID_TASK_LIST, t("Task List"), "");
         add(view, ID_START_WINDOW, t("Start Window"), "");
         if studio().is_some_and(|s| explorer::servers_shown(s.side)) {
             wm::CheckMenuItem(view, ID_VIEW_SERVERS as u32, wm::MF_CHECKED.0);
+        }
+        if studio().is_some_and(|s| explorer::outline_shown(s.side)) {
+            wm::CheckMenuItem(view, ID_VIEW_OUTLINE as u32, wm::MF_CHECKED.0);
         }
         if let Some(s) = studio() {
             let (e, p) = explorer::side_panes(s.side);
@@ -996,6 +1004,30 @@ impl Studio {
     pub fn rebuild(&mut self) {
         if let Some(c) = self.canvas.as_mut() {
             c.rebuild();
+        }
+        self.refresh_outline();
+    }
+
+    /// Document Outline again from the form, when it shows.
+    pub fn refresh_outline(&mut self) {
+        if !explorer::outline_shown(self.side) {
+            return;
+        }
+        if let Some(o) = self.outline.as_mut() {
+            o.fill(&self.doc.form, self.selected);
+        }
+    }
+
+    /// A control chosen in Document Outline: chosen on the form.
+    pub fn outline_picked(&mut self) {
+        let Some(o) = self.outline.as_ref() else { return };
+        if o.quiet.get() {
+            return;
+        }
+        let Some(n) = win::tree_selected(o.tree) else { return };
+        let pick = (n >= 0).then_some(n as usize);
+        if pick != self.selected {
+            self.select(pick);
         }
     }
 
@@ -2034,6 +2066,10 @@ impl Studio {
 
     pub fn say_selection(&self) {
         self.say_bars();
+        // Chosen on the form: chosen in the outline, without that choosing again.
+        if let Some(o) = self.outline.as_ref().filter(|o| !o.quiet.get() && explorer::outline_shown(self.side)) {
+            o.select(self.selected);
+        }
         if let Some(h) = self.doc.code {
             let (l, c) = phai_editor::view::caret_position(h);
             controls::status_text(self.status, 1, &tf("Line {0}, column {1}", &[&l, &c]));
@@ -3813,6 +3849,15 @@ impl Studio {
             ID_FORMAT_DOC => self.format_document(),
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_VIEW_OUTLINE => {
+                let on = !explorer::outline_shown(self.side);
+                if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
+                    self.show_pane(Pane::Explorer, true);
+                }
+                explorer::show_outline(self.side, on);
+                self.refresh_outline();
+                self.rebuild_menu();
+            }
             ID_START_WINDOW => self.start_window(),
             ID_RUN_TESTS => self.start_job(cargo::Job::Test, false),
             ID_GIT_CHANGES => {
@@ -4487,6 +4532,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x46 if ctrl && shift => return Some(ID_FIND_IN_FILES),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x47 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_GIT_CHANGES),
+            0x54 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_OUTLINE),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -4698,6 +4744,7 @@ fn main() {
             publish_after_build: None,
             found_words: "{0} references in {1} files",
             test_results: vec![],
+            outline: None,
             config,
             nav: vec![],
             nav_at: 0,
@@ -4734,7 +4781,9 @@ fn main() {
         let explorer = explorer::Explorer::new(side, font);
         let props = Props::new(side, ID_PROPS, font);
         let servers = servers::Servers::new(side, font);
-        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd, servers.tree, font);
+        let outline = outline::Outline::new(side, font);
+        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd, servers.tree, outline.tree, font);
+        s.outline = Some(outline);
         s.servers = Some(servers);
         let canvas = Canvas::new(hwnd, ID_CANVAS);
         let side_split = controls::splitter(hwnd, ID_SPLIT_SIDE, true);
@@ -4842,6 +4891,10 @@ fn main() {
         if args.iter().any(|a| a == "--task-list") {
             s.task_list();
             println!("{} tasks", s.references.len());
+        }
+        // `--outline`: Document Outline shown - checked by picture.
+        if args.iter().any(|a| a == "--outline") {
+            s.command(ID_VIEW_OUTLINE);
         }
         // `--goto LINE:COLUMN`: the caret there in the open code - for checking by picture.
         if let Some((l, c)) = args.iter().position(|a| a == "--goto").and_then(|i| args.get(i + 1)).and_then(|p| p.split_once(':')) {

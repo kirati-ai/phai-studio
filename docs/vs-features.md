@@ -31,7 +31,7 @@
 | | Control: PictureBox, Timer, MenuStrip ในฟอร์ม, TreeView, RichTextBox, DataGridView | ⬜ |
 | ★ | Smart tags | ⬜ |
 | ★ | Component tray (ของที่มองไม่เห็น เช่น Timer) | ⬜ |
-| | Document Outline | ⬜ |
+| | Document Outline (View, Ctrl+Alt+T): ต้นไม้ของ control ในฟอร์ม ตัวที่อยู่ใน Group/Tabs อยู่ใต้มัน มีไอคอนตาม Toolbox เลือกในต้นไม้ = เลือกบนฟอร์ม และกลับกัน | ✅ |
 | | TableLayout / FlowLayout | ⬜ |
 | | ตัวแก้เมนู/toolbar | ✅ (แบบข้อความ) |
 | | Localization | ✅ (ตาราง ไทย/อังกฤษ + เทสต์) |
