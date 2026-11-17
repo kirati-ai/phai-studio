@@ -93,6 +93,8 @@ struct View {
     folded: Vec<(usize, usize)>,
     /// The lines shown, one per row on screen, in order - every line when nothing is folded.
     rows: Vec<usize>,
+    /// The find bar's choices: case, whole word, regular expression - kept while the file is open.
+    opts: crate::model::FindOpts,
     /// Bookmarked lines, from 0.
     bookmarks: Vec<usize>,
     /// Alt+drag: where the box began, (line, column in characters).
@@ -135,6 +137,9 @@ const ID_NEXT: i32 = 4;
 const ID_CLOSE: i32 = 5;
 const ID_REPLACE: i32 = 6;
 const ID_ALL: i32 = 7;
+const ID_CASE: i32 = 8;
+const ID_WORD: i32 = 9;
+const ID_REGEX: i32 = 10;
 
 fn wide_of(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
@@ -284,7 +289,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -514,7 +519,7 @@ fn refresh_hits(v: &mut View) {
     if v.hits_for == v.edits {
         return;
     }
-    v.hits = if v.find.is_some() { crate::model::find_all(&v.model.buf.text(), &v.query, false) } else { vec![] };
+    v.hits = if v.find.is_some() { crate::model::find_matches(&v.model.buf.text(), &v.query, v.opts) } else { vec![] };
     v.hits_for = v.edits;
 }
 
@@ -532,7 +537,7 @@ fn find_step(h: HWND, v: &mut View, forward: bool) {
         return;
     }
     let q = v.query.clone();
-    if v.model.find(&q, false, forward) {
+    if v.model.find_with(&q, v.opts, forward) {
         moved(h);
     }
     say_count(v);
@@ -561,7 +566,7 @@ unsafe extern "system" fn find_box(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: u
                     0x0D if is_with => {
                         let text = win::text_of(h);
                         let q = v.query.clone();
-                        v.model.replace_one(&q, &text, false);
+                        v.model.replace_one_with(&q, &text, v.opts);
                         changed(editor);
                         say_count(v);
                     }
@@ -630,6 +635,10 @@ fn open_find(h: HWND, v: &mut View, replacing: bool) {
                 win::button(panel, phai_ui::text::t("Replace"), ID_REPLACE, font, false);
                 win::button(panel, phai_ui::text::t("All"), ID_ALL, font, false);
             }
+            // Match case, Whole word, Regular expression - as Visual Studio's find box has them.
+            for (id, label, on) in [(ID_CASE, "Aa", v.opts.case), (ID_WORD, "ab|", v.opts.word), (ID_REGEX, ".*", v.opts.regex)] {
+                win::checkbox(panel, label, id, font, on);
+            }
             let count = win::label(panel, "", 0, font);
             win::set_css(count, "muted", "");
             v.find = Some(FindBar { panel, query, with, replacing, count });
@@ -674,14 +683,24 @@ fn place_find(h: HWND, v: &View) {
     }
     let px = |n| win::px(h, n);
     let (m, row, b) = (px(6), px(23), px(28));
-    let width = px(380).min(r.right - px(20));
+    let width = px(500).min(r.right - px(20));
     let rows = if f.replacing { 2 } else { 1 };
     let height = m + rows * (row + m);
     win::move_to(f.panel, r.right - width - px(16), 0, width, height);
-    let box_w = width - 2 * m - 3 * (b + px(2)) - px(52);
+    let opts_w = px(46) + px(52) + px(44);
+    let box_w = width - 2 * m - 3 * (b + px(2)) - px(52) - opts_w;
     win::move_to(f.query, m, m, box_w, row);
-    win::move_to(f.count, m + box_w + px(4), m, px(48), row);
-    let mut x = m + box_w + px(52);
+    let mut ox = m + box_w + px(4);
+    for (id, w) in [(ID_CASE, px(46)), (ID_WORD, px(52)), (ID_REGEX, px(44))] {
+        unsafe {
+            if let Ok(c) = wm::GetDlgItem(Some(f.panel), id) {
+                win::move_to(c, ox, m, w, row);
+            }
+        }
+        ox += w;
+    }
+    win::move_to(f.count, ox, m, px(48), row);
+    let mut x = ox + px(48);
     for id in [ID_PREV, ID_NEXT, ID_CLOSE] {
         unsafe {
             if let Ok(c) = wm::GetDlgItem(Some(f.panel), id) {
@@ -1652,20 +1671,32 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     v.model.anchor = v.model.caret;
                     find_step(h, v, true);
                 }
+                (ID_CASE | ID_WORD | ID_REGEX, 0) => {
+                    if let Some(f) = v.find.as_ref() {
+                        let on = |id| unsafe { wm::GetDlgItem(Some(f.panel), id) }.map(win::is_checked).unwrap_or(false);
+                        v.opts = crate::model::FindOpts { case: on(ID_CASE), word: on(ID_WORD), regex: on(ID_REGEX) };
+                    }
+                    v.hits_for = usize::MAX;
+                    refresh_hits(v);
+                    say_count(v);
+                    unsafe {
+                        let _ = Gdi::InvalidateRect(Some(h), None, false);
+                    }
+                }
                 (ID_NEXT, 0) => find_step(h, v, true),
                 (ID_PREV, 0) => find_step(h, v, false),
                 (ID_CLOSE, 0) => close_find(h, v),
                 (ID_REPLACE, 0) => {
                     let with = v.find.as_ref().map(|f| win::text_of(f.with)).unwrap_or_default();
                     let q = v.query.clone();
-                    v.model.replace_one(&q, &with, false);
+                    v.model.replace_one_with(&q, &with, v.opts);
                     changed(h);
                     say_count(v);
                 }
                 (ID_ALL, 0) => {
                     let with = v.find.as_ref().map(|f| win::text_of(f.with)).unwrap_or_default();
                     let q = v.query.clone();
-                    let n = v.model.replace_all(&q, &with, false);
+                    let n = v.model.replace_all_with(&q, &with, v.opts);
                     changed(h);
                     if let Some(f) = v.find.as_ref() {
                         win::set_text(f.count, &format!("{n} ✓"));
