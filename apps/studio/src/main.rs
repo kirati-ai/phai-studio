@@ -151,6 +151,7 @@ const ID_BM_CLEAR: i32 = 268;
 const ID_PROJECT_PROPS: i32 = 269;
 const ID_MANAGE_CRATES: i32 = 270;
 const ID_SNIPPET: i32 = 271;
+const ID_CALLS: i32 = 272;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -276,6 +277,9 @@ enum Ask {
     Actions,
     /// Go to All's symbols.
     Symbols,
+    /// Call Hierarchy: the function at the caret, then who calls it.
+    PrepareCalls,
+    Calls(String),
     /// Whether the name at this place in this file may be renamed.
     PrepareRename(PathBuf, (u32, u32)),
     /// The changes that rename `old` to `new`.
@@ -817,6 +821,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_PARAM_INFO, t("Parameter Info"), "Ctrl+Shift+Space");
         add(edit, ID_QUICK_ACTIONS, t("Quick Actions and Refactorings..."), "Ctrl+.");
         add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
+        add(edit, ID_CALLS, t("View Call Hierarchy"), "Ctrl+K, Ctrl+T");
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
         add(edit, ID_FORMAT_DOC, t("Format Document"), "Ctrl+K, Ctrl+D");
@@ -1755,6 +1760,28 @@ impl Studio {
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
             Ask::Actions => self.choose_action(h, phai_editor::lsp::actions_of(&result)),
+            Ask::PrepareCalls => match result.as_array().and_then(|a| a.first()).cloned() {
+                Some(item) => {
+                    let name = item["name"].as_str().unwrap_or("").to_string();
+                    if let Some(path) = self.doc.path.clone() {
+                        if let Some(l) = self.lsp_for(&path) {
+                            let id = l.incoming_calls(item);
+                            self.asked.insert(id, (h, Ask::Calls(name)));
+                        }
+                    }
+                }
+                None => controls::status_text(self.status, 0, t("Put the caret on a function's name first")),
+            },
+            Ask::Calls(name) => {
+                let calls = phai_editor::lsp::calls_of(&result);
+                if std::env::var_os("PHAI_CALLS_TEST").is_some() {
+                    println!("calls of {name}: {}", calls.iter().map(|(l, f)| format!("{f} line {}", l.start.0 + 1)).collect::<Vec<_>>().join(", "));
+                    std::process::exit(0);
+                }
+                self.found_words = "{0} calls in {1} files";
+                self.show_references(calls.into_iter().map(|(l, _)| l).collect());
+                controls::status_text(self.status, 0, &tf("Calls to {0}: {1}", &[&name, &self.references.len()]));
+            }
             Ask::Symbols => {
                 let items = phai_editor::lsp::symbols_of(&result)
                     .into_iter()
@@ -1895,6 +1922,12 @@ impl Studio {
                 let (l, c) = at.split_once(':').and_then(|(l, c)| Some((l.parse().ok()?, c.parse().ok()?))).unwrap_or((6, 9));
                 phai_editor::view::go_to(h, l, c);
                 self.lsp_actions(h);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
+            // `PHAI_CALLS_TEST`: Call Hierarchy of the function on line 1, asked until it answers.
+            0 | 1 if std::env::var_os("PHAI_CALLS_TEST").is_some() => {
+                phai_editor::view::go_to(h, 1, 5);
+                self.command(ID_CALLS);
                 LSP_TEST.store(1, Ordering::Relaxed);
             }
             // `PHAI_SIG_TEST`: Parameter Info inside the call on line 2, asked until it answers.
@@ -4600,6 +4633,17 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_CALLS => match self.code_shown() {
+                Some(h) => {
+                    let Some(path) = self.doc.path.clone() else { return };
+                    let pos = phai_editor::view::caret_lsp(h);
+                    if let Some(l) = self.lsp_for(&path) {
+                        let id = l.prepare_calls(&path, pos.0, pos.1);
+                        self.asked.insert(id, (h, Ask::PrepareCalls));
+                    }
+                }
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_SNIPPET => match self.code_shown() {
                 Some(h) => unsafe {
                     // Every snippet, its word and its first line, as a menu under the caret.
@@ -5347,6 +5391,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     (0x4B, 0x55, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+U
                     (0x4B, 0x4B, true) => Some(ID_BM_TOGGLE),  // Ctrl+K, Ctrl+K
                     (0x4B, 0x58, true) => Some(ID_SNIPPET),    // Ctrl+K, Ctrl+X
+                    (0x4B, 0x54, true) => Some(ID_CALLS),      // Ctrl+K, Ctrl+T
                     (0x4B, 0x4E, true) => Some(ID_BM_NEXT),    // Ctrl+K, Ctrl+N
                     (0x4B, 0x50, true) => Some(ID_BM_PREV),    // Ctrl+K, Ctrl+P
                     (0x4B, 0x4C, true) => Some(ID_BM_CLEAR),   // Ctrl+K, Ctrl+L

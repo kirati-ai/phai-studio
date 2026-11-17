@@ -132,3 +132,4 @@
 | ★ | Project > Manage Crates (แบบ NuGet Package Manager): ค้นหา crates.io (ชื่อ, เวอร์ชันล่าสุด, ยอดดาวน์โหลด, คำอธิบาย), รายการ crate ที่ใช้อยู่, Add/Remove ด้วย cargo add / cargo remove - ทดสอบค้นหา เพิ่ม และลบจริง | ✅ |
 | ★ | ตัวติดตั้ง Phai Studio เอง: `dist/PhaiStudio-<เวอร์ชัน>-setup.exe` (cargo run --example make_installer) มี Phai Studio, phai-setup และไลบรารี phai-ui; โปรเจกต์ใหม่ใช้ phai-ui ที่ติดตั้งไว้ จึง build ได้บนเครื่องอื่น - ทดสอบติดตั้ง สร้างโปรเจกต์ build และถอนจริง | ✅ |
 | | Code snippets: พิมพ์คำสั้น (fn, for, if, ifl, match, struct, impl, test, tests, main, pln ...) แล้วกด Tab ได้โค้ดทั้งก้อนตามระยะเยื้อง, Edit > Insert Snippet (Ctrl+K, Ctrl+X) | ✅ |
+| | View Call Hierarchy (Ctrl+K, Ctrl+T): ใครเรียกฟังก์ชันที่เคอร์เซอร์อยู่ จาก rust-analyzer แสดงในรายการ References ดับเบิลคลิกไปที่นั่น (การเรียกในมาโครอย่าง println! rust-analyzer ไม่นับ) | ✅ |
