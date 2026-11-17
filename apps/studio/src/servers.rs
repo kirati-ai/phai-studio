@@ -232,13 +232,14 @@ impl Servers {
         const DELETE: u32 = 6;
         const NEW_TABLE: u32 = 7;
         const DESIGN: u32 = 8;
+        const AS_SQL: u32 = 9;
         let sel = self.selected();
         let kind = sel.as_ref().map(|(_, n)| n.kind.clone()).unwrap_or(Kind::Root);
         let items: Vec<(u32, &str)> = match kind {
             Kind::Root | Kind::Waiting => vec![(ADD, t("Add Connection..."))],
             Kind::Server => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete"))],
             Kind::Database => vec![(QUERY, t("New Query")), (NEW_TABLE, t("New Table...")), (REFRESH, t("Refresh"))],
-            Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (REFRESH, t("Refresh"))],
+            Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (AS_SQL, t("Script as SQL")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (REFRESH, t("Refresh"))],
             Kind::Table { view: true } => vec![(ROWS, t("Show Table Data")), (QUERY, t("New Query")), (REFRESH, t("Refresh"))],
         };
         match win::popup(owner, &items) {
@@ -253,13 +254,34 @@ impl Servers {
                 }
             }
             NEW_TABLE => {
-                if let (Some((_, n)), Some(s)) = (sel, studio()) {
-                    let c = &self.conns[n.conn];
-                    let text = format!("-- {}\n{}", t("Change the columns, then Ctrl+Shift+E makes the table; Refresh shows it."), c.new_table_sql());
-                    s.new_query(n.conn, &n.db, &text);
+                // The Table Designer, for a new table; the database's tables read again after.
+                if let Some((item, n)) = sel {
+                    let c = self.conns[n.conn].clone();
+                    if crate::designer::open(owner, c, &n.db, None) {
+                        self.reload(item);
+                    }
                 }
             }
             DESIGN => {
+                if let Some((item, n)) = sel {
+                    let c = self.conns[n.conn].clone();
+                    let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
+                    match dialogs::wait_for(Some(owner), t("Design Table"), t("Connecting..."), move |_| c2.table_def(&d2, &t2)) {
+                        Some(Ok(def)) => {
+                            if crate::designer::open(owner, c, &n.db, Some(def)) {
+                                // The table's parent - the database - read again: the table may have a new name.
+                                let parent = unsafe { wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(3 /* TVGN_PARENT */)), Some(LPARAM(item))).0 };
+                                self.reload(if parent != 0 { parent } else { item });
+                            }
+                        }
+                        Some(Err(e)) => {
+                            win::message(Some(owner), &e, t("Design Table"), wm::MB_ICONWARNING);
+                        }
+                        None => {}
+                    }
+                }
+            }
+            AS_SQL => {
                 if let (Some((_, n)), Some(s)) = (sel, studio()) {
                     let c = self.conns[n.conn].clone();
                     let text = match c.create_sql(&n.db, &n.table) {
@@ -312,6 +334,23 @@ impl Servers {
             }
             _ => {}
         }
+    }
+
+    /// A branch read from the database again.
+    fn reload(&mut self, item: isize) {
+        let data = item_data(self.tree, item).unwrap_or(-1);
+        if let Some(x) = self.nodes.get_mut(data as usize) {
+            x.loaded = false;
+        }
+        self.expanding(item, data);
+        win::tree_expand(self.tree, item);
+    }
+
+    /// The designer on the first connection's table - for checking by picture.
+    pub fn design_first(&mut self, owner: HWND, table: &str) {
+        let Some(c) = self.conns.first().cloned() else { return };
+        let def = c.table_def("main", table).ok();
+        crate::designer::open(owner, c, "main", def);
     }
 
     /// The first connection opened - for checking by picture.

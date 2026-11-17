@@ -2051,6 +2051,8 @@ pub fn run_loop(dialog: Option<HWND>) {
                     wm::GetWindowThreadProcessId(front, Some(&mut pid));
                 }
                 let h = if !front.is_invalid() && pid == std::process::id() { front } else { HWND(h as *mut _) };
+                // A modal window over it, shown without taking the focus: that is what is on screen.
+                let h = unsafe { wm::GetWindow(h, wm::GW_ENABLEDPOPUP) }.ok().filter(|p| !p.is_invalid() && p.0 != h.0).unwrap_or(h);
                 if let Err(e) = crate::shot::save(h, std::path::Path::new(&path)) {
                     eprintln!("{e}");
                 }

@@ -75,7 +75,8 @@
 |---|---|---|
 | ★ | Breakpoints (F9, คลิกขอบซ้าย), F5 เริ่ม/ทำต่อ, F10/F11/Shift+F11, Break All, Shift+F5, หยุดเมื่อ panic, Locals (ตัวเลข bool char &str String struct), Call Stack, แถบ Debug — เขียนเองบน Windows debug API + dbghelp | ✅ |
 | ★ | Watch (Shift+F9, ชื่อ / ทางอย่าง order.total / การเปรียบเทียบ), data tips (ชี้ตัวแปรตอนหยุด), จุดหยุดแบบมีเงื่อนไข (Alt+F9, จุดแดงมี +) | ✅ |
-| | แก้ค่าตัวแปรระหว่างดีบัก, hit count | ⬜ |
+| ★ | แก้ค่าตัวแปรระหว่างดีบัก (ดับเบิลคลิกในแท็บตัวแปร: ตัวเลข bool char) | ✅ |
+| | hit count, แก้ค่า string/struct | ⬜ |
 
 ## หน้าต่าง
 
@@ -117,5 +118,5 @@
 | ★ | Prepared statements (COM_STMT_PREPARE/EXECUTE, ค่าแยกจาก SQL กัน SQL injection) | ✅ |
 | ★ | PostgreSQL (โปรโตคอลเขียนเอง: TLS, SCRAM-SHA-256, MD5, $1 parameters) และ SQLite (ไฟล์ ผ่าน rusqlite) ใน Server Explorer — SQL Server ไม่ทำ: ต้องซื้อซอฟต์แวร์ | ✅ |
 | ★ | ตารางใหม่ / ออกแบบตาราง: เปิดคิวรีพร้อม CREATE TABLE ตามภาษาของฐานข้อมูลนั้น และตัวอย่าง ALTER TABLE ให้แก้แล้วรัน | ✅ |
-| | ตัวออกแบบตารางแบบตาราง (grid) เหมือน VS, foreign keys, indexes | ⬜ |
+| ★ | Table Designer แบบ VS: ตารางคอลัมน์ (ชื่อ ชนิด ว่างได้ คีย์หลัก นับอัตโนมัติ ค่าเริ่มต้น) คลิกแก้ในช่อง, ดัชนี, คีย์นอก (ON DELETE/UPDATE), สคริปต์ที่จะรันแสดงสด, อัปเดต — MySQL/PostgreSQL ใช้ ALTER TABLE, SQLite สร้างตารางใหม่โดยเก็บแถวไว้ | ✅ |
 

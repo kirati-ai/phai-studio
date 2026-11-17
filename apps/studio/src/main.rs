@@ -21,6 +21,7 @@ mod toolbox;
 mod autohide;
 mod docking;
 mod servers;
+mod designer;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -109,6 +110,9 @@ const EVAL_WATCH: u64 = 1;
 const EVAL_TIP: u64 = 1000;
 /// Posted by the debugger's thread for each thing it says; `LPARAM` is a `Box<phai_debug::Event>`.
 const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
+/// `--design`: opens the Table Designer once the loop runs.
+const ID_DESIGN_TEST: i32 = 239;
+static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
 /// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
@@ -3306,6 +3310,19 @@ impl Studio {
                 }
             }
             ID_EXECUTE => self.execute_query(),
+            ID_DESIGN_TEST => {
+                let t = DESIGN_TEST.lock().unwrap_or_else(|e| e.into_inner()).take();
+                let owner = self.hwnd;
+                if let (Some(t), Some(sv)) = (t, self.servers.as_mut()) {
+                    if t == "-" {
+                        if let Some(c) = sv.conns.first().cloned() {
+                            designer::open(owner, c, "main", None);
+                        }
+                    } else {
+                        sv.design_first(owner, &t);
+                    }
+                }
+            }
             ID_ADD_WATCH => {
                 let start = self.doc.code.and_then(phai_editor::view::caret_path).unwrap_or_default();
                 if let Some(e) = phai_ui::dialogs::ask(Some(self.hwnd), t("Add Watch"), t("An expression: a name, a path like order.total, or a comparison like x > 5"), &start, false) {
@@ -4033,7 +4050,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -4165,6 +4182,12 @@ fn main() {
                 if let Some(sv) = s.servers.as_mut() {
                     sv.expand_first();
                 }
+            }
+            // `--design TABLE`: the Table Designer on the first connection's table (or a new one: `-`).
+            if let Some(t) = args.iter().position(|a| a == "--design").and_then(|i| args.get(i + 1)).cloned() {
+                // Once the window's loop runs, so a picture can be taken of it.
+                *DESIGN_TEST.lock().unwrap_or_else(|e| e.into_inner()) = Some(t);
+                let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_DESIGN_TEST as usize), LPARAM(0));
             }
             // `--show-rows TABLE`: the first connection's table in Results, as Show Table Data.
             if let Some(t) = args.iter().position(|a| a == "--show-rows").and_then(|i| args.get(i + 1)).cloned() {
