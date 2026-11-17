@@ -510,6 +510,8 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Tree => t("Tree view"),
         Kind::Picture => t("Picture"),
         Kind::Timer => t("Timer"),
+        Kind::Flow => t("Flow layout"),
+        Kind::Table => t("Table layout"),
     }
 }
 
@@ -536,6 +538,8 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Tree => glyph::TREE,
             Kind::Picture => glyph::PICTURE,
             Kind::Timer => glyph::TIMER,
+            Kind::Flow => glyph::LAY_SPACE_ACROSS,
+            Kind::Table => glyph::LAY_GRID,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -964,6 +968,10 @@ impl Studio {
                     },
                     Key::Enabled => c.enabled = (!yes).then_some(false),
                     Key::Locked => c.locked = yes.then_some(true),
+                    Key::Cols => match num {
+                        Some(n) if (1..=12).contains(&n) => c.cols = Some(n),
+                        _ => return,
+                    },
                     Key::Visible => c.visible = (!yes).then_some(false),
                     Key::Checked => c.checked = yes.then_some(true),
                     Key::Password => c.password = yes.then_some(true),

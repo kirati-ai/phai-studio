@@ -87,10 +87,19 @@ pub enum Kind {
     Picture,
     /// A component, not a control: something happens every so many milliseconds.
     Timer,
+    /// A panel that lays the controls in it out left to right, row after row.
+    Flow,
+    /// A panel that lays the controls in it out in equal columns.
+    Table,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 18] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Statusbar, Kind::Timer];
+    pub const ALL: [Kind; 20] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer];
+
+    /// A container that places the controls in it itself.
+    pub fn arranges(self) -> bool {
+        matches!(self, Kind::Flow | Kind::Table)
+    }
 
     /// A component: nothing on the form itself - Visual Studio puts it in the tray below.
     pub fn is_component(self) -> bool {
@@ -116,6 +125,8 @@ impl Kind {
             Kind::Tree => "tree",
             Kind::Picture => "picture",
             Kind::Timer => "timer",
+            Kind::Flow => "flow",
+            Kind::Table => "table",
             Kind::Textarea => "textarea",
         }
     }
@@ -140,6 +151,7 @@ impl Kind {
             Kind::Tree => (200, 150),
             Kind::Picture => (120, 90),
             Kind::Timer => (32, 32),
+            Kind::Flow | Kind::Table => (240, 120),
             Kind::Textarea => (240, 90),
         }
     }
@@ -204,6 +216,9 @@ pub struct Control {
     /// A picture's file, relative to the project (or the program) or absolute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
+    /// A table panel's number of columns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cols: Option<i32>,
     /// A timer's method, every interval.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_tick: Option<String>,
@@ -282,11 +297,13 @@ impl Control {
             locked: None,
             image: None,
             on_tick: None,
+            cols: None,
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
             Kind::Tree => c.items = vec!["Root".into(), "  First".into(), "  Second".into()],
             Kind::Timer => c.value = Some(1000),
+            Kind::Table => c.cols = Some(2),
             Kind::List => c.columns = vec![("Name".into(), 120), ("Value".into(), 100)],
             Kind::Tabs => c.tabs = vec!["General".into(), "Advanced".into()],
             Kind::Statusbar => {
@@ -500,6 +517,7 @@ impl FormFile {
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
             out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree)));
             out.extend(wrong("image", c.image.is_none() || c.kind == Kind::Picture));
+            out.extend(wrong("cols", c.cols.is_none() || c.kind == Kind::Table));
             out.extend(wrong("columns", c.columns.is_empty() || c.kind == Kind::List));
             out.extend(wrong("tabs", c.tabs.is_empty() || c.kind == Kind::Tabs));
             out.extend(wrong("parts", c.parts.is_empty() || c.kind == Kind::Statusbar));
@@ -591,6 +609,34 @@ impl FormFile {
             }
         }
         out
+    }
+
+    /// The container a control lies in: the smallest group, tabs, flow or table, not docked,
+    /// whose rectangle holds the control's - if any.
+    pub fn container_of(&self, i: usize) -> Option<usize> {
+        let c = self.control.get(i)?;
+        if c.dock.as_deref().is_some_and(|d| d != "none") || c.kind.is_component() {
+            return None;
+        }
+        let [x, y, w, h] = c.rect();
+        self.control
+            .iter()
+            .enumerate()
+            .filter(|(j, p)| *j != i && matches!(p.kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table) && p.dock.as_deref().is_none_or(|d| d == "none"))
+            .filter(|(_, p)| {
+                let [px, py, pw, ph] = p.rect();
+                x >= px && y >= py && x + w <= px + pw && y + h <= py + ph && (pw, ph) != (w, h)
+            })
+            .min_by_key(|(_, p)| {
+                let [_, _, pw, ph] = p.rect();
+                pw as i64 * ph as i64
+            })
+            .map(|(j, _)| j)
+    }
+
+    /// The controls a flow or table panel lays out: those it directly holds, in the form's order.
+    pub fn arranged_in(&self, panel: usize) -> Vec<usize> {
+        (0..self.control.len()).filter(|i| self.container_of(*i) == Some(panel)).collect()
     }
 
     /// Every English sentence the form shows, for the project's Thai table and its test.

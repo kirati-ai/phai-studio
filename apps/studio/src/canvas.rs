@@ -142,6 +142,7 @@ impl Canvas {
         win::move_to(self.surface, win::px(self.hwnd, ox), win::px(self.hwnd, oy), w, h);
         let built = live::build(self.surface, f, s.font, 0);
         built.layout.apply(self.surface);
+        live::arrange(f, &built.controls);
         for h in built.controls.iter().copied().chain(built.toolbar) {
             ghost(h);
         }

@@ -20,27 +20,9 @@ pub struct Outline {
     pub quiet: std::cell::Cell<bool>,
 }
 
-/// The container a control lies in: the smallest group or tabs, not docked, whose rectangle holds
-/// the control's, if any.
+/// The container a control lies in - the form's own rule.
 pub fn parent_of(form: &FormFile, i: usize) -> Option<usize> {
-    let c = form.control.get(i)?;
-    if c.dock.as_deref().is_some_and(|d| d != "none") {
-        return None;
-    }
-    let [x, y, w, h] = c.rect();
-    form.control
-        .iter()
-        .enumerate()
-        .filter(|(j, p)| *j != i && matches!(p.kind, Kind::Group | Kind::Tabs) && p.dock.as_deref().is_none_or(|d| d == "none"))
-        .filter(|(_, p)| {
-            let [px, py, pw, ph] = p.rect();
-            x >= px && y >= py && x + w <= px + pw && y + h <= py + ph && (pw, ph) != (w, h)
-        })
-        .min_by_key(|(_, p)| {
-            let [_, _, pw, ph] = p.rect();
-            pw as i64 * ph as i64
-        })
-        .map(|(j, _)| j)
+    form.container_of(i)
 }
 
 impl Outline {
@@ -82,7 +64,7 @@ impl Outline {
         }
         win::tree_expand(self.tree, self.root);
         for (i, p) in parents.iter().enumerate() {
-            if p.is_none() && matches!(form.control[i].kind, Kind::Group | Kind::Tabs) {
+            if p.is_none() && matches!(form.control[i].kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table) {
                 win::tree_expand(self.tree, self.items[i]);
             }
         }

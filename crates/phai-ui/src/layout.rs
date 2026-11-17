@@ -265,3 +265,53 @@ mod tests {
         assert_eq!(unscale(1, 0), 96, "a DPI of 0 does not divide by zero");
     }
 }
+
+/// A flow panel's places, as WinForms' FlowLayoutPanel: each item at its size, left to right,
+/// on to the next row when the row is full - `gap` between items and round the edge.
+pub fn flow(area: Rect, sizes: &[(i32, i32)], gap: i32) -> Vec<(i32, i32)> {
+    let mut out = Vec::with_capacity(sizes.len());
+    let (mut x, mut y, mut row_h) = (area.x + gap, area.y + gap, 0);
+    for &(w, h) in sizes {
+        if x > area.x + gap && x + w > area.x + area.w - gap {
+            x = area.x + gap;
+            y += row_h + gap;
+            row_h = 0;
+        }
+        out.push((x, y));
+        x += w + gap;
+        row_h = row_h.max(h);
+    }
+    out
+}
+
+/// A table panel's places, as WinForms' TableLayoutPanel: `cols` equal columns across the area,
+/// items in order row by row, each as wide as its cell; a row as tall as its tallest item.
+pub fn table(area: Rect, sizes: &[(i32, i32)], cols: usize, gap: i32) -> Vec<Rect> {
+    let cols = cols.max(1);
+    let cell_w = ((area.w - gap * (cols as i32 + 1)) / cols as i32).max(1);
+    let mut out = Vec::with_capacity(sizes.len());
+    let mut y = area.y + gap;
+    for row in sizes.chunks(cols) {
+        let row_h = row.iter().map(|s| s.1).max().unwrap_or(0);
+        for (k, &(_, h)) in row.iter().enumerate() {
+            out.push(Rect::new(area.x + gap + k as i32 * (cell_w + gap), y, cell_w, h));
+        }
+        y += row_h + gap;
+    }
+    out
+}
+
+#[cfg(test)]
+mod arrange_tests {
+    use super::*;
+
+    #[test]
+    fn flow_wraps_and_table_fills_its_columns() {
+        let area = Rect::new(0, 0, 200, 300);
+        // 80 + 80 fit a 200 row with gaps of 6; the third goes down.
+        let p = flow(area, &[(80, 20), (80, 30), (80, 20)], 6);
+        assert_eq!(p, vec![(6, 6), (92, 6), (6, 42)]);
+        let t = table(area, &[(50, 20), (50, 25), (50, 20)], 2, 6);
+        assert_eq!((t[0].x, t[0].w, t[1].x, t[2].y), (6, 91, 103, 37), "two columns of 91, the second row below the taller");
+    }
+}
