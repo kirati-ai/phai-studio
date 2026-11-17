@@ -55,7 +55,7 @@
 | | พับโค้ด (outlining) | ⬜ |
 | | จับคู่วงเล็บ | ⬜ |
 | | ซูม (Ctrl+ล้อ) | ✅ |
-| | Format Document (rustfmt) | ⬜ |
+| | Format Document (rustfmt): Ctrl+K, Ctrl+D หรือเมนู Edit - ใช้ edition ของโปรเจกต์, ย้อนกลับได้ครั้งเดียว, เคอร์เซอร์อยู่ที่เดิม; Ctrl+K, Ctrl+C/U ใส่/เอา comment | ✅ |
 
 ## โปรเจกต์ / Build
 
@@ -66,7 +66,7 @@
 | ★ | Debug / Release | ✅ |
 | ★ | Error List, ดับเบิลคลิกไปที่บรรทัด, F8 / Shift+F8 ไปยังข้อผิดพลาดถัดไป/ก่อนหน้า (เปิดไฟล์ที่บรรทัดนั้น) | ✅ |
 | ★ | Output window | ✅ |
-| | Rebuild / Clean | ⬜ |
+| | Rebuild / Clean (ทั้งโปรเจกต์และทั้ง solution ในเมนู Build) | ✅ |
 | | Task List (TODO) | ⬜ |
 
 ## Debugger

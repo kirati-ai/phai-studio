@@ -638,6 +638,16 @@ pub fn find(h: HWND, replacing: bool) {
     }
 }
 
+/// Format Document: the text made `new` as one undo step; false when it was so already.
+pub fn replace_whole(h: HWND, new: &str) -> bool {
+    let Some(v) = view(h) else { return false };
+    let done = v.model.replace_whole(new);
+    if done {
+        changed(h);
+    }
+    done
+}
+
 /// The text now, with `\n` line ends.
 pub fn text(h: HWND) -> String {
     view(h).map(|v| v.model.buf.text()).unwrap_or_default()
