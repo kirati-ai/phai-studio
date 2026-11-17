@@ -199,17 +199,26 @@ extern "system" fn float_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
             }
             LRESULT(0)
         }
-        // Closed: hidden, as Visual Studio hides a tool window; View shows it again.
+        // Closed: hidden, as Visual Studio hides a tool window; View shows it again. The side
+        // panes' window docks back instead, its panes being more than one.
         wm::WM_CLOSE => {
             if let Some(s) = studio() {
-                s.show_pane(crate::Pane::Toolbox, false);
+                if s.side_float == Some(h) {
+                    s.dock_side(Target::Edge(s.side_dock));
+                } else {
+                    s.show_pane(crate::Pane::Toolbox, false);
+                }
             }
             LRESULT(0)
         }
         // Its title double-clicked: back where it was docked.
         wm::WM_NCLBUTTONDBLCLK => {
             if let Some(s) = studio() {
-                s.dock_toolbox(Target::Edge(s.toolbox_dock));
+                if s.side_float == Some(h) {
+                    s.dock_side(Target::Edge(s.side_dock));
+                } else {
+                    s.dock_toolbox(Target::Edge(s.toolbox_dock));
+                }
             }
             LRESULT(0)
         }
