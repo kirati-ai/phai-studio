@@ -17,7 +17,7 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE, NTSTATUS};
 use windows::Win32::System::Diagnostics::Debug::*;
 use windows::Win32::System::Memory::{VirtualAllocEx, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 use windows::Win32::System::Threading::{
-    CreateProcessW, TerminateProcess, DEBUG_ONLY_THIS_PROCESS, CREATE_NEW_CONSOLE, PROCESS_INFORMATION, STARTUPINFOW,
+    CreateProcessW, GetProcessId, OpenProcess, QueryFullProcessImageNameW, TerminateProcess, CREATE_NEW_CONSOLE, DEBUG_ONLY_THIS_PROCESS, PROCESS_ALL_ACCESS, PROCESS_INFORMATION, PROCESS_NAME_WIN32, STARTUPINFOW,
 };
 
 /// What the debugger is asked to do.
@@ -29,8 +29,10 @@ pub enum Command {
     StepOut,
     /// Break All: stop the program wherever it is.
     Pause,
-    /// End the program.
+    /// End the program - or, attached to one already running, let it go on alone.
     Stop,
+    /// Let the program go on alone, the debugger gone from it (Detach All).
+    Detach,
     /// The breakpoints, every one, as file and line from 1.
     Breakpoints(Vec<(PathBuf, u32)>),
     /// Conditions on breakpoints - file, line, `x > 5` - each stopping only when it holds.
@@ -75,6 +77,8 @@ pub enum Event {
     Exited(u32),
     /// It could not be started.
     Failed(String),
+    /// The debugger let go of it; it runs on alone.
+    Detached,
     /// The values asked for by [`Command::Evaluate`].
     Values { id: u64, vars: Vec<Var> },
     /// [`Command::SetValue`] done - the locals as they are now - or why not.
@@ -106,6 +110,19 @@ impl Session {
             }
         });
         Session { tx, pid }
+    }
+
+    /// Attaches the debugger to the program already running as process `pid`; its source files are
+    /// named from `cwd` (its project), as when launched.
+    pub fn attach(pid: u32, cwd: &Path, breakpoints: Vec<(PathBuf, u32)>, on_event: impl Fn(Event) + Send + 'static) -> Session {
+        let (tx, rx) = channel();
+        let cwd = cwd.to_path_buf();
+        let shared = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(pid));
+        std::thread::spawn(move || match Engine::attach(pid, &cwd, breakpoints, rx, Box::new(on_event)) {
+            Ok(mut e) => e.run(),
+            Err((msg, say)) => say(Event::Failed(msg)),
+        });
+        Session { tx, pid: shared }
     }
 
     /// The program's process id, once it has started (0 before).
@@ -191,6 +208,23 @@ struct Engine {
     cond_at: HashMap<u64, String>,
     /// How many times each breakpoint was reached with its condition holding.
     hits: HashMap<u64, u64>,
+    /// Attached to a program already running: Stop lets it go rather than ending it.
+    attached: bool,
+    /// Detach asked for while paused: done once the event is let go.
+    detaching: bool,
+}
+
+/// The program file of a running process, if it may be looked at.
+pub fn process_image(pid: u32) -> Option<PathBuf> {
+    unsafe {
+        let h = OpenProcess(windows::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = vec![0u16; 1024];
+        let mut n = buf.len() as u32;
+        let got = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut n);
+        let _ = CloseHandle(h);
+        got.ok()?;
+        Some(PathBuf::from(String::from_utf16_lossy(&buf[..n as usize])))
+    }
 }
 
 /// When a breakpoint stops by how many times it has been reached, as Visual Studio's Hit Count.
@@ -289,7 +323,57 @@ impl Engine {
         unsafe {
             let _ = CloseHandle(pi.hThread);
         }
-        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new() })
+        Ok(Engine::new(pi.hProcess, exe, cwd, wanted, rx, say, false))
+    }
+
+    fn new(process: HANDLE, exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say, attached: bool) -> Engine {
+        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false }
+    }
+
+    /// Attach to Process: the debugger joins a program already running. Windows then tells of its
+    /// threads and modules as though it had just started, and stops it once - let go at once.
+    fn attach(pid: u32, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say) -> Result<Engine, (String, Say)> {
+        let Some(exe) = process_image(pid) else { return Err((format!("process {pid}: it cannot be looked at"), say)) };
+        let process = match unsafe { OpenProcess(PROCESS_ALL_ACCESS, false, pid) } {
+            Ok(h) => h,
+            Err(e) => return Err((format!("{}: {e}", exe.display()), say)),
+        };
+        if let Err(e) = unsafe { DebugActiveProcess(pid) } {
+            unsafe {
+                let _ = CloseHandle(process);
+            }
+            return Err((format!("{}: {e}", exe.display()), say));
+        }
+        // Phai Studio closing must not end a program it only joined.
+        unsafe {
+            let _ = DebugSetProcessKillOnExit(false);
+        }
+        Ok(Engine::new(process, &exe, cwd, wanted, rx, say, true))
+    }
+
+    /// Detach: every breakpoint taken out, no thread left stepping, and the program let go.
+    fn detach(&mut self) {
+        let addrs: Vec<u64> = self.bps.keys().copied().collect();
+        for a in addrs {
+            self.disarm(a);
+        }
+        self.rearm = None;
+        self.step = None;
+        let tids: Vec<u32> = self.threads.keys().copied().collect();
+        for tid in tids {
+            if let Some(mut c) = self.context(tid) {
+                if c.0.EFlags & TRAP_FLAG != 0 {
+                    c.0.EFlags &= !TRAP_FLAG;
+                    self.set_context(tid, &c);
+                }
+            }
+        }
+        unsafe {
+            let _ = DebugActiveProcessStop(GetProcessId(self.process));
+            let _ = SymCleanup(self.process);
+            let _ = CloseHandle(self.process);
+        }
+        (self.say)(Event::Detached);
     }
 
     fn run(&mut self) {
@@ -298,6 +382,8 @@ impl Engine {
             if unsafe { WaitForDebugEvent(&mut ev, 50) }.is_err() {
                 // Nothing from the program: what the person asks while it runs.
                 match self.rx.try_recv() {
+                    Ok(Command::Detach) => return self.detach(),
+                    Ok(Command::Stop) if self.attached => return self.detach(),
                     Ok(Command::Stop) => unsafe {
                         let _ = TerminateProcess(self.process, 1);
                     },
@@ -312,6 +398,7 @@ impl Engine {
                         self.set_breakpoints(w);
                     }
                     Ok(_) => {}
+                    Err(TryRecvError::Disconnected) if self.attached => return self.detach(),
                     Err(TryRecvError::Disconnected) => unsafe {
                         let _ = TerminateProcess(self.process, 1);
                     },
@@ -371,6 +458,9 @@ impl Engine {
                     _ => {}
                 }
                 let _ = ContinueDebugEvent(ev.dwProcessId, tid, status);
+            }
+            if self.detaching {
+                return self.detach();
             }
         }
     }
@@ -715,8 +805,12 @@ impl Engine {
         (self.say)(Event::Stopped { reason: reason.to_string(), file, line, frames, locals });
         loop {
             let Ok(cmd) = self.rx.recv() else {
-                unsafe {
-                    let _ = TerminateProcess(self.process, 1);
+                if self.attached {
+                    self.detaching = true;
+                } else {
+                    unsafe {
+                        let _ = TerminateProcess(self.process, 1);
+                    }
                 }
                 return;
             };
@@ -746,6 +840,14 @@ impl Engine {
                     continue;
                 }
                 Command::Pause => continue,
+                Command::Detach => {
+                    self.detaching = true;
+                    return;
+                }
+                Command::Stop if self.attached => {
+                    self.detaching = true;
+                    return;
+                }
                 Command::Stop => unsafe {
                     let _ = TerminateProcess(self.process, 1);
                 },

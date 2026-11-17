@@ -28,6 +28,7 @@ mod outline;
 mod gotoall;
 mod crates;
 mod diag;
+mod attach;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -157,6 +158,8 @@ const ID_SNIPPET: i32 = 271;
 const ID_CALLS: i32 = 272;
 const ID_IMMEDIATE: i32 = 273;
 const ID_DIAG_TOOLS: i32 = 274;
+const ID_ATTACH: i32 = 275;
+const ID_DETACH: i32 = 276;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -950,6 +953,8 @@ fn build_menu() -> HMENU {
         add(debug, ID_RUN_NODEBUG, t("Start Without Debugging"), "Ctrl+F5");
         add(debug, ID_BREAK_ALL, t("Break All"), "Ctrl+Alt+Break");
         add(debug, ID_STOP, t("Stop Debugging"), "Shift+F5");
+        add(debug, ID_ATTACH, t("Attach to Process..."), "Ctrl+Alt+P");
+        add(debug, ID_DETACH, t("Detach All"), "");
         sep(debug);
         add(debug, ID_STEP_INTO, t("Step Into"), "F11");
         add(debug, ID_STEP_OVER, t("Step Over"), "F10");
@@ -3587,18 +3592,45 @@ impl Studio {
     }
 
     fn launch_debugger(&mut self, exe: &Path) {
+        self.debug_session(exe, None);
+    }
+
+    /// Debug > Attach to Process: a running program chosen, the debugger joined to it.
+    fn attach_to_process(&mut self) {
+        if self.debug.is_some() {
+            return;
+        }
+        let project = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| std::path::absolute(p).ok());
+        // `PHAI_ATTACH_PID`: that process, without the question - for testing.
+        let chosen = match std::env::var("PHAI_ATTACH_PID").ok().and_then(|p| p.parse().ok()) {
+            Some(pid) => phai_debug::process_image(pid).map(|exe| (pid, exe)),
+            None => attach::choose(self.hwnd, project.as_deref()),
+        };
+        if let Some((pid, exe)) = chosen {
+            self.debug_session(&exe, Some(pid));
+        }
+    }
+
+    /// The debugger started on `exe`, or joined to it already running as process `pid`.
+    fn debug_session(&mut self, exe: &Path, pid: Option<u32>) {
         let bps = self.all_breakpoints();
         let target = self.hwnd.0 as isize;
-        // It runs in its project, as `cargo run` runs it; the PDB names files from there.
-        let dir = self.doc.path.as_deref().and_then(cargo::project_of).or_else(|| exe.parent().map(Path::to_path_buf)).unwrap_or_default();
-        self.debug = Some(phai_debug::Session::launch(exe, &dir, bps, move |e| {
+        // It runs in its project, as `cargo run` runs it; the PDB names files from there. A program
+        // attached to is from the project in front, or the one its file is built in.
+        let built_in = || exe.ancestors().skip(1).find(|d| d.join("Cargo.toml").is_file()).map(Path::to_path_buf);
+        let dir = self.doc.path.as_deref().and_then(cargo::project_of).and_then(|p| std::path::absolute(p).ok()).filter(|p| pid.is_none() || exe.starts_with(p)).or_else(built_in).or_else(|| exe.parent().map(Path::to_path_buf)).unwrap_or_default();
+        let say = move |e| {
             let boxed = Box::into_raw(Box::new(e));
             unsafe {
                 if wm::PostMessageW(Some(HWND(target as *mut _)), WM_DEBUG, WPARAM(0), LPARAM(boxed as isize)).is_err() {
                     drop(Box::from_raw(boxed));
                 }
             }
-        }));
+        };
+        self.debug = Some(match pid {
+            Some(pid) => phai_debug::Session::attach(pid, &dir, bps, say),
+            None => phai_debug::Session::launch(exe, &dir, bps, say),
+        });
         self.paused = false;
         // Its process id comes once it has started: Diagnostic Tools ask for it on their timer.
         self.sampler = None;
@@ -3611,7 +3643,17 @@ impl Studio {
             }
         }
         self.show_debug_bar(true);
-        controls::status_text(self.status, 0, &tf("Debugging {0}", &[&exe.file_name().unwrap_or_default().to_string_lossy()]));
+        let name = exe.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let words = match pid {
+            Some(pid) => tf("Attached to {0} ({1})", &[&name, &pid]),
+            None => tf("Debugging {0}", &[&name]),
+        };
+        controls::status_text(self.status, 0, &words);
+        if let Some(b) = self.bottom.as_ref() {
+            if pid.is_some() {
+                b.add_line(&words);
+            }
+        }
         self.rebuild_menu();
     }
 
@@ -3772,6 +3814,18 @@ impl Studio {
                     }
                 }
             }
+            Event::Detached => {
+                self.debug = None;
+                self.paused = false;
+                self.clear_debug_line();
+                self.show_debug_bar(false);
+                let said = t("Detached: the program runs on without the debugger");
+                if let Some(b) = self.bottom.as_ref() {
+                    b.add_line(said);
+                }
+                controls::status_text(self.status, 0, said);
+                self.rebuild_menu();
+            }
             Event::Failed(msg) => {
                 self.debug = None;
                 self.paused = false;
@@ -3815,6 +3869,10 @@ impl Studio {
             }
             phai_debug::Event::Exited(code) => {
                 println!("ended {code}");
+                std::process::exit(0);
+            }
+            phai_debug::Event::Detached => {
+                println!("detached");
                 std::process::exit(0);
             }
             phai_debug::Event::Failed(m) => {
@@ -4855,6 +4913,12 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_ATTACH => self.attach_to_process(),
+            ID_DETACH => {
+                if let Some(d) = &self.debug {
+                    d.send(phai_debug::Command::Detach);
+                }
+            }
             ID_DIAG_TOOLS => {
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
@@ -5654,6 +5718,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x54 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_OUTLINE),
             0x49 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_IMMEDIATE),
             0x71 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DIAG_TOOLS),
+            0x50 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_ATTACH),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -6285,14 +6350,15 @@ fn main() {
             std::env::set_var("PHAI_PUBLISH_TEST", "1");
             s.command(ID_PUBLISH);
         }
-        // `--debugtest`: see `debug_test_step`.
+        // `--debugtest`: see `debug_test_step`. With `PHAI_ATTACH_PID`, attached to that program
+        // rather than started - Stop then lets it go on.
         if args.iter().any(|a| a == "--debugtest") {
             DEBUG_TEST.store(1, Ordering::Relaxed);
             let line = std::env::var("PHAI_DEBUG_LINE").ok().and_then(|l| l.parse().ok()).unwrap_or(7);
             if let Some(h) = s.doc.code {
                 phai_editor::view::set_breakpoints(h, &[line]);
             }
-            s.command(ID_RUN);
+            s.command(if std::env::var_os("PHAI_ATTACH_PID").is_some() { ID_ATTACH } else { ID_RUN });
         }
         // `--jobtest clean|rebuild|analyse|solution`: a Build menu job, printed as --buildtest prints.
         if let Some(j) = args.iter().position(|a| a == "--jobtest").and_then(|i| args.get(i + 1)) {
