@@ -34,6 +34,8 @@ pub const BREAKPOINTS: u16 = 0x0306;
 pub const PEEK: u16 = 0x0307;
 /// Parameter Info was asked for (Ctrl+Shift+Space, or `(` / `,` typed) at [`caret_lsp`].
 pub const SIGNATURE: u16 = 0x0308;
+/// Quick Actions were asked for (Ctrl+.) for [`selection_lsp`].
+pub const ACTIONS: u16 = 0x0309;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -337,6 +339,25 @@ pub fn set_conditional(h: HWND, lines: &[u32]) {
 /// The caret, as the language server counts.
 pub fn caret_lsp(h: HWND) -> (u32, u32) {
     view(h).map(|v| lsp_position_of(v, v.model.caret)).unwrap_or((0, 0))
+}
+
+/// The selection (or the caret) as the language server counts places: start and end.
+pub fn selection_lsp(h: HWND) -> ((u32, u32), (u32, u32)) {
+    view(h).map(|v| {
+        let (a, b) = v.model.selection();
+        (lsp_position_of(v, a), lsp_position_of(v, b))
+    }).unwrap_or(((0, 0), (0, 0)))
+}
+
+/// Where the caret is on the screen: its left, and the bottom of its line - for a menu under it.
+pub fn caret_screen(h: HWND) -> (i32, i32) {
+    let Some(v) = view(h) else { return (0, 0) };
+    let mut pt = windows::Win32::Foundation::POINT::default();
+    unsafe {
+        let _ = wm::GetCaretPos(&mut pt);
+        let _ = Gdi::ClientToScreen(h, &mut pt);
+    }
+    (pt.x, pt.y + v.line_h)
 }
 
 /// Shows a hover's words where the pointer rests.
@@ -1182,6 +1203,11 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
     // Esc closes a peek.
     if vk == 0x1B && v.peeking {
         hide_tip(v);
+        return true;
+    }
+    // Ctrl+.: Quick Actions.
+    if vk == 0xBE && ctrl {
+        notify(h, ACTIONS);
         return true;
     }
     if vk == 0x20 && ctrl && unsafe { km::GetKeyState(0x10) } < 0 {

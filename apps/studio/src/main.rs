@@ -126,6 +126,7 @@ const ID_CHORD_END: i32 = 248;
 const ID_FIND_IN_FILES: i32 = 249;
 const ID_TASK_LIST: i32 = 250;
 const ID_PARAM_INFO: i32 = 251;
+const ID_QUICK_ACTIONS: i32 = 252;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -244,6 +245,8 @@ enum Ask {
     Peek,
     /// Parameter Info: what the call takes.
     Signature,
+    /// Quick Actions: fixes and refactorings to choose from.
+    Actions,
     /// Whether the name at this place in this file may be renamed.
     PrepareRename(PathBuf, (u32, u32)),
     /// The changes that rename `old` to `new`.
@@ -657,6 +660,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_GO_DEFINITION, t("Go To Definition"), "F12");
         add(edit, ID_PEEK, t("Peek Definition"), "Alt+F12");
         add(edit, ID_PARAM_INFO, t("Parameter Info"), "Ctrl+Shift+Space");
+        add(edit, ID_QUICK_ACTIONS, t("Quick Actions and Refactorings..."), "Ctrl+.");
         add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
@@ -1429,6 +1433,7 @@ impl Studio {
                 }
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
+            Ask::Actions => self.choose_action(h, phai_editor::lsp::actions_of(&result)),
             Ask::Signature => {
                 if let Some(text) = phai_editor::lsp::signature_text(&result) {
                     if std::env::var_os("PHAI_SIG_TEST").is_some() {
@@ -1544,6 +1549,14 @@ impl Studio {
             phai_editor::view::go_to(h, 2, col);
         };
         match LSP_TEST.load(Ordering::Relaxed) {
+            // `PHAI_ACTION`: Quick Actions at `PHAI_ACTION_AT` (line:column), asked until some come.
+            0 | 1 if std::env::var_os("PHAI_ACTION").is_some() => {
+                let at = std::env::var("PHAI_ACTION_AT").unwrap_or_else(|_| "6:9".into());
+                let (l, c) = at.split_once(':').and_then(|(l, c)| Some((l.parse().ok()?, c.parse().ok()?))).unwrap_or((6, 9));
+                phai_editor::view::go_to(h, l, c);
+                self.lsp_actions(h);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
             // `PHAI_SIG_TEST`: Parameter Info inside the call on line 2, asked until it answers.
             0 | 1 if std::env::var_os("PHAI_SIG_TEST").is_some() => {
                 on_call(h);
@@ -1604,6 +1617,55 @@ impl Studio {
             }
             None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
         }
+    }
+
+    /// Ctrl+. in an editor: the fixes and refactorings the language server offers here.
+    pub fn lsp_actions(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let (a, b) = phai_editor::view::selection_lsp(h);
+        match self.lsp_for(&path) {
+            Some(l) => {
+                let id = l.code_actions(&path, a, b);
+                self.asked.insert(id, (h, Ask::Actions));
+            }
+            None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
+        }
+    }
+
+    /// The Quick Actions offered, as a menu under the caret; the one chosen made.
+    fn choose_action(&mut self, h: HWND, actions: Vec<phai_editor::lsp::Action>) {
+        if actions.is_empty() {
+            controls::status_text(self.status, 0, t("No quick actions here"));
+            return;
+        }
+        // `PHAI_ACTION=words`: the first action whose title has them, without the menu.
+        let chosen = if let Ok(want) = std::env::var("PHAI_ACTION") {
+            println!("actions: {}", actions.iter().map(|a| a.title.as_str()).collect::<Vec<_>>().join(" | "));
+            actions.iter().position(|a| a.title.to_lowercase().contains(&want.to_lowercase()))
+        } else {
+            unsafe {
+                let m = wm::CreatePopupMenu().unwrap_or_default();
+                for (i, a) in actions.iter().take(40).enumerate() {
+                    let w = wide(&a.title);
+                    let _ = wm::AppendMenuW(m, wm::MF_STRING, i + 1, PCWSTR(w.as_ptr()));
+                }
+                let (x, y) = phai_editor::view::caret_screen(h);
+                let n = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, self.hwnd, None).0 as usize;
+                let _ = wm::DestroyMenu(m);
+                n.checked_sub(1)
+            }
+        };
+        let Some(a) = chosen.and_then(|i| actions.get(i)).cloned() else { return };
+        let (places, files) = self.apply_workspace_edit(&a.edit);
+        let said = tf("{0}: {1} changes in {2} files", &[&a.title, &places, &files]);
+        if std::env::var_os("PHAI_ACTION").is_some() {
+            println!("{said}");
+            println!("now: {}", phai_editor::view::text(h).lines().nth(5).unwrap_or_default().trim());
+            if std::env::var_os("PHAI_SHOT").is_none() {
+                std::process::exit(0);
+            }
+        }
+        controls::status_text(self.status, 0, &said);
     }
 
     /// Parameter Info in an editor: what the call the caret is in takes, under the caret.
@@ -3662,6 +3724,10 @@ impl Studio {
             ID_FORMAT_DOC => self.format_document(),
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_QUICK_ACTIONS => match self.code_shown() {
+                Some(h) => self.lsp_actions(h),
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_PARAM_INFO => match self.code_shown() {
                 Some(h) => self.lsp_signature(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),

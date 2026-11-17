@@ -882,6 +882,12 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::ACTIONS => {
+            if let Some(s) = studio() {
+                s.lsp_actions(HWND(l.0 as *mut _));
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::SIGNATURE => {
             if let Some(s) = studio() {
                 s.lsp_signature(HWND(l.0 as *mut _));
