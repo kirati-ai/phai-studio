@@ -37,7 +37,7 @@ pub fn init() {
         let _ = HiDpi::SetProcessDpiAwarenessContext(HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let icc = windows::Win32::UI::Controls::INITCOMMONCONTROLSEX {
             dwSize: std::mem::size_of::<windows::Win32::UI::Controls::INITCOMMONCONTROLSEX>() as u32,
-            dwICC: windows::Win32::UI::Controls::ICC_LISTVIEW_CLASSES | windows::Win32::UI::Controls::ICC_BAR_CLASSES | windows::Win32::UI::Controls::ICC_STANDARD_CLASSES | windows::Win32::UI::Controls::ICC_DATE_CLASSES | windows::Win32::UI::Controls::ICC_UPDOWN_CLASS,
+            dwICC: windows::Win32::UI::Controls::ICC_LISTVIEW_CLASSES | windows::Win32::UI::Controls::ICC_BAR_CLASSES | windows::Win32::UI::Controls::ICC_STANDARD_CLASSES | windows::Win32::UI::Controls::ICC_DATE_CLASSES | windows::Win32::UI::Controls::ICC_UPDOWN_CLASS | windows::Win32::UI::Controls::ICC_COOL_CLASSES,
         };
         let _ = windows::Win32::UI::Controls::InitCommonControlsEx(&icc);
     });
@@ -1447,6 +1447,105 @@ pub fn toolbar_choose(h: HWND, command: i32) {
     unsafe {
         wm::SendMessageW(h, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(command as usize)), Some(LPARAM(1)));
     }
+}
+
+// --- the toolbar tray: toolbars that can be dragged about, as Visual Studio's ----------------------
+
+/// Windows' rebar: a tray of toolbars, each with a grip to drag it along its row, onto another
+/// row, or up beside another toolbar. A toolbar too long for its room shows » for the rest.
+pub fn rebar(parent: HWND, id: i32) -> HWND {
+    const RBS_VARHEIGHT: u32 = 0x0200;
+    const RBS_BANDBORDERS: u32 = 0x0400;
+    const CCS_NODIVIDER: u32 = 0x0040;
+    const CCS_NOPARENTALIGN: u32 = 0x0008;
+    const CCS_NORESIZE: u32 = 0x0004;
+    let style = WINDOW_STYLE(RBS_VARHEIGHT | RBS_BANDBORDERS | CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NORESIZE) | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS;
+    let h = child(parent, "ReBarWindow32", "", style, WINDOW_EX_STYLE(0), id, HFONT::default());
+    rebar_colours(h);
+    h
+}
+
+/// The tray in the theme's colours.
+pub fn rebar_colours(h: HWND) {
+    unsafe {
+        wm::SendMessageW(h, 0x0413 /* RB_SETBKCOLOR */, None, Some(LPARAM(window_background().colorref() as isize)));
+        wm::SendMessageW(h, 0x0415 /* RB_SETTEXTCOLOR */, None, Some(LPARAM(window_text().colorref() as isize)));
+        let _ = Gdi::InvalidateRect(Some(h), None, true);
+    }
+}
+
+fn band_info(tb: HWND, id: u32, new_row: bool) -> windows::Win32::UI::Controls::REBARBANDINFOW {
+    use windows::Win32::UI::Controls as cc;
+    const RBBS_BREAK: u32 = 0x0001;
+    const RBBS_GRIPPERALWAYS: u32 = 0x0080;
+    const RBBS_USECHEVRON: u32 = 0x0200;
+    let mut size = windows::Win32::Foundation::SIZE::default();
+    unsafe {
+        wm::SendMessageW(tb, 0x0453 /* TB_GETMAXSIZE */, None, Some(LPARAM(&mut size as *mut _ as isize)));
+    }
+    let button = px(tb, tool_sizes(tb).1);
+    cc::REBARBANDINFOW {
+        cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32,
+        fMask: cc::RBBIM_CHILD | cc::RBBIM_CHILDSIZE | cc::RBBIM_SIZE | cc::RBBIM_STYLE | cc::RBBIM_ID | cc::RBBIM_IDEALSIZE,
+        fStyle: RBBS_GRIPPERALWAYS | RBBS_USECHEVRON | if new_row { RBBS_BREAK } else { 0 },
+        hwndChild: tb,
+        // Shrunk as far as three buttons; the rest go behind ».
+        cxMinChild: (button * 3) as u32,
+        cyMinChild: (size.cy.max(button) + px(tb, 4)) as u32,
+        cx: (size.cx + px(tb, 16)) as u32,
+        cxIdeal: size.cx as u32,
+        wID: id,
+        ..Default::default()
+    }
+}
+
+/// Puts a toolbar into the tray as band `id`, on a row of its own when `new_row`.
+pub fn rebar_add(rb: HWND, tb: HWND, id: u32, new_row: bool) {
+    let info = band_info(tb, id, new_row);
+    unsafe {
+        wm::SendMessageW(rb, 0x0401 /* RB_INSERTBANDW */, Some(WPARAM(usize::MAX)), Some(LPARAM(&info as *const _ as isize)));
+    }
+}
+
+/// Every band sized again for its toolbar - after a language or DPI change made its buttons anew.
+pub fn rebar_fit(rb: HWND) {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        let n = wm::SendMessageW(rb, 0x040C /* RB_GETBANDCOUNT */, None, None).0.max(0) as usize;
+        for i in 0..n {
+            let mut get = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_CHILD | cc::RBBIM_ID | cc::RBBIM_STYLE, ..Default::default() };
+            wm::SendMessageW(rb, 0x041C /* RB_GETBANDINFOW */, Some(WPARAM(i)), Some(LPARAM(&mut get as *mut _ as isize)));
+            if get.hwndChild.is_invalid() {
+                continue;
+            }
+            // Its place in the tray stays: only the sizes change.
+            let mut info = band_info(get.hwndChild, get.wID, false);
+            info.fMask = cc::RBBIM_CHILDSIZE | cc::RBBIM_IDEALSIZE;
+            wm::SendMessageW(rb, 0x040B /* RB_SETBANDINFOW */, Some(WPARAM(i)), Some(LPARAM(&info as *const _ as isize)));
+        }
+    }
+}
+
+/// The tray's height now, device pixels.
+pub fn rebar_height(rb: HWND) -> i32 {
+    unsafe { wm::SendMessageW(rb, 0x041B /* RB_GETBARHEIGHT */, None, None).0 as i32 }
+}
+
+/// The buttons of a toolbar that lie past `width` device pixels - hidden behind its » - as
+/// `(command, name)`.
+pub fn toolbar_hidden(tb: HWND, width: i32) -> Vec<(i32, String)> {
+    let items: Vec<(i32, String, u16)> = TOOLBARS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(tb.0 as isize)).cloned()).unwrap_or_default();
+    let mut out = Vec::new();
+    for (k, (cmd, label, _)) in items.iter().enumerate() {
+        if *cmd == 0 {
+            continue;
+        }
+        let r = toolbar_item_rect(tb, k);
+        if r.right > width {
+            out.push((*cmd, label.clone()));
+        }
+    }
+    out
 }
 
 /// Shows a toolbar button pressed in (`on`) or not - a toggle, as Visual Studio's Categorized
