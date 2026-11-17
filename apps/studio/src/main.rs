@@ -207,6 +207,15 @@ impl Doc {
 }
 
 /// An open form that is not the one on the canvas: everything it needs to come back as it was.
+/// A table in Results, as Show Table Data shows it: where it is, its columns, its rows as shown.
+struct TableView {
+    conn: usize,
+    db: String,
+    table: String,
+    columns: Vec<phai_data::Column>,
+    rows: Vec<Vec<String>>,
+}
+
 /// What a request to rust-analyzer was for.
 #[derive(Clone)]
 enum Ask {
@@ -292,6 +301,8 @@ pub struct Studio {
     conds: Vec<(PathBuf, u32, String)>,
     /// The data tip asked for, and the editor and words it is for.
     tip: Option<(u64, HWND, String)>,
+    /// The table Results shows, when it shows one (Show Table Data): its rows can be changed.
+    table_view: Option<TableView>,
     /// Query files, by path: the connection and database each runs in.
     queries: std::collections::HashMap<PathBuf, (usize, String)>,
     /// The Debug / Release box on the Standard bar.
@@ -1872,7 +1883,10 @@ impl Studio {
         let db2 = db.clone();
         let answer = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Execute Query"), t("Running the query..."), move |_| c.query((!db2.is_empty()).then_some(db2.as_str()), &sql));
         match answer {
-            Some(Ok(grid)) => self.show_grid(&grid),
+            Some(Ok(grid)) => {
+                self.table_view = None;
+                self.show_grid(&grid);
+            }
             Some(Err(e)) => {
                 if let Some(b) = self.bottom.as_ref() {
                     b.add_line(&e);
@@ -1889,10 +1903,140 @@ impl Studio {
     pub fn show_table_rows(&mut self, conn: usize, db: &str, table: &str) {
         let Some(c) = self.servers.as_ref().and_then(|s| s.conns.get(conn)).cloned() else { return };
         let (db, table) = (db.to_string(), table.to_string());
-        match phai_ui::dialogs::wait_for(Some(self.hwnd), t("Show Table Data"), t("Running the query..."), move |_| c.table_rows(&db, &table)) {
-            Some(Ok(grid)) => self.show_grid(&grid),
+        let (d2, t2) = (db.clone(), table.clone());
+        match phai_ui::dialogs::wait_for(Some(self.hwnd), t("Show Table Data"), t("Running the query..."), move |_| c.table_rows(&d2, &t2).and_then(|g| Ok((g, c.columns(&d2, &t2)?)))) {
+            Some(Ok((grid, columns))) => {
+                self.show_grid(&grid);
+                self.table_view = Some(TableView { conn, db, table, columns, rows: grid.rows.clone() });
+            }
             Some(Err(e)) => {
                 win::message(Some(self.hwnd), &e, t("Show Table Data"), wm::MB_ICONWARNING);
+            }
+            None => {}
+        }
+    }
+
+    /// The primary key of a row shown: its columns and values; `None` when the table has none.
+    fn row_keys(&self, row: usize) -> Option<Vec<(String, String)>> {
+        let v = self.table_view.as_ref()?;
+        let r = v.rows.get(row)?;
+        let keys: Vec<(String, String)> = v.columns.iter().enumerate().filter(|(_, c)| c.key == "PRI").filter_map(|(i, c)| Some((c.name.clone(), r.get(i)?.clone()))).collect();
+        (!keys.is_empty()).then_some(keys)
+    }
+
+    /// A cell of a table in Results changed, as Visual Studio's Show Table Data lets one be.
+    fn edit_cell(&mut self, row: usize, col: usize) {
+        let Some(v) = self.table_view.as_ref() else {
+            self.say_status(t("A query's result is not a table: open one with Show Table Data to change its rows"));
+            return;
+        };
+        let Some(column) = v.columns.get(col).cloned() else { return };
+        let Some(keys) = self.row_keys(row) else {
+            win::message(Some(self.hwnd), t("This table has no primary key, so its rows cannot be told apart to change one."), t("Show Table Data"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        let now = v.rows.get(row).and_then(|r| r.get(col)).cloned().unwrap_or_default();
+        let Some(new) = phai_ui::dialogs::ask(Some(self.hwnd), &column.name, &tf("{0} ({1}) - NULL for none:", &[&column.name, &column.ty]), &now, false) else { return };
+        if new == now {
+            return;
+        }
+        let value = if new == "NULL" && column.nullable { None } else { Some(new.clone()) };
+        let (Some(c), db, table) = (self.servers.as_ref().and_then(|s| s.conns.get(v.conn)).cloned(), v.db.clone(), v.table.clone()) else { return };
+        let name = column.name.clone();
+        let result = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Show Table Data"), t("Saving..."), move |_| c.update_cell(&db, &table, &name, value.as_deref(), &keys));
+        match result {
+            Some(Ok(n)) => {
+                if let Some(v) = self.table_view.as_mut() {
+                    if let Some(cell) = v.rows.get_mut(row).and_then(|r| r.get_mut(col)) {
+                        *cell = new.clone();
+                    }
+                }
+                if let Some(list) = self.bottom.as_ref().map(|b| b.results) {
+                    set_list_cell(list, row, col, &new);
+                }
+                self.say_status(&tf("{0} rows affected", &[&n]));
+            }
+            Some(Err(e)) => {
+                win::message(Some(self.hwnd), &e, t("Show Table Data"), wm::MB_ICONWARNING);
+            }
+            None => {}
+        }
+    }
+
+    /// Results' right-click: change the cell, add a row, delete the row.
+    fn results_menu(&mut self, row: Option<usize>, col: usize) {
+        if self.table_view.is_none() {
+            return;
+        }
+        const EDIT: u32 = 1;
+        const ADD: u32 = 2;
+        const DELETE: u32 = 3;
+        const REFRESH: u32 = 4;
+        let mut items: Vec<(u32, &str)> = Vec::new();
+        if row.is_some() {
+            items.push((EDIT, t("Edit Cell...")));
+        }
+        items.push((ADD, t("Add Row...")));
+        if row.is_some() {
+            items.push((DELETE, t("Delete Row")));
+        }
+        items.extend([(0, ""), (REFRESH, t("Refresh"))]);
+        match win::popup(self.hwnd, &items) {
+            EDIT => self.edit_cell(row.unwrap_or(0), col),
+            ADD => self.add_row(),
+            DELETE => self.delete_row(row.unwrap_or(0)),
+            REFRESH => {
+                if let Some(v) = self.table_view.as_ref() {
+                    let (c, d, t2) = (v.conn, v.db.clone(), v.table.clone());
+                    self.show_table_rows(c, &d, &t2);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn delete_row(&mut self, row: usize) {
+        let Some(keys) = self.row_keys(row) else {
+            win::message(Some(self.hwnd), t("This table has no primary key, so its rows cannot be told apart to change one."), t("Show Table Data"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Some(v) = self.table_view.as_ref() else { return };
+        let what = keys.iter().map(|(k, val)| format!("{k} = {val}")).collect::<Vec<_>>().join(", ");
+        if win::message(Some(self.hwnd), &tf("Delete the row {0} from {1}? This cannot be undone.", &[&what, &v.table]), t("Delete Row"), wm::MB_YESNO | wm::MB_ICONWARNING) != wm::IDYES {
+            return;
+        }
+        let (Some(c), db, table) = (self.servers.as_ref().and_then(|s| s.conns.get(v.conn)).cloned(), v.db.clone(), v.table.clone()) else { return };
+        let conn = v.conn;
+        match phai_ui::dialogs::wait_for(Some(self.hwnd), t("Delete Row"), t("Saving..."), move |_| c.delete_row(&db, &table, &keys)) {
+            Some(Ok(_)) => {
+                let (d, t2) = (self.table_view.as_ref().map(|v| v.db.clone()).unwrap_or_default(), self.table_view.as_ref().map(|v| v.table.clone()).unwrap_or_default());
+                self.show_table_rows(conn, &d, &t2);
+            }
+            Some(Err(e)) => {
+                win::message(Some(self.hwnd), &e, t("Delete Row"), wm::MB_ICONWARNING);
+            }
+            None => {}
+        }
+    }
+
+    /// Add Row: a box for each column (at most twelve); those left empty take their defaults.
+    fn add_row(&mut self) {
+        let Some(v) = self.table_view.as_ref() else { return };
+        let cols: Vec<phai_data::Column> = v.columns.iter().take(12).cloned().collect();
+        let labels: Vec<String> = cols.iter().map(|c| format!("{} ({})", c.name, c.ty)).collect();
+        let fields: Vec<phai_ui::dialogs::Field> = labels.iter().map(|l| phai_ui::dialogs::Field::Text(l, "")).collect();
+        let Some(answers) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Add Row - {0}", &[&v.table]), &fields) else { return };
+        let values: Vec<(String, Option<String>)> = cols.iter().zip(answers).filter(|(_, a)| !a.is_empty()).map(|(c, a)| (c.name.clone(), if a == "NULL" { None } else { Some(a) })).collect();
+        if values.is_empty() {
+            return;
+        }
+        let (Some(c), db, table) = (self.servers.as_ref().and_then(|s| s.conns.get(v.conn)).cloned(), v.db.clone(), v.table.clone()) else { return };
+        let conn = v.conn;
+        let (d2, t2) = (db.clone(), table.clone());
+        match phai_ui::dialogs::wait_for(Some(self.hwnd), t("Add Row..."), t("Saving..."), move |_| c.insert_row(&db, &table, &values)) {
+            Some(Ok(_)) => self.show_table_rows(conn, &d2, &t2),
+            Some(Err(e)) => {
+                win::message(Some(self.hwnd), &e, t("Add Row..."), wm::MB_ICONWARNING);
             }
             None => {}
         }
@@ -3243,6 +3387,16 @@ pub fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options 
 }
 
 /// Where Phai Studio keeps what it remembers for this person: `%APPDATA%\Phai Studio`.
+/// One cell of a list, its words changed.
+fn set_list_cell(list: HWND, row: usize, col: usize, text: &str) {
+    use windows::Win32::UI::Controls as cc;
+    let mut w = wide(text);
+    let item = cc::LVITEMW { iSubItem: col as i32, pszText: windows::core::PWSTR(w.as_mut_ptr()), ..Default::default() };
+    unsafe {
+        wm::SendMessageW(list, 0x1074 /* LVM_SETITEMTEXTW */, Some(WPARAM(row)), Some(LPARAM(&item as *const _ as isize)));
+    }
+}
+
 pub fn settings_dir_pub() -> Option<PathBuf> {
     settings_dir()
 }
@@ -3417,6 +3571,19 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                     s.tray_chevron(info.hwndChild, c.rc);
                     return LRESULT(0);
                 }
+            }
+            if s.bottom.as_ref().is_some_and(|b| b.results == hdr.hwndFrom) && (hdr.code == cc::NM_DBLCLK || hdr.code == cc::NM_RCLICK) {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                let row = (it.iItem >= 0).then_some(it.iItem as usize);
+                let col = it.iSubItem.max(0) as usize;
+                if hdr.code == cc::NM_DBLCLK {
+                    if let Some(r) = row {
+                        s.edit_cell(r, col);
+                    }
+                } else {
+                    s.results_menu(row, col);
+                }
+                return LRESULT(0);
             }
             if s.bottom.as_ref().is_some_and(|b| b.watch == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
@@ -3753,6 +3920,7 @@ fn main() {
             conds: vec![],
             tip: None,
             queries: std::collections::HashMap::new(),
+            table_view: None,
             config,
             nav: vec![],
             nav_at: 0,

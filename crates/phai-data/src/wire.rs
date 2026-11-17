@@ -484,6 +484,214 @@ impl Conn {
     }
 }
 
+// --- prepared statements -------------------------------------------------------------------------
+
+/// A column as a prepared statement's binary rows need it: its type and whether it is unsigned.
+#[derive(Clone, Copy, Debug)]
+struct ColType {
+    ty: u8,
+    unsigned: bool,
+}
+
+fn column_def(d: &[u8]) -> (String, ColType) {
+    let mut c = Cur::new(d);
+    for _ in 0..4 {
+        c.lenenc_str();
+    }
+    let name = String::from_utf8_lossy(c.lenenc_str().unwrap_or_default()).to_string();
+    c.lenenc_str();
+    c.lenenc();
+    c.u16();
+    c.u32();
+    let ty = c.u8();
+    let flags = c.u16();
+    (name, ColType { ty, unsigned: flags & 0x20 != 0 })
+}
+
+/// The packet that runs statement `id` with `params`, each sent as text (the server converts it)
+/// or NULL.
+pub fn execute_packet(id: u32, params: &[Option<&str>]) -> Vec<u8> {
+    let mut p = vec![0x17];
+    p.extend_from_slice(&id.to_le_bytes());
+    p.push(0); // no cursor
+    p.extend_from_slice(&1u32.to_le_bytes());
+    if !params.is_empty() {
+        let mut nulls = vec![0u8; params.len().div_ceil(8)];
+        for (i, v) in params.iter().enumerate() {
+            if v.is_none() {
+                nulls[i / 8] |= 1 << (i % 8);
+            }
+        }
+        p.extend_from_slice(&nulls);
+        p.push(1); // types follow
+        for _ in params {
+            p.extend_from_slice(&[0xFD, 0x00]); // VAR_STRING
+        }
+        for v in params.iter().flatten() {
+            put_lenenc(&mut p, v.len() as u64);
+            p.extend_from_slice(v.as_bytes());
+        }
+    }
+    p
+}
+
+/// A binary row's values as text, by the columns' types.
+fn binary_row(r: &[u8], cols: &[ColType]) -> Vec<Option<String>> {
+    let mut c = Cur::new(r);
+    c.u8(); // 0x00
+    let bitmap = c.take((cols.len() + 7 + 2) / 8).to_vec();
+    let is_null = |i: usize| bitmap.get((i + 2) / 8).is_some_and(|b| b & (1 << ((i + 2) % 8)) != 0);
+    let mut out = Vec::with_capacity(cols.len());
+    for (i, col) in cols.iter().enumerate() {
+        if is_null(i) {
+            out.push(None);
+            continue;
+        }
+        let v = match col.ty {
+            0x01 => Some(if col.unsigned { (c.u8()).to_string() } else { (c.u8() as i8).to_string() }),
+            0x02 | 0x0D => {
+                let v = c.u16();
+                Some(if col.unsigned { v.to_string() } else { (v as i16).to_string() })
+            }
+            0x03 | 0x09 => {
+                let v = c.u32();
+                Some(if col.unsigned { v.to_string() } else { (v as i32).to_string() })
+            }
+            0x08 => {
+                let v = c.u32() as u64 | (c.u32() as u64) << 32;
+                Some(if col.unsigned { v.to_string() } else { (v as i64).to_string() })
+            }
+            0x04 => Some(f32::from_bits(c.u32()).to_string()),
+            0x05 => Some(f64::from_bits(c.u32() as u64 | (c.u32() as u64) << 32).to_string()),
+            0x0A | 0x07 | 0x0C => {
+                // DATE, TIMESTAMP, DATETIME: a length, then as much of the date as there is.
+                let n = c.u8();
+                let (mut y, mut mo, mut d, mut h, mut mi, mut se, mut us) = (0u16, 0u8, 0u8, 0u8, 0u8, 0u8, 0u32);
+                if n >= 4 {
+                    y = c.u16();
+                    mo = c.u8();
+                    d = c.u8();
+                }
+                if n >= 7 {
+                    h = c.u8();
+                    mi = c.u8();
+                    se = c.u8();
+                }
+                if n >= 11 {
+                    us = c.u32();
+                }
+                Some(if col.ty == 0x0A || n < 7 { format!("{y:04}-{mo:02}-{d:02}") } else if us == 0 { format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{se:02}") } else { format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{se:02}.{us:06}") })
+            }
+            0x0B => {
+                let n = c.u8();
+                let (mut neg, mut days, mut h, mut mi, mut se, mut us) = (false, 0u32, 0u8, 0u8, 0u8, 0u32);
+                if n >= 8 {
+                    neg = c.u8() == 1;
+                    days = c.u32();
+                    h = c.u8();
+                    mi = c.u8();
+                    se = c.u8();
+                }
+                if n >= 12 {
+                    us = c.u32();
+                }
+                let hours = days as u64 * 24 + h as u64;
+                Some(format!("{}{hours:02}:{mi:02}:{se:02}{}", if neg { "-" } else { "" }, if us == 0 { String::new() } else { format!(".{us:06}") }))
+            }
+            0x06 => None,
+            // Strings, decimals, blobs, JSON, enums, sets, bits: length-encoded bytes.
+            _ => c.lenenc_str().map(|b| String::from_utf8_lossy(b).to_string()),
+        };
+        out.push(v);
+    }
+    out
+}
+
+impl Conn {
+    /// Runs one statement with `?` marks and `params` in their places - the values go apart from
+    /// the SQL, so nothing in them can change what the SQL does.
+    pub fn execute(&mut self, sql: &str, params: &[Option<&str>], max: usize) -> Result<(Result1, bool), String> {
+        self.seq = 0;
+        let mut p = vec![0x16];
+        p.extend_from_slice(sql.as_bytes());
+        self.write_packet(&p)?;
+        let ok = self.read_packet()?;
+        if ok.first() == Some(&0xFF) {
+            return Err(server_error(&ok));
+        }
+        let mut c = Cur::new(&ok);
+        c.u8();
+        let id = c.u32();
+        let ncols = c.u16() as usize;
+        let nparams = c.u16() as usize;
+        // The parameters' and the columns' descriptions, each followed by EOF.
+        if nparams > 0 {
+            for _ in 0..nparams {
+                self.read_packet()?;
+            }
+            self.read_packet()?;
+        }
+        if ncols > 0 {
+            for _ in 0..ncols {
+                self.read_packet()?;
+            }
+            self.read_packet()?;
+        }
+        if nparams != params.len() {
+            self.close_statement(id);
+            return Err(format!("the statement has {nparams} ? marks, {} values were given", params.len()));
+        }
+        self.seq = 0;
+        self.write_packet(&execute_packet(id, params))?;
+        let first = self.read_packet()?;
+        let result = match first.first() {
+            Some(0xFF) => Err(server_error(&first)),
+            Some(0x00) => {
+                let mut c = Cur::new(&first);
+                c.u8();
+                Ok((Result1 { affected: c.lenenc().unwrap_or(0), ..Default::default() }, false))
+            }
+            _ => {
+                let n = Cur::new(&first).lenenc().unwrap_or(0) as usize;
+                let mut names = Vec::with_capacity(n);
+                let mut types = Vec::with_capacity(n);
+                for _ in 0..n {
+                    let (name, ty) = column_def(&self.read_packet()?);
+                    names.push(name);
+                    types.push(ty);
+                }
+                self.read_packet()?;
+                let mut rows = Vec::new();
+                let mut cut = false;
+                loop {
+                    let r = self.read_packet()?;
+                    if r.first() == Some(&0xFE) && r.len() < 9 {
+                        break;
+                    }
+                    if r.first() == Some(&0xFF) {
+                        return Err(server_error(&r));
+                    }
+                    if rows.len() >= max {
+                        cut = true;
+                        continue;
+                    }
+                    rows.push(binary_row(&r, &types));
+                }
+                Ok((Result1 { columns: names, rows, affected: 0 }, cut))
+            }
+        };
+        self.close_statement(id);
+        result
+    }
+
+    fn close_statement(&mut self, id: u32) {
+        self.seq = 0;
+        let mut p = vec![0x19];
+        p.extend_from_slice(&id.to_le_bytes());
+        let _ = self.write_packet(&p);
+    }
+}
+
 impl Drop for Conn {
     fn drop(&mut self) {
         // COM_QUIT, then the socket goes.
@@ -507,5 +715,22 @@ mod tests {
         assert_eq!(v, [0xFC, 0x2C, 0x01]);
         assert_eq!(Cur::new(&v).lenenc(), Some(300));
         assert_eq!(server_error(b"\xff\x15\x04#28000Access denied"), "(1045) Access denied");
+    }
+
+    #[test]
+    fn prepared_statements_encode_and_decode() {
+        let p = execute_packet(7, &[Some("ไผ่"), None]);
+        assert_eq!(&p[..10], &[0x17, 7, 0, 0, 0, 0, 1, 0, 0, 0]);
+        assert_eq!(p[10], 0b10, "the second value is NULL");
+        assert_eq!(p[11], 1);
+        assert_eq!(&p[12..16], &[0xFD, 0, 0xFD, 0]);
+        assert_eq!(p[16] as usize, "ไผ่".len());
+        // A row of (-5i32, NULL, "ab", 2026-11-17).
+        let cols = [ColType { ty: 0x03, unsigned: false }, ColType { ty: 0x0F, unsigned: false }, ColType { ty: 0xFD, unsigned: false }, ColType { ty: 0x0A, unsigned: false }];
+        let mut r = vec![0x00, 0b0000_1000];
+        r.extend_from_slice(&(-5i32).to_le_bytes());
+        r.extend_from_slice(&[2, b'a', b'b']);
+        r.extend_from_slice(&[4, 0xEA, 0x07, 11, 17]);
+        assert_eq!(binary_row(&r, &cols), vec![Some("-5".into()), None, Some("ab".into()), Some("2026-11-17".into())]);
     }
 }

@@ -113,5 +113,7 @@
 | ★ | ตัวคุยโปรโตคอล MySQL ของ Phai เอง: mysql_native_password, caching_sha2_password, sha256_password (RSA ไม่มี TLS), TLS ผ่าน SChannel | ✅ |
 | ★ | Show Table Data (1000 แถวแรก), New Query (ไฟล์ .sql) + Ctrl+Shift+E รัน, ผลในแท็บผลลัพธ์คิวรี | ✅ |
 | | คัดลอกโค้ดสำหรับโปรแกรม: struct ของแถว + ฟังก์ชันอ่านทั้งตาราง (รหัสผ่านจากตัวแปรแวดล้อม) | ✅ |
-| | แก้ข้อมูลในตาราง, ออกแบบตาราง, prepared statements, PostgreSQL / SQLite (SQL Server ไม่ทำ: ต้องซื้อซอฟต์แวร์) | ⬜ |
+| ★ | แก้ข้อมูลในตาราง: ดับเบิลคลิกช่องเพื่อแก้, คลิกขวา เพิ่มแถว / ลบแถว (ระบุแถวด้วย primary key) | ✅ |
+| ★ | Prepared statements (COM_STMT_PREPARE/EXECUTE, ค่าแยกจาก SQL กัน SQL injection) | ✅ |
+| | ออกแบบตาราง, PostgreSQL / SQLite (SQL Server ไม่ทำ: ต้องซื้อซอฟต์แวร์) | ⬜ |
 
