@@ -67,7 +67,7 @@
 | ★ | Error List, ดับเบิลคลิกไปที่บรรทัด, F8 / Shift+F8 ไปยังข้อผิดพลาดถัดไป/ก่อนหน้า (เปิดไฟล์ที่บรรทัดนั้น) | ✅ |
 | ★ | Output window | ✅ |
 | | Rebuild / Clean (ทั้งโปรเจกต์และทั้ง solution ในเมนู Build) | ✅ |
-| | Task List (TODO) | ⬜ |
+| | Task List (View > Task List): comment ที่ขึ้นต้นด้วย TODO, FIXME, HACK, UNDONE ในไฟล์ .rs ทั้ง solution ดับเบิลคลิกเปิดตรงบรรทัด | ✅ |
 
 ## Debugger
 

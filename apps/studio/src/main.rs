@@ -124,6 +124,7 @@ const ID_CHORD: i32 = 247;
 /// A chord's second key that finishes none: the status line cleared.
 const ID_CHORD_END: i32 = 248;
 const ID_FIND_IN_FILES: i32 = 249;
+const ID_TASK_LIST: i32 = 250;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -406,6 +407,30 @@ fn find_in_tree(root: &Path, what: &str, case: bool, max: usize) -> Vec<phai_edi
     found
 }
 
+/// Whether a comment at this line is a task: `// TODO`, `FIXME`, `HACK` or `UNDONE` first in it.
+fn is_task(path: &Path, line: u32) -> bool {
+    if path.extension().is_none_or(|e| e != "rs") {
+        return false;
+    }
+    thread_local! {
+        static CACHE: std::cell::RefCell<(PathBuf, Vec<String>)> = std::cell::RefCell::new((PathBuf::new(), vec![]));
+    }
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.0 != path {
+            *c = (path.to_path_buf(), std::fs::read_to_string(path).unwrap_or_default().lines().map(str::to_string).collect());
+        }
+        task_words(c.1.get(line as usize).map(String::as_str).unwrap_or_default())
+    })
+}
+
+/// A line whose comment starts with a task word.
+fn task_words(line: &str) -> bool {
+    let Some(i) = line.find("//") else { return false };
+    let rest = line[i..].trim_start_matches('/').trim_start_matches('!').trim_start();
+    ["TODO", "FIXME", "HACK", "UNDONE"].iter().any(|w| rest.starts_with(w) && !rest[w.len()..].starts_with(|c: char| c.is_alphanumeric()))
+}
+
 /// What Peek Definition shows: the file and line, then the code from the line before the
 /// definition on - to its closing brace at the same indent, at most 14 lines.
 fn peek_text(path: &Path, line: usize, text: &str) -> String {
@@ -650,6 +675,7 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_PROPS, t("Properties"), "");
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
+        add(view, ID_TASK_LIST, t("Task List"), "");
         if studio().is_some_and(|s| explorer::servers_shown(s.side)) {
             wm::CheckMenuItem(view, ID_VIEW_SERVERS as u32, wm::MF_CHECKED.0);
         }
@@ -1634,6 +1660,19 @@ impl Studio {
         }
         let found = find_in_tree(&root, &what, case, 5000);
         self.found_words = "{0} matches in {1} files";
+        self.show_references(found);
+    }
+
+    /// Task List: every `// TODO`, `FIXME`, `HACK` and `UNDONE` comment in the solution's code, in
+    /// the References list - a double-click opens each.
+    fn task_list(&mut self) {
+        let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok());
+        let Some(root) = root else { return };
+        let root = std::path::absolute(if root.as_os_str().is_empty() { Path::new(".") } else { &root }).unwrap_or(root);
+        let mut found: Vec<phai_editor::lsp::Location> = find_in_tree(&root, "//", true, 20000).into_iter().filter(|l| is_task(&l.path, l.start.0)).collect();
+        // A line with two `//` is one task.
+        found.dedup_by(|a, b| a.path == b.path && a.start.0 == b.start.0);
+        self.found_words = "{0} tasks in {1} files";
         self.show_references(found);
     }
 
@@ -3590,6 +3629,7 @@ impl Studio {
             ID_CHORD => controls::status_text(self.status, 0, t("(Ctrl+K) was pressed. Waiting for the second key of the chord...")),
             ID_FORMAT_DOC => self.format_document(),
             ID_FIND_IN_FILES => self.find_in_files(None),
+            ID_TASK_LIST => self.task_list(),
             ID_CHORD_END => controls::status_text(self.status, 0, t("That key combination is not a command")),
             ID_PEEK => match self.code_shown() {
                 Some(h) => self.lsp_peek(h),
@@ -4563,6 +4603,11 @@ fn main() {
         if let Some(q) = args.iter().position(|a| a == "--find-in-files").and_then(|i| args.get(i + 1)).cloned() {
             s.find_in_files(Some(q));
             println!("{} found", s.references.len());
+        }
+        // `--task-list`: View > Task List; prints how many it found.
+        if args.iter().any(|a| a == "--task-list") {
+            s.task_list();
+            println!("{} tasks", s.references.len());
         }
         // `--goto LINE:COLUMN`: the caret there in the open code - for checking by picture.
         if let Some((l, c)) = args.iter().position(|a| a == "--goto").and_then(|i| args.get(i + 1)).and_then(|p| p.split_once(':')) {
