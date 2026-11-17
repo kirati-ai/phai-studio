@@ -21,11 +21,13 @@ pub const ID_TESTS: i32 = 507;
 /// The Error List's filters: errors shown, warnings shown.
 pub const ID_SHOW_ERRORS: i32 = 520;
 pub const ID_SHOW_WARNINGS: i32 = 521;
+pub const ID_IMMEDIATE: i32 = 522;
+pub const ID_IMMEDIATE_INPUT: i32 = 523;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
-/// results, 6 watch, 7 tests.
-fn labels() -> [&'static str; 8] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests")]
+/// results, 6 watch, 7 tests, 8 immediate.
+fn labels() -> [&'static str; 9] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate")]
 }
 
 pub struct Bottom {
@@ -41,6 +43,9 @@ pub struct Bottom {
     pub tests: HWND,
     pub show_errors: HWND,
     pub show_warnings: HWND,
+    /// The Immediate window: what was asked and answered, and the box to ask in.
+    pub immediate: HWND,
+    pub immediate_input: HWND,
     layout: Layout,
 }
 
@@ -83,7 +88,15 @@ impl Bottom {
                 let _ = wm::SetWindowPos(c, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
             }
         }
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, layout });
+        let immediate = win::edit_lines(hwnd, "", ID_IMMEDIATE, font);
+        let immediate_input = win::edit(hwnd, "", ID_IMMEDIATE_INPUT, font, false);
+        unsafe {
+            wm::SendMessageW(immediate, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
+            let _ = windows::Win32::UI::Shell::SetWindowSubclass(immediate_input, Some(input_proc), 31, 0);
+        }
+        layout.add(immediate, Item { bounds: Rect::new(0, 28, 800, 84), dock: Dock::None, anchor: Anchor::ALL });
+        layout.add(immediate_input, Item { bounds: Rect::new(0, 114, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -104,10 +117,22 @@ impl Bottom {
         win::show(self.tests, i == 7);
         win::show(self.show_errors, i == 0);
         win::show(self.show_warnings, i == 0);
+        win::show(self.immediate, i == 8);
+        win::show(self.immediate_input, i == 8);
     }
 
     pub fn relabel(&self) {
         controls::tabs_relabel(self.tabs, &labels());
+    }
+
+    /// One more line at the end of the Immediate window.
+    pub fn immediate_line(&self, line: &str) {
+        let w = win::wide(&format!("{line}\r\n"));
+        unsafe {
+            let n = wm::GetWindowTextLengthW(self.immediate) as usize;
+            wm::SendMessageW(self.immediate, 0x00B1 /* EM_SETSEL */, Some(WPARAM(n)), Some(LPARAM(n as isize)));
+            wm::SendMessageW(self.immediate, 0x00C2 /* EM_REPLACESEL */, Some(WPARAM(0)), Some(LPARAM(w.as_ptr() as isize)));
+        }
     }
 
     pub fn clear_output(&self) {
@@ -122,6 +147,23 @@ impl Bottom {
             wm::SendMessageW(self.output, 0x00B1 /* EM_SETSEL */, Some(WPARAM(n)), Some(LPARAM(n as isize)));
             wm::SendMessageW(self.output, 0x00C2 /* EM_REPLACESEL */, Some(WPARAM(0)), Some(LPARAM(w.as_ptr() as isize)));
         }
+    }
+}
+
+/// The Immediate window's box: Enter asks the debugger what was typed.
+unsafe extern "system" fn input_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
+    match msg {
+        wm::WM_GETDLGCODE => LRESULT(4 /* DLGC_WANTALLKEYS */),
+        wm::WM_KEYDOWN if w.0 == 0x0D => {
+            let text = win::text_of(h);
+            win::set_text(h, "");
+            if let Some(s) = crate::studio() {
+                s.immediate(text.trim());
+            }
+            LRESULT(0)
+        }
+        wm::WM_CHAR if w.0 == 0x0D => LRESULT(0),
+        _ => unsafe { windows::Win32::UI::Shell::DefSubclassProc(h, msg, w, l) },
     }
 }
 

@@ -556,6 +556,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Errors ({0})", "ข้อผิดพลาด ({0})"),
     ("Warnings ({0})", "คำเตือน ({0})"),
     ("Warnings", "คำเตือน"),
+    ("Immediate", "Immediate (คำนวณทันที)"),
+    ("Immediate Window", "หน้าต่าง Immediate"),
+    ("The program is not paused: start it with F5 and stop at a breakpoint.", "โปรแกรมไม่ได้หยุดอยู่: เริ่มด้วย F5 แล้วหยุดที่ breakpoint ก่อน"),
 ];
 
 #[cfg(test)]

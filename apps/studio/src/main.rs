@@ -112,6 +112,8 @@ const ID_ADD_WATCH: i32 = 237;
 const ID_BP_CONDITION: i32 = 238;
 /// `Evaluate` ids: Watch's own, and data tips from this up.
 const EVAL_WATCH: u64 = 1;
+/// The Immediate window's question.
+const EVAL_IMMEDIATE: u64 = 2;
 const EVAL_TIP: u64 = 1000;
 /// Posted by the debugger's thread for each thing it says; `LPARAM` is a `Box<phai_debug::Event>`.
 const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
@@ -152,6 +154,7 @@ const ID_PROJECT_PROPS: i32 = 269;
 const ID_MANAGE_CRATES: i32 = 270;
 const ID_SNIPPET: i32 = 271;
 const ID_CALLS: i32 = 272;
+const ID_IMMEDIATE: i32 = 273;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -939,6 +942,7 @@ fn build_menu() -> HMENU {
         add(debug, ID_STEP_OUT, t("Step Out"), "Shift+F11");
         sep(debug);
         add(debug, ID_ADD_WATCH, t("Add Watch..."), "Shift+F9");
+        add(debug, ID_IMMEDIATE, t("Immediate Window"), "Ctrl+Alt+I");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
@@ -2308,6 +2312,20 @@ impl Studio {
         }
     }
 
+    /// The Immediate window: an expression asked of the debugger while the program is paused -
+    /// a name, a path (`order.total`), a comparison - its answer written under it.
+    pub fn immediate(&mut self, expr: &str) {
+        if expr.is_empty() {
+            return;
+        }
+        let Some(b) = self.bottom.as_ref() else { return };
+        b.immediate_line(&format!("> {expr}"));
+        match (&self.debug, self.paused) {
+            (Some(d), true) => d.send(phai_debug::Command::Evaluate { id: EVAL_IMMEDIATE, exprs: vec![expr.to_string()] }),
+            _ => b.immediate_line(t("The program is not paused: start it with F5 and stop at a breakpoint.")),
+        }
+    }
+
     /// Batch Build, as Visual Studio's: every project of the solution in Debug and in Release,
     /// ticked to build; Build, Rebuild or Clean them one after another.
     fn batch_build(&mut self) {
@@ -3559,7 +3577,17 @@ impl Studio {
                 }
             },
             Event::Values { id, vars } => {
-                if id == EVAL_WATCH {
+                if id == EVAL_IMMEDIATE {
+                    for v in &vars {
+                        let line = if v.ty.is_empty() { v.value.clone() } else { format!("{}    {}", v.value, v.ty) };
+                        if DEBUG_TEST.load(Ordering::Relaxed) > 0 {
+                            println!("immediate: {line}");
+                        }
+                        if let Some(b) = self.bottom.as_ref() {
+                            b.immediate_line(&line);
+                        }
+                    }
+                } else if id == EVAL_WATCH {
                     if let Some(b) = self.bottom.as_ref() {
                         use windows::Win32::UI::Controls as cc;
                         unsafe {
@@ -3595,6 +3623,13 @@ impl Studio {
                 let vars: Vec<String> = locals.iter().map(|v| format!("{}={}", v.name, v.value)).collect();
                 println!("stopped {reason} at line {line}: {}", vars.join(", "));
                 let n = DEBUG_TEST.fetch_add(1, Ordering::Relaxed);
+                // `PHAI_IMMEDIATE=expr`: asked in the Immediate window at the first stop.
+                if n == 1 {
+                    if let Ok(q) = std::env::var("PHAI_IMMEDIATE") {
+                        self.paused = true;
+                        self.immediate(&q);
+                    }
+                }
                 if n == 2 && std::env::var_os("PHAI_SHOT").is_some() {
                     // The picture shows Watch at the second stop.
                     self.watches = vec!["x".into(), "y".into(), "y > 41".into()];
@@ -4652,6 +4687,13 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_IMMEDIATE => {
+                self.show_pane(Pane::Output, true);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(8);
+                    let _ = unsafe { km::SetFocus(Some(b.immediate_input)) };
+                }
+            }
             ID_CALLS => match self.code_shown() {
                 Some(h) => {
                     let Some(path) = self.doc.path.clone() else { return };
@@ -5432,6 +5474,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x47 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_GIT_CHANGES),
             0x54 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_OUTLINE),
+            0x49 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_IMMEDIATE),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
