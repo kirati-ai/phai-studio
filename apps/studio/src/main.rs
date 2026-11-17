@@ -20,6 +20,7 @@ mod text;
 mod toolbox;
 mod autohide;
 mod docking;
+mod servers;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -97,6 +98,10 @@ const ID_CLEAR_BPS: i32 = 230;
 const ID_BREAK_ALL: i32 = 231;
 const ID_DEBUG_BAR: i32 = 232;
 const BAND_DEBUG: u32 = 3;
+const ID_VIEW_SERVERS: i32 = 233;
+const ID_ADD_CONNECTION: i32 = 234;
+const ID_NEW_QUERY: i32 = 235;
+const ID_EXECUTE: i32 = 236;
 /// Posted by the debugger's thread for each thing it says; `LPARAM` is a `Box<phai_debug::Event>`.
 const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
 const BAND_STANDARD: u32 = 1;
@@ -274,6 +279,10 @@ pub struct Studio {
     bps: std::collections::HashMap<PathBuf, Vec<u32>>,
     /// The call stack of the last stop, for a double-click in its list.
     frames: Vec<phai_debug::Frame>,
+    /// Server Explorer: the data connections.
+    pub servers: Option<servers::Servers>,
+    /// Query files, by path: the connection and database each runs in.
+    queries: std::collections::HashMap<PathBuf, (usize, String)>,
     /// The Debug / Release box on the Standard bar.
     config: HWND,
     /// Places in code that F12, a reference or an error went from, for Navigate backward and
@@ -526,6 +535,10 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_EXPLORER, t("Project explorer"), "");
         add(view, ID_VIEW_PROPS, t("Properties"), "");
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
+        add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
+        if studio().is_some_and(|s| explorer::servers_shown(s.side)) {
+            wm::CheckMenuItem(view, ID_VIEW_SERVERS as u32, wm::MF_CHECKED.0);
+        }
         if let Some(s) = studio() {
             let (e, p) = explorer::side_panes(s.side);
             for (id, on) in [(ID_VIEW_TOOLBOX, s.toolbox_on), (ID_VIEW_EXPLORER, e), (ID_VIEW_PROPS, p), (ID_VIEW_OUTPUT, s.bottom_on)] {
@@ -597,6 +610,13 @@ fn build_menu() -> HMENU {
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
+        let data = wm::CreatePopupMenu().unwrap_or_default();
+        add(data, ID_ADD_CONNECTION, t("Add Connection..."), "");
+        add(data, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
+        sep(data);
+        add(data, ID_NEW_QUERY, t("New Query"), "");
+        add(data, ID_EXECUTE, t("Execute Query"), "Ctrl+Shift+E");
+        sub(t("D&ata"), data);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
         add(th, ID_THEME_IMPORT, t("Import CSS..."), "");
@@ -1781,6 +1801,102 @@ impl Studio {
         self.start_job_run(cargo::Job::Build, false, then_run);
     }
 
+    pub fn say_status(&self, text: &str) {
+        controls::status_text(self.status, 0, text);
+    }
+
+    pub fn rebuild_menu_pub(&self) {
+        self.rebuild_menu();
+    }
+
+    /// New Query: a `.sql` file of its own, tied to a connection and database, opened in the
+    /// editor; Ctrl+Shift+E runs it.
+    pub fn new_query(&mut self, conn: usize, db: &str, text: &str) {
+        let Some(dir) = settings_dir().map(|d| d.join("Queries")) else { return };
+        let _ = std::fs::create_dir_all(&dir);
+        let mut n = 1;
+        let path = loop {
+            let p = dir.join(format!("Query{n}.sql"));
+            if !p.exists() && !self.queries.contains_key(&p) {
+                break p;
+            }
+            n += 1;
+        };
+        let label = self.servers.as_ref().and_then(|s| s.conns.get(conn)).map(|c| c.label()).unwrap_or_default();
+        let head = format!("-- {label}{}\n-- {}\n", if db.is_empty() { String::new() } else { format!(" · {db}") }, t("Ctrl+Shift+E runs the query; its rows show under Results."));
+        if std::fs::write(&path, format!("{head}{text}")).is_err() {
+            return;
+        }
+        self.queries.insert(path.clone(), (conn, db.to_string()));
+        self.open_code(&path);
+    }
+
+    /// Runs the query file in front, waiting with a Cancel; its rows into Results.
+    fn execute_query(&mut self) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let Some((conn, db)) = self.queries.iter().find(|(p, _)| phai_editor::lsp::same_path(p, &path)).map(|(_, v)| v.clone()) else {
+            self.say_status(t("Open a query first: Data > New Query, or right-click a table in Server Explorer"));
+            return;
+        };
+        let Some(c) = self.servers.as_ref().and_then(|s| s.conns.get(conn)).cloned() else { return };
+        let sql = self.doc.code.map(phai_editor::view::text).unwrap_or_default();
+        // The query without the comment lines this file starts with.
+        let sql: String = sql.lines().filter(|l| !l.trim_start().starts_with("--")).collect::<Vec<_>>().join("\n");
+        if sql.trim().is_empty() {
+            return;
+        }
+        let db2 = db.clone();
+        let answer = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Execute Query"), t("Running the query..."), move |_| c.query((!db2.is_empty()).then_some(db2.as_str()), &sql));
+        match answer {
+            Some(Ok(grid)) => self.show_grid(&grid),
+            Some(Err(e)) => {
+                if let Some(b) = self.bottom.as_ref() {
+                    b.add_line(&e);
+                    b.show_tab(1);
+                }
+                self.show_pane(Pane::Output, true);
+                self.say_status(&e);
+            }
+            None => {}
+        }
+    }
+
+    /// Show Table Data: the first rows of a table, into Results.
+    pub fn show_table_rows(&mut self, conn: usize, db: &str, table: &str) {
+        let Some(c) = self.servers.as_ref().and_then(|s| s.conns.get(conn)).cloned() else { return };
+        let (db, table) = (db.to_string(), table.to_string());
+        match phai_ui::dialogs::wait_for(Some(self.hwnd), t("Show Table Data"), t("Running the query..."), move |_| c.table_rows(&db, &table)) {
+            Some(Ok(grid)) => self.show_grid(&grid),
+            Some(Err(e)) => {
+                win::message(Some(self.hwnd), &e, t("Show Table Data"), wm::MB_ICONWARNING);
+            }
+            None => {}
+        }
+    }
+
+    fn show_grid(&mut self, grid: &phai_data::Grid) {
+        let Some(list) = self.bottom.as_ref().map(|b| b.results) else { return };
+        if grid.columns.is_empty() {
+            win::list_columns(list, &[(t("Result"), 400)]);
+            let said = tf("{0} rows affected", &[&grid.affected]);
+            win::list_add(list, &[&said]);
+            self.say_status(&said);
+        } else {
+            let widths: Vec<(&str, i32)> = grid.columns.iter().map(|c| (c.as_str(), (c.chars().count() as i32 * 9 + 40).clamp(80, 260))).collect();
+            win::list_columns(list, &widths);
+            for r in &grid.rows {
+                let cells: Vec<&str> = r.iter().map(String::as_str).collect();
+                win::list_add(list, &cells);
+            }
+            let said = if grid.cut { tf("First {0} rows", &[&grid.rows.len()]) } else { tf("{0} rows", &[&grid.rows.len()]) };
+            self.say_status(&said);
+        }
+        self.show_pane(Pane::Output, true);
+        if let Some(b) = self.bottom.as_ref() {
+            b.show_tab(5);
+        }
+    }
+
     /// F5: build the project as Debug, then run it under the debugger.
     fn start_debugging(&mut self) {
         let was = self.release;
@@ -2871,6 +2987,31 @@ impl Studio {
                     d.send(phai_debug::Command::Pause);
                 }
             }
+            ID_VIEW_SERVERS => {
+                let on = !explorer::servers_shown(self.side);
+                if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
+                    self.show_pane(Pane::Explorer, true);
+                }
+                explorer::show_servers(self.side, on);
+                self.rebuild_menu();
+            }
+            ID_ADD_CONNECTION => {
+                explorer::show_servers(self.side, true);
+                let owner = self.hwnd;
+                if let Some(sv) = self.servers.as_mut() {
+                    sv.add_connection(owner, None);
+                }
+                self.rebuild_menu();
+            }
+            ID_NEW_QUERY => {
+                let has = self.servers.as_ref().is_some_and(|s| !s.conns.is_empty());
+                if has {
+                    self.new_query(0, "", "");
+                } else {
+                    self.command(ID_ADD_CONNECTION);
+                }
+            }
+            ID_EXECUTE => self.execute_query(),
             ID_TOGGLE_BP => {
                 if let Some(h) = self.doc.code {
                     phai_editor::view::toggle_breakpoint(h);
@@ -2977,7 +3118,19 @@ pub fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options 
 }
 
 /// Where Phai Studio keeps what it remembers for this person: `%APPDATA%\Phai Studio`.
+pub fn settings_dir_pub() -> Option<PathBuf> {
+    settings_dir()
+}
+
+pub fn copy_text(owner: HWND, text: &str) {
+    set_clipboard(owner, text);
+}
+
 fn settings_dir() -> Option<PathBuf> {
+    // `PHAI_SETTINGS_DIR`: settings of a test's own, the person's left alone.
+    if let Some(d) = std::env::var_os("PHAI_SETTINGS_DIR") {
+        return Some(PathBuf::from(d));
+    }
     Some(PathBuf::from(std::env::var_os("APPDATA")?).join("Phai Studio"))
 }
 
@@ -3250,6 +3403,8 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         let shift = unsafe { km::GetKeyState(0x10) } < 0;
         let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
         match msg.wParam.0 {
+            0x45 if ctrl && shift => return Some(ID_EXECUTE),
+            0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
             0x78 => return Some(ID_TOGGLE_BP),
             0x7A if shift => return Some(ID_STEP_OUT),
@@ -3449,6 +3604,8 @@ fn main() {
             debug_after_build: false,
             bps: std::collections::HashMap::new(),
             frames: vec![],
+            servers: None,
+            queries: std::collections::HashMap::new(),
             config,
             nav: vec![],
             nav_at: 0,
@@ -3483,7 +3640,9 @@ fn main() {
         let side = explorer::side_panel(hwnd);
         let explorer = explorer::Explorer::new(side, font);
         let props = Props::new(side, ID_PROPS, font);
-        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd, font);
+        let servers = servers::Servers::new(side, font);
+        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd, servers.tree, font);
+        s.servers = Some(servers);
         let canvas = Canvas::new(hwnd, ID_CANVAS);
         let side_split = controls::splitter(hwnd, ID_SPLIT_SIDE, true);
         s.side = side;
@@ -3634,6 +3793,16 @@ fn main() {
         if args.iter().any(|a| a == "--buildtest") {
             BUILD_TEST.store(true, Ordering::Relaxed);
             s.start_build(false);
+        }
+        // `--servers`: Server Explorer shown - checked by picture.
+        if args.iter().any(|a| a == "--servers") {
+            explorer::show_servers(s.side, true);
+            // `--expand-servers`: the first connection opened, as a click on its [+] does.
+            if args.iter().any(|a| a == "--expand-servers") {
+                if let Some(sv) = s.servers.as_mut() {
+                    sv.expand_first();
+                }
+            }
         }
         // `--debugtest`: see `debug_test_step`.
         if args.iter().any(|a| a == "--debugtest") {

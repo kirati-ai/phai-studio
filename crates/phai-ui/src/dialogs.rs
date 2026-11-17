@@ -246,3 +246,147 @@ pub fn wait_for<T: Send + 'static>(owner: Option<HWND>, title: &str, text: &str,
     }
     rx.recv().ok()
 }
+
+// --- a form of several fields ------------------------------------------------------------------
+
+/// A field of [`ask_fields`]: its label, what it starts with, and what kind of box it is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Field<'a> {
+    Text(&'a str, &'a str),
+    Password(&'a str, &'a str),
+    Check(&'a str, bool),
+}
+
+struct Fields {
+    boxes: Vec<(HWND, HWND, bool)>,
+    ok: HWND,
+    cancel: HWND,
+    answer: Option<Vec<String>>,
+    done: bool,
+    font: Gdi::HFONT,
+}
+
+extern "system" fn fields_proc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    let Some(s) = (unsafe { win::state::<Fields>(hwnd) }) else { return win::def(hwnd, msg, w, l) };
+    match msg {
+        wm::WM_SIZE => {
+            let cw = win::loword(l.0 as usize) as i32;
+            let ch = win::hiword(l.0 as usize) as i32;
+            let (m, row, gap) = (win::px(hwnd, 11), win::px(hwnd, 23), win::px(hwnd, 8));
+            let label_w = win::px(hwnd, 110);
+            let mut y = m;
+            for (label, b, check) in &s.boxes {
+                if *check {
+                    win::move_to(*b, m + label_w, y, cw - 2 * m - label_w, row);
+                } else {
+                    win::move_to(*label, m, y, label_w - gap, row);
+                    win::move_to(*b, m + label_w, y, cw - 2 * m - label_w, row);
+                }
+                y += row + gap;
+            }
+            let (bw, bh) = (win::px(hwnd, 75), win::px(hwnd, 23));
+            win::move_to(s.cancel, cw - m - bw, ch - m - bh, bw, bh);
+            win::move_to(s.ok, cw - m - 2 * bw - win::px(hwnd, 7), ch - m - bh, bw, bh);
+            LRESULT(0)
+        }
+        wm::WM_COMMAND => {
+            match win::loword(w.0) as i32 {
+                ID_OK => {
+                    s.answer = Some(
+                        s.boxes
+                            .iter()
+                            .map(|(_, b, check)| if *check { if win::is_checked(*b) { "1".into() } else { "0".into() } } else { win::text_of(*b) })
+                            .collect(),
+                    );
+                    s.done = true;
+                }
+                ID_CANCEL => s.done = true,
+                _ => {}
+            }
+            LRESULT(0)
+        }
+        wm::WM_CLOSE => {
+            s.done = true;
+            LRESULT(0)
+        }
+        wm::WM_NCDESTROY => {
+            if let Some(s) = unsafe { win::take_state::<Fields>(hwnd) } {
+                unsafe {
+                    let _ = Gdi::DeleteObject(s.font.into());
+                }
+            }
+            LRESULT(0)
+        }
+        _ => win::def(hwnd, msg, w, l),
+    }
+}
+
+/// Asks for several things at once - a server, a port, a user, a password - each with its label.
+/// The answers in order, a check box's as "1" or "0"; `None` when cancelled.
+pub fn ask_fields(owner: Option<HWND>, title: &str, fields: &[Field]) -> Option<Vec<String>> {
+    win::init();
+    let class = win::register("PhaiAskFields", Some(fields_proc), None);
+    let t_ = wide(title);
+    unsafe {
+        let hwnd = wm::CreateWindowExW(wm::WS_EX_DLGMODALFRAME, windows::core::PCWSTR(class.as_ptr()), windows::core::PCWSTR(t_.as_ptr()), wm::WS_POPUP | wm::WS_CAPTION | wm::WS_SYSMENU, 0, 0, 100, 100, owner, None, Some(win::instance()), None).unwrap_or_default();
+        let font = win::font(hwnd, 0, false);
+        let mut boxes = Vec::new();
+        for (k, f) in fields.iter().enumerate() {
+            let id = ID_EDIT + 10 + k as i32;
+            match f {
+                Field::Text(label, initial) | Field::Password(label, initial) => {
+                    let l = win::label(hwnd, label, 0, font);
+                    let e = win::edit(hwnd, initial, id, font, matches!(f, Field::Password(..)));
+                    boxes.push((l, e, false));
+                }
+                Field::Check(label, on) => {
+                    let c = win::checkbox(hwnd, label, id, font, *on);
+                    boxes.push((HWND::default(), c, true));
+                }
+            }
+        }
+        let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
+        let cancel = win::button(hwnd, t("Cancel"), ID_CANCEL, font, false);
+        let first = boxes.first().map(|b| b.1).unwrap_or_default();
+        win::set_state(hwnd, Box::new(Fields { boxes, ok, cancel, answer: None, done: false, font }));
+        let rows = fields.len() as i32;
+        let (w, h) = (win::px(hwnd, 400), win::px(hwnd, 11 * 2 + rows * 31 + 23 + 50));
+        let mut r = Default::default();
+        match owner {
+            Some(o) => {
+                let _ = wm::GetWindowRect(o, &mut r);
+            }
+            None => {
+                let _ = wm::SystemParametersInfoW(wm::SPI_GETWORKAREA, 0, Some(&mut r as *mut _ as *mut _), Default::default());
+            }
+        }
+        let _ = wm::SetWindowPos(hwnd, None, r.left + (r.right - r.left - w) / 2, r.top + (r.bottom - r.top - h) / 2, w, h, wm::SWP_NOZORDER);
+        win::theme_frame(hwnd);
+        if let Some(o) = owner {
+            win::enable(o, false);
+        }
+        win::show_top(hwnd);
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(first));
+        let mut msg = wm::MSG::default();
+        loop {
+            if win::state::<Fields>(hwnd).is_none_or(|s| s.done) {
+                break;
+            }
+            if !wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                wm::PostQuitMessage(msg.wParam.0 as i32);
+                break;
+            }
+            if !wm::IsDialogMessageW(hwnd, &msg).as_bool() {
+                let _ = wm::TranslateMessage(&msg);
+                wm::DispatchMessageW(&msg);
+            }
+        }
+        let answer = win::state::<Fields>(hwnd).and_then(|s| s.answer.take());
+        if let Some(o) = owner {
+            win::enable(o, true);
+            let _ = wm::SetForegroundWindow(o);
+        }
+        let _ = wm::DestroyWindow(hwnd);
+        answer
+    }
+}

@@ -803,6 +803,20 @@ pub fn list(parent: HWND, id: i32, f: HFONT, columns: &[(&str, i32)]) -> HWND {
 }
 
 /// Adds a row of `cells` at the end.
+/// Gives a list new columns - a query's result has its own - and no rows.
+pub fn list_columns(h: HWND, columns: &[(&str, i32)]) {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        wm::SendMessageW(h, cc::LVM_DELETEALLITEMS, None, None);
+        while wm::SendMessageW(h, cc::LVM_DELETECOLUMN, Some(WPARAM(0)), None).0 != 0 {}
+        for (i, (heading, width)) in columns.iter().enumerate() {
+            let mut text = wide(heading);
+            let col = cc::LVCOLUMNW { mask: cc::LVCF_TEXT | cc::LVCF_WIDTH, cx: px(h, *width), pszText: windows::core::PWSTR(text.as_mut_ptr()), ..Default::default() };
+            wm::SendMessageW(h, cc::LVM_INSERTCOLUMNW, Some(WPARAM(i)), Some(LPARAM(&col as *const _ as isize)));
+        }
+    }
+}
+
 pub fn list_add(h: HWND, cells: &[&str]) {
     use windows::Win32::UI::Controls as cc;
     unsafe {

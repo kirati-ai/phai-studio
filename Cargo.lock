@@ -490,6 +490,7 @@ dependencies = [
 name = "phai-studio"
 version = "0.1.0"
 dependencies = [
+ "phai-data",
  "phai-debug",
  "phai-design",
  "phai-editor",

@@ -418,8 +418,7 @@ impl Conn {
         let mut out = Vec::new();
         loop {
             let first = self.read_packet()?;
-            let more;
-            match first.first() {
+            let more = match first.first() {
                 Some(0x00) => {
                     let mut c = Cur::new(&first);
                     c.u8();
@@ -427,7 +426,7 @@ impl Conn {
                     c.lenenc();
                     let status = c.u16();
                     out.push((Result1 { affected, ..Default::default() }, false));
-                    more = status & SERVER_MORE_RESULTS != 0;
+                    status & SERVER_MORE_RESULTS != 0
                 }
                 Some(0xFF) => return Err(server_error(&first)),
                 Some(0xFB) => return Err(err("the server asked for a local file; that is not done")),
@@ -475,9 +474,9 @@ impl Conn {
                         rows.push(row);
                     }
                     out.push((Result1 { columns, rows, affected: 0 }, cut));
-                    more = status & SERVER_MORE_RESULTS != 0;
+                    status & SERVER_MORE_RESULTS != 0
                 }
-            }
+            };
             if !more {
                 return Ok(out);
             }
