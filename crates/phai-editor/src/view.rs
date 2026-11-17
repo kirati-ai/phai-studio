@@ -30,6 +30,8 @@ pub const RENAME: u16 = 0x0304;
 pub const REFERENCES: u16 = 0x0305;
 /// A breakpoint was set or taken away (F9, or a click in the margin): see [`breakpoints`].
 pub const BREAKPOINTS: u16 = 0x0306;
+/// Peek Definition was asked for (Alt+F12) at [`caret_lsp`]: see [`show_peek`].
+pub const PEEK: u16 = 0x0307;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -78,6 +80,8 @@ struct View {
     hover: Option<(usize, i32, i32)>,
     tracking: bool,
     tip: Option<Box<crate::popup::Popup>>,
+    /// The tip is a Peek Definition: it stays while the pointer moves, until Esc or a change.
+    peeking: bool,
     list: Option<Box<crate::popup::Popup>>,
     /// Every completion the server gave; the list shows those that start with what is typed.
     all_items: Vec<crate::lsp::Completion>,
@@ -216,7 +220,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -342,6 +346,20 @@ pub fn show_tip(h: HWND, text: &str) {
 
 fn hide_tip(v: &mut View) {
     v.tip = None;
+    v.peeking = false;
+}
+
+/// Peek Definition: `text` (a heading line, then the code) in a window under the caret's line,
+/// kept until Esc, a click or a change - the file and the caret stay where they are.
+pub fn show_peek(h: HWND, text: &str) {
+    let Some(v) = view(h) else { return };
+    let mut pt = windows::Win32::Foundation::POINT::default();
+    unsafe {
+        let _ = wm::GetCaretPos(&mut pt);
+        let _ = Gdi::ClientToScreen(h, &mut pt);
+    }
+    v.tip = Some(crate::popup::Popup::tip(h, v.font, text, pt.x, pt.y + v.line_h));
+    v.peeking = true;
 }
 
 /// The identifier being typed before the caret - what a completion replaces.
@@ -1133,6 +1151,11 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
             _ => {}
         }
     }
+    // Esc closes a peek.
+    if vk == 0x1B && v.peeking {
+        hide_tip(v);
+        return true;
+    }
     if vk == 0x20 && ctrl {
         notify(h, COMPLETE);
         return true;
@@ -1305,6 +1328,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         }
         // Alt+Up and Alt+Down: the lines move, as in Visual Studio.
+        // Alt+F12: Peek Definition.
+        wm::WM_SYSKEYDOWN if w.0 == 0x7B => {
+            notify(h, PEEK);
+            LRESULT(0)
+        }
         wm::WM_SYSKEYDOWN if matches!(w.0, 0x26 | 0x28) => {
             v.list = None;
             if v.model.move_lines(w.0 == 0x26) {
@@ -1377,8 +1405,8 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         }
         wm::WM_MOUSEMOVE if !v.dragging => {
-            // Rest the pointer and a hover is asked; move it and any tip goes.
-            if v.tip.is_some() {
+            // Rest the pointer and a hover is asked; move it and any tip goes - not a peek.
+            if v.tip.is_some() && !v.peeking {
                 hide_tip(v);
             }
             if !v.tracking {
@@ -1417,11 +1445,16 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         0x02A3 /* WM_MOUSELEAVE */ => {
             v.tracking = false;
-            hide_tip(v);
+            if !v.peeking {
+                hide_tip(v);
+            }
             LRESULT(0)
         }
         wm::WM_LBUTTONDOWN | wm::WM_MOUSEMOVE if msg == wm::WM_LBUTTONDOWN || v.dragging => {
             v.list = None;
+            if msg == wm::WM_LBUTTONDOWN && v.peeking {
+                hide_tip(v);
+            }
             let (x, y) = win::point_of(l);
             unsafe {
                 let dc = Gdi::GetDC(Some(h));
