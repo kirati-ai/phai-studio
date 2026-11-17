@@ -29,6 +29,7 @@ mod gotoall;
 mod crates;
 mod diag;
 mod attach;
+mod githistory;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -163,6 +164,8 @@ const ID_DETACH: i32 = 276;
 const ID_BREAKPOINTS_WIN: i32 = 277;
 const ID_THREADS_WIN: i32 = 278;
 const ID_EXCEPTIONS: i32 = 279;
+const ID_GIT_HISTORY: i32 = 280;
+const ID_GIT_BLAME: i32 = 281;
 
 /// Exception Settings: the Windows exceptions that can stop the program as soon as they happen.
 const EXCEPTIONS: [(u32, &str); 6] = [
@@ -389,6 +392,9 @@ pub struct Studio {
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
+    /// Git line blame: shown after the caret's line, each line's for the file in front.
+    blame_on: bool,
+    blame: Vec<String>,
     /// The Threads window's rows: each thread's id.
     thread_ids: Vec<u32>,
     /// The call stack of the last stop, for a double-click in its list.
@@ -1002,6 +1008,12 @@ fn build_menu() -> HMENU {
         sub(t("&Test"), test);
         let gitm = wm::CreatePopupMenu().unwrap_or_default();
         add(gitm, ID_GIT_CHANGES, t("Git Changes..."), "Ctrl+Alt+G");
+        sep(gitm);
+        add(gitm, ID_GIT_HISTORY, t("View History of This File..."), "");
+        add(gitm, ID_GIT_BLAME, t("Show Line Blame"), "");
+        if studio().is_some_and(|s| s.blame_on) {
+            wm::CheckMenuItem(gitm, ID_GIT_BLAME as u32, wm::MF_CHECKED.0);
+        }
         sub(t("&Git"), gitm);
         let data = wm::CreatePopupMenu().unwrap_or_default();
         add(data, ID_ADD_CONNECTION, t("Add Connection..."), "");
@@ -1331,6 +1343,34 @@ impl Studio {
             LOCK => set(self, Key::Locked, if c.locked == Some(true) { "False" } else { "True" }),
             _ => {}
         }
+    }
+
+    /// The code file's lenses drawn: the references counted, and the caret line's blame after.
+    fn show_lenses(&self) {
+        let Some(h) = self.doc.code else { return };
+        let mut all = self.lenses.clone();
+        if self.blame_on {
+            let line = phai_editor::view::caret_line(h).saturating_sub(1);
+            if let Some(words) = self.blame.get(line as usize) {
+                match all.iter_mut().find(|x| x.0 == line) {
+                    Some(x) => x.2 = format!("{}  ·  {words}", x.2),
+                    None => all.push((line, (line, u32::MAX), words.clone())),
+                }
+            }
+        }
+        phai_editor::view::set_lenses(h, all);
+    }
+
+    /// Git blame of the code file in front read again (from what is saved), when it is shown.
+    fn refresh_blame(&mut self) {
+        self.blame = match (self.blame_on, self.doc.code, self.doc.path.clone()) {
+            (true, Some(_), Some(p)) => match (gitpane::repository_of(&p), std::path::absolute(&p)) {
+                (Some(repo), Ok(file)) => githistory::blame(&repo, &file),
+                _ => vec![],
+            },
+            _ => vec![],
+        };
+        self.show_lenses();
     }
 
     /// Code lenses for the code file in front: asked of the language server, then each worked out.
@@ -1863,7 +1903,7 @@ impl Studio {
                         }
                     }
                 }
-                phai_editor::view::set_lenses(h, vec![]);
+                self.show_lenses();
             }
             Ask::LensUses(round, line, at) => {
                 if round == self.lens_round {
@@ -1876,7 +1916,7 @@ impl Studio {
                         all.sort();
                         println!("lenses: {}", all.iter().map(|(l, _, w)| format!("line {} {w}", l + 1)).collect::<Vec<_>>().join(", "));
                     }
-                    phai_editor::view::set_lenses(h, self.lenses.clone());
+                    self.show_lenses();
                 }
             }
             Ask::Outline => {
@@ -2849,6 +2889,7 @@ impl Studio {
             self.refresh_outline();
             self.refresh_lenses();
             self.mark_breakpoints();
+            self.refresh_blame();
         }
         self.refresh_props();
         self.say_title();
@@ -2960,6 +3001,9 @@ impl Studio {
         if let Some(h) = self.doc.code {
             let (l, c) = phai_editor::view::caret_position(h);
             controls::status_text(self.status, 1, &tf("Line {0}, column {1}", &[&l, &c]));
+            if self.blame_on {
+                self.show_lenses();
+            }
             return;
         }
         let f = &self.doc.form;
@@ -5198,6 +5242,18 @@ impl Studio {
             }
             ID_START_WINDOW => self.start_window(),
             ID_RUN_TESTS => self.start_job(cargo::Job::Test, false),
+            ID_GIT_HISTORY => match self.doc.path.clone().and_then(|p| Some((gitpane::repository_of(&p)?, std::path::absolute(&p).ok()?))) {
+                Some((repo, file)) => githistory::open(self.hwnd, &repo, &file),
+                None => {
+                    win::message(Some(self.hwnd), t("This file is not in a Git repository."), t("View History of This File..."), wm::MB_ICONINFORMATION);
+                }
+            },
+            ID_GIT_BLAME => {
+                self.blame_on = !self.blame_on;
+                remember_setting("blame", if self.blame_on { "1" } else { "0" });
+                self.refresh_blame();
+                self.rebuild_menu();
+            }
             ID_GIT_CHANGES => {
                 let from = self.doc.path.clone().or_else(|| std::env::current_dir().ok());
                 match from.as_deref().and_then(gitpane::repository_of) {
@@ -6160,6 +6216,8 @@ fn main() {
             bp_rows: vec![],
             bp_filling: false,
             thread_ids: vec![],
+            blame_on: setting("blame").as_deref() == Some("1"),
+            blame: vec![],
             frames: vec![],
             servers: None,
             watches: vec![],
@@ -6409,6 +6467,29 @@ fn main() {
             if let Some(h) = s.doc.code {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
+            }
+        }
+        // `--history-test`: Git > View History of the file in front, printed; `--blame-test`: its
+        // blame, the caret's line shown.
+        if args.iter().any(|a| a == "--history-test") {
+            std::env::set_var("PHAI_HISTORY_TEST", "1");
+            s.command(ID_GIT_HISTORY);
+            std::process::exit(0);
+        }
+        if args.iter().any(|a| a == "--blame-test") {
+            if !s.blame_on {
+                s.command(ID_GIT_BLAME);
+            }
+            if let (Some(h), Some(l)) = (s.doc.code, std::env::var("PHAI_BLAME_LINE").ok().and_then(|l| l.parse().ok())) {
+                phai_editor::view::go_to(h, l, 1);
+                s.show_lenses();
+            }
+            println!("blamed lines: {}", s.blame.len());
+            for (i, b) in s.blame.iter().enumerate().take(3) {
+                println!("line {}: {}", i + 1, b.split(',').nth(1).unwrap_or(b).trim());
+            }
+            if std::env::var_os("PHAI_SHOT").is_none() {
+                std::process::exit(0);
             }
         }
         // `--exceptions-test`: Exception Settings set from `PHAI_EXCEPTIONS_TEST`, then read back.

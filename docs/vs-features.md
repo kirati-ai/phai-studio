@@ -142,3 +142,5 @@
 | | หน้าต่าง Breakpoints (Debug, Ctrl+Alt+B): ทุก breakpoint ทุกไฟล์ พร้อมเงื่อนไขและ Hit Count, ติ๊กออกเพื่อปิดชั่วคราว (วงกลมกลวงในขอบซ้าย ดีบักเกอร์ไม่หยุด), Delete ลบ, ดับเบิลคลิกไปที่บรรทัด | ✅ |
 | | หน้าต่าง Threads (Debug, Ctrl+Alt+H): ทุกเธรดตอนหยุด - รหัส ชื่อ (main, ชื่อจาก thread::Builder) และฟังก์ชันที่อยู่; ดับเบิลคลิกเพื่อสลับไปดู call stack และ locals ของเธรดนั้น - ทดสอบกับโปรแกรมหลายเธรดจริง | ✅ |
 | | Exception Settings (Debug, Ctrl+Alt+E): หยุดเมื่อ panic หรือไม่ และหยุดทันทีที่เกิด (first-chance) สำหรับ access violation, หารด้วยศูนย์, overflow, illegal instruction, stack overflow, C++ exception - จำไว้ และส่งให้ดีบักเกอร์; แก้การหยุดที่ panic ให้ใช้ได้กับ Rust รุ่นใหม่ (std::panicking::rust_panic) - ทดสอบแล้ว | ✅ |
+| | Git > View History of This File: ทุก commit ที่แก้ไฟล์นี้ (ตามการเปลี่ยนชื่อด้วย) - ผู้เขียน วันที่ ข้อความ, เลือกแล้วเห็น diff ของไฟล์ใน commit นั้น - ทดสอบกับ repo นี้ | ✅ |
+| | Git > Show Line Blame: ใครแก้บรรทัดที่เคอร์เซอร์อยู่ล่าสุด เมื่อไร และข้อความ commit ต่อท้ายบรรทัดแบบจาง ๆ (อ่านจาก git blame ของไฟล์ที่บันทึกแล้ว) เปิด/ปิดได้ จำไว้ | ✅ |

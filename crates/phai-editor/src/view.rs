@@ -1038,6 +1038,10 @@ pub fn set_lenses(h: HWND, lenses: Vec<(u32, (u32, u32), String)>) {
 fn lens_at(h: HWND, v: &View, x: i32, y: i32) -> Option<(u32, u32)> {
     let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize);
     let (_, at, words) = v.lenses.iter().find(|(l, _, _)| *l == line)?;
+    // Words only (a line's blame): nothing to click.
+    if at.1 == u32::MAX {
+        return None;
+    }
     unsafe {
         let dc = Gdi::GetDC(Some(h));
         let old = Gdi::SelectObject(dc, v.font.into());
