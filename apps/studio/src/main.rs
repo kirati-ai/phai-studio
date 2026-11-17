@@ -125,6 +125,7 @@ const ID_CHORD: i32 = 247;
 const ID_CHORD_END: i32 = 248;
 const ID_FIND_IN_FILES: i32 = 249;
 const ID_TASK_LIST: i32 = 250;
+const ID_PARAM_INFO: i32 = 251;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -241,6 +242,8 @@ enum Ask {
     Definition,
     /// Peek Definition: the place shown in a window, not opened.
     Peek,
+    /// Parameter Info: what the call takes.
+    Signature,
     /// Whether the name at this place in this file may be renamed.
     PrepareRename(PathBuf, (u32, u32)),
     /// The changes that rename `old` to `new`.
@@ -653,6 +656,7 @@ fn build_menu() -> HMENU {
         sep(edit);
         add(edit, ID_GO_DEFINITION, t("Go To Definition"), "F12");
         add(edit, ID_PEEK, t("Peek Definition"), "Alt+F12");
+        add(edit, ID_PARAM_INFO, t("Parameter Info"), "Ctrl+Shift+Space");
         add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
@@ -1425,6 +1429,15 @@ impl Studio {
                 }
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
+            Ask::Signature => {
+                if let Some(text) = phai_editor::lsp::signature_text(&result) {
+                    if std::env::var_os("PHAI_SIG_TEST").is_some() {
+                        println!("signature {}", text.lines().next().unwrap_or_default());
+                        LSP_TEST.store(9, Ordering::Relaxed);
+                    }
+                    phai_editor::view::show_peek(h, &text);
+                }
+            }
             Ask::Peek => match phai_editor::lsp::locations_of(&result).into_iter().next() {
                 Some(place) => {
                     let text = std::fs::read_to_string(&place.path).unwrap_or_default();
@@ -1531,6 +1544,15 @@ impl Studio {
             phai_editor::view::go_to(h, 2, col);
         };
         match LSP_TEST.load(Ordering::Relaxed) {
+            // `PHAI_SIG_TEST`: Parameter Info inside the call on line 2, asked until it answers.
+            0 | 1 if std::env::var_os("PHAI_SIG_TEST").is_some() => {
+                on_call(h);
+                let (l, c) = phai_editor::view::caret_position(h);
+                phai_editor::view::go_to(h, l, c + 6);
+                self.lsp_signature(h);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
+            9 if std::env::var_os("PHAI_SIG_TEST").is_some() && std::env::var_os("PHAI_SHOT").is_none() => std::process::exit(0),
             // `PHAI_PEEK_TEST`: Peek Definition instead, asked again until it answers.
             0 | 1 if std::env::var_os("PHAI_PEEK_TEST").is_some() => {
                 on_call(h);
@@ -1581,6 +1603,16 @@ impl Studio {
                 self.asked.insert(id, (h, Ask::Definition));
             }
             None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
+        }
+    }
+
+    /// Parameter Info in an editor: what the call the caret is in takes, under the caret.
+    pub fn lsp_signature(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let pos = phai_editor::view::caret_lsp(h);
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.signature_help(&path, pos.0, pos.1);
+            self.asked.insert(id, (h, Ask::Signature));
         }
     }
 
@@ -3630,6 +3662,10 @@ impl Studio {
             ID_FORMAT_DOC => self.format_document(),
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_PARAM_INFO => match self.code_shown() {
+                Some(h) => self.lsp_signature(h),
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_CHORD_END => controls::status_text(self.status, 0, t("That key combination is not a command")),
             ID_PEEK => match self.code_shown() {
                 Some(h) => self.lsp_peek(h),
