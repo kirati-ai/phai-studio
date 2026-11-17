@@ -261,3 +261,50 @@ fn threads_are_listed_and_one_can_be_looked_at() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+
+const FAULTS: &str = r#"fn main() {
+    let which = std::env::args().nth(1).unwrap_or_default();
+    if which == "panic" {
+        let v: Vec<u8> = Vec::new();
+        println!("{}", v[3]);
+    } else {
+        unsafe { std::ptr::null_mut::<u8>().write_volatile(1) };
+    }
+}
+"#;
+
+/// The first stop, or how the program ended.
+fn first_stop(exe: &Path, dir: &Path, arg: &str, settings: Command) -> Result<String, u32> {
+    let (tx, rx) = channel();
+    let _ = arg;
+    let s = Session::launch(exe, dir, vec![], move |e| {
+        let _ = tx.send(e);
+    });
+    s.send(settings);
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::Stopped { reason, .. } => {
+                s.send(Command::Stop);
+                return Ok(reason);
+            }
+            Event::Exited(c) => return Err(c),
+            Event::Failed(e) => panic!("{e}"),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn exception_settings_decide_what_stops() {
+    let dir = std::env::temp_dir().join(format!("phai-debug-exc-{}", std::process::id()));
+    let Some(exe) = build_text(&dir, &FAULTS.replace("std::env::args().nth(1).unwrap_or_default()", "String::from(\"panic\")")) else { return };
+    // A panic stops it - or, turned off, it ends as a panic ends a program (101).
+    assert_eq!(first_stop(&exe, &dir, "", Command::Exceptions { panics: true, first_chance: vec![] }), Ok("panic".into()));
+    assert_eq!(first_stop(&exe, &dir, "", Command::Exceptions { panics: false, first_chance: vec![] }), Err(101));
+    let dir2 = dir.join("av");
+    let Some(exe) = build_text(&dir2, &FAULTS.replace("std::env::args().nth(1).unwrap_or_default()", "String::new()")) else { return };
+    // An access violation stops it when nothing handles it - or at once, when asked.
+    assert_eq!(first_stop(&exe, &dir2, "", Command::Exceptions { panics: true, first_chance: vec![] }), Ok("exception 0xC0000005".into()));
+    assert_eq!(first_stop(&exe, &dir2, "", Command::Exceptions { panics: true, first_chance: vec![0xC000_0005] }), Ok("first-chance exception 0xC0000005".into()));
+    let _ = std::fs::remove_dir_all(&dir);
+}
