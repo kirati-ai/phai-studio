@@ -534,6 +534,20 @@ pub static THAI: &[(&str, &str)] = &[
     ("Description:", "คำอธิบาย:"),
     ("Authors (comma between):", "ผู้เขียน (คั่นด้วยจุลภาค):"),
     ("A package name is letters, digits, - and _ only.", "ชื่อแพ็กเกจใช้ได้แค่ตัวอักษร ตัวเลข - และ _"),
+    ("Manage Crates - {0}", "จัดการ Crate - {0}"),
+    ("Crate", "Crate (แพ็กเกจ)"),
+    ("Downloads", "ดาวน์โหลด"),
+    ("Browse crates.io", "ค้นหาจาก crates.io"),
+    ("Installed", "ที่ใช้อยู่"),
+    ("Search", "ค้นหา"),
+    ("Add", "เพิ่ม"),
+    ("Remove", "ลบ"),
+    ("this computer", "ในเครื่องนี้"),
+    ("the workspace's", "ของ workspace"),
+    ("crates.io could not be reached.", "ติดต่อ crates.io ไม่ได้"),
+    ("Searching crates.io...", "กำลังค้นหาใน crates.io..."),
+    ("{0} crates found", "พบ {0} crate"),
+    ("Description", "คำอธิบาย"),
 ];
 
 #[cfg(test)]

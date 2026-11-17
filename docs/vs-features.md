@@ -129,3 +129,4 @@
 | | Bookmarks: Ctrl+K Ctrl+K ใส่/เอา, Ctrl+K Ctrl+N ถัดไป, Ctrl+K Ctrl+P ก่อนหน้า, Ctrl+K Ctrl+L ล้าง - ธงในขอบซ้าย ย้ายตามบรรทัดเมื่อแก้โค้ด | ✅ |
 | | ค้นหา/แทนที่: ตรงตัวพิมพ์ (Aa), ทั้งคำ (ab|), regular expression (.*) แทนที่ด้วยกลุ่ม $1 ได้ | ✅ |
 | ★ | Project > Properties (Alt+F7): ชื่อแพ็กเกจ, เวอร์ชัน, Rust edition, คำอธิบาย, ผู้เขียน - เขียนลง Cargo.toml โดยไม่แตะส่วนอื่น | ✅ |
+| ★ | Project > Manage Crates (แบบ NuGet Package Manager): ค้นหา crates.io (ชื่อ, เวอร์ชันล่าสุด, ยอดดาวน์โหลด, คำอธิบาย), รายการ crate ที่ใช้อยู่, Add/Remove ด้วย cargo add / cargo remove - ทดสอบค้นหา เพิ่ม และลบจริง | ✅ |
