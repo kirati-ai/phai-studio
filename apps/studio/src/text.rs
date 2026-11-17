@@ -495,6 +495,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Batch Build", "สร้างเป็นชุด"),
     ("Build, Rebuild or Clean:", "Build, Rebuild หรือ Clean:"),
     ("Batch Build: {0} builds", "สร้างเป็นชุด: {0} รายการ"),
+    ("New Window", "หน้าต่างใหม่"),
 ];
 
 #[cfg(test)]
