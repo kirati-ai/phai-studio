@@ -140,6 +140,7 @@ const ID_FOLD_ALL: i32 = 259;
 const ID_SPLIT: i32 = 260;
 const ID_BATCH_BUILD: i32 = 261;
 const ID_NEW_WINDOW: i32 = 262;
+const ID_CLOSE_PEEK: i32 = 263;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -347,6 +348,8 @@ pub struct Studio {
     split_share: i32,
     /// New Window: the code file in front, also in windows of their own - (window, editor).
     pub windows: Vec<(HWND, HWND)>,
+    /// Peek Definition's window: its frame, its editor, the file, whether it was changed.
+    pub peek: Option<(HWND, HWND, PathBuf, bool)>,
     /// Document Outline's tree.
     outline: Option<outline::Outline>,
     /// The last Run Tests, as the Tests list shows them.
@@ -460,6 +463,43 @@ fn task_words(line: &str) -> bool {
     let Some(i) = line.find("//") else { return false };
     let rest = line[i..].trim_start_matches('/').trim_start_matches('!').trim_start();
     ["TODO", "FIXME", "HACK", "UNDONE"].iter().any(|w| rest.starts_with(w) && !rest[w.len()..].starts_with(|c: char| c.is_alphanumeric()))
+}
+
+/// Peek Definition's window: its editor fills it; a change, Escape, or leaving it is the studio's.
+extern "system" fn peek_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_SIZE => {
+            if let Some(e) = studio().and_then(|s| s.peek.as_ref().filter(|p| p.0 == h).map(|p| p.1)) {
+                win::move_to(e, 0, 0, win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
+            }
+            LRESULT(0)
+        }
+        wm::WM_COMMAND => {
+            let code = win::hiword(w.0);
+            if let Some(s) = studio() {
+                if code == phai_editor::view::CHANGED {
+                    s.peek_changed();
+                } else if code == phai_editor::view::ESCAPE {
+                    s.close_peek();
+                }
+            }
+            LRESULT(0)
+        }
+        // Clicked away from: it goes, as Visual Studio's peek closes when left.
+        wm::WM_ACTIVATE if win::loword(w.0) == 0 && std::env::var_os("PHAI_SHOT").is_none() => {
+            if let Some(s) = studio() {
+                let _ = unsafe { wm::PostMessageW(Some(s.hwnd), wm::WM_COMMAND, WPARAM(ID_CLOSE_PEEK as usize), LPARAM(0)) };
+            }
+            LRESULT(0)
+        }
+        wm::WM_CLOSE => {
+            if let Some(s) = studio() {
+                s.close_peek();
+            }
+            LRESULT(0)
+        }
+        _ => win::def(h, msg, w, l),
+    }
 }
 
 /// A code file's window of its own (New Window): its editor fills it, and says what it does to
@@ -1671,7 +1711,18 @@ impl Studio {
                     if std::env::var_os("PHAI_PEEK_TEST").is_some() {
                         println!("peek {}", text.lines().take(3).collect::<Vec<_>>().join(" | "));
                     }
-                    phai_editor::view::show_peek(h, &text);
+                    self.open_peek(h, &place.path, place.start.0 as usize + 1);
+                    // `PHAI_PEEK_TYPE`: words typed in the peek, then the tab's first line printed.
+                    if let (Some(words), Some((_, pe, _, _))) = (std::env::var("PHAI_PEEK_TYPE").ok(), self.peek.clone()) {
+                        phai_editor::view::go_to(pe, 1, 1);
+                        for u in format!("{words}
+").encode_utf16() {
+                            let u = if u == 10 { 13 } else { u };
+                            unsafe { wm::SendMessageW(pe, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1))) };
+                        }
+                        println!("tab starts: {}", phai_editor::view::text(h).lines().next().unwrap_or_default());
+                        println!("peek starts: {}", phai_editor::view::text(pe).lines().next().unwrap_or_default());
+                    }
                     if std::env::var_os("PHAI_PEEK_TEST").is_some() {
                         LSP_TEST.store(9, Ordering::Relaxed);
                         if std::env::var_os("PHAI_SHOT").is_none() {
@@ -1994,6 +2045,67 @@ impl Studio {
             startwin::Choice::OpenFile => self.command(ID_OPEN),
             startwin::Choice::NewProject => self.new_project(),
             startwin::Choice::Continue => {}
+        }
+    }
+
+    /// Peek Definition: the definition's file in a small editor under the caret, at its line -
+    /// to read and to change. A file open in a tab changes there as it is typed; one that is not
+    /// is saved when the peek closes (Esc, or a click elsewhere).
+    fn open_peek(&mut self, from: HWND, path: &Path, line: usize) {
+        self.close_peek();
+        let text = match self.editor_of(path) {
+            Some(e) => phai_editor::view::text(e),
+            None => phai_editor::buffer::normalize(&std::fs::read_to_string(path).unwrap_or_default()).0,
+        };
+        let class = win::register("PhaiPeek", Some(peek_proc), None);
+        let (x, y) = phai_editor::view::caret_screen(from);
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetWindowRect(from, &mut r);
+        }
+        let (w, hgt) = ((r.right - r.left - win::px(self.hwnd, 60)).max(win::px(self.hwnd, 400)), win::px(self.hwnd, 300));
+        let title = win::wide(&format!("{}:{line}  -  Esc", path.file_name().unwrap_or_default().to_string_lossy()));
+        unsafe {
+            let frame = wm::CreateWindowExW(wm::WS_EX_TOOLWINDOW, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_POPUP | wm::WS_CAPTION | wm::WS_THICKFRAME | wm::WS_CLIPCHILDREN, r.left + win::px(self.hwnd, 40), y.min(r.bottom - hgt), w, hgt, Some(self.hwnd), None, Some(win::instance()), None).unwrap_or_default();
+            let _ = x;
+            let editor = phai_editor::view::create(frame, 904, &text, &path.to_string_lossy());
+            let mut cr = RECT::default();
+            let _ = wm::GetClientRect(frame, &mut cr);
+            win::move_to(editor, 0, 0, cr.right, cr.bottom);
+            phai_editor::view::go_to(editor, line, 1);
+            win::theme_frame(frame);
+            win::show_top(frame);
+            self.peek = Some((frame, editor, path.to_path_buf(), false));
+        }
+    }
+
+    /// The peek's text changed: into the file's tab when it has one, else kept to save.
+    pub fn peek_changed(&mut self) {
+        let Some((_, editor, path, changed)) = self.peek.as_mut() else { return };
+        *changed = true;
+        let (editor, path) = (*editor, path.clone());
+        if let Some(tab) = self.editor_of(&path) {
+            phai_editor::view::replace_whole(tab, &phai_editor::view::text(editor));
+        }
+    }
+
+    /// The peek closed: a changed file with no tab saved, as it was written (its line ends kept).
+    pub fn close_peek(&mut self) {
+        let Some((frame, editor, path, changed)) = self.peek.take() else { return };
+        if changed && self.editor_of(&path).is_none() {
+            let raw = std::fs::read_to_string(&path).unwrap_or_default();
+            let (_, crlf) = phai_editor::buffer::normalize(&raw);
+            let text = phai_editor::view::text(editor);
+            let text = if crlf { text.replace('\n', "\r\n") } else { text };
+            match std::fs::write(&path, text) {
+                Ok(()) => controls::status_text(self.status, 0, &tf("Saved {0}", &[&path.file_name().unwrap_or_default().to_string_lossy()])),
+                Err(e) => {
+                    win::message(Some(self.hwnd), &e.to_string(), "Phai Studio", wm::MB_ICONWARNING);
+                }
+            };
+        }
+        unsafe {
+            let _ = wm::DestroyWindow(frame);
         }
     }
 
@@ -4224,6 +4336,13 @@ impl Studio {
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_NEW_WINDOW => self.new_window(),
+            ID_CLOSE_PEEK => {
+                // Left for another of this program's windows than the peek's own editor.
+                let focus = unsafe { km::GetFocus() };
+                if self.peek.as_ref().is_some_and(|p| focus != p.1) {
+                    self.close_peek();
+                }
+            }
             ID_SPLIT => {
                 self.toggle_split();
                 self.rebuild_menu();
@@ -5130,6 +5249,7 @@ fn main() {
             split_bar: None,
             split_share: 500,
             windows: vec![],
+            peek: None,
             config,
             nav: vec![],
             nav_at: 0,

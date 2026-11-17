@@ -36,6 +36,8 @@ pub const PEEK: u16 = 0x0307;
 pub const SIGNATURE: u16 = 0x0308;
 /// Quick Actions were asked for (Ctrl+.) for [`selection_lsp`].
 pub const ACTIONS: u16 = 0x0309;
+/// Escape with nothing of the editor's own open - a peek window closes on it.
+pub const ESCAPE: u16 = 0x030A;
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -1420,6 +1422,9 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
     if vk == 0x1B && v.peeking {
         hide_tip(v);
         return true;
+    }
+    if vk == 0x1B && v.list.is_none() && v.find.is_none() {
+        notify(h, ESCAPE);
     }
     // Ctrl+.: Quick Actions.
     if vk == 0xBE && ctrl {
