@@ -178,7 +178,7 @@ impl Lsp {
                 },
                 "workspaceFolders": [{ "uri": uri_of(root), "name": "project" }],
                 // Type mistakes as you type, not only after `cargo check`.
-                "initializationOptions": { "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true }
+                "initializationOptions": { "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } } }
             }),
         );
         // rust-analyzer takes the notification as soon as it has answered `initialize`.
@@ -258,6 +258,11 @@ impl Lsp {
             "context": { "diagnostics": [] }
         });
         self.request("textDocument/codeAction", params)
+    }
+
+    /// The solution's symbols whose names match `query` (Go to All).
+    pub fn workspace_symbols(&mut self, query: &str) -> i64 {
+        self.request("workspace/symbol", json!({ "query": query }))
     }
 
     /// Every place the thing at a place is used, its definition too (Shift+F12).
@@ -474,6 +479,48 @@ pub fn locations_of(result: &Value) -> Vec<Location> {
         Value::Object(_) => one(result).into_iter().collect(),
         _ => vec![],
     }
+}
+
+/// A symbol of a `workspace/symbol` answer: its name, its kind in words, where it is.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Symbol {
+    pub name: String,
+    pub kind: &'static str,
+    pub path: PathBuf,
+    pub start: (u32, u32),
+}
+
+/// The symbols of a `workspace/symbol` answer - the standard library's and fetched crates' left
+/// to the caller to drop.
+pub fn symbols_of(result: &Value) -> Vec<Symbol> {
+    let kind = |k: u64| match k {
+        2 => "Module",
+        5 => "Class",
+        6 | 9 => "Method",
+        8 => "Field",
+        10 => "Enum",
+        11 => "Trait",
+        12 => "Function",
+        13 => "Variable",
+        14 => "Constant",
+        22 => "Enum member",
+        23 => "Struct",
+        26 => "Type",
+        _ => "Symbol",
+    };
+    result
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| {
+                    let loc = s.get("location")?;
+                    let path = path_of(loc.get("uri")?.as_str()?)?;
+                    let start = loc.get("range").map(|r| position(&r["start"])).unwrap_or((0, 0));
+                    Some(Symbol { name: s.get("name")?.as_str()?.to_string(), kind: kind(s.get("kind").and_then(Value::as_u64).unwrap_or(0)), path, start })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// One change in a file: the LSP range it replaces and what goes there.

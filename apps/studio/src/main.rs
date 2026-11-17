@@ -25,6 +25,7 @@ mod designer;
 mod gitpane;
 mod startwin;
 mod outline;
+mod gotoall;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -141,6 +142,7 @@ const ID_SPLIT: i32 = 260;
 const ID_BATCH_BUILD: i32 = 261;
 const ID_NEW_WINDOW: i32 = 262;
 const ID_CLOSE_PEEK: i32 = 263;
+const ID_GO_TO_ALL: i32 = 264;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -261,6 +263,8 @@ enum Ask {
     Signature,
     /// Quick Actions: fixes and refactorings to choose from.
     Actions,
+    /// Go to All's symbols.
+    Symbols,
     /// Whether the name at this place in this file may be renamed.
     PrepareRename(PathBuf, (u32, u32)),
     /// The changes that rename `old` to `new`.
@@ -806,6 +810,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_FOLD, t("Toggle Outlining Expansion"), "Ctrl+M, Ctrl+M");
         add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
+        add(edit, ID_GO_TO_ALL, t("Go to All..."), "Ctrl+T");
         add(edit, ID_MOVE_UP, t("Move Line Up"), "Alt+Up");
         add(edit, ID_MOVE_DOWN, t("Move Line Down"), "Alt+Down");
         sep(edit);
@@ -1725,6 +1730,14 @@ impl Studio {
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
             Ask::Actions => self.choose_action(h, phai_editor::lsp::actions_of(&result)),
+            Ask::Symbols => {
+                let items = phai_editor::lsp::symbols_of(&result)
+                    .into_iter()
+                    .filter(|s| !cargo::is_library(&s.path))
+                    .map(|s| gotoall::Item { name: s.name, kind: t(s.kind).to_string(), path: s.path, at: Some(s.start) })
+                    .collect();
+                gotoall::set_symbols(items);
+            }
             Ask::Signature => {
                 if let Some(text) = phai_editor::lsp::signature_text(&result) {
                     if std::env::var_os("PHAI_SIG_TEST").is_some() {
@@ -2032,6 +2045,48 @@ impl Studio {
         self.show_pane(Pane::Output, true);
         if let Some(b) = self.bottom.as_ref() {
             b.show_tab(2);
+        }
+    }
+
+    /// Go to All (Ctrl+T): files and symbols of the solution by name; the one chosen opened there.
+    fn go_to_all(&mut self, query: &str) {
+        let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok());
+        let Some(root) = root else { return };
+        let root = std::path::absolute(if root.as_os_str().is_empty() { Path::new(".") } else { &root }).unwrap_or(root);
+        let mut files = Vec::new();
+        let mut stack = vec![root.clone()];
+        while let Some(d) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&d) else { continue };
+            for p in rd.flatten().map(|e| e.path()) {
+                let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if p.is_dir() {
+                    if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                        stack.push(p);
+                    }
+                } else if p.extension().is_some_and(|e| ["rs", "phaiform", "toml", "css", "md"].contains(&e.to_string_lossy().as_ref())) {
+                    files.push(p);
+                }
+            }
+        }
+        let Some(it) = gotoall::run(self.hwnd, files, root, query) else { return };
+        self.remember_place();
+        if it.path.extension().is_some_and(|e| e == "phaiform") {
+            self.open_path(&it.path);
+            return;
+        }
+        self.open_code(&it.path);
+        if let (Some(h), Some(at)) = (self.doc.code, it.at) {
+            phai_editor::view::select_lsp(h, at, at);
+        }
+    }
+
+    /// Go to All typed: the language server asked for the symbols that match.
+    pub fn lsp_symbols(&mut self, query: &str) {
+        let Some(path) = self.doc.path.clone().or_else(|| self.tabs.iter().find_map(|t| t.doc.path.clone())) else { return };
+        if let Some(l) = self.lsp_for(&path) {
+            let id = l.workspace_symbols(query);
+            let h = self.doc.code.unwrap_or(self.hwnd);
+            self.asked.insert(id, (h, Ask::Symbols));
         }
     }
 
@@ -4465,6 +4520,7 @@ impl Studio {
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
+            ID_GO_TO_ALL => self.go_to_all(""),
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_NEW_WINDOW => self.new_window(),
@@ -5191,6 +5247,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
     let in_box = !unsafe { km::GetFocus() }.0.is_null() && win::kind_of(unsafe { km::GetFocus() }) == Some(win::Kind::Edit);
     match (msg.wParam.0 as u8, ctrl) {
+        (b'T', true) if !shift => Some(ID_GO_TO_ALL),
         (b'N', true) => Some(ID_NEW),
         (b'O', true) => Some(ID_OPEN),
         (b'W', true) => Some(ID_CLOSE),
@@ -5452,7 +5509,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: the start window, once the window is up - unless switched off,
@@ -5522,6 +5579,14 @@ fn main() {
             s.tray_height_changed();
         }
         // `--dock-toolbox top|right|bottom|float`: the toolbox moved as a drag would - checked by picture.
+        // `--go-to-all WORDS`: Go to All with that typed - what it found printed, the first opened.
+        if let Some(q) = args.iter().position(|a| a == "--go-to-all").and_then(|i| args.get(i + 1)).cloned() {
+            std::env::set_var("PHAI_GOTO_TEST", "1");
+            s.go_to_all(&q);
+            if let Some(h) = s.doc.code {
+                println!("opened {} at line {}", s.doc.path.as_ref().and_then(|p| p.file_name()).unwrap_or_default().to_string_lossy(), phai_editor::view::caret_line(h));
+            }
+        }
         // `--find-in-files WORDS`: Find in Files without the question; prints how many it found.
         if let Some(q) = args.iter().position(|a| a == "--find-in-files").and_then(|i| args.get(i + 1)).cloned() {
             s.find_in_files(Some(q));
