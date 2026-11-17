@@ -208,6 +208,10 @@ pub struct Control {
     pub max: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<i32>,
+    /// Locked in the designer: not moved or sized by the mouse or the arrows. Design only - the
+    /// program never sees it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locked: Option<bool>,
 }
 
 impl Control {
@@ -251,6 +255,7 @@ impl Control {
             min: None,
             max: None,
             value: None,
+            locked: None,
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
