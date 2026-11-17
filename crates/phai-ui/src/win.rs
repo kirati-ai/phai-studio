@@ -830,6 +830,18 @@ pub fn list_add(h: HWND, cells: &[&str]) {
     }
 }
 
+/// Selects one row of a list view - the others not - and scrolls it into view.
+pub fn list_select(h: HWND, row: usize) {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        let all = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(cc::LVIS_SELECTED.0 | cc::LVIS_FOCUSED.0), ..Default::default() };
+        wm::SendMessageW(h, cc::LVM_SETITEMSTATE, Some(WPARAM(usize::MAX)), Some(LPARAM(&all as *const _ as isize)));
+        let one = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(cc::LVIS_SELECTED.0 | cc::LVIS_FOCUSED.0), state: cc::LIST_VIEW_ITEM_STATE_FLAGS(cc::LVIS_SELECTED.0 | cc::LVIS_FOCUSED.0), ..Default::default() };
+        wm::SendMessageW(h, cc::LVM_SETITEMSTATE, Some(WPARAM(row)), Some(LPARAM(&one as *const _ as isize)));
+        wm::SendMessageW(h, cc::LVM_ENSUREVISIBLE, Some(WPARAM(row)), Some(LPARAM(0)));
+    }
+}
+
 /// `NM_CUSTOMDRAW` from a list view: the selected row in the theme's `list:selected` colours
 /// instead of Windows' blue.
 pub fn list_custom_draw(l: LPARAM) -> LRESULT {

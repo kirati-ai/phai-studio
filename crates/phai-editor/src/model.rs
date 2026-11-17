@@ -425,6 +425,75 @@ impl Model {
         self.dirty = true;
     }
 
+    /// The lines the selection (or the caret) is on: a selection ending at a line's start leaves
+    /// that line out.
+    fn chosen_lines(&self) -> (usize, usize) {
+        let (a, b) = self.selection();
+        let first = self.buf.position(a).0;
+        let (last, last_col) = self.buf.position(b);
+        (first, if last > first && last_col == 0 { last - 1 } else { last })
+    }
+
+    /// Replaces `from..to` with `text` as one undo step, then puts the caret and anchor where
+    /// asked; undo brings back the selection as it was.
+    fn replace_range(&mut self, from: usize, to: usize, text: &str, caret: usize, anchor: usize) {
+        let before = (self.caret, self.anchor);
+        self.anchor = from;
+        self.caret = to;
+        self.replace(text, false);
+        if let Some(e) = self.undo.last_mut() {
+            e.caret_before = before;
+        }
+        self.caret = caret.min(self.buf.len());
+        self.anchor = anchor.min(self.buf.len());
+    }
+
+    /// Alt+Up and Alt+Down: the chosen lines swap places with the line above or below; the
+    /// selection goes with them. False at the top or bottom, where nothing moves.
+    pub fn move_lines(&mut self, up: bool) -> bool {
+        let (first, last) = self.chosen_lines();
+        let count = self.buf.line_count();
+        if (up && first == 0) || (!up && last + 1 >= count) {
+            return false;
+        }
+        let block_start = self.buf.line_start(first);
+        let block_end = self.buf.line_start(last) + self.buf.line(last).len();
+        let block = self.buf.slice(block_start, block_end);
+        let (caret, anchor) = (self.caret, self.anchor);
+        if up {
+            let other = self.buf.line(first - 1);
+            let from = self.buf.line_start(first - 1);
+            let shift = other.len() + 1;
+            self.replace_range(from, block_end, &format!("{block}
+{other}"), caret - shift, anchor - shift);
+        } else {
+            let other = self.buf.line(last + 1);
+            let to = self.buf.line_start(last + 1) + other.len();
+            let shift = other.len() + 1;
+            self.replace_range(block_start, to, &format!("{other}
+{block}"), caret + shift, anchor + shift);
+        }
+        true
+    }
+
+    /// Ctrl+D: the chosen lines again below them - or, when a part of one line is chosen, that
+    /// part again after itself - and the copy chosen, as Visual Studio does.
+    pub fn duplicate(&mut self) {
+        let (a, b) = self.selection();
+        let (first, last) = self.chosen_lines();
+        if a != b && self.buf.position(a).0 == self.buf.position(b).0 {
+            let part = self.buf.slice(a, b);
+            self.replace_range(b, b, &part, b + part.len(), b);
+            return;
+        }
+        let end = self.buf.line_start(last) + self.buf.line(last).len();
+        let block = self.buf.slice(self.buf.line_start(first), end);
+        let shift = block.len() + 1;
+        let (caret, anchor) = (self.caret, self.anchor);
+        self.replace_range(end, end, &format!("
+{block}"), caret + shift, anchor + shift);
+    }
+
     /// Indents the selected lines one level (`out` false) or takes one level off them.
     pub fn indent_lines(&mut self, out: bool) {
         let (a, b) = self.selection();
@@ -556,6 +625,63 @@ mod tests {
         m.caret = text.len();
         m.anchor = m.caret;
         m
+    }
+
+    #[test]
+    fn alt_arrows_move_lines_and_ctrl_d_doubles_them() {
+        let mut m = Model::new("a
+bb
+ccc");
+        m.caret = 3; // in "bb"
+        m.anchor = 3;
+        assert!(m.move_lines(true));
+        assert_eq!(m.buf.text(), "bb
+a
+ccc");
+        assert_eq!(m.caret, 1, "the caret went up with its line");
+        assert!(!m.move_lines(true), "the top line goes no higher");
+        assert!(m.move_lines(false) && m.move_lines(false));
+        assert_eq!(m.buf.text(), "a
+ccc
+bb");
+        assert!(!m.move_lines(false));
+        m.undo();
+        assert_eq!(m.buf.text(), "a
+bb
+ccc");
+        assert_eq!(m.caret, 3, "undo puts the caret back where it was before that move");
+        // Two lines chosen move together.
+        let mut m = Model::new("1
+2
+3
+4");
+        m.anchor = 2;
+        m.caret = 6; // the start of "4": that line is not chosen
+        assert!(m.move_lines(true));
+        assert_eq!(m.buf.text(), "2
+3
+1
+4");
+        assert_eq!(m.selected_text(), "2
+3
+");
+        // Ctrl+D: a line, then a part of one.
+        let mut m = Model::new("let x = 1;
+end");
+        m.caret = 4;
+        m.anchor = 4;
+        m.duplicate();
+        assert_eq!(m.buf.text(), "let x = 1;
+let x = 1;
+end");
+        assert_eq!(m.caret, 15, "the caret is on the copy");
+        m.anchor = 15;
+        m.caret = 16;
+        m.duplicate();
+        assert_eq!(m.buf.text(), "let x = 1;
+let xx = 1;
+end");
+        assert_eq!(m.selected_text(), "x");
     }
 
     #[test]

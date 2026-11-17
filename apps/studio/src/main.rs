@@ -113,6 +113,10 @@ const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
 /// `--design`: opens the Table Designer once the loop runs.
 const ID_DESIGN_TEST: i32 = 239;
 const ID_PUBLISH: i32 = 240;
+const ID_NEXT_ERROR: i32 = 241;
+const ID_PREV_ERROR: i32 = 242;
+const ID_MOVE_UP: i32 = 243;
+const ID_MOVE_DOWN: i32 = 244;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -555,6 +559,11 @@ fn build_menu() -> HMENU {
         add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
+        add(edit, ID_MOVE_UP, t("Move Line Up"), "Alt+Up");
+        add(edit, ID_MOVE_DOWN, t("Move Line Down"), "Alt+Down");
+        sep(edit);
+        add(edit, ID_NEXT_ERROR, t("Go To Next Error"), "F8");
+        add(edit, ID_PREV_ERROR, t("Go To Previous Error"), "Shift+F8");
         sep(edit);
         add(edit, ID_EDIT_MENUS, t("Menus..."), "");
         add(edit, ID_EDIT_TOOLBAR, t("Toolbar..."), "");
@@ -1008,6 +1017,11 @@ impl Studio {
     }
 
     fn duplicate(&mut self) {
+        // In code: the line again.
+        if let Some(h) = self.code_shown() {
+            phai_editor::view::duplicate(h);
+            return;
+        }
         let chosen = self.chosen_controls();
         if !chosen.is_empty() {
             self.add_controls(&phai_form::arrange::to_clipboard(&chosen));
@@ -3243,6 +3257,35 @@ impl Studio {
     }
 
     /// Double-click in the error list: the file, opened as Windows opens it.
+    /// The code editor, when it is what the window shows.
+    fn code_shown(&self) -> Option<HWND> {
+        self.doc.code.filter(|h| unsafe { wm::IsWindowVisible(*h) }.as_bool())
+    }
+
+    /// F8 and Shift+F8: the next (or last) error or warning in the Error List, opened at its line.
+    fn step_diagnostic(&mut self, forward: bool) {
+        use windows::Win32::UI::Controls as cc;
+        let n = self.diagnostics.len();
+        if n == 0 {
+            controls::status_text(self.status, 0, t("No errors or warnings"));
+            return;
+        }
+        let at = unsafe { wm::SendMessageW(self.errors, cc::LVM_GETNEXTITEM, Some(WPARAM(usize::MAX)), Some(LPARAM(cc::LVNI_SELECTED as isize))) }.0;
+        // Only rows that lead somewhere are stepped to.
+        let mut row = if at < 0 { if forward { n - 1 } else { 0 } } else { at as usize };
+        for _ in 0..n {
+            row = if forward { (row + 1) % n } else { (row + n - 1) % n };
+            if self.diagnostics[row].file.is_some() {
+                break;
+            }
+        }
+        if let Some(b) = self.bottom.as_ref() {
+            b.show_tab(0);
+        }
+        win::list_select(self.errors, row);
+        self.open_diagnostic(row);
+    }
+
     fn open_diagnostic(&mut self, row: usize) {
         let Some(d) = self.diagnostics.get(row) else { return };
         let Some(file) = d.file.clone() else { return };
@@ -3415,6 +3458,11 @@ impl Studio {
             }
             ID_EXECUTE => self.execute_query(),
             ID_PUBLISH => self.publish(),
+            ID_NEXT_ERROR | ID_PREV_ERROR => self.step_diagnostic(id == ID_NEXT_ERROR),
+            ID_MOVE_UP | ID_MOVE_DOWN => match self.code_shown() {
+                Some(h) => phai_editor::view::move_lines(h, id == ID_MOVE_UP),
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_DESIGN_TEST => {
                 let t = DESIGN_TEST.lock().unwrap_or_else(|e| e.into_inner()).take();
                 let owner = self.hwnd;
@@ -3821,7 +3869,15 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 for d in &out.diagnostics {
                     println!("{} {}:{}:{} {}", if d.error { "error" } else { "warning" }, d.file.as_ref().map(|f| f.display().to_string()).unwrap_or_default(), d.line, d.column, d.message);
                 }
-                std::process::exit(if out.ok { 0 } else { 2 });
+                // `PHAI_F8=1`: the errors shown, then F8 - where it took the caret.
+                if std::env::var_os("PHAI_F8").is_none() {
+                    std::process::exit(if out.ok { 0 } else { 2 });
+                }
+                s.build_done(*out);
+                s.command(ID_NEXT_ERROR);
+                let file = s.doc.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+                println!("f8 {} line {}", file, s.doc.code.map(phai_editor::view::caret_line).unwrap_or(0));
+                std::process::exit(0);
             }
             s.build_done(*out);
             LRESULT(0)
@@ -3885,6 +3941,8 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         match msg.wParam.0 {
             0x45 if ctrl && shift => return Some(ID_EXECUTE),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
+            0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
+            0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
             0x78 if shift => return Some(ID_ADD_WATCH),
             0x78 => return Some(ID_TOGGLE_BP),
