@@ -486,6 +486,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("The words {0} shows:", "ข้อความที่ {0} แสดง:"),
     ("Pictures (PNG, JPEG, BMP, GIF)", "รูปภาพ (PNG, JPEG, BMP, GIF)"),
     ("Split", "แบ่งหน้าต่าง"),
+    ("Flow layout", "จัดเรียงต่อกัน (Flow)"),
+    ("Table layout", "จัดเป็นตาราง (Table)"),
+    ("How many equal columns the controls in it are laid in.", "จำนวนคอลัมน์เท่า ๆ กันที่ใช้วาง control ข้างใน"),
 ];
 
 #[cfg(test)]

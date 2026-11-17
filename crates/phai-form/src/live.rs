@@ -116,6 +116,7 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             h
         }
         Kind::Picture => phai_ui::picture::picture(parent, id, c.image.as_deref().unwrap_or("")),
+        Kind::Flow | Kind::Table => win::panel(parent, id, true),
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
         Kind::Timer => {
             let h = win::label(parent, "", id, font);
@@ -131,6 +132,37 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
         win::enable(h, false);
     }
     h
+}
+
+/// Flow and table panels place what they hold, as the generated program's `arrange` does; after
+/// the layout has put the panels themselves where they go.
+pub fn arrange(f: &FormFile, controls: &[HWND]) {
+    for (p, c) in f.control.iter().enumerate().filter(|(_, c)| c.kind.arranges()) {
+        let Some(&ph) = controls.get(p) else { continue };
+        let dpi = win::dpi(ph);
+        let r = win::rect_in_parent(ph);
+        let area = Rect::new(r.left, r.top, r.right - r.left, r.bottom - r.top);
+        let kids = f.arranged_in(p);
+        let sizes: Vec<(i32, i32)> = kids.iter().map(|k| {
+            let [_, _, w, h] = f.control[*k].rect();
+            (phai_ui::layout::scale(w, dpi), phai_ui::layout::scale(h, dpi))
+        }).collect();
+        let gap = phai_ui::layout::scale(6, dpi);
+        if c.kind == Kind::Flow {
+            for (k, (x, y)) in kids.iter().zip(phai_ui::layout::flow(area, &sizes, gap)) {
+                let (w, h) = sizes[kids.iter().position(|q| q == k).unwrap_or(0)];
+                if let Some(&kh) = controls.get(*k) {
+                    win::move_to(kh, x, y, w, h);
+                }
+            }
+        } else {
+            for (k, cell) in kids.iter().zip(phai_ui::layout::table(area, &sizes, c.cols.unwrap_or(2).max(1) as usize, gap)) {
+                if let Some(&kh) = controls.get(*k) {
+                    win::move_to(kh, cell.x, cell.y, cell.w, cell.h);
+                }
+            }
+        }
+    }
 }
 
 /// The layout item for control `c`, as the generated code places it.

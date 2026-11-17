@@ -934,6 +934,82 @@ pub fn tree_add(h: HWND, parent: isize, text: &str, image: i32, data: isize) -> 
     unsafe { wm::SendMessageW(h, TVM_INSERTITEMW, None, Some(LPARAM(&ins as *const _ as isize))).0 }
 }
 
+/// Where a child window is in its parent's client area.
+pub fn rect_in_parent(h: HWND) -> RECT {
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetWindowRect(h, &mut r);
+        if let Ok(p) = wm::GetParent(h) {
+            let mut pts = [windows::Win32::Foundation::POINT { x: r.left, y: r.top }, windows::Win32::Foundation::POINT { x: r.right, y: r.bottom }];
+            Gdi::MapWindowPoints(None, Some(p), &mut pts);
+            r = RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y };
+        }
+    }
+    r
+}
+
+/// A panel that holds others laid out by it (flow, table): the window's colour; `outline` draws
+/// a faint dashed edge, as a designer shows an empty panel.
+pub fn panel(parent: HWND, id: i32, outline: bool) -> HWND {
+    let class = register(if outline { "PhaiPanelOutlined" } else { "PhaiPanel" }, Some(if outline { panel_outlined_proc } else { panel_proc }), None);
+    unsafe {
+        let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(wm::HMENU(id as isize as *mut _)), Some(instance()), None).unwrap_or_default();
+        // Under the controls it holds, which are made after it and would lie below - and kept
+        // there by the layout, as it keeps a group frame.
+        let _ = wm::SetWindowPos(h, Some(wm::HWND_BOTTOM), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+        register_kind(h, Kind::Group);
+        h
+    }
+}
+
+fn panel_paint(h: HWND, outline: bool) {
+    unsafe {
+        let mut ps = Gdi::PAINTSTRUCT::default();
+        let dc = Gdi::BeginPaint(h, &mut ps);
+        let mut r = RECT::default();
+        let _ = wm::GetClientRect(h, &mut r);
+        fill(dc, &r, window_background());
+        if outline {
+            let line = crate::theme::current().var_color("--border").unwrap_or(Color::rgb(0xb0, 0xb0, 0xb0));
+            let mut x = r.left;
+            while x < r.right {
+                fill(dc, &RECT { left: x, top: r.top, right: (x + 4).min(r.right), bottom: r.top + 1 }, line);
+                fill(dc, &RECT { left: x, top: r.bottom - 1, right: (x + 4).min(r.right), bottom: r.bottom }, line);
+                x += 8;
+            }
+            let mut y = r.top;
+            while y < r.bottom {
+                fill(dc, &RECT { left: r.left, top: y, right: r.left + 1, bottom: (y + 4).min(r.bottom) }, line);
+                fill(dc, &RECT { left: r.right - 1, top: y, right: r.right, bottom: (y + 4).min(r.bottom) }, line);
+                y += 8;
+            }
+        }
+        let _ = Gdi::EndPaint(h, &ps);
+    }
+}
+
+extern "system" fn panel_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_PAINT => {
+            panel_paint(h, false);
+            LRESULT(0)
+        }
+        _ => def(h, msg, w, l),
+    }
+}
+
+extern "system" fn panel_outlined_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_PAINT => {
+            panel_paint(h, true);
+            LRESULT(0)
+        }
+        _ => def(h, msg, w, l),
+    }
+}
+
 /// Fills a tree from lines: two spaces (or a tab) before a line put it under the line above with
 /// one less. The items' numbers are their line numbers.
 pub fn tree_items(h: HWND, lines: &[&str]) {

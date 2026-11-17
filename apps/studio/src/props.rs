@@ -45,6 +45,7 @@ pub enum Key {
     Visible,
     Locked,
     Image,
+    Cols,
     Checked,
     Password,
     Group,
@@ -369,6 +370,9 @@ impl Props {
             v.push(p(t("Data"), Key::Min, t("Minimum"), c.min.unwrap_or(0).to_string(), Ed::Number, t("The smallest value.")));
             v.push(p(t("Data"), Key::Max, t("Maximum"), c.max.unwrap_or(100).to_string(), Ed::Number, t("The largest value.")));
             v.push(p(t("Data"), Key::Value, t("Value"), c.value.unwrap_or(0).to_string(), Ed::Number, t("The value when the window opens.")));
+        }
+        if c.kind == Kind::Table {
+            v.push(p(t("Layout"), Key::Cols, t("Columns"), c.cols.unwrap_or(2).to_string(), Ed::Number, t("How many equal columns the controls in it are laid in.")));
         }
         if c.kind == Kind::Picture {
             v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));

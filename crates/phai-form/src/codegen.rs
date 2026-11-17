@@ -245,6 +245,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Slider => format!("win::slider(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
             Kind::Tree => format!("{{ let h = win::tree(hwnd, {id}, {font}); win::tree_items(h, &[{}]); h }}", c.items.iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
             Kind::Picture => format!("phai_ui::picture::picture(hwnd, {id}, {})", lit(c.image.as_deref().unwrap_or(""))),
+            Kind::Flow | Kind::Table => format!("win::panel(hwnd, {id}, false)"),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
             Kind::Timer => format!("{{ win::timer(hwnd, {id}, {}, {}); hwnd }}", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
@@ -319,6 +320,44 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let _ = writeln!(w, "    }}");
 
+    // flow and table panels
+    let panels: Vec<usize> = f.control.iter().enumerate().filter(|(_, c)| c.kind.arranges()).map(|(i, _)| i).collect();
+    if !panels.is_empty() {
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Flow and table panels place the controls in them - after the layout placed the panels.");
+        let _ = writeln!(w, "    pub fn arrange(&self) {{");
+        let _ = writeln!(w, "        let dpi = win::dpi(self.hwnd);");
+        let _ = writeln!(w, "        let px = |v: i32| phai_ui::layout::scale(v, dpi);");
+        for p in panels {
+            let c = &f.control[p];
+            let kids = f.arranged_in(p);
+            if kids.is_empty() {
+                continue;
+            }
+            let _ = writeln!(w, "        {{");
+            let _ = writeln!(w, "            let r = win::rect_in_parent(self.{});", c.id);
+            let _ = writeln!(w, "            let area = Rect::new(r.left, r.top, r.right - r.left, r.bottom - r.top);");
+            let sizes: Vec<String> = kids.iter().map(|k| {
+                let [_, _, cw, ch] = f.control[*k].rect();
+                format!("(px({cw}), px({ch}))")
+            }).collect();
+            let _ = writeln!(w, "            let sizes = [{}];", sizes.join(", "));
+            let names: Vec<String> = kids.iter().map(|k| format!("self.{}", f.control[*k].id)).collect();
+            if c.kind == Kind::Flow {
+                let _ = writeln!(w, "            let places = phai_ui::layout::flow(area, &sizes, px(6));");
+                let _ = writeln!(w, "            for (k, h) in [{}].into_iter().enumerate() {{", names.join(", "));
+                let _ = writeln!(w, "                win::move_to(h, places[k].0, places[k].1, sizes[k].0, sizes[k].1);");
+            } else {
+                let _ = writeln!(w, "            let cells = phai_ui::layout::table(area, &sizes, {}, px(6));", c.cols.unwrap_or(2).max(1));
+                let _ = writeln!(w, "            for (k, h) in [{}].into_iter().enumerate() {{", names.join(", "));
+                let _ = writeln!(w, "                win::move_to(h, cells[k].x, cells[k].y, cells[k].w, cells[k].h);");
+            }
+            let _ = writeln!(w, "            }}");
+            let _ = writeln!(w, "        }}");
+        }
+        let _ = writeln!(w, "    }}");
+    }
+
     // tabs pages
     let tabs: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::Tabs).collect();
     if !tabs.is_empty() {
@@ -350,6 +389,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    match msg {{");
     let _ = writeln!(w, "        wm::WM_SIZE => {{");
     let _ = writeln!(w, "            host.ui.layout.apply(hwnd);");
+    if f.control.iter().any(|c| c.kind.arranges() && !f.arranged_in(f.control.iter().position(|x| std::ptr::eq(x, c)).unwrap_or(0)).is_empty()) {
+        let _ = writeln!(w, "            host.ui.arrange();");
+    }
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_COMMAND => {{");
