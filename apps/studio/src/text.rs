@@ -501,6 +501,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Unstage", "เลิก Stage"),
     ("Commit Staged ({0})", "Commit ที่ Stage ไว้ ({0})"),
     ("Choose the files first.", "เลือกไฟล์ก่อน"),
+    ("Also include - files or folders of the project, comma between:", "ใส่ไฟล์อื่นด้วย - ไฟล์หรือโฟลเดอร์ในโปรเจกต์ คั่นด้วยจุลภาค:"),
+    ("Install for everyone on the computer (asks for an administrator)", "ติดตั้งให้ทุกคนในเครื่อง (ขอสิทธิ์ผู้ดูแลระบบ)"),
+    ("{0} is not in the project", "ไม่พบ {0} ในโปรเจกต์"),
 ];
 
 #[cfg(test)]
