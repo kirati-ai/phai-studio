@@ -23,11 +23,12 @@ pub const ID_SHOW_ERRORS: i32 = 520;
 pub const ID_SHOW_WARNINGS: i32 = 521;
 pub const ID_IMMEDIATE: i32 = 522;
 pub const ID_IMMEDIATE_INPUT: i32 = 523;
+pub const ID_DIAGNOSTICS: i32 = 524;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
-/// results, 6 watch, 7 tests, 8 immediate.
-fn labels() -> [&'static str; 9] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate")]
+/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools.
+fn labels() -> [&'static str; 10] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools")]
 }
 
 pub struct Bottom {
@@ -46,6 +47,7 @@ pub struct Bottom {
     /// The Immediate window: what was asked and answered, and the box to ask in.
     pub immediate: HWND,
     pub immediate_input: HWND,
+    pub diagnostics: HWND,
     layout: Layout,
 }
 
@@ -96,7 +98,9 @@ impl Bottom {
         }
         layout.add(immediate, Item { bounds: Rect::new(0, 28, 800, 84), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(immediate_input, Item { bounds: Rect::new(0, 114, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, layout });
+        let diagnostics = crate::diag::view(hwnd, ID_DIAGNOSTICS);
+        layout.add(diagnostics, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -119,6 +123,7 @@ impl Bottom {
         win::show(self.show_warnings, i == 0);
         win::show(self.immediate, i == 8);
         win::show(self.immediate_input, i == 8);
+        win::show(self.diagnostics, i == 9);
     }
 
     pub fn relabel(&self) {

@@ -84,6 +84,8 @@ pub enum Event {
 /// A program running under the debugger.
 pub struct Session {
     tx: Sender<Command>,
+    /// The program's process id once it has started; 0 before.
+    pid: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl Session {
@@ -92,13 +94,23 @@ impl Session {
     pub fn launch(exe: &Path, cwd: &Path, breakpoints: Vec<(PathBuf, u32)>, on_event: impl Fn(Event) + Send + 'static) -> Session {
         let (tx, rx) = channel();
         let (exe, cwd) = (exe.to_path_buf(), cwd.to_path_buf());
+        let pid = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let theirs = pid.clone();
         std::thread::spawn(move || {
             match Engine::start(&exe, &cwd, breakpoints, rx, Box::new(on_event)) {
-                Ok(mut e) => e.run(),
+                Ok(mut e) => {
+                    theirs.store(unsafe { windows::Win32::System::Threading::GetProcessId(e.process) }, std::sync::atomic::Ordering::Relaxed);
+                    e.run()
+                }
                 Err((msg, say)) => say(Event::Failed(msg)),
             }
         });
-        Session { tx }
+        Session { tx, pid }
+    }
+
+    /// The program's process id, once it has started (0 before).
+    pub fn pid(&self) -> u32 {
+        self.pid.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn send(&self, c: Command) {

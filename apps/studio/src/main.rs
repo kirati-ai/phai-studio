@@ -27,6 +27,7 @@ mod startwin;
 mod outline;
 mod gotoall;
 mod crates;
+mod diag;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -155,11 +156,14 @@ const ID_MANAGE_CRATES: i32 = 270;
 const ID_SNIPPET: i32 = 271;
 const ID_CALLS: i32 = 272;
 const ID_IMMEDIATE: i32 = 273;
+const ID_DIAG_TOOLS: i32 = 274;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
 /// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
 const TIMER_SLIDE: usize = 7301;
+/// Diagnostic Tools' samples, twice a second while a program runs.
+const TIMER_DIAG: usize = 7302;
 /// File > Recent: `ID_RECENT + n`, newest first.
 const ID_RECENT: i32 = 160;
 /// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
@@ -328,6 +332,8 @@ pub struct Studio {
     /// Build with `--release`.
     release: bool,
     diagnostics: Vec<cargo::Diagnostic>,
+    /// Diagnostic Tools: the running program watched.
+    pub sampler: Option<diag::Sampler>,
     /// Code lenses as they come: the round they belong to, and those worked out.
     lens_round: u64,
     lenses: Vec<(u32, (u32, u32), String)>,
@@ -951,6 +957,7 @@ fn build_menu() -> HMENU {
         sep(debug);
         add(debug, ID_ADD_WATCH, t("Add Watch..."), "Shift+F9");
         add(debug, ID_IMMEDIATE, t("Immediate Window"), "Ctrl+Alt+I");
+        add(debug, ID_DIAG_TOOLS, t("Show Diagnostic Tools"), "Ctrl+Alt+F2");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
@@ -2426,6 +2433,44 @@ impl Studio {
         }
     }
 
+    /// Diagnostic Tools start watching the program with process id `pid`.
+    fn watch_process(&mut self, pid: u32) {
+        self.sampler = diag::Sampler::new(pid);
+        unsafe {
+            wm::SetTimer(Some(self.hwnd), TIMER_DIAG, 500, None);
+        }
+    }
+
+    /// Twice a second while a program runs: a sample, the graphs drawn again; stopped when it ends.
+    fn diag_tick(&mut self) {
+        if self.sampler.is_none() {
+            if let Some(pid) = self.debug.as_ref().map(|d| d.pid()).filter(|p| *p != 0) {
+                self.sampler = diag::Sampler::new(pid);
+            }
+        }
+        let alive = self.sampler.as_mut().is_some_and(|s| s.sample());
+        if let Some(b) = self.bottom.as_ref() {
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(b.diagnostics), None, false);
+            }
+        }
+        if std::env::var_os("PHAI_DIAG_TEST").is_some() {
+            if let Some(s) = self.sampler.as_ref() {
+                if s.mem.len() >= 4 {
+                    println!("diag: {} samples, memory {:.1} MB, cpu {:.0}%", s.mem.len(), *s.mem.back().unwrap_or(&0) as f64 / 1_048_576.0, s.cpu.back().unwrap_or(&0.0));
+                    if std::env::var_os("PHAI_SHOT").is_none() {
+                        std::process::exit(0);
+                    }
+                }
+            }
+        }
+        if !alive && self.debug.is_none() && self.sampler.as_ref().is_none_or(|s| s.ended) {
+            unsafe {
+                let _ = wm::KillTimer(Some(self.hwnd), TIMER_DIAG);
+            }
+        }
+    }
+
     /// The Immediate window: an expression asked of the debugger while the program is paused -
     /// a name, a path (`order.total`), a comparison - its answer written under it.
     pub fn immediate(&mut self, expr: &str) {
@@ -3555,6 +3600,11 @@ impl Studio {
             }
         }));
         self.paused = false;
+        // Its process id comes once it has started: Diagnostic Tools ask for it on their timer.
+        self.sampler = None;
+        unsafe {
+            wm::SetTimer(Some(self.hwnd), TIMER_DIAG, 500, None);
+        }
         if !self.conds.is_empty() {
             if let Some(d) = &self.debug {
                 d.send(phai_debug::Command::Conditions(self.conds.clone()));
@@ -4656,6 +4706,7 @@ impl Studio {
             if out.then_run {
                 match out.executable.as_deref().map(cargo::run) {
                     Some(Ok(child)) => {
+                        self.watch_process(child.id());
                         self.running = Some(child);
                         controls::status_text(self.status, 0, &tf("Running {0}", &[&out.executable.as_ref().and_then(|e| e.file_name()).unwrap_or_default().to_string_lossy()]));
                     }
@@ -4804,6 +4855,12 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_DIAG_TOOLS => {
+                self.show_pane(Pane::Output, true);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(9);
+                }
+            }
             ID_IMMEDIATE => {
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
@@ -5339,6 +5396,10 @@ fn file_dialog(owner: HWND, save: bool, description: &str, pattern: &str, sugges
 extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     let Some(s) = studio().filter(|s| s.hwnd == hwnd) else { return win::def(hwnd, msg, w, l) };
     match msg {
+        wm::WM_TIMER if w.0 == TIMER_DIAG => {
+            s.diag_tick();
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_SLIDE => {
             s.slide_check();
             LRESULT(0)
@@ -5592,6 +5653,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x47 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_GIT_CHANGES),
             0x54 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_OUTLINE),
             0x49 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_IMMEDIATE),
+            0x71 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DIAG_TOOLS),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -5777,6 +5839,7 @@ fn main() {
             diagnostics: vec![],
             diag_rows: vec![],
             lens_round: 0,
+            sampler: None,
             lenses: vec![],
             references: vec![],
             building: false,
@@ -6047,6 +6110,24 @@ fn main() {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
             }
+        }
+        // `--diag-test`: Diagnostic Tools watching this very program - printed after a few samples.
+        if args.iter().any(|a| a == "--diag-test") {
+            std::env::set_var("PHAI_DIAG_TEST", "1");
+            s.watch_process(std::process::id());
+            // A few samples now, some work between them, so a photograph shows lines.
+            for i in 0..12u64 {
+                let mut x = 0u64;
+                for j in 0..(i % 4) * 3_000_000 {
+                    x = x.wrapping_add(j * j);
+                }
+                std::hint::black_box(x);
+                std::thread::sleep(std::time::Duration::from_millis(60));
+                if let Some(d) = s.sampler.as_mut() {
+                    d.sample();
+                }
+            }
+            s.command(ID_DIAG_TOOLS);
         }
         // `--new-project DIR`: a new project made there, as File > New project does; its path printed.
         if let Some(d) = args.iter().position(|a| a == "--new-project").and_then(|i| args.get(i + 1)) {
