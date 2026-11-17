@@ -137,6 +137,7 @@ const ID_START_WINDOW: i32 = 256;
 const ID_VIEW_OUTLINE: i32 = 257;
 const ID_FOLD: i32 = 258;
 const ID_FOLD_ALL: i32 = 259;
+const ID_SPLIT: i32 = 260;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -336,6 +337,9 @@ pub struct Studio {
     conds: Vec<(PathBuf, u32, String)>,
     /// The data tip asked for, and the editor and words it is for.
     tip: Option<(u64, HWND, String)>,
+    /// Split: a second editor of the code file in front, below the first; each shows its own
+    /// part, and what is typed in one is in both.
+    pub split_view: Option<HWND>,
     /// Document Outline's tree.
     outline: Option<outline::Outline>,
     /// The last Run Tests, as the Tests list shows them.
@@ -706,6 +710,10 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
+        add(view, ID_SPLIT, t("Split"), "");
+        if studio().is_some_and(|s| s.split_view.is_some()) {
+            wm::CheckMenuItem(view, ID_SPLIT as u32, wm::MF_CHECKED.0);
+        }
         add(view, ID_TASK_LIST, t("Task List"), "");
         add(view, ID_START_WINDOW, t("Start Window"), "");
         if studio().is_some_and(|s| explorer::servers_shown(s.side)) {
@@ -1435,6 +1443,7 @@ impl Studio {
 
     /// The form on the canvas, packed away into its tab.
     fn stash(&mut self) {
+        self.unsplit();
         let doc = std::mem::replace(&mut self.doc, Doc::new(FormFile::new("MainWindow"), None));
         self.tabs[self.active] = Tab { doc, undo: std::mem::take(&mut self.undo), redo: std::mem::take(&mut self.redo), selected: self.selected.take() };
     }
@@ -2048,6 +2057,95 @@ impl Studio {
     }
 
     /// The editor said its text changed.
+    /// Split on or off for the code file in front.
+    fn toggle_split(&mut self) {
+        if self.split_view.is_some() {
+            self.unsplit();
+            return;
+        }
+        let (Some(h), Some(path)) = (self.code_shown(), self.doc.path.clone()) else {
+            controls::status_text(self.status, 0, t("Open a code file first"));
+            return;
+        };
+        let Some(parent) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
+        let second = phai_editor::view::create(parent, 901, &phai_editor::view::text(h), &path.to_string_lossy());
+        phai_editor::view::set_breakpoints(second, &phai_editor::view::breakpoints(h));
+        self.split_view = Some(second);
+        self.relayout_editors();
+        // The second shows where the first is.
+        let (l, c) = phai_editor::view::caret_position(h);
+        phai_editor::view::go_to(second, l, c);
+    }
+
+    fn unsplit(&mut self) {
+        if let Some(h) = self.split_view.take() {
+            unsafe {
+                let _ = wm::DestroyWindow(h);
+            }
+            self.relayout_editors();
+        }
+    }
+
+    fn relayout_editors(&mut self) {
+        let Some(c) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetClientRect(c, &mut r);
+        }
+        self.place_editors(r.right, r.bottom);
+    }
+
+    /// The code editor fills the canvas - split, the two share it, one above the other.
+    pub fn place_editors(&mut self, w: i32, h: i32) {
+        let Some(code) = self.doc.code else { return };
+        match self.split_view {
+            Some(second) => {
+                let gap = win::px(self.hwnd, 6);
+                let top = (h - gap) / 2;
+                win::move_to(code, 0, 0, w, top);
+                win::move_to(second, 0, top + gap, w, h - top - gap);
+                win::show(second, true);
+                // Above the form designer's surface, which stays behind the code.
+                unsafe {
+                    let _ = wm::SetWindowPos(second, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+                    let _ = wm::SetWindowPos(code, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+                }
+            }
+            None => win::move_to(code, 0, 0, w, h),
+        }
+        // Both drawn again where they now are, and only the strip between them on the canvas -
+        // the canvas does not clip its children, so its background must not go over them.
+        if let Some(c) = self.canvas.as_ref().map(|c| c.hwnd) {
+            unsafe {
+                if self.split_view.is_some() {
+                    let gap = win::px(self.hwnd, 6);
+                    let top = (h - gap) / 2;
+                    let _ = Gdi::InvalidateRect(Some(c), Some(&RECT { left: 0, top, right: w, bottom: top + gap }), true);
+                }
+                let _ = Gdi::InvalidateRect(Some(code), None, false);
+                if let Some(second) = self.split_view {
+                    let _ = Gdi::InvalidateRect(Some(second), None, false);
+                }
+            }
+        }
+    }
+
+    /// An editor's text changed: the other half of a split takes it, and the first goes on as
+    /// any change does.
+    pub fn code_changed_in(&mut self, from: HWND) {
+        match (self.split_view, self.doc.code) {
+            (Some(second), Some(code)) if from == second => {
+                phai_editor::view::replace_whole(code, &phai_editor::view::text(second));
+            }
+            (second, _) => {
+                self.code_changed();
+                if let (Some(second), Some(code)) = (second, self.doc.code) {
+                    phai_editor::view::replace_whole(second, &phai_editor::view::text(code));
+                }
+            }
+        }
+    }
+
     pub fn code_changed(&mut self) {
         if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
             if path.extension().is_some_and(|e| e == "rs") {
@@ -3968,6 +4066,10 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_SPLIT => {
+                self.toggle_split();
+                self.rebuild_menu();
+            }
             ID_VIEW_OUTLINE => {
                 let on = !explorer::outline_shown(self.side);
                 if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
@@ -4866,6 +4968,7 @@ fn main() {
             found_words: "{0} references in {1} files",
             test_results: vec![],
             outline: None,
+            split_view: None,
             config,
             nav: vec![],
             nav_at: 0,
@@ -5019,6 +5122,24 @@ fn main() {
             if let Some(i) = s.selected {
                 let c = &s.doc.form.control[i];
                 println!("now: dock={:?} locked={:?}", c.dock, c.locked);
+            }
+        }
+        // `--split`: the code file in front split in two - checked by picture; with `--split-type`
+        // words typed in the lower half, to see them in the upper.
+        if args.iter().any(|a| a == "--split") {
+            s.command(ID_SPLIT);
+
+            if let (Some(second), Some(code), false) = (s.split_view, s.doc.code, std::env::var_os("PHAI_SPLIT_QUIET").is_some()) {
+                phai_editor::view::go_to(second, 1, 1);
+                for u in "// typed below\n".encode_utf16() {
+                    let u = if u == 10 { 13 } else { u };
+                    wm::SendMessageW(second, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
+                }
+                println!("top starts: {}", phai_editor::view::text(code).lines().next().unwrap_or_default());
+                if let Ok(p) = std::env::var("PHAI_SPLIT_SHOT") {
+                    let _ = Gdi::RedrawWindow(Some(second), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_UPDATENOW);
+                    let _ = phai_ui::shot::save(second, Path::new(&p));
+                }
             }
         }
         // `--outline`: Document Outline shown - checked by picture.
