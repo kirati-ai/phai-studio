@@ -75,6 +75,10 @@ const ID_SAVE_ALL: i32 = 211;
 const ID_NAV_BACK: i32 = 212;
 const ID_NAV_FORWARD: i32 = 213;
 const ID_LAYOUT_BAR: i32 = 214;
+/// The tray the toolbars lie in, each with a grip to drag it.
+const ID_REBAR: i32 = 215;
+const BAND_STANDARD: u32 = 1;
+const BAND_LAYOUT: u32 = 2;
 /// The timer that slides an auto-hidden pane back once the pointer and focus have left it.
 const TIMER_SLIDE: usize = 7301;
 /// File > Recent: `ID_RECENT + n`, newest first.
@@ -236,6 +240,8 @@ pub struct Studio {
     toolbox_h: i32,
     /// The form designer's Layout bar, under the Standard bar.
     layout_bar: HWND,
+    /// The tray both bars lie in.
+    rebar: HWND,
     /// The Debug / Release box on the Standard bar.
     config: HWND,
     /// Places in code that F12, a reference or an error went from, for Navigate backward and
@@ -1646,6 +1652,7 @@ impl Studio {
             let _ = wm::DestroyMenu(old);
         }
         win::retheme(self.hwnd);
+        win::rebar_colours(self.rebar);
         self.rebuild();
     }
 
@@ -1847,7 +1854,7 @@ impl Studio {
             let mut top_r = RECT::default();
             let mut status_r = RECT::default();
             let mut client = RECT::default();
-            let _ = wm::GetWindowRect(self.layout_bar, &mut top_r);
+            let _ = wm::GetWindowRect(self.rebar, &mut top_r);
             let _ = wm::GetWindowRect(self.status, &mut status_r);
             let _ = wm::GetClientRect(self.hwnd, &mut client);
             let mut pts = [windows::Win32::Foundation::POINT { x: client.left, y: client.top }, windows::Win32::Foundation::POINT { x: client.right, y: client.bottom }];
@@ -1956,6 +1963,46 @@ impl Studio {
         }
         self.layout.apply(self.hwnd);
         self.rebuild_menu();
+    }
+
+    /// The tray's rows changed - a bar dragged onto another row, or up beside the other: the panes
+    /// below take the room that is left.
+    fn tray_height_changed(&mut self) {
+        let h = phai_ui::layout::unscale(win::rebar_height(self.rebar), win::dpi(self.hwnd)).max(8);
+        let rb = self.rebar;
+        if let Some(i) = self.item(rb) {
+            if i.bounds.h == h {
+                return;
+            }
+            i.bounds.h = h;
+        }
+        self.layout.apply(self.hwnd);
+    }
+
+    /// A bar's » pressed: the buttons it has no room for, as a menu under it.
+    fn tray_chevron(&mut self, band_child: HWND, at: RECT) {
+        let mut tr = RECT::default();
+        unsafe {
+            let _ = wm::GetClientRect(band_child, &mut tr);
+        }
+        let hidden = win::toolbar_hidden(band_child, tr.right);
+        if hidden.is_empty() {
+            return;
+        }
+        unsafe {
+            let m = wm::CreatePopupMenu().unwrap_or_default();
+            for (cmd, label) in &hidden {
+                let w = wide(label);
+                let _ = wm::AppendMenuW(m, wm::MF_STRING, *cmd as usize, PCWSTR(w.as_ptr()));
+            }
+            let mut pt = windows::Win32::Foundation::POINT { x: at.left, y: at.bottom };
+            let _ = Gdi::ClientToScreen(self.rebar, &mut pt);
+            let chosen = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, pt.x, pt.y, None, self.hwnd, None).0;
+            let _ = wm::DestroyMenu(m);
+            if chosen != 0 {
+                self.command(chosen);
+            }
+        }
     }
 
     /// Whether a pane hides itself at its edge.
@@ -2475,6 +2522,7 @@ impl Studio {
     fn relabel(&mut self) {
         win::set_toolbar(self.toolbar, &toolbar_items());
         win::set_toolbar(self.layout_bar, &layout_items());
+        win::rebar_fit(self.rebar);
         self.say_bars();
         toolbox::relabel(self.toolbox);
         toolbox::choose(self.toolbox, self.tool.and_then(|k| Kind::ALL.iter().position(|x| *x == k)).map(|i| ID_TOOL + 1 + i as i32).unwrap_or(ID_TOOL));
@@ -2656,6 +2704,23 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            if hdr.hwndFrom == s.rebar {
+                const RBN_HEIGHTCHANGE: u32 = (-831i32) as u32;
+                const RBN_CHEVRONPUSHED: u32 = (-841i32) as u32;
+                if hdr.code == RBN_HEIGHTCHANGE {
+                    s.tray_height_changed();
+                    return LRESULT(0);
+                }
+                if hdr.code == RBN_CHEVRONPUSHED {
+                    let c = unsafe { &*(l.0 as *const cc::NMREBARCHEVRON) };
+                    let mut info = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_CHILD, ..Default::default() };
+                    unsafe {
+                        wm::SendMessageW(s.rebar, 0x041C /* RB_GETBANDINFOW */, Some(WPARAM(c.uBand as usize)), Some(LPARAM(&mut info as *mut _ as isize)));
+                    }
+                    s.tray_chevron(info.hwndChild, c.rc);
+                    return LRESULT(0);
+                }
+            }
             if s.bottom.as_ref().is_some_and(|b| b.refs == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 if it.iItem >= 0 {
@@ -2854,8 +2919,13 @@ fn main() {
     unsafe {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(build_menu()), Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
-        let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &toolbar_items());
-        let layout_bar = win::toolbar(hwnd, ID_LAYOUT_BAR, &layout_items());
+        // The bars lie in a tray, as Visual Studio's: each has a grip to drag it along its row,
+        // to another row, or up beside the other.
+        let rebar = win::rebar(hwnd, ID_REBAR);
+        let toolbar = win::toolbar(rebar, ID_TOOLBAR, &toolbar_items());
+        let layout_bar = win::toolbar(rebar, ID_LAYOUT_BAR, &layout_items());
+        win::rebar_add(rebar, toolbar, BAND_STANDARD, false);
+        win::rebar_add(rebar, layout_bar, BAND_LAYOUT, true);
         // The Debug / Release box lies over the room the Standard bar keeps for it.
         let config = win::combo(toolbar, ID_CONFIG, font, &["Debug", "Release"]);
         let toolbox = toolbox::new(hwnd, ID_TOOLBOX, font);
@@ -2873,8 +2943,7 @@ fn main() {
         let status_h = phai_ui::layout::unscale(controls::status_height(status), dpi);
         let mut layout = Layout::new((1100, 700));
         layout
-            .add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
-            .add(layout_bar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() })
+            .add(rebar, Item { bounds: Rect::new(0, 0, 0, phai_ui::layout::unscale(win::rebar_height(rebar), win::dpi(hwnd)).max(win::TOOLBAR_HEIGHT)), dock: Dock::Top, anchor: Anchor::default() })
             .add(status, Item { bounds: Rect::new(0, 0, 0, status_h), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_hwnd, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
             .add(bottom_split, Item { bounds: Rect::new(0, 0, 0, 0), dock: Dock::Bottom, anchor: Anchor::default() })
@@ -2905,6 +2974,7 @@ fn main() {
             toolbox_float: None,
             toolbox_h: 200,
             layout_bar,
+            rebar,
             config,
             nav: vec![],
             nav_at: 0,
@@ -3014,6 +3084,15 @@ fn main() {
         s.rebuild();
         s.refresh_props();
         // `--selftest out.phaiform`: draws, moves and sizes a control with the mouse messages a
+        // `--one-row`: the Layout bar dragged up beside the Standard bar - checked by picture.
+        if args.iter().any(|a| a == "--one-row") {
+            use windows::Win32::UI::Controls as cc;
+            let mut info = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_STYLE, ..Default::default() };
+            wm::SendMessageW(s.rebar, 0x041C /* RB_GETBANDINFOW */, Some(WPARAM(1)), Some(LPARAM(&mut info as *mut _ as isize)));
+            info.fStyle &= !0x0001; // RBBS_BREAK
+            wm::SendMessageW(s.rebar, 0x040B /* RB_SETBANDINFOW */, Some(WPARAM(1)), Some(LPARAM(&info as *const _ as isize)));
+            s.tray_height_changed();
+        }
         // `--dock-toolbox top|right|bottom|float`: the toolbox moved as a drag would - checked by picture.
         if let Some(d) = args.iter().position(|a| a == "--dock-toolbox").and_then(|i| args.get(i + 1)) {
             let t = match d.as_str() {
