@@ -1,0 +1,23 @@
+[package]
+name = "phai-debug"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "A debugger for Rust programs on Windows, on the Windows debug API and dbghelp"
+
+[lib]
+name = "phai_debug"
+path = "src/lib.rs"
+
+[dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Kernel",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
