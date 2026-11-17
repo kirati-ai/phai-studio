@@ -418,6 +418,19 @@ pub static THAI: &[(&str, &str)] = &[
     ("Quick Actions and Refactorings...", "การแก้ไขด่วนและปรับโครงสร้าง..."),
     ("No quick actions here", "ไม่มีการแก้ไขด่วนที่นี่"),
     ("{0}: {1} changes in {2} files", "{0}: แก้ {1} แห่งใน {2} ไฟล์"),
+    ("Tests", "การทดสอบ"),
+    ("Test", "การทดสอบ"),
+    ("Outcome", "ผล"),
+    ("Run Tests of {0}", "รันการทดสอบของ {0}"),
+    ("Run All Tests", "รันการทดสอบทั้งหมด"),
+    ("&Test", "&ทดสอบ"),
+    ("Running tests...", "กำลังรันการทดสอบ..."),
+    ("Passed", "ผ่าน"),
+    ("Failed", "ไม่ผ่าน"),
+    ("Skipped", "ข้าม"),
+    ("The tests could not be built - see Errors", "สร้างการทดสอบไม่ได้ - ดูที่ Errors"),
+    ("{0} passed, {1} failed, {2} skipped ({3} s)", "ผ่าน {0} ไม่ผ่าน {1} ข้าม {2} ({3} วินาที)"),
+    ("A chord's first key was pressed. Waiting for the second key...", "กดปุ่มแรกของชุดแล้ว กำลังรอปุ่มที่สอง..."),
 ];
 
 #[cfg(test)]
