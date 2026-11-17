@@ -308,3 +308,72 @@ fn exception_settings_decide_what_stops() {
     assert_eq!(first_stop(&exe, &dir2, "", Command::Exceptions { panics: true, first_chance: vec![0xC000_0005] }), Ok("first-chance exception 0xC0000005".into()));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+const WATCHED: &str = r#"fn main() {
+    let mut total: u64 = 0;
+    let word = 0x4142_4344u32;
+    for i in 1..10u64 {
+        let before = total;
+        if i == 5 {
+            total += 100;
+        }
+        let _ = before;
+    }
+    println!("{total} {word}");
+}
+"#;
+
+#[test]
+fn memory_is_read_and_a_data_breakpoint_stops_on_a_change() {
+    let dir = std::env::temp_dir().join(format!("phai-debug-mem-{}", std::process::id()));
+    let Some(exe) = build_text(&dir, WATCHED) else { return };
+    let src = dir.join("main.rs");
+    let (tx, rx) = channel();
+    let s = Session::launch(&exe, &dir, vec![(src.clone(), 4)], move |e| {
+        let _ = tx.send(e);
+    });
+    let (_, line, _, _) = stopped(&rx);
+    assert_eq!(line, 4);
+    // The Memory window: `word` as it lies in memory, the low byte first.
+    s.send(Command::Memory { id: 1, at: "word".into(), len: 4 });
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::Memory { id: 1, result } => {
+                let (addr, bytes) = result.expect("read");
+                assert!(addr > 0);
+                assert_eq!(bytes, vec![Some(0x44), Some(0x43), Some(0x42), Some(0x41)]);
+                break;
+            }
+            Event::Failed(e) => panic!("{e}"),
+            _ => {}
+        }
+    }
+    // A data breakpoint on `total`: the breakpoint taken away, it stops where `total` changes.
+    s.send(Command::DataBreakpoint("total".into()));
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::DataBreakpoint(r) => {
+                assert!(r.expect("set").starts_with("total"));
+                break;
+            }
+            Event::Failed(e) => panic!("{e}"),
+            _ => {}
+        }
+    }
+    s.send(Command::Breakpoints(vec![]));
+    s.send(Command::Continue);
+    let (reason, line, locals, _) = stopped(&rx);
+    assert_eq!(reason, "data breakpoint: total changed");
+    assert!((6..=8).contains(&line), "stopped by the change, at line {line}");
+    assert_eq!(local(&locals, "total"), "100");
+    s.send(Command::ClearDataBreakpoints);
+    s.send(Command::Continue);
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::Exited(_) => break,
+            Event::Stopped { reason, .. } => panic!("stopped again: {reason}"),
+            _ => {}
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
