@@ -111,6 +111,42 @@ impl Connection {
         self.query(Some(database), &format!("SELECT * FROM {}.{} LIMIT {}", quote(database), quote(table), MAX_ROWS))
     }
 
+    /// Runs one statement with `?` marks, `params` in their places (`None` for NULL) - kept
+    /// apart from the SQL, so a value can never change what the statement does.
+    pub fn execute(&self, database: Option<&str>, sql: &str, params: &[Option<String>]) -> Result<Grid, String> {
+        let mut c = self.open(database)?;
+        let refs: Vec<Option<&str>> = params.iter().map(|p| p.as_deref()).collect();
+        let (r, cut) = c.execute(sql, &refs, MAX_ROWS)?;
+        Ok(Grid { columns: r.columns, rows: r.rows.into_iter().map(|row| row.into_iter().map(|v| v.unwrap_or_else(|| "NULL".into())).collect()).collect(), affected: r.affected, cut })
+    }
+
+    /// Changes one value of a row, the row found by its primary key - `keys` its columns and
+    /// their values now. How many rows changed: 1, or 0 when the row is no longer there.
+    pub fn update_cell(&self, database: &str, table: &str, column: &str, value: Option<&str>, keys: &[(String, String)]) -> Result<u64, String> {
+        let wheres: Vec<String> = keys.iter().map(|(k, _)| format!("{} = ?", quote(k))).collect();
+        let sql = format!("UPDATE {}.{} SET {} = ? WHERE {} LIMIT 1", quote(database), quote(table), quote(column), wheres.join(" AND "));
+        let mut params: Vec<Option<String>> = vec![value.map(str::to_string)];
+        params.extend(keys.iter().map(|(_, v)| Some(v.clone())));
+        Ok(self.execute(Some(database), &sql, &params)?.affected)
+    }
+
+    /// Deletes the row with these primary key values.
+    pub fn delete_row(&self, database: &str, table: &str, keys: &[(String, String)]) -> Result<u64, String> {
+        let wheres: Vec<String> = keys.iter().map(|(k, _)| format!("{} = ?", quote(k))).collect();
+        let sql = format!("DELETE FROM {}.{} WHERE {} LIMIT 1", quote(database), quote(table), wheres.join(" AND "));
+        let params: Vec<Option<String>> = keys.iter().map(|(_, v)| Some(v.clone())).collect();
+        Ok(self.execute(Some(database), &sql, &params)?.affected)
+    }
+
+    /// Adds a row: these columns, these values (`None` for NULL); the others take their defaults.
+    pub fn insert_row(&self, database: &str, table: &str, values: &[(String, Option<String>)]) -> Result<u64, String> {
+        let cols: Vec<String> = values.iter().map(|(c, _)| quote(c)).collect();
+        let marks: Vec<&str> = values.iter().map(|_| "?").collect();
+        let sql = format!("INSERT INTO {}.{} ({}) VALUES ({})", quote(database), quote(table), cols.join(", "), marks.join(", "));
+        let params: Vec<Option<String>> = values.iter().map(|(_, v)| v.clone()).collect();
+        Ok(self.execute(Some(database), &sql, &params)?.affected)
+    }
+
     /// Runs `sql` - one statement or several - in `database`; the last result with rows is
     /// shown, or how many rows the statements changed.
     pub fn query(&self, database: Option<&str>, sql: &str) -> Result<Grid, String> {

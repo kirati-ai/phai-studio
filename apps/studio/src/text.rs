@@ -328,6 +328,15 @@ pub static THAI: &[(&str, &str)] = &[
     ("An expression: a name, a path like order.total, or a comparison like x > 5", "นิพจน์: ชื่อตัวแปร ทางอย่าง order.total หรือการเปรียบเทียบอย่าง x > 5"),
     ("The expression; nothing takes it away.", "นิพจน์ ลบให้ว่างเพื่อเอาออก"),
     ("Stop at line {0} only when this holds - x > 5, name == \"ไผ่\":", "หยุดที่บรรทัด {0} เมื่อเงื่อนไขนี้เป็นจริงเท่านั้น - x > 5, name == \"ไผ่\":"),
+    ("A query's result is not a table: open one with Show Table Data to change its rows", "ผลคิวรีไม่ใช่ตาราง: เปิดด้วย แสดงข้อมูลในตาราง เพื่อแก้แถว"),
+    ("This table has no primary key, so its rows cannot be told apart to change one.", "ตารางนี้ไม่มี primary key จึงแยกแถวเพื่อแก้ไม่ได้"),
+    ("{0} ({1}) - NULL for none:", "{0} ({1}) - พิมพ์ NULL ถ้าไม่มีค่า:"),
+    ("Saving...", "กำลังบันทึก..."),
+    ("Edit Cell...", "แก้ช่อง..."),
+    ("Add Row...", "เพิ่มแถว..."),
+    ("Delete Row", "ลบแถว"),
+    ("Delete the row {0} from {1}? This cannot be undone.", "ลบแถว {0} ออกจาก {1}? ย้อนกลับไม่ได้"),
+    ("Add Row - {0}", "เพิ่มแถว - {0}"),
 ];
 
 #[cfg(test)]
