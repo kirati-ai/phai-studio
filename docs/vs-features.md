@@ -74,7 +74,8 @@
 | | ความสามารถ | สถานะ |
 |---|---|---|
 | ★ | Breakpoints (F9, คลิกขอบซ้าย), F5 เริ่ม/ทำต่อ, F10/F11/Shift+F11, Break All, Shift+F5, หยุดเมื่อ panic, Locals (ตัวเลข bool char &str String struct), Call Stack, แถบ Debug — เขียนเองบน Windows debug API + dbghelp | ✅ |
-| | Watch, data tips (ชี้ตัวแปรดูค่า), conditional breakpoints, แก้ค่าตัวแปร | ⬜ |
+| ★ | Watch (Shift+F9, ชื่อ / ทางอย่าง order.total / การเปรียบเทียบ), data tips (ชี้ตัวแปรตอนหยุด), จุดหยุดแบบมีเงื่อนไข (Alt+F9, จุดแดงมี +) | ✅ |
+| | แก้ค่าตัวแปรระหว่างดีบัก, hit count | ⬜ |
 
 ## หน้าต่าง
 
@@ -112,5 +113,5 @@
 | ★ | ตัวคุยโปรโตคอล MySQL ของ Phai เอง: mysql_native_password, caching_sha2_password, sha256_password (RSA ไม่มี TLS), TLS ผ่าน SChannel | ✅ |
 | ★ | Show Table Data (1000 แถวแรก), New Query (ไฟล์ .sql) + Ctrl+Shift+E รัน, ผลในแท็บผลลัพธ์คิวรี | ✅ |
 | | คัดลอกโค้ดสำหรับโปรแกรม: struct ของแถว + ฟังก์ชันอ่านทั้งตาราง (รหัสผ่านจากตัวแปรแวดล้อม) | ✅ |
-| | แก้ข้อมูลในตาราง, ออกแบบตาราง, prepared statements, SQL Server / PostgreSQL / SQLite | ⬜ |
+| | แก้ข้อมูลในตาราง, ออกแบบตาราง, prepared statements, PostgreSQL / SQLite (SQL Server ไม่ทำ: ต้องซื้อซอฟต์แวร์) | ⬜ |
 

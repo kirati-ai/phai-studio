@@ -319,6 +319,15 @@ pub static THAI: &[(&str, &str)] = &[
     ("{0} rows affected", "มีผล {0} แถว"),
     ("First {0} rows", "{0} แถวแรก"),
     ("{0} rows", "{0} แถว"),
+    ("Watch", "เฝ้าดู"),
+    ("Add Watch...", "เพิ่มเฝ้าดู..."),
+    ("Add Watch", "เพิ่มเฝ้าดู"),
+    ("Edit Watch", "แก้เฝ้าดู"),
+    ("Breakpoint Condition...", "เงื่อนไขจุดหยุด..."),
+    ("Breakpoint Condition", "เงื่อนไขจุดหยุด"),
+    ("An expression: a name, a path like order.total, or a comparison like x > 5", "นิพจน์: ชื่อตัวแปร ทางอย่าง order.total หรือการเปรียบเทียบอย่าง x > 5"),
+    ("The expression; nothing takes it away.", "นิพจน์ ลบให้ว่างเพื่อเอาออก"),
+    ("Stop at line {0} only when this holds - x > 5, name == \"ไผ่\":", "หยุดที่บรรทัด {0} เมื่อเงื่อนไขนี้เป็นจริงเท่านั้น - x > 5, name == \"ไผ่\":"),
 ];
 
 #[cfg(test)]
