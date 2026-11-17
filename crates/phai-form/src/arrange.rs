@@ -149,26 +149,34 @@ pub fn snaplines(moving: [i32; 4], others: &[[i32; 4]], form: [i32; 2], margin: 
     let mut ys: Vec<i32> = vec![margin, form[1] - margin];
     for o in others {
         xs.extend([o[0], o[0] + o[2]]);
-        ys.extend([o[1], o[1] + o[3]]);
+        // The text's baseline too, as Visual Studio's designer lines up a label's words with a
+        // box's: a control's words sit in its middle, their baseline a little below it.
+        ys.extend([o[1], o[1] + o[3], baseline(*o)]);
     }
-    // The nearest line to either edge, if near enough: (shift, line).
-    let best = |a: i32, b: i32, lines: &[i32]| {
+    // The nearest line to any of the edges, if near enough: (shift, line).
+    let best = |edges: &[i32], lines: &[i32]| {
         lines
             .iter()
-            .flat_map(|&l| [(l - a, l), (l - b, l)])
+            .flat_map(|&l| edges.iter().map(move |e| (l - e, l)))
             .filter(|(d, _)| d.abs() <= SNAP)
             .min_by_key(|(d, _)| d.abs())
     };
     let mut lines = Vec::new();
-    let dx = best(x, x + w, &xs).map(|(d, l)| {
+    let dx = best(&[x, x + w], &xs).map(|(d, l)| {
         lines.push((true, l));
         d
     });
-    let dy = best(y, y + h, &ys).map(|(d, l)| {
+    let dy = best(&[y, y + h, baseline(moving)], &ys).map(|(d, l)| {
         lines.push((false, l));
         d
     });
     ((dx.unwrap_or(0), dy.unwrap_or(0)), lines)
+}
+
+/// Where a control's words stand, design pixels down the form: its middle, and half the 9-point
+/// text's height below - the line its letters sit on.
+pub fn baseline(r: [i32; 4]) -> i32 {
+    r[1] + r[3] / 2 + 5
 }
 
 /// Ctrl+arrow, as Visual Studio's designer: how far to go in direction `dir` (-1 or 1, across
@@ -345,5 +353,14 @@ mod tests {
         arrange_in(&mut one, 0, Op::CenterDown, [480, 360], 8);
         assert_eq!(one[0][1], 170);
         assert!(Op::CenterDown.works_alone() && !Op::Lefts.works_alone());
+    }
+
+    #[test]
+    fn a_label_snaps_to_a_taller_box_by_its_words() {
+        // A 23-high box at y 40; a 17-high label moving near: its words line up with the box's.
+        let other = [100, 40, 150, 23];
+        let ((_, dy), lines) = snaplines([10, 44, 60, 17], &[other], [400, 300], 11);
+        assert_eq!(baseline([10, 44 + dy, 60, 17]), baseline(other), "baselines meet");
+        assert!(lines.iter().any(|(across, l)| !across && *l == baseline(other)));
     }
 }
