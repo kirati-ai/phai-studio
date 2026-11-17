@@ -339,6 +339,8 @@ pub struct Studio {
     bottom_split: HWND,
     /// Design pixels: the side panes' width and the bottom pane's height.
     side_w: i32,
+    /// The side panes' edge: right, as Visual Studio has them, or left when dragged there.
+    side_dock: Dock,
     bottom_h: i32,
     toolbox_on: bool,
     bottom_on: bool,
@@ -2742,6 +2744,40 @@ impl Studio {
     /// Dragging the toolbox by its caption: a shaded box follows the pointer to show where it
     /// would go - an edge, or floating - until the button comes up; Escape leaves it where it was.
     fn drag_toolbox(&mut self) {
+        let (across, down) = (self.toolbox_w, self.toolbox_h);
+        if let Some(t) = self.drag_target(across, down, &[Dock::Left, Dock::Right, Dock::Top, Dock::Bottom], true) {
+            self.dock_toolbox(t);
+        }
+    }
+
+    /// Dragging Project, Server Explorer or Properties by its caption: the side panes go together
+    /// to the left or the right edge.
+    fn drag_side(&mut self) {
+        if let Some(docking::Target::Edge(d)) = self.drag_target(self.side_w, self.side_w, &[Dock::Left, Dock::Right], false) {
+            self.dock_side(d);
+        }
+    }
+
+    /// The side panes against `d` - left or right - with their splitter on the inner side.
+    pub fn dock_side(&mut self, d: Dock) {
+        if !matches!(d, Dock::Left | Dock::Right) || d == self.side_dock {
+            return;
+        }
+        self.side_dock = d;
+        let (side, split) = (self.side, self.side_split);
+        for h in [side, split] {
+            if let Some(i) = self.item(h) {
+                i.dock = d;
+            }
+        }
+        self.layout.apply(self.hwnd);
+        self.refresh_strips();
+    }
+
+    /// The drag a pane's caption starts: a shaded box where the pane would go, the dock guides
+    /// for the edges in `docks`, until the button comes up; Escape, or a place it may not go,
+    /// gives `None`. `across` and `down` are the pane's design width and height.
+    fn drag_target(&mut self, across: i32, down: i32, docks: &[Dock], can_float: bool) -> Option<docking::Target> {
         unsafe {
             let mut start = windows::Win32::Foundation::POINT::default();
             let _ = wm::GetCursorPos(&mut start);
@@ -2755,11 +2791,13 @@ impl Studio {
             let mut pts = [windows::Win32::Foundation::POINT { x: client.left, y: client.top }, windows::Win32::Foundation::POINT { x: client.right, y: client.bottom }];
             Gdi::MapWindowPoints(Some(self.hwnd), None, &mut pts);
             let area = RECT { left: pts[0].x, top: top_r.bottom, right: pts[1].x, bottom: status_r.top };
-            let (across, down) = (win::px(self.hwnd, self.toolbox_w), win::px(self.hwnd, self.toolbox_h));
+            let (across, down) = (win::px(self.hwnd, across), win::px(self.hwnd, down));
             let zone = win::px(self.hwnd, 56);
             let preview = docking::preview_window(self.hwnd);
-            let guide_rects = docking::guides(area, win::px(self.hwnd, 36));
+            let mut guide_rects = docking::guides(area, win::px(self.hwnd, 36));
+            guide_rects.retain(|(d, _)| docks.contains(d));
             let mut guide_windows: Vec<HWND> = vec![];
+            let mut moved_off = false;
             km::SetCapture(self.hwnd);
             let mut target: Option<docking::Target> = None;
             let mut msg = wm::MSG::default();
@@ -2785,9 +2823,19 @@ impl Studio {
                             Some(d) => docking::Target::Edge(d),
                             None => docking::target_at(pt, area, zone, (across, win::px(self.hwnd, 460))),
                         };
-                        let r = docking::preview_rect(t, area, across, down);
-                        let _ = wm::SetWindowPos(preview, Some(wm::HWND_TOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, wm::SWP_NOACTIVATE | wm::SWP_SHOWWINDOW);
+                        // Only where this pane may go: elsewhere no box, and letting go leaves it.
+                        let allowed = match t {
+                            docking::Target::Edge(d) => docks.contains(&d),
+                            docking::Target::Float(_) => can_float,
+                        };
+                        if allowed {
+                            let r = docking::preview_rect(t, area, across, down);
+                            let _ = wm::SetWindowPos(preview, Some(wm::HWND_TOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, wm::SWP_NOACTIVATE | wm::SWP_SHOWWINDOW);
+                        } else {
+                            let _ = wm::ShowWindow(preview, wm::SW_HIDE);
+                        }
                         target = Some(t);
+                        moved_off = !allowed;
                     }
                     wm::WM_LBUTTONUP => break,
                     wm::WM_KEYDOWN if msg.wParam.0 == 0x1B => {
@@ -2806,8 +2854,10 @@ impl Studio {
             for g in guide_windows {
                 let _ = wm::DestroyWindow(g);
             }
-            if let Some(t) = target {
-                self.dock_toolbox(t);
+            if moved_off {
+                None
+            } else {
+                target
             }
         }
     }
@@ -2994,6 +3044,7 @@ impl Studio {
             controls::CAPTION_CLOSE => self.show_pane(pane, false),
             controls::CAPTION_PIN => self.set_auto_hide(pane, !self.is_auto(pane)),
             controls::CAPTION_DRAG if pane == Pane::Toolbox && !self.auto_left => self.drag_toolbox(),
+            controls::CAPTION_DRAG if matches!(pane, Pane::Explorer | Pane::Properties) && !self.auto_right => self.drag_side(),
             controls::CAPTION_MENU => {
                 const FLOAT: usize = 1;
                 const DOCK: usize = 2;
@@ -3053,6 +3104,9 @@ impl Studio {
             Pane::Explorer | Pane::Properties => {
                 if on == self.auto_right {
                     return;
+                }
+                if on {
+                    self.dock_side(Dock::Right);
                 }
                 self.auto_right = on;
                 let (side, split, w) = (self.side, self.side_split, self.side_w);
@@ -3254,6 +3308,7 @@ impl Studio {
             }
             self.size_toolbox(true);
         } else if id == ID_SPLIT_SIDE {
+            let d = if self.side_dock == Dock::Left { -d } else { d };
             self.side_w = (self.side_w - d).clamp(180, 900);
             let (side, w) = (self.side, self.side_w);
             if let Some(i) = self.item(side) {
@@ -4273,6 +4328,7 @@ fn main() {
             toolbox_w: toolbox::WIDTH,
             bottom_split: HWND::default(),
             side_w: 280,
+            side_dock: Dock::Right,
             bottom_h: ERRORS_HEIGHT,
             toolbox_on: true,
             bottom_on: false,
@@ -4325,7 +4381,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -4389,6 +4445,10 @@ fn main() {
             s.tray_height_changed();
         }
         // `--dock-toolbox top|right|bottom|float`: the toolbox moved as a drag would - checked by picture.
+        // `--dock-side left|right`: the side panes against that edge, as a drag of their caption puts them.
+        if let Some(d) = args.iter().position(|a| a == "--dock-side").and_then(|i| args.get(i + 1)) {
+            s.dock_side(if d == "left" { Dock::Left } else { Dock::Right });
+        }
         if let Some(d) = args.iter().position(|a| a == "--dock-toolbox").and_then(|i| args.get(i + 1)) {
             let t = match d.as_str() {
                 "top" => docking::Target::Edge(Dock::Top),
@@ -4482,24 +4542,20 @@ fn main() {
                 let g = docking::guide_window(hwnd, d, RECT { left: 40 + n as i32 * 80, top: 40, right: 40 + n as i32 * 80 + size, bottom: 40 + size });
                 docking::light_guide(g, lit);
                 // See-through windows photograph black: solid for the picture.
-                unsafe {
-                    let ex = wm::GetWindowLongPtrW(g, wm::GWL_EXSTYLE);
-                    wm::SetWindowLongPtrW(g, wm::GWL_EXSTYLE, ex & !(wm::WS_EX_LAYERED.0 as isize));
-                    let _ = Gdi::RedrawWindow(Some(g), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_UPDATENOW);
-                    // A moment for the screen to put it together, messages handled meanwhile.
-                    let mut m = wm::MSG::default();
-                    for _ in 0..40 {
-                        while wm::PeekMessageW(&mut m, None, 0, 0, wm::PM_REMOVE).as_bool() {
-                            let _ = wm::TranslateMessage(&m);
-                            wm::DispatchMessageW(&m);
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(10));
+                let ex = wm::GetWindowLongPtrW(g, wm::GWL_EXSTYLE);
+                wm::SetWindowLongPtrW(g, wm::GWL_EXSTYLE, ex & !(wm::WS_EX_LAYERED.0 as isize));
+                let _ = Gdi::RedrawWindow(Some(g), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_UPDATENOW);
+                // A moment for the screen to put it together, messages handled meanwhile.
+                let mut m = wm::MSG::default();
+                for _ in 0..40 {
+                    while wm::PeekMessageW(&mut m, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                        let _ = wm::TranslateMessage(&m);
+                        wm::DispatchMessageW(&m);
                     }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
                 }
                 let _ = phai_ui::shot::save(g, &Path::new(dir).join(format!("guide{n}.png")));
-                unsafe {
-                    let _ = wm::DestroyWindow(g);
-                }
+                let _ = wm::DestroyWindow(g);
             }
             std::process::exit(0);
         }
