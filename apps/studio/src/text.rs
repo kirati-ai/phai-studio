@@ -407,6 +407,11 @@ pub static THAI: &[(&str, &str)] = &[
     ("Already formatted", "จัดรูปแบบอยู่แล้ว"),
     ("(Ctrl+K) was pressed. Waiting for the second key of the chord...", "กด (Ctrl+K) แล้ว กำลังรอปุ่มที่สอง..."),
     ("That key combination is not a command", "ปุ่มชุดนี้ไม่ใช่คำสั่ง"),
+    ("Find in Files...", "ค้นหาในไฟล์..."),
+    ("Find what:", "ค้นหาคำ:"),
+    ("Match case", "ตรงตัวพิมพ์"),
+    ("Find in Files - {0}", "ค้นหาในไฟล์ - {0}"),
+    ("{0} matches in {1} files", "พบ {0} แห่งใน {1} ไฟล์"),
 ];
 
 #[cfg(test)]

@@ -123,6 +123,7 @@ const ID_FORMAT_DOC: i32 = 246;
 const ID_CHORD: i32 = 247;
 /// A chord's second key that finishes none: the status line cleared.
 const ID_CHORD_END: i32 = 248;
+const ID_FIND_IN_FILES: i32 = 249;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -318,6 +319,8 @@ pub struct Studio {
     conds: Vec<(PathBuf, u32, String)>,
     /// The data tip asked for, and the editor and words it is for.
     tip: Option<(u64, HWND, String)>,
+    /// How the References list's count is said: references, or Find in Files' matches.
+    found_words: &'static str,
     /// Publish: what to pack once the Release build is done.
     publish_after_build: Option<phai_pack::Manifest>,
     /// The table Results shows, when it shows one (Show Table Data): its rows can be changed.
@@ -366,6 +369,43 @@ pub struct Studio {
 }
 
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Find in Files' search: `what` in every text file under `root` - Cargo's `target` and hidden
+/// folders left out - as places (line, UTF-16 column, as the language server counts), at most `max`.
+fn find_in_tree(root: &Path, what: &str, case: bool, max: usize) -> Vec<phai_editor::lsp::Location> {
+    const KINDS: [&str; 9] = ["rs", "toml", "css", "phaiform", "md", "txt", "json", "sql", "html"];
+    let mut found = Vec::new();
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(d) = dirs.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        let mut entries: Vec<_> = rd.flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for p in entries {
+            let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if p.is_dir() {
+                if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                    dirs.push(p);
+                }
+                continue;
+            }
+            if !p.extension().is_some_and(|e| KINDS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str())) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&p) else { continue };
+            let text = text.replace("\r\n", "\n");
+            let starts: Vec<usize> = std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
+            for (a, b) in phai_editor::model::find_all(&text, what, case) {
+                let line = starts.partition_point(|s| *s <= a) - 1;
+                let col = |x: usize| text[starts[line]..x].encode_utf16().count() as u32;
+                found.push(phai_editor::lsp::Location { path: p.clone(), start: (line as u32, col(a)), end: (line as u32, col(b.min(text[..].len()))) });
+                if found.len() >= max {
+                    return found;
+                }
+            }
+        }
+    }
+    found
+}
+
 /// What Peek Definition shows: the file and line, then the code from the line before the
 /// definition on - to its closing brace at the same indent, at most 14 lines.
 fn peek_text(path: &Path, line: usize, text: &str) -> String {
@@ -592,6 +632,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
         add(edit, ID_FORMAT_DOC, t("Format Document"), "Ctrl+K, Ctrl+D");
+        add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
         add(edit, ID_MOVE_UP, t("Move Line Up"), "Alt+Up");
         add(edit, ID_MOVE_DOWN, t("Move Line Down"), "Alt+Down");
         sep(edit);
@@ -1559,7 +1600,8 @@ impl Studio {
             win::list_add(list, &[&file, &(r.start.0 + 1).to_string(), &code]);
         }
         let files = texts.len();
-        let said = tf("{0} references in {1} files", &[&found.len(), &files]);
+        let said = tf(self.found_words, &[&found.len(), &files]);
+        self.found_words = "{0} references in {1} files";
         if LSP_TEST.load(Ordering::Relaxed) > 0 && !found.is_empty() {
             println!("{said}");
         }
@@ -1569,6 +1611,30 @@ impl Studio {
         if let Some(b) = self.bottom.as_ref() {
             b.show_tab(2);
         }
+    }
+
+    /// Find in Files (Ctrl+Shift+F): every place some words are, in the solution's files - the
+    /// References list shows them, a double-click opens each. `query` given: asked no question.
+    fn find_in_files(&mut self, query: Option<String>) {
+        let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok());
+        let Some(root) = root else { return };
+        // A path given relative may leave the folder empty: the one we are in.
+        let root = std::path::absolute(if root.as_os_str().is_empty() { Path::new(".") } else { &root }).unwrap_or(root);
+        let (what, case) = match query {
+            Some(q) => (q, false),
+            None => {
+                let start = self.doc.code.map(phai_editor::view::selected_text).filter(|t| !t.is_empty() && !t.contains('\n')).unwrap_or_default();
+                let fields = [phai_ui::dialogs::Field::Text(t("Find what:"), &start), phai_ui::dialogs::Field::Check(t("Match case"), false)];
+                let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Find in Files - {0}", &[&root.file_name().unwrap_or_default().to_string_lossy()]), &fields) else { return };
+                (a[0].clone(), a[1] == "1")
+            }
+        };
+        if what.is_empty() {
+            return;
+        }
+        let found = find_in_tree(&root, &what, case, 5000);
+        self.found_words = "{0} matches in {1} files";
+        self.show_references(found);
     }
 
     /// Double-click in the References list: that place, in Phai's editor.
@@ -3523,6 +3589,7 @@ impl Studio {
             ID_LSP_TEST => self.lsp_test_step(),
             ID_CHORD => controls::status_text(self.status, 0, t("(Ctrl+K) was pressed. Waiting for the second key of the chord...")),
             ID_FORMAT_DOC => self.format_document(),
+            ID_FIND_IN_FILES => self.find_in_files(None),
             ID_CHORD_END => controls::status_text(self.status, 0, t("That key combination is not a command")),
             ID_PEEK => match self.code_shown() {
                 Some(h) => self.lsp_peek(h),
@@ -4151,6 +4218,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         }
         match msg.wParam.0 {
             0x45 if ctrl && shift => return Some(ID_EXECUTE),
+            0x46 if ctrl && shift => return Some(ID_FIND_IN_FILES),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
@@ -4361,6 +4429,7 @@ fn main() {
             queries: std::collections::HashMap::new(),
             table_view: None,
             publish_after_build: None,
+            found_words: "{0} references in {1} files",
             config,
             nav: vec![],
             nav_at: 0,
@@ -4426,7 +4495,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
         }
@@ -4490,6 +4559,11 @@ fn main() {
             s.tray_height_changed();
         }
         // `--dock-toolbox top|right|bottom|float`: the toolbox moved as a drag would - checked by picture.
+        // `--find-in-files WORDS`: Find in Files without the question; prints how many it found.
+        if let Some(q) = args.iter().position(|a| a == "--find-in-files").and_then(|i| args.get(i + 1)).cloned() {
+            s.find_in_files(Some(q));
+            println!("{} found", s.references.len());
+        }
         // `--goto LINE:COLUMN`: the caret there in the open code - for checking by picture.
         if let Some((l, c)) = args.iter().position(|a| a == "--goto").and_then(|i| args.get(i + 1)).and_then(|p| p.split_once(':')) {
             if let (Some(h), Ok(l), Ok(c)) = (s.doc.code, l.parse(), c.parse()) {

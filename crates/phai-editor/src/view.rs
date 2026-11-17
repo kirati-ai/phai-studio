@@ -648,6 +648,11 @@ pub fn replace_whole(h: HWND, new: &str) -> bool {
     done
 }
 
+/// What is chosen in the editor, if anything.
+pub fn selected_text(h: HWND) -> String {
+    view(h).map(|v| v.model.selected_text()).unwrap_or_default()
+}
+
 /// The text now, with `\n` line ends.
 pub fn text(h: HWND) -> String {
     view(h).map(|v| v.model.buf.text()).unwrap_or_default()
