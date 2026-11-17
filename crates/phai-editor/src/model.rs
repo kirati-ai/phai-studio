@@ -546,7 +546,39 @@ impl Model {
 /// matches it, as byte offsets - brackets in strings, character literals and comments left out.
 pub fn matching_brace(text: &str, at: usize) -> Option<(usize, usize)> {
     let b = text.as_bytes();
-    // The brackets that are code, in order.
+    let code = code_brackets(text);
+    matching_in(b, &code, at)
+}
+
+/// The places that can fold: each `{` whose `}` is on a later line, as (its line, the `}`'s
+/// line), by first line; of several on one line, the one reaching furthest.
+pub fn fold_regions(text: &str) -> Vec<(usize, usize)> {
+    let b = text.as_bytes();
+    let starts: Vec<usize> = std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect();
+    let line_of = |at: usize| starts.partition_point(|s| *s <= at) - 1;
+    let mut open: Vec<usize> = Vec::new();
+    let mut out: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    for p in code_brackets(text) {
+        match b[p] {
+            b'{' => open.push(p),
+            b'}' => {
+                if let Some(o) = open.pop() {
+                    let (a, z) = (line_of(o), line_of(p));
+                    if z > a {
+                        let e = out.entry(a).or_insert(z);
+                        *e = (*e).max(z);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out.into_iter().collect()
+}
+
+/// The offsets of the brackets that are code - not in strings, characters or comments - in order.
+fn code_brackets(text: &str) -> Vec<usize> {
+    let b = text.as_bytes();
     let mut code: Vec<usize> = Vec::new();
     let mut i = 0;
     while i < b.len() {
@@ -584,6 +616,10 @@ pub fn matching_brace(text: &str, at: usize) -> Option<(usize, usize)> {
         }
         i += 1;
     }
+    code
+}
+
+fn matching_in(b: &[u8], code: &[usize], at: usize) -> Option<(usize, usize)> {
     let open = |c: u8| matches!(c, b'(' | b'[' | b'{');
     let pair = |c: u8| match c {
         b'(' => b')',
@@ -730,6 +766,12 @@ mod tests {
         m.caret = text.len();
         m.anchor = m.caret;
         m
+    }
+
+    #[test]
+    fn blocks_over_several_lines_can_fold() {
+        let t = "fn a() {\n    if x { y }\n    if z {\n        w\n    }\n}\nfn b() {}\n";
+        assert_eq!(fold_regions(t), vec![(0, 5), (2, 4)], "a one-line block does not fold");
     }
 
     #[test]

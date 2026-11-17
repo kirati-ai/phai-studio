@@ -135,6 +135,8 @@ const ID_RUN_ALL_TESTS: i32 = 254;
 const ID_GIT_CHANGES: i32 = 255;
 const ID_START_WINDOW: i32 = 256;
 const ID_VIEW_OUTLINE: i32 = 257;
+const ID_FOLD: i32 = 258;
+const ID_FOLD_ALL: i32 = 259;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -677,6 +679,8 @@ fn build_menu() -> HMENU {
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
         add(edit, ID_FORMAT_DOC, t("Format Document"), "Ctrl+K, Ctrl+D");
+        add(edit, ID_FOLD, t("Toggle Outlining Expansion"), "Ctrl+M, Ctrl+M");
+        add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
         add(edit, ID_MOVE_UP, t("Move Line Up"), "Alt+Up");
         add(edit, ID_MOVE_DOWN, t("Move Line Down"), "Alt+Down");
@@ -3847,6 +3851,11 @@ impl Studio {
             ID_LSP_TEST => self.lsp_test_step(),
             ID_CHORD => controls::status_text(self.status, 0, t("A chord's first key was pressed. Waiting for the second key...")),
             ID_FORMAT_DOC => self.format_document(),
+            ID_FOLD | ID_FOLD_ALL => match self.code_shown() {
+                Some(h) if id == ID_FOLD => phai_editor::view::toggle_fold_at_caret(h),
+                Some(h) => phai_editor::view::toggle_all_folds(h),
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
             ID_VIEW_OUTLINE => {
@@ -4517,12 +4526,14 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     (0x4B, 0x44, true) => Some(ID_FORMAT_DOC), // Ctrl+K, Ctrl+D
                     (0x4B, 0x43, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+C
                     (0x4B, 0x55, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+U
+                    (0x4D, 0x4D, true) => Some(ID_FOLD),       // Ctrl+M, Ctrl+M
+                    (0x4D, 0x4C, true) => Some(ID_FOLD_ALL),   // Ctrl+M, Ctrl+L
                     (0x52, 0x41, _) => Some(ID_RUN_ALL_TESTS), // Ctrl+R, A
                     (0x52, 0x54, _) => Some(ID_RUN_TESTS),     // Ctrl+R, T
                     _ => Some(ID_CHORD_END),
                 };
             }
-            if (k == 0x4B || k == 0x52) && ctrl && !shift {
+            if (k == 0x4B || k == 0x52 || (k == 0x4D && studio().is_some_and(|s| s.code_shown().is_some()))) && ctrl && !shift {
                 CHORD.store(k, Ordering::Relaxed);
                 return Some(ID_CHORD);
             }
@@ -4895,6 +4906,13 @@ fn main() {
         // `--outline`: Document Outline shown - checked by picture.
         if args.iter().any(|a| a == "--outline") {
             s.command(ID_VIEW_OUTLINE);
+        }
+        // `--fold-all`: every block in the open code folded - checked by picture.
+        if args.iter().any(|a| a == "--fold-all") {
+            if let Some(h) = s.doc.code {
+                phai_editor::view::toggle_all_folds(h);
+                println!("{} lines folded", phai_editor::view::hidden_lines(h));
+            }
         }
         // `--goto LINE:COLUMN`: the caret there in the open code - for checking by picture.
         if let Some((l, c)) = args.iter().position(|a| a == "--goto").and_then(|i| args.get(i + 1)).and_then(|p| p.split_once(':')) {
