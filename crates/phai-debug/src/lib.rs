@@ -32,6 +32,11 @@ pub enum Command {
     Stop,
     /// The breakpoints, every one, as file and line from 1.
     Breakpoints(Vec<(PathBuf, u32)>),
+    /// Conditions on breakpoints - file, line, `x > 5` - each stopping only when it holds.
+    Conditions(Vec<(PathBuf, u32, String)>),
+    /// While paused: the values of these expressions (`total`, `order.items.len`), answered by
+    /// [`Event::Values`] with the same `id` - for Watch, and for a data tip.
+    Evaluate { id: u64, exprs: Vec<String> },
 }
 
 /// A frame of the call stack: the function, and where in the source when the PDB says.
@@ -66,6 +71,8 @@ pub enum Event {
     Exited(u32),
     /// It could not be started.
     Failed(String),
+    /// The values asked for by [`Command::Evaluate`].
+    Values { id: u64, vars: Vec<Var> },
 }
 
 /// A program running under the debugger.
@@ -161,6 +168,9 @@ struct Engine {
     say: Say,
     /// Break All asked for: the next breakpoint Windows reports is ours.
     pausing: bool,
+    /// Conditions by file and line, and by the address their breakpoint landed at.
+    conds: Vec<(PathBuf, u32, String)>,
+    cond_at: HashMap<u64, String>,
 }
 
 /// Whether two paths are one file, as Windows compares them: case and slashes aside.
@@ -195,7 +205,7 @@ impl Engine {
         unsafe {
             let _ = CloseHandle(pi.hThread);
         }
-        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false })
+        Ok(Engine { process: pi.hProcess, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new() })
     }
 
     fn run(&mut self) {
@@ -212,6 +222,11 @@ impl Engine {
                         let _ = DebugBreakProcess(self.process);
                     },
                     Ok(Command::Breakpoints(list)) => self.set_breakpoints(list),
+                    Ok(Command::Conditions(list)) => {
+                        self.conds = list;
+                        let w = self.wanted.clone();
+                        self.set_breakpoints(w);
+                    }
                     Ok(_) => {}
                     Err(TryRecvError::Disconnected) => unsafe {
                         let _ = TerminateProcess(self.process, 1);
@@ -405,10 +420,14 @@ impl Engine {
             self.wanted = list;
             return;
         }
+        self.cond_at.clear();
         for (file, line) in &list {
             match self.line_address(file, *line) {
                 Some((addr, at)) => {
                     self.arm(addr, Kind::User);
+                    if let Some((_, _, c)) = self.conds.iter().find(|(f, l, _)| same_file(f, file) && (*l == *line || *l == at)) {
+                        self.cond_at.insert(addr, c.clone());
+                    }
                     if at != *line {
                         (self.say)(Event::BreakpointAt { file: file.clone(), asked: *line, line: at });
                     }
@@ -495,6 +514,12 @@ impl Engine {
                         c.0.EFlags |= TRAP_FLAG;
                         self.rearm = Some(addr);
                         self.set_context(tid, &c);
+                        // A condition that does not hold: on, as though no breakpoint were there.
+                        if let Some(cond) = self.cond_at.get(&addr).cloned() {
+                            if self.holds(tid, &cond) == Some(false) {
+                                return DBG_CONTINUE;
+                            }
+                        }
                         // A breakpoint ends any step on the way to it.
                         self.forget_temps();
                         self.step = None;
@@ -609,6 +634,17 @@ impl Engine {
                     self.set_breakpoints(list);
                     continue;
                 }
+                Command::Conditions(list) => {
+                    self.conds = list;
+                    let w = self.wanted.clone();
+                    self.set_breakpoints(w);
+                    continue;
+                }
+                Command::Evaluate { id, exprs } => {
+                    let vars = exprs.iter().map(|e| self.evaluate(tid, e)).collect();
+                    (self.say)(Event::Values { id, vars });
+                    continue;
+                }
                 Command::Pause => continue,
                 Command::Stop => unsafe {
                     let _ = TerminateProcess(self.process, 1);
@@ -680,8 +716,10 @@ impl Engine {
             .collect()
     }
 
-    fn locals(&self, tid: u32) -> Vec<Var> {
-        let Some(c) = self.context(tid) else { return vec![] };
+    /// The locals and parameters of the top frame, each with where it is (`None` when it is in a
+    /// register or has no value at this point of the code).
+    fn scope(&self, tid: u32) -> (Option<Ctx>, Vec<(Found, Option<u64>)>) {
+        let Some(c) = self.context(tid) else { return (None, vec![]) };
         let frame = IMAGEHLP_STACK_FRAME { InstructionOffset: c.0.Rip, StackOffset: c.0.Rsp, FrameOffset: c.0.Rbp, ..Default::default() };
         unsafe {
             let _ = SymSetContext(self.process, &frame, None);
@@ -691,36 +729,172 @@ impl Engine {
         unsafe {
             let _ = SymEnumSymbolsW(self.process, 0, PCWSTR(star.as_ptr()), Some(collect), Some(&mut found as *mut Vec<Found> as _));
         }
+        let out = found
+            .into_iter()
+            .map(|f| {
+                let base = if f.flags & 0x8_0000 != 0 {
+                    None
+                } else if f.flags & SYMFLAG_REGREL != 0 {
+                    register(&c, f.register).map(|r| r.wrapping_add(f.address))
+                } else if f.flags & SYMFLAG_FRAMEREL != 0 {
+                    Some(c.0.Rbp.wrapping_add(f.address))
+                } else if f.flags & SYMFLAG_REGISTER != 0 {
+                    None
+                } else {
+                    Some(f.address)
+                };
+                (f, base)
+            })
+            .collect();
+        (Some(c), out)
+    }
+
+    fn locals(&self, tid: u32) -> Vec<Var> {
+        let (c, found) = self.scope(tid);
+        let Some(c) = c else { return vec![] };
         let mut out = Vec::new();
-        for f in found {
-            let base = if f.flags & SYMFLAG_REGREL != 0 {
-                register(&c, f.register).map(|r| r.wrapping_add(f.address))
-            } else if f.flags & SYMFLAG_FRAMEREL != 0 {
-                Some(c.0.Rbp.wrapping_add(f.address))
-            } else if f.flags & SYMFLAG_REGISTER != 0 {
-                None
-            } else {
-                Some(f.address)
-            };
+        for (f, base) in found {
             let types = Types { process: self.process, base: f.mod_base, engine: self };
             let ty = types.name(f.type_index);
-            // Not yet given a value at this point of the code (or no longer).
-            if f.flags & 0x8_0000 != 0 {
-                out.push((f.flags & SYMFLAG_PARAMETER == 0, Var { name: f.name, ty, value: "—".into() }));
-                continue;
-            }
-            let value = match base {
-                Some(addr) => types.value(f.type_index, addr, 0),
-                None => match register(&c, f.register) {
-                    Some(v) => types.format_bytes(f.type_index, &v.to_le_bytes()),
-                    None => "?".into(),
-                },
+            let value = if f.flags & 0x8_0000 != 0 {
+                // Not yet given a value at this point of the code (or no longer).
+                "—".into()
+            } else {
+                match base {
+                    Some(addr) => types.value(f.type_index, addr, 0),
+                    None => match register(&c, f.register) {
+                        Some(v) => types.format_bytes(f.type_index, &v.to_le_bytes()),
+                        None => "?".into(),
+                    },
+                }
             };
             // Parameters first, then locals, in the order the PDB has them.
             out.push((f.flags & SYMFLAG_PARAMETER == 0, Var { name: f.name, ty, value }));
         }
         out.sort_by_key(|(local, _)| *local);
         out.into_iter().map(|(_, v)| v).collect()
+    }
+
+    /// Where a path of the top frame is - `order.customer.name`: its type, module and address.
+    /// References are followed on the way, as Rust's `.` follows them.
+    fn place(&self, tid: u32, path: &str) -> Result<(u64, u32, u64), String> {
+        let mut parts = path.split('.').map(str::trim);
+        let first = parts.next().unwrap_or_default();
+        let (_, found) = self.scope(tid);
+        // The innermost of several with the name: the last the PDB lists.
+        let (f, base) = found.into_iter().rev().find(|(f, _)| f.name == first).ok_or_else(|| format!("no `{first}` here"))?;
+        let mut addr = base.ok_or_else(|| format!("`{first}` has no value here"))?;
+        let types = Types { process: self.process, base: f.mod_base, engine: self };
+        let mut t = f.type_index;
+        for part in parts {
+            // Through typedefs and references to the struct itself.
+            loop {
+                match types.tag(t) {
+                    TAG_TYPEDEF => t = types.inner(t).ok_or("?")?,
+                    TAG_POINTER => {
+                        addr = types.read_u64(addr).ok_or("unreadable")?;
+                        t = types.inner(t).ok_or("?")?;
+                    }
+                    _ => break,
+                }
+            }
+            let (off, ty) = types.field(t, part).or_else(|| types.field(t, &format!("__{part}"))).ok_or_else(|| format!("no field `{part}`"))?;
+            addr += off as u64;
+            t = ty;
+        }
+        Ok((f.mod_base, t, addr))
+    }
+
+    /// An expression's value, as Watch shows it: a path, or a comparison of one.
+    fn evaluate(&self, tid: u32, expr: &str) -> Var {
+        let e = expr.trim();
+        if let Some((l, op, r)) = split_comparison(e) {
+            let value = match (self.text_of(tid, l), literal_or(self, tid, r)) {
+                (Ok(a), Ok(b)) => compare(&a, op, &b).to_string(),
+                (Err(x), _) | (_, Err(x)) => x,
+            };
+            return Var { name: e.to_string(), ty: "bool".into(), value };
+        }
+        match self.place(tid, e) {
+            Ok((m, t, addr)) => {
+                let types = Types { process: self.process, base: m, engine: self };
+                Var { name: e.to_string(), ty: types.name(t), value: types.value(t, addr, 0) }
+            }
+            Err(x) => Var { name: e.to_string(), ty: String::new(), value: x },
+        }
+    }
+
+    /// A path's value as plain text: a number, `true`, a string's words without quotes.
+    fn text_of(&self, tid: u32, path: &str) -> Result<String, String> {
+        let (m, t, addr) = self.place(tid, path)?;
+        let types = Types { process: self.process, base: m, engine: self };
+        let v = types.value(t, addr, 0);
+        Ok(unquote(&v))
+    }
+
+    /// Whether a breakpoint's condition holds; `None` when it cannot be worked out (then the
+    /// breakpoint stops, as Visual Studio's does, so the mistake is seen).
+    fn holds(&self, tid: u32, cond: &str) -> Option<bool> {
+        let v = self.evaluate(tid, cond);
+        match v.value.as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            "0" => Some(false),
+            x if x.parse::<f64>().is_ok() => Some(true),
+            _ => None,
+        }
+    }
+}
+
+/// `x >= 5` as (`x`, `>=`, `5`); `None` for a plain path.
+fn split_comparison(e: &str) -> Option<(&str, &str, &str)> {
+    for op in ["==", "!=", "<=", ">=", "<", ">"] {
+        // Outside quotes only.
+        let mut quoted = false;
+        for (i, ch) in e.char_indices() {
+            if ch == '"' {
+                quoted = !quoted;
+            }
+            if !quoted && e[i..].starts_with(op) {
+                return Some((e[..i].trim(), op, e[i + op.len()..].trim()));
+            }
+        }
+    }
+    None
+}
+
+fn unquote(v: &str) -> String {
+    let v = v.trim();
+    if v.len() >= 2 && (v.starts_with('"') && v.ends_with('"') || v.starts_with('\'') && v.ends_with('\'')) {
+        v[1..v.len() - 1].to_string()
+    } else {
+        v.to_string()
+    }
+}
+
+/// The right side of a comparison: a literal, or another path.
+fn literal_or(e: &Engine, tid: u32, r: &str) -> Result<String, String> {
+    let r = r.trim();
+    if r.starts_with('"') || r.starts_with('\'') || r == "true" || r == "false" || r.parse::<f64>().is_ok() {
+        return Ok(unquote(r));
+    }
+    e.text_of(tid, r)
+}
+
+/// Two values compared as numbers when both are, else as text.
+fn compare(a: &str, op: &str, b: &str) -> bool {
+    use std::cmp::Ordering::*;
+    let ord = match (a.parse::<f64>(), b.parse::<f64>()) {
+        (Ok(x), Ok(y)) => x.partial_cmp(&y).unwrap_or(Equal),
+        _ => a.cmp(b),
+    };
+    match op {
+        "==" => ord == Equal,
+        "!=" => ord != Equal,
+        "<" => ord == Less,
+        "<=" => ord != Greater,
+        ">" => ord == Greater,
+        _ => ord != Less,
     }
 }
 
@@ -1036,5 +1210,15 @@ mod tests {
         assert_eq!(format_base(32, &('ไ' as u32).to_le_bytes()), "'ไ'");
         assert_eq!(base_name(6, 4), "i32");
         assert_eq!(rust_name("ref$<str$>"), "&str");
+    }
+
+    #[test]
+    fn conditions_split_and_compare() {
+        assert_eq!(split_comparison("x >= 5"), Some(("x", ">=", "5")));
+        assert_eq!(split_comparison("name == \"a<b\""), Some(("name", "==", "\"a<b\"")));
+        assert_eq!(split_comparison("order.total"), None);
+        assert!(compare("42", ">", "5") && !compare("42", "<", "5"));
+        assert!(compare("phai", "==", "phai") && compare("10", "==", "10.0"));
+        assert_eq!(unquote("\"ไผ่\""), "ไผ่");
     }
 }
