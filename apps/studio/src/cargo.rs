@@ -153,6 +153,36 @@ pub fn find_cargo() -> Option<PathBuf> {
     places.into_iter().map(|d| d.join("cargo.exe")).find(|p| p.is_file())
 }
 
+/// Rust code as rustfmt writes it - the project's edition, its `rustfmt.toml` if it has one.
+pub fn rustfmt(code: &str, file: &Path) -> Result<String, String> {
+    use std::io::Write;
+    let exe = find_cargo().map(|c| c.with_file_name("rustfmt.exe")).filter(|p| p.is_file()).ok_or("rustfmt is not installed: rustup component add rustfmt")?;
+    let project = project_of(file);
+    let edition = project
+        .as_ref()
+        .and_then(|d| std::fs::read_to_string(d.join("Cargo.toml")).ok())
+        .and_then(|t| t.lines().find_map(|l| l.trim().strip_prefix("edition").and_then(|v| v.trim_start().strip_prefix('=')).map(|v| v.trim().trim_matches('"').to_string())))
+        .filter(|e| e.chars().all(|c| c.is_ascii_digit()))
+        .unwrap_or_else(|| "2021".into());
+    let mut c = std::process::Command::new(exe);
+    c.args(["--edition", &edition, "--emit", "stdout", "--quiet"]);
+    if let Some(d) = &project {
+        c.current_dir(d);
+    }
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = c.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+    child.stdin.take().ok_or("no stdin")?.write_all(code.as_bytes()).map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        return Err(err.lines().find(|l| l.starts_with("error")).unwrap_or("rustfmt could not read this code").to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n"))
+}
+
 /// The folder with the `Cargo.toml` that holds `file`.
 pub fn project_of(file: &Path) -> Option<PathBuf> {
     file.parent()?.ancestors().find(|d| d.join("Cargo.toml").is_file()).map(Path::to_path_buf)

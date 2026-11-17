@@ -118,6 +118,11 @@ const ID_PREV_ERROR: i32 = 242;
 const ID_MOVE_UP: i32 = 243;
 const ID_MOVE_DOWN: i32 = 244;
 const ID_PEEK: i32 = 245;
+const ID_FORMAT_DOC: i32 = 246;
+/// Ctrl+K pressed: the next key finishes a chord (Ctrl+K, Ctrl+D). Does nothing alone.
+const ID_CHORD: i32 = 247;
+/// A chord's second key that finishes none: the status line cleared.
+const ID_CHORD_END: i32 = 248;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -586,6 +591,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
+        add(edit, ID_FORMAT_DOC, t("Format Document"), "Ctrl+K, Ctrl+D");
         add(edit, ID_MOVE_UP, t("Move Line Up"), "Alt+Up");
         add(edit, ID_MOVE_DOWN, t("Move Line Down"), "Alt+Down");
         sep(edit);
@@ -3419,6 +3425,25 @@ impl Studio {
     }
 
     /// Double-click in the error list: the file, opened as Windows opens it.
+    /// Format Document: the open Rust file as rustfmt writes it, one undo step.
+    fn format_document(&mut self) {
+        let (Some(h), Some(path)) = (self.code_shown(), self.doc.path.clone()) else {
+            controls::status_text(self.status, 0, t("Open a code file first"));
+            return;
+        };
+        if path.extension().is_none_or(|e| e != "rs") {
+            controls::status_text(self.status, 0, t("Format Document is for Rust files"));
+            return;
+        }
+        match cargo::rustfmt(&phai_editor::view::text(h), &path) {
+            Ok(new) => {
+                let said = if phai_editor::view::replace_whole(h, &new) { t("Formatted with rustfmt") } else { t("Already formatted") };
+                controls::status_text(self.status, 0, said);
+            }
+            Err(e) => controls::status_text(self.status, 0, &e),
+        }
+    }
+
     /// The code editor, when it is what the window shows.
     fn code_shown(&self) -> Option<HWND> {
         self.doc.code.filter(|h| unsafe { wm::IsWindowVisible(*h) }.as_bool())
@@ -3496,6 +3521,9 @@ impl Studio {
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_LSP_TEST => self.lsp_test_step(),
+            ID_CHORD => controls::status_text(self.status, 0, t("(Ctrl+K) was pressed. Waiting for the second key of the chord...")),
+            ID_FORMAT_DOC => self.format_document(),
+            ID_CHORD_END => controls::status_text(self.status, 0, t("That key combination is not a command")),
             ID_PEEK => match self.code_shown() {
                 Some(h) => self.lsp_peek(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
@@ -4104,6 +4132,23 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     if msg.message == wm::WM_KEYDOWN {
         let shift = unsafe { km::GetKeyState(0x10) } < 0;
         let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+        // Chords: Ctrl+K, then a second key.
+        static CHORD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let k = msg.wParam.0;
+        if !(0x10..=0x12).contains(&k) {
+            if CHORD.swap(false, Ordering::Relaxed) {
+                return match (k, ctrl) {
+                    (0x44, true) => Some(ID_FORMAT_DOC),        // Ctrl+K, Ctrl+D
+                    (0x43, true) => Some(ID_COMMENT),           // Ctrl+K, Ctrl+C
+                    (0x55, true) => Some(ID_COMMENT),           // Ctrl+K, Ctrl+U
+                    _ => Some(ID_CHORD_END),
+                };
+            }
+            if k == 0x4B && ctrl && !shift {
+                CHORD.store(true, Ordering::Relaxed);
+                return Some(ID_CHORD);
+            }
+        }
         match msg.wParam.0 {
             0x45 if ctrl && shift => return Some(ID_EXECUTE),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),

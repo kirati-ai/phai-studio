@@ -401,6 +401,12 @@ pub static THAI: &[(&str, &str)] = &[
     ("Locked", "ล็อก"),
     ("Locked: the mouse and the arrows do not move or size it in the designer.", "ล็อกไว้: เมาส์และปุ่มลูกศรจะไม่ย้ายหรือปรับขนาดในหน้าออกแบบ"),
     ("Peek Definition", "ดูการประกาศแบบแอบดู"),
+    ("Format Document", "จัดรูปแบบเอกสาร"),
+    ("Format Document is for Rust files", "จัดรูปแบบเอกสารใช้กับไฟล์ Rust"),
+    ("Formatted with rustfmt", "จัดรูปแบบด้วย rustfmt แล้ว"),
+    ("Already formatted", "จัดรูปแบบอยู่แล้ว"),
+    ("(Ctrl+K) was pressed. Waiting for the second key of the chord...", "กด (Ctrl+K) แล้ว กำลังรอปุ่มที่สอง..."),
+    ("That key combination is not a command", "ปุ่มชุดนี้ไม่ใช่คำสั่ง"),
 ];
 
 #[cfg(test)]

@@ -425,6 +425,23 @@ impl Model {
         self.dirty = true;
     }
 
+    /// The whole text made `new` - Format Document - as one undo step: only the part between what
+    /// stays the same at the start and the end is replaced, so the caret keeps its place.
+    pub fn replace_whole(&mut self, new: &str) -> bool {
+        let old = self.buf.text();
+        if old == new {
+            return false;
+        }
+        let pre = old.bytes().zip(new.bytes()).take_while(|(a, b)| a == b).count();
+        let pre = (0..=pre).rev().find(|i| old.is_char_boundary(*i) && new.is_char_boundary(*i)).unwrap_or(0);
+        let max_suf = (old.len() - pre).min(new.len() - pre);
+        let suf = old.bytes().rev().zip(new.bytes().rev()).take(max_suf).take_while(|(a, b)| a == b).count();
+        let suf = (0..=suf).rev().find(|i| old.is_char_boundary(old.len() - i) && new.is_char_boundary(new.len() - i)).unwrap_or(0);
+        let span = (pre, old.len() - suf, &new[pre..new.len() - suf]);
+        self.edit_many(&[span]);
+        true
+    }
+
     /// The lines the selection (or the caret) is on: a selection ending at a line's start leaves
     /// that line out.
     fn chosen_lines(&self) -> (usize, usize) {
@@ -625,6 +642,19 @@ mod tests {
         m.caret = text.len();
         m.anchor = m.caret;
         m
+    }
+
+    #[test]
+    fn a_whole_new_text_is_one_undo_step_and_keeps_the_caret() {
+        let mut m = Model::new("fn main(){\nlet  x=1;\n}");
+        m.caret = 21; // before the last brace
+        m.anchor = 21;
+        assert!(m.replace_whole("fn main() {\n    let x = 1;\n}"));
+        assert_eq!(m.buf.text(), "fn main() {\n    let x = 1;\n}");
+        assert_eq!(&m.buf.text()[m.caret..], "}", "still before the brace");
+        assert!(!m.replace_whole("fn main() {\n    let x = 1;\n}"), "nothing to change");
+        m.undo();
+        assert_eq!(m.buf.text(), "fn main(){\nlet  x=1;\n}");
     }
 
     #[test]
