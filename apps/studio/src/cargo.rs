@@ -53,6 +53,8 @@ pub struct Outcome {
     pub then_run: bool,
     /// What was done.
     pub job: Job,
+    /// Run All Tests: each test and how it went.
+    pub tests: Vec<TestResult>,
 }
 
 /// What the Build menu asks of Cargo, as Visual Studio's Build menu asks of MSBuild.
@@ -66,6 +68,54 @@ pub enum Job {
     Clean,
     /// `cargo clippy`: Run Code Analysis.
     Analyse,
+    /// `cargo test`: Run All Tests.
+    Test,
+}
+
+/// One test as `cargo test` reported it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TestResult {
+    /// Its path in the crate: `model::tests::undo_works`.
+    pub name: String,
+    /// `ok`, `FAILED` or `ignored`.
+    pub outcome: String,
+    /// Why it failed: the panic's first words.
+    pub message: String,
+}
+
+/// The tests in what `cargo test` printed: each `test NAME ... RESULT` line, with a failure's
+/// panic message from its `---- NAME stdout ----` section.
+pub fn tests_of(lines: &[String]) -> Vec<TestResult> {
+    let mut out: Vec<TestResult> = Vec::new();
+    for l in lines {
+        let Some(rest) = l.strip_prefix("test ") else { continue };
+        let Some((name, outcome)) = rest.rsplit_once(" ... ") else { continue };
+        let outcome = outcome.split([' ', ',']).next().unwrap_or_default();
+        if matches!(outcome, "ok" | "FAILED" | "ignored") {
+            out.push(TestResult { name: name.trim().to_string(), outcome: outcome.to_string(), message: String::new() });
+        }
+    }
+    let mut current: Option<String> = None;
+    let mut panicked = false;
+    for l in lines {
+        if let Some(n) = l.strip_prefix("---- ").and_then(|r| r.strip_suffix(" stdout ----")) {
+            current = Some(n.trim().to_string());
+            panicked = false;
+            continue;
+        }
+        let Some(n) = &current else { continue };
+        if l.contains("panicked at") {
+            panicked = true;
+            continue;
+        }
+        if panicked && !l.trim().is_empty() {
+            if let Some(t) = out.iter_mut().find(|t| &t.name == n && t.message.is_empty()) {
+                t.message = l.trim().to_string();
+            }
+            current = None;
+        }
+    }
+    out
 }
 
 /// A project's package name, from its `Cargo.toml`.
@@ -122,6 +172,7 @@ pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> 
             clean.extend(s(&["-p", p]));
         }
     }
+    #[allow(unused_mut)]
     let mut build = s(&[if job == Job::Analyse { "clippy" } else { "build" }, "--message-format=json"]);
     if whole {
         build.push("--workspace".into());
@@ -132,6 +183,15 @@ pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> 
     }
     match job {
         Job::Build | Job::Analyse => vec![build],
+        Job::Test => {
+            build[0] = "test".into();
+            if !whole {
+                if let Some(p) = package {
+                    build.extend(s(&["-p", p]));
+                }
+            }
+            vec![build]
+        }
         Job::Rebuild => vec![clean, build],
         Job::Clean => vec![clean],
     }
@@ -350,6 +410,11 @@ fn step(target: isize, project: &Path, args: &[String], out: &mut Outcome) {
                                 take_line(&line, project, &manifest, out, &mut other);
                             }
                         }
+                        // A test run's words: shown as they are, and read for each test.
+                        for l in &other {
+                            post_line(target, l.clone());
+                        }
+                        out.tests.extend(tests_of(&other));
                         let status = child.wait().ok();
                         let err_lines = errs.join().unwrap_or_default();
                         out.ok = status.is_some_and(|s| s.success());
@@ -424,5 +489,29 @@ mod tests {
         let a = job_args(Job::Analyse, true, Some("x"), true);
         assert_eq!(a, vec![vec!["clippy", "--message-format=json", "--workspace", "--release"]]);
         assert_eq!(job_args(Job::Clean, true, Some("x"), false), vec![vec!["clean"]]);
+    }
+
+    #[test]
+    fn test_results_are_read_with_why_they_failed() {
+        let lines: Vec<String> = [
+            "running 3 tests",
+            "test model::tests::adds ... ok",
+            "test model::tests::slow ... ignored, needs a database",
+            "test model::tests::breaks ... FAILED",
+            "failures:",
+            "---- model::tests::breaks stdout ----",
+            "thread 'model::tests::breaks' panicked at src\\model.rs:9:5:",
+            "assertion `left == right` failed",
+            "test result: FAILED. 1 passed; 1 failed; 1 ignored",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let t = tests_of(&lines);
+        assert_eq!(t.len(), 3);
+        assert_eq!((t[0].name.as_str(), t[0].outcome.as_str()), ("model::tests::adds", "ok"));
+        assert_eq!(t[1].outcome, "ignored");
+        assert_eq!((t[2].outcome.as_str(), t[2].message.as_str()), ("FAILED", "assertion `left == right` failed"));
+        assert_eq!(job_args(Job::Test, false, Some("app"), false), vec![vec!["test".to_string(), "--message-format=json".into(), "-p".into(), "app".into()]]);
     }
 }

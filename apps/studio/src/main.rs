@@ -127,6 +127,8 @@ const ID_FIND_IN_FILES: i32 = 249;
 const ID_TASK_LIST: i32 = 250;
 const ID_PARAM_INFO: i32 = 251;
 const ID_QUICK_ACTIONS: i32 = 252;
+const ID_RUN_TESTS: i32 = 253;
+const ID_RUN_ALL_TESTS: i32 = 254;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -326,6 +328,8 @@ pub struct Studio {
     conds: Vec<(PathBuf, u32, String)>,
     /// The data tip asked for, and the editor and words it is for.
     tip: Option<(u64, HWND, String)>,
+    /// The last Run Tests, as the Tests list shows them.
+    test_results: Vec<cargo::TestResult>,
     /// How the References list's count is said: references, or Find in Files' matches.
     found_words: &'static str,
     /// Publish: what to pack once the Release build is done.
@@ -763,6 +767,10 @@ fn build_menu() -> HMENU {
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
         add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
+        let test = wm::CreatePopupMenu().unwrap_or_default();
+        add(test, ID_RUN_TESTS, &tf("Run Tests of {0}", &[&project]), "Ctrl+R, T");
+        add(test, ID_RUN_ALL_TESTS, t("Run All Tests"), "Ctrl+R, A");
+        sub(t("&Test"), test);
         let data = wm::CreatePopupMenu().unwrap_or_default();
         add(data, ID_ADD_CONNECTION, t("Add Connection..."), "");
         add(data, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
@@ -1768,6 +1776,54 @@ impl Studio {
         found.dedup_by(|a, b| a.path == b.path && a.start.0 == b.start.0);
         self.found_words = "{0} tasks in {1} files";
         self.show_references(found);
+    }
+
+    /// Run Tests done: each test, how it went and why it failed, in the Tests list; the count said.
+    fn show_tests(&mut self, out: &cargo::Outcome) {
+        use windows::Win32::UI::Controls as cc;
+        let Some(list) = self.bottom.as_ref().map(|b| b.tests) else { return };
+        unsafe {
+            wm::SendMessageW(list, cc::LVM_DELETEALLITEMS, None, None);
+        }
+        // Failed first, as Test Explorer groups them.
+        let mut tests = out.tests.clone();
+        tests.sort_by_key(|t| match t.outcome.as_str() {
+            "FAILED" => 0,
+            "ok" => 1,
+            _ => 2,
+        });
+        for r in &tests {
+            let said = match r.outcome.as_str() {
+                "ok" => t("Passed"),
+                "FAILED" => t("Failed"),
+                _ => t("Skipped"),
+            };
+            win::list_add(list, &[&r.name, said, &r.message]);
+        }
+        let n = |o: &str| tests.iter().filter(|t| t.outcome == o).count();
+        let said = if tests.is_empty() && !out.ok { t("The tests could not be built - see Errors").to_string() } else { tf("{0} passed, {1} failed, {2} skipped ({3} s)", &[&n("ok"), &n("FAILED"), &n("ignored"), &format!("{:.1}", out.seconds)]) };
+        if let Some(b) = self.bottom.as_ref() {
+            b.add_line(&said);
+            b.show_tab(if tests.is_empty() && !self.diagnostics.is_empty() { 0 } else { 7 });
+        }
+        self.show_pane(Pane::Output, true);
+        controls::status_text(self.status, 0, &said);
+        self.test_results = tests;
+    }
+
+    /// Double-click in the Tests list: the test's function, in Phai's editor.
+    fn open_test(&mut self, row: usize) {
+        let Some(r) = self.test_results.get(row).cloned() else { return };
+        let Some(root) = self.doc.path.as_deref().and_then(cargo::workspace_of) else { return };
+        let root = std::path::absolute(if root.as_os_str().is_empty() { Path::new(".") } else { &root }).unwrap_or(root);
+        let short = r.name.rsplit("::").next().unwrap_or(&r.name).to_string();
+        let found = find_in_tree(&root, &format!("fn {short}("), true, 50);
+        let Some(place) = found.into_iter().find(|l| l.path.extension().is_some_and(|e| e == "rs")) else { return };
+        self.remember_place();
+        self.open_code(&place.path);
+        if let Some(h) = self.doc.code {
+            phai_editor::view::select_lsp(h, place.start, place.end);
+        }
     }
 
     /// Double-click in the References list: that place, in Phai's editor.
@@ -2820,6 +2876,7 @@ impl Studio {
         controls::status_text(self.status, 0, match job {
             cargo::Job::Clean => t("Cleaning..."),
             cargo::Job::Analyse => t("Running code analysis..."),
+            cargo::Job::Test => t("Running tests..."),
             _ => t("Building..."),
         });
         if let Some(b) = self.bottom.as_ref() {
@@ -3583,6 +3640,11 @@ impl Studio {
             }
             return;
         }
+        // Run Tests: each test in the Tests list.
+        if out.job == cargo::Job::Test {
+            self.show_tests(&out);
+            return;
+        }
         // Problems show their list; a clean build leaves its output on screen.
         if let Some(b) = self.bottom.as_ref() {
             let said = match (out.job, out.ok) {
@@ -3720,10 +3782,12 @@ impl Studio {
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_LSP_TEST => self.lsp_test_step(),
-            ID_CHORD => controls::status_text(self.status, 0, t("(Ctrl+K) was pressed. Waiting for the second key of the chord...")),
+            ID_CHORD => controls::status_text(self.status, 0, t("A chord's first key was pressed. Waiting for the second key...")),
             ID_FORMAT_DOC => self.format_document(),
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_TASK_LIST => self.task_list(),
+            ID_RUN_TESTS => self.start_job(cargo::Job::Test, false),
+            ID_RUN_ALL_TESTS => self.start_job(cargo::Job::Test, true),
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
@@ -4201,6 +4265,13 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
                 return LRESULT(0);
             }
+            if s.bottom.as_ref().is_some_and(|b| b.tests == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if it.iItem >= 0 {
+                    s.open_test(it.iItem as usize);
+                }
+                return LRESULT(0);
+            }
             if s.bottom.as_ref().is_some_and(|b| b.locals == hdr.hwndFrom) && hdr.code == cc::NM_DBLCLK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 s.edit_local(it.iItem);
@@ -4267,8 +4338,20 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         }
         cargo::WM_BUILD_DONE => {
             let out = unsafe { Box::from_raw(l.0 as *mut cargo::Outcome) };
+            if BUILD_TEST.load(Ordering::Relaxed) && std::env::var_os("PHAI_SHOT").is_some() && out.job == cargo::Job::Test {
+                // Photographed: the Tests list shown.
+                for r in &out.tests {
+                    println!("test {} {} {}", r.name, r.outcome, r.message);
+                }
+                s.build_done(*out);
+                return LRESULT(0);
+            }
             if BUILD_TEST.load(Ordering::Relaxed) && std::env::var_os("PHAI_SHOT").is_none() {
                 println!("job={:?} ok={} seconds={:.1} exe={:?} no_cargo={} cargo_error={:?}", out.job, out.ok, out.seconds, out.executable, out.no_cargo, out.cargo_error);
+                for r in &out.tests {
+                    println!("test {} {} {}", r.name, r.outcome, r.message);
+                }
+
                 for d in &out.diagnostics {
                     println!("{} {}:{}:{} {}", if d.error { "error" } else { "warning" }, d.file.as_ref().map(|f| f.display().to_string()).unwrap_or_default(), d.line, d.column, d.message);
                 }
@@ -4342,19 +4425,23 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         let shift = unsafe { km::GetKeyState(0x10) } < 0;
         let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
         // Chords: Ctrl+K, then a second key.
-        static CHORD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        // The chord's first key (K or R), or 0.
+        static CHORD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let k = msg.wParam.0;
         if !(0x10..=0x12).contains(&k) {
-            if CHORD.swap(false, Ordering::Relaxed) {
-                return match (k, ctrl) {
-                    (0x44, true) => Some(ID_FORMAT_DOC),        // Ctrl+K, Ctrl+D
-                    (0x43, true) => Some(ID_COMMENT),           // Ctrl+K, Ctrl+C
-                    (0x55, true) => Some(ID_COMMENT),           // Ctrl+K, Ctrl+U
+            let first = CHORD.swap(0, Ordering::Relaxed);
+            if first != 0 {
+                return match (first, k, ctrl) {
+                    (0x4B, 0x44, true) => Some(ID_FORMAT_DOC), // Ctrl+K, Ctrl+D
+                    (0x4B, 0x43, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+C
+                    (0x4B, 0x55, true) => Some(ID_COMMENT),    // Ctrl+K, Ctrl+U
+                    (0x52, 0x41, _) => Some(ID_RUN_ALL_TESTS), // Ctrl+R, A
+                    (0x52, 0x54, _) => Some(ID_RUN_TESTS),     // Ctrl+R, T
                     _ => Some(ID_CHORD_END),
                 };
             }
-            if k == 0x4B && ctrl && !shift {
-                CHORD.store(true, Ordering::Relaxed);
+            if (k == 0x4B || k == 0x52) && ctrl && !shift {
+                CHORD.store(k, Ordering::Relaxed);
                 return Some(ID_CHORD);
             }
         }
@@ -4572,6 +4659,7 @@ fn main() {
             table_view: None,
             publish_after_build: None,
             found_words: "{0} references in {1} files",
+            test_results: vec![],
             config,
             nav: vec![],
             nav_at: 0,
@@ -4853,6 +4941,7 @@ fn main() {
                 "clean" => s.start_job(cargo::Job::Clean, false),
                 "rebuild" => s.start_job(cargo::Job::Rebuild, false),
                 "analyse" => s.start_job(cargo::Job::Analyse, false),
+                "test" => s.start_job(cargo::Job::Test, false),
                 _ => s.start_job(cargo::Job::Build, true),
             }
         }

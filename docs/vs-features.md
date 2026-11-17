@@ -102,7 +102,7 @@
 | | Start window | ⬜ |
 | | ธีมสว่าง/มืด, ฟอนต์ | ✅ |
 | | ไฟล์ล่าสุด | ✅ |
-| | Test Explorer (`cargo test`) | ⬜ |
+| | Test Explorer: เมนู Test > Run Tests (Ctrl+R, T) / Run All Tests (Ctrl+R, A) รัน cargo test แล้วแท็บ Tests แสดงทุกเทสต์ ไม่ผ่านขึ้นก่อนพร้อมข้อความ ดับเบิลคลิกเปิดฟังก์ชันเทสต์ | ✅ |
 | | Publish / ตัวติดตั้ง: Build > Publish ถามชื่อผลิตภัณฑ์ เวอร์ชัน ผู้พัฒนา ทางลัดบนเดสก์ท็อป (จำไว้ใน phai-publish.txt) แล้วสร้างแบบ Release ได้ `publish/<ชื่อ>-<เวอร์ชัน>-setup.exe` ไฟล์เดียว กับโฟลเดอร์แบบพกพา; ตัวติดตั้ง (phai-setup, อัดด้วย deflate) ติดตั้งสำหรับผู้ใช้คนเดียวไม่ต้องขอสิทธิ์ admin ลงใน %LOCALAPPDATA%\Programs, ทางลัด Start menu/เดสก์ท็อป, อยู่ใน Settings > Apps, ถอนการติดตั้งได้หมดจด; ติดตั้งเงียบ `/S /D=โฟลเดอร์ /NOSHORTCUTS /NOREG`; ทดสอบติดตั้งและถอนจริงแล้ว | ✅ (ยังไม่มี: เซ็นชื่อโค้ด, ไฟล์อื่นนอกจาก exe, ติดตั้งให้ทุกคนในเครื่อง) |
 
 ## ข้อมูล (Server Explorer)

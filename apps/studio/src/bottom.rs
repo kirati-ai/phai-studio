@@ -17,11 +17,12 @@ pub const ID_LOCALS: i32 = 503;
 pub const ID_STACK: i32 = 504;
 pub const ID_RESULTS: i32 = 505;
 pub const ID_WATCH: i32 = 506;
+pub const ID_TESTS: i32 = 507;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
-/// results, 6 watch.
-fn labels() -> [&'static str; 7] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch")]
+/// results, 6 watch, 7 tests.
+fn labels() -> [&'static str; 8] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests")]
 }
 
 pub struct Bottom {
@@ -34,6 +35,7 @@ pub struct Bottom {
     pub stack: HWND,
     pub results: HWND,
     pub watch: HWND,
+    pub tests: HWND,
     layout: Layout,
 }
 
@@ -51,6 +53,7 @@ impl Bottom {
         let stack = win::list(hwnd, ID_STACK, font, &[(t("Function"), 420), (t("File"), 200), (t("Line"), 60)]);
         let results = win::list(hwnd, ID_RESULTS, font, &[("", 100)]);
         let watch = win::list(hwnd, ID_WATCH, font, &[(t("Name"), 220), (t("Value"), 380), (t("Type"), 200)]);
+        let tests = win::list(hwnd, ID_TESTS, font, &[(t("Test"), 380), (t("Outcome"), 110), (t("Message"), 480)]);
         unsafe {
             wm::SendMessageW(output, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
@@ -63,7 +66,8 @@ impl Bottom {
         layout.add(stack, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(results, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(watch, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, layout });
+        layout.add(tests, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -81,6 +85,7 @@ impl Bottom {
         win::show(self.stack, i == 4);
         win::show(self.results, i == 5);
         win::show(self.watch, i == 6);
+        win::show(self.tests, i == 7);
     }
 
     pub fn relabel(&self) {
