@@ -354,7 +354,7 @@ impl Canvas {
         if let Some(kind) = s.tool {
             let at = (snap(p.0), snap(p.1));
             self.drag = Drag::Create { kind, from: at, to: at };
-        } else if let (Some(i), Some(handle), false) = (s.selected, self.hit_handle(p), self.locked) {
+        } else if let (Some(i), Some(handle), false) = (s.selected, self.hit_handle(p), self.locked || s.selected.is_some_and(|i| s.doc.form.control.get(i).is_some_and(|c| c.locked == Some(true)))) {
             let r = self.rect_of(i);
             self.drag = Drag::Resize { index: i, handle, from: p, rect: r, now: r };
         } else if let Some(i) = self.hit(p) {
@@ -377,7 +377,7 @@ impl Canvas {
             self.group = s
                 .selection()
                 .into_iter()
-                .filter(|j| s.doc.form.control[*j].dock.as_deref().is_none_or(|d| d == "none"))
+                .filter(|j| s.doc.form.control[*j].dock.as_deref().is_none_or(|d| d == "none") && s.doc.form.control[*j].locked != Some(true))
                 .map(|j| (j, self.rect_of(j)))
                 .collect();
             if !self.group.is_empty() && !self.locked {
@@ -638,7 +638,8 @@ impl Canvas {
         let chosen = s.selection();
         let shift = unsafe { km::GetKeyState(km::VK_SHIFT.0 as i32) } < 0;
         let ctrl = unsafe { km::GetKeyState(km::VK_CONTROL.0 as i32) } < 0;
-        if self.locked && vk != 0x2E {
+        // Locked - all, or one of those chosen: the arrows move nothing.
+        if (self.locked || chosen.iter().any(|i| s.doc.form.control.get(*i).is_some_and(|c| c.locked == Some(true)))) && vk != 0x2E {
             return matches!(vk, 0x25..=0x28);
         }
         let (dx, dy) = match vk {

@@ -796,6 +796,7 @@ impl Studio {
                         _ => return,
                     },
                     Key::Enabled => c.enabled = (!yes).then_some(false),
+                    Key::Locked => c.locked = yes.then_some(true),
                     Key::Visible => c.visible = (!yes).then_some(false),
                     Key::Checked => c.checked = yes.then_some(true),
                     Key::Password => c.password = yes.then_some(true),

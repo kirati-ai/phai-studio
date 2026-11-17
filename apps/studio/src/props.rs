@@ -43,6 +43,7 @@ pub enum Key {
     Radius,
     Enabled,
     Visible,
+    Locked,
     Checked,
     Password,
     Group,
@@ -95,7 +96,7 @@ struct Prop {
 fn is_set(key: Key, value: &str) -> bool {
     match key {
         Key::FormName | Key::FormTitle | Key::FormSize | Key::FormWidth | Key::FormHeight | Key::Id | Key::Location | Key::Size | Key::X | Key::Y | Key::W | Key::H => true,
-        Key::Bold | Key::Checked | Key::Password => value == "True",
+        Key::Bold | Key::Checked | Key::Password | Key::Locked => value == "True",
         Key::Enabled | Key::Visible => value == "False",
         Key::Group | Key::Min | Key::Value => value != "0",
         Key::Max => value != "100",
@@ -300,6 +301,7 @@ impl Props {
         let mut v = vec![
             p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
             p(t("Design"), Key::Class, t("Class"), c.class.clone().unwrap_or_default(), Ed::Choice(theme_classes(), true), t("CSS classes from the theme, like primary. Several, space between.")),
+            p(t("Design"), Key::Locked, t("Locked"), yes_no(c.locked == Some(true)), bools.clone(), t("Locked: the mouse and the arrows do not move or size it in the designer.")),
         ];
         if has_text {
             v.push(p(t("Appearance"), Key::Text, t("Text"), c.text.clone().unwrap_or_default(), Ed::Text, t("The words it shows - an English key, translated by the program.")));

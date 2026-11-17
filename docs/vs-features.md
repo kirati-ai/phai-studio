@@ -25,7 +25,7 @@
 | ★ | Format > Align / Make Same Size / Spacing | ✅ |
 | ★ | Bring to Front / Send to Back | ✅ (ลำดับในฟอร์ม = ชั้น = ลำดับ Tab แบบ Win32) |
 | ★ | Tab Order mode | ✅ |
-| ★ | Lock Controls | ✅ (ทั้งฟอร์ม ยังไม่ราย control) |
+| ★ | Lock Controls: ทั้งฟอร์ม (Format > Lock) และราย control (Properties > Locked = True - เมาส์และลูกศรไม่ย้าย/ไม่ปรับขนาด, ไม่มีผลกับโปรแกรมจริง) | ✅ |
 | ★ | Dock / Anchor (ตัวแก้แบบภาพ) | ✅ |
 | ★ | Control: DateTimePicker, NumericUpDown, TrackBar, ProgressBar, TextBox หลายบรรทัด | ✅ |
 | | Control: PictureBox, Timer, MenuStrip ในฟอร์ม, TreeView, RichTextBox, DataGridView | ⬜ |
