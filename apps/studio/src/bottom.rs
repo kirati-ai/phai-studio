@@ -25,11 +25,12 @@ pub const ID_IMMEDIATE: i32 = 522;
 pub const ID_IMMEDIATE_INPUT: i32 = 523;
 pub const ID_DIAGNOSTICS: i32 = 524;
 pub const ID_BREAKPOINTS: i32 = 525;
+pub const ID_THREADS: i32 = 526;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
-/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints.
-fn labels() -> [&'static str; 11] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints")]
+/// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints, 11 threads.
+fn labels() -> [&'static str; 12] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads")]
 }
 
 pub struct Bottom {
@@ -50,6 +51,7 @@ pub struct Bottom {
     pub immediate_input: HWND,
     pub diagnostics: HWND,
     pub breakpoints: HWND,
+    pub threads: HWND,
     layout: Layout,
 }
 
@@ -109,7 +111,9 @@ impl Bottom {
             wm::SendMessageW(breakpoints, cc::LVM_SETEXTENDEDLISTVIEWSTYLE, Some(WPARAM(0x4)), Some(LPARAM(0x4 /* LVS_EX_CHECKBOXES */)));
         }
         layout.add(breakpoints, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, layout });
+        let threads = win::list(hwnd, ID_THREADS, font, &[("", 28), (t("ID"), 80), (t("Name"), 200), (t("Location"), 520)]);
+        layout.add(threads, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -134,6 +138,7 @@ impl Bottom {
         win::show(self.immediate_input, i == 8);
         win::show(self.diagnostics, i == 9);
         win::show(self.breakpoints, i == 10);
+        win::show(self.threads, i == 11);
     }
 
     pub fn relabel(&self) {

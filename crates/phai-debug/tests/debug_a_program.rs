@@ -205,3 +205,59 @@ fn a_hit_count_decides_which_time_a_breakpoint_stops() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+const THREADS: &str = r#"fn work(n: u64) -> u64 {
+    let mut total = 0;
+    for i in 0..n {
+        total += i;
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    total
+}
+fn main() {
+    let h = std::thread::Builder::new().name("worker".into()).spawn(|| work(1000)).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let x = 1;
+    println!("{x}");
+    drop(h);
+}
+"#;
+
+#[test]
+fn threads_are_listed_and_one_can_be_looked_at() {
+    let dir = std::env::temp_dir().join(format!("phai-debug-threads-{}", std::process::id()));
+    let Some(exe) = build_text(&dir, THREADS) else { return };
+    let src = dir.join("main.rs");
+    let (tx, rx) = channel();
+    let s = Session::launch(&exe, &dir, vec![(src.clone(), 13)], move |e| {
+        let _ = tx.send(e);
+    });
+    let threads = loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::Stopped { threads, .. } => break threads,
+            Event::Exited(c) => panic!("ended {c}"),
+            Event::Failed(e) => panic!("{e}"),
+            _ => {}
+        }
+    };
+    eprintln!("{threads:?}");
+    assert_eq!(threads[0].name, "main");
+    assert!(threads[0].current, "stopped on the main thread");
+    let worker = threads.iter().find(|t| t.name == "worker").expect("the named thread is listed");
+    s.send(Command::Thread(worker.id));
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::Stopped { reason, frames, threads, .. } => {
+                assert_eq!(reason, "thread");
+                assert!(threads.iter().any(|t| t.current && t.name == "worker"));
+                assert!(frames.iter().any(|f| f.function.contains("work")), "its own stack: {frames:?}");
+                break;
+            }
+            Event::Failed(e) => panic!("{e}"),
+            _ => {}
+        }
+    }
+    s.send(Command::Stop);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
