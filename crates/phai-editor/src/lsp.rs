@@ -176,7 +176,10 @@ impl Lsp {
                         "signatureHelp": { "signatureInformation": { "parameterInformation": { "labelOffsetSupport": true } } }
                     },
                     "workspace": { "workspaceEdit": { "documentChanges": true } },
-                    "general": { "positionEncodings": ["utf-16"] }
+                    "general": { "positionEncodings": ["utf-16"] },
+                    // `experimental/serverStatus`: whether it has finished loading the project and
+                    // the standard library - before that its errors are not to be believed.
+                    "experimental": { "serverStatusNotification": true }
                 },
                 "workspaceFolders": [{ "uri": uri_of(root), "name": "project" }],
                 // Type mistakes as you type, not only after `cargo check`.
