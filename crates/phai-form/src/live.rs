@@ -117,6 +117,11 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
         }
         Kind::Picture => phai_ui::picture::picture(parent, id, c.image.as_deref().unwrap_or("")),
         Kind::Flow | Kind::Table => win::panel(parent, id, true),
+        Kind::Rich => phai_ui::grid::richtext(parent, id, font, text),
+        Kind::Grid => {
+            let cols: Vec<(&str, i32)> = c.columns.iter().map(|(s, n)| (tr(s), *n)).collect();
+            phai_ui::grid::grid(parent, id, font, &cols)
+        }
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
         Kind::Timer => {
             let h = win::label(parent, "", id, font);

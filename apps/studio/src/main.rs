@@ -512,6 +512,8 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Timer => t("Timer"),
         Kind::Flow => t("Flow layout"),
         Kind::Table => t("Table layout"),
+        Kind::Rich => t("Rich text box"),
+        Kind::Grid => t("Data grid"),
     }
 }
 
@@ -540,6 +542,8 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Timer => glyph::TIMER,
             Kind::Flow => glyph::LAY_SPACE_ACROSS,
             Kind::Table => glyph::LAY_GRID,
+            Kind::Rich => glyph::DOCUMENT,
+            Kind::Grid => glyph::APPS,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -1017,7 +1021,7 @@ impl Studio {
                         // A tree's lines keep their indent: it is the tree.
                         Kind::Tree => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
                         Kind::Tabs => c.tabs = list(),
-                        Kind::List => {
+                        Kind::List | Kind::Grid => {
                             c.columns = list().into_iter().map(|s| match s.rsplit_once(':') {
                                 Some((n, w)) => (n.trim().to_string(), w.trim().parse().unwrap_or(100)),
                                 None => (s, 100),
@@ -1059,7 +1063,7 @@ impl Studio {
             tasks.push((TEXT, t("Edit Text...").to_string()));
         }
         match c.kind {
-            Kind::List => tasks.push((ITEMS, t("Edit Columns...").to_string())),
+            Kind::List | Kind::Grid => tasks.push((ITEMS, t("Edit Columns...").to_string())),
             Kind::Combo | Kind::Tree => tasks.push((ITEMS, t("Edit Items...").to_string())),
             Kind::Tabs => tasks.push((ITEMS, t("Edit Tabs...").to_string())),
             Kind::Picture => tasks.push((IMAGE, t("Choose Image...").to_string())),
@@ -1115,7 +1119,7 @@ impl Studio {
             ITEMS => {
                 let now = match c.kind {
                     Kind::Tabs => c.tabs.join("\n"),
-                    Kind::List => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
+                    Kind::List | Kind::Grid => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
                     _ => c.items.join("\n"),
                 };
                 if let Some(v) = phai_ui::dialogs::ask_lines(Some(self.hwnd), &tf("{0} Tasks", &[&kind_label(c.kind)]), t("One a line; a list's columns as Name:width."), &now) {

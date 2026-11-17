@@ -91,10 +91,15 @@ pub enum Kind {
     Flow,
     /// A panel that lays the controls in it out in equal columns.
     Table,
+    /// Text with many lines - Windows' RichEdit.
+    #[serde(rename = "richtext")]
+    Rich,
+    /// A grid of cells to change in place: columns, then rows the program adds.
+    Grid,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 20] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer];
+    pub const ALL: [Kind; 22] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -127,6 +132,8 @@ impl Kind {
             Kind::Timer => "timer",
             Kind::Flow => "flow",
             Kind::Table => "table",
+            Kind::Rich => "richtext",
+            Kind::Grid => "grid",
             Kind::Textarea => "textarea",
         }
     }
@@ -152,6 +159,8 @@ impl Kind {
             Kind::Picture => (120, 90),
             Kind::Timer => (32, 32),
             Kind::Flow | Kind::Table => (240, 120),
+            Kind::Rich => (240, 120),
+            Kind::Grid => (300, 150),
             Kind::Textarea => (240, 90),
         }
     }
@@ -160,7 +169,7 @@ impl Kind {
     pub fn event(self) -> Option<&'static str> {
         match self {
             Kind::Button | Kind::Checkbox | Kind::Radio => Some("on_click"),
-            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider => Some("on_change"),
+            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid => Some("on_change"),
             Kind::List | Kind::Tree => Some("on_select"),
             Kind::Timer => Some("on_tick"),
             _ => None,
@@ -168,7 +177,7 @@ impl Kind {
     }
 
     pub fn has_text(self) -> bool {
-        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group)
+        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group)
     }
 }
 
@@ -304,6 +313,7 @@ impl Control {
             Kind::Tree => c.items = vec!["Root".into(), "  First".into(), "  Second".into()],
             Kind::Timer => c.value = Some(1000),
             Kind::Table => c.cols = Some(2),
+            Kind::Grid => c.columns = vec![("Name".into(), 140), ("Value".into(), 120)],
             Kind::List => c.columns = vec![("Name".into(), 120), ("Value".into(), 100)],
             Kind::Tabs => c.tabs = vec!["General".into(), "Advanced".into()],
             Kind::Statusbar => {
@@ -518,7 +528,7 @@ impl FormFile {
             out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree)));
             out.extend(wrong("image", c.image.is_none() || c.kind == Kind::Picture));
             out.extend(wrong("cols", c.cols.is_none() || c.kind == Kind::Table));
-            out.extend(wrong("columns", c.columns.is_empty() || c.kind == Kind::List));
+            out.extend(wrong("columns", c.columns.is_empty() || matches!(c.kind, Kind::List | Kind::Grid)));
             out.extend(wrong("tabs", c.tabs.is_empty() || c.kind == Kind::Tabs));
             out.extend(wrong("parts", c.parts.is_empty() || c.kind == Kind::Statusbar));
             out.extend(wrong("password", c.password.is_none() || c.kind == Kind::Edit));
