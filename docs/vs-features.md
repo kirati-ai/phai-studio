@@ -45,7 +45,7 @@
 | ★ | Parameter Info (Ctrl+Shift+Space) | ⬜ |
 | ★ | เส้นหยักใต้ error / warning | ✅ |
 | ★ | Quick Actions (Ctrl+.) | ⬜ |
-| ★ | Go To Definition (F12, Ctrl+click; Edit menu) — Peek not yet | 🟡 |
+| ★ | Go To Definition (F12, Ctrl+click; Edit menu), Peek Definition (Alt+F12: โค้ดตรงที่ประกาศในหน้าต่างใต้บรรทัด ไม่ต้องเปลี่ยนไฟล์, Esc ปิด) - ทดสอบกับ rust-analyzer จริง | ✅ (peek ยังแก้โค้ดในหน้าต่างไม่ได้) |
 | ★ | Find All References (Shift+F12) — References tab, double-click to go | ✅ |
 | ★ | Quick Find / Replace (Ctrl+F / Ctrl+H) | ✅ |
 | | Find in Files (Ctrl+Shift+F) | ⬜ |

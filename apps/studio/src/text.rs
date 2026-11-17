@@ -400,6 +400,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Hit count - = 3, >= 3 or % 3 (every third time); empty for every time:", "จำนวนครั้งที่ถึง - = 3, >= 3 หรือ % 3 (ทุกครั้งที่สาม); เว้นว่างเพื่อหยุดทุกครั้ง:"),
     ("Locked", "ล็อก"),
     ("Locked: the mouse and the arrows do not move or size it in the designer.", "ล็อกไว้: เมาส์และปุ่มลูกศรจะไม่ย้ายหรือปรับขนาดในหน้าออกแบบ"),
+    ("Peek Definition", "ดูการประกาศแบบแอบดู"),
 ];
 
 #[cfg(test)]

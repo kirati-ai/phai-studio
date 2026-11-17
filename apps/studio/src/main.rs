@@ -117,6 +117,7 @@ const ID_NEXT_ERROR: i32 = 241;
 const ID_PREV_ERROR: i32 = 242;
 const ID_MOVE_UP: i32 = 243;
 const ID_MOVE_DOWN: i32 = 244;
+const ID_PEEK: i32 = 245;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -231,6 +232,8 @@ enum Ask {
     Hover,
     Complete,
     Definition,
+    /// Peek Definition: the place shown in a window, not opened.
+    Peek,
     /// Whether the name at this place in this file may be renamed.
     PrepareRename(PathBuf, (u32, u32)),
     /// The changes that rename `old` to `new`.
@@ -356,6 +359,27 @@ pub struct Studio {
 }
 
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// What Peek Definition shows: the file and line, then the code from the line before the
+/// definition on - to its closing brace at the same indent, at most 14 lines.
+fn peek_text(path: &Path, line: usize, text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let first = line.saturating_sub(1);
+    let indent = lines.get(line).map(|l| l.len() - l.trim_start().len()).unwrap_or(0);
+    let mut last = (line + 12).min(lines.len().saturating_sub(1));
+    for (i, l) in lines.iter().enumerate().skip(line + 1).take(12) {
+        if l.trim() == "}" && l.len() - l.trim_start().len() == indent {
+            last = i;
+            break;
+        }
+    }
+    let mut out = format!("{}:{}", path.file_name().unwrap_or_default().to_string_lossy(), line + 1);
+    for l in lines.get(first..=last).unwrap_or_default() {
+        out.push('\n');
+        out.push_str(&l.replace('\t', "    "));
+    }
+    out
+}
+
 /// `--publishtest`: Publish without asking, then end.
 static PUBLISH_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// `--debugtest`: 0 off, then how many stops so far plus one.
@@ -556,6 +580,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_SELECT_ALL, t("Select all"), "Ctrl+A");
         sep(edit);
         add(edit, ID_GO_DEFINITION, t("Go To Definition"), "F12");
+        add(edit, ID_PEEK, t("Peek Definition"), "Alt+F12");
         add(edit, ID_REFERENCES, t("Find All References"), "Shift+F12");
         add(edit, ID_RENAME, t("Rename..."), "F2");
         add(edit, ID_COMMENT, t("Toggle Comment"), "Ctrl+/");
@@ -1325,6 +1350,23 @@ impl Studio {
                 }
                 None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
             },
+            Ask::Peek => match phai_editor::lsp::locations_of(&result).into_iter().next() {
+                Some(place) => {
+                    let text = std::fs::read_to_string(&place.path).unwrap_or_default();
+                    let text = peek_text(&place.path, place.start.0 as usize, &text);
+                    if std::env::var_os("PHAI_PEEK_TEST").is_some() {
+                        println!("peek {}", text.lines().take(3).collect::<Vec<_>>().join(" | "));
+                    }
+                    phai_editor::view::show_peek(h, &text);
+                    if std::env::var_os("PHAI_PEEK_TEST").is_some() {
+                        LSP_TEST.store(9, Ordering::Relaxed);
+                        if std::env::var_os("PHAI_SHOT").is_none() {
+                            std::process::exit(0);
+                        }
+                    }
+                }
+                None => controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("No definition found here"))),
+            },
             Ask::PrepareRename(path, pos) => {
                 let text = phai_editor::view::text(h);
                 let Some(old) = phai_editor::lsp::rename_placeholder(&result, &text) else {
@@ -1414,6 +1456,12 @@ impl Studio {
             phai_editor::view::go_to(h, 2, col);
         };
         match LSP_TEST.load(Ordering::Relaxed) {
+            // `PHAI_PEEK_TEST`: Peek Definition instead, asked again until it answers.
+            0 | 1 if std::env::var_os("PHAI_PEEK_TEST").is_some() => {
+                on_call(h);
+                self.lsp_peek(h);
+                LSP_TEST.store(1, Ordering::Relaxed);
+            }
             0 => {
                 on_call(h);
                 self.lsp_definition(h);
@@ -1456,6 +1504,19 @@ impl Studio {
             Some(l) => {
                 let id = l.definition(&path, pos.0, pos.1);
                 self.asked.insert(id, (h, Ask::Definition));
+            }
+            None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
+        }
+    }
+
+    /// Alt+F12 in an editor: where the thing at the caret is defined, shown in a window under it.
+    pub fn lsp_peek(&mut self, h: HWND) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let pos = phai_editor::view::caret_lsp(h);
+        match self.lsp_for(&path) {
+            Some(l) => {
+                let id = l.definition(&path, pos.0, pos.1);
+                self.asked.insert(id, (h, Ask::Peek));
             }
             None => controls::status_text(self.status, 0, t("rust-analyzer is not installed: rustup component add rust-analyzer")),
         }
@@ -3365,6 +3426,10 @@ impl Studio {
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_LSP_TEST => self.lsp_test_step(),
+            ID_PEEK => match self.code_shown() {
+                Some(h) => self.lsp_peek(h),
+                None => controls::status_text(self.status, 0, t("Open a code file first")),
+            },
             ID_GO_DEFINITION | ID_RENAME | ID_REFERENCES | ID_COMMENT => match self.doc.code {
                 Some(h) if id == ID_GO_DEFINITION => self.lsp_definition(h),
                 Some(h) if id == ID_REFERENCES => self.lsp_references(h),
