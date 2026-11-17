@@ -45,6 +45,9 @@ pub enum Command {
     DataBreakpoint(String),
     /// Every data breakpoint taken away.
     ClearDataBreakpoints,
+    /// While paused: the machine code of the function stopped in, as instructions, with the
+    /// source lines they come from - the Disassembly window. Answered by [`Event::Disassembly`].
+    Disassemble,
     /// While paused: look at this thread instead - its stack and locals said again by a
     /// [`Event::Stopped`] (reason `thread`), and the steps taken on it.
     Thread(u32),
@@ -58,6 +61,20 @@ pub enum Command {
     /// While paused: a number, `bool` or `char` given a new value, as Visual Studio lets a
     /// value in Locals be typed over. Answered by [`Event::ValueSet`].
     SetValue { expr: String, value: String },
+}
+
+/// An instruction of the Disassembly window.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Asm {
+    pub address: u64,
+    /// Its bytes in hex, `48 8B 45 F8`.
+    pub bytes: String,
+    /// As Intel writes it, `mov rax,[rbp-8]`.
+    pub text: String,
+    /// The source line it begins, when it is the first of that line's code.
+    pub source: Option<(PathBuf, u32)>,
+    /// Where the program is stopped.
+    pub current: bool,
 }
 
 /// A thread of the paused program, as the Threads window lists it.
@@ -110,6 +127,8 @@ pub enum Event {
     Memory { id: u64, result: Result<(u64, Vec<Option<u8>>), String> },
     /// [`Command::DataBreakpoint`] done - what it watches - or why not.
     DataBreakpoint(Result<String, String>),
+    /// [`Command::Disassemble`] answered: the function, and its instructions in order.
+    Disassembly { function: String, lines: Vec<Asm> },
     /// The values asked for by [`Command::Evaluate`].
     Values { id: u64, vars: Vec<Var> },
     /// [`Command::SetValue`] done - the locals as they are now - or why not.
@@ -976,6 +995,11 @@ impl Engine {
                     self.write_debug_registers();
                     continue;
                 }
+                Command::Disassemble => {
+                    let (function, lines) = self.disassemble(tid);
+                    (self.say)(Event::Disassembly { function, lines });
+                    continue;
+                }
                 Command::Exceptions { panics, first_chance } => {
                     self.break_on_panic = panics;
                     self.first_chance = first_chance;
@@ -1099,6 +1123,52 @@ impl Engine {
                 self.set_context(tid, &c);
             }
         }
+    }
+
+    /// The function `tid` is stopped in, decoded: each instruction, and where a source line's code
+    /// begins. A function with no symbol is shown from a little before the stop.
+    fn disassemble(&self, tid: u32) -> (String, Vec<Asm>) {
+        use iced_x86::{Decoder, DecoderOptions, Formatter, IntelFormatter};
+        let Some(c) = self.context(tid) else { return (String::new(), vec![]) };
+        let rip = c.0.Rip;
+        let mut buf = SymBuf::new();
+        let (name, start, size) = if unsafe { SymFromAddrW(self.process, rip, None, buf.info()) }.is_ok() {
+            let (a, n) = unsafe { ((*buf.info()).Address, (*buf.info()).Size as u64) };
+            (buf.name(), a, if n == 0 { 256 } else { n.min(64 * 1024) })
+        } else {
+            (format!("0x{rip:016X}"), rip, 256)
+        };
+        let Some(code) = self.read(start, size as usize).or_else(|| self.read(rip, 64).map(|b| b.to_vec())) else { return (name, vec![]) };
+        let start = if code.len() == size as usize { start } else { rip };
+        // The program's own breakpoints are 0xCC in its memory: shown as the code they stand on.
+        let mut code = code;
+        for (a, bp) in &self.bps {
+            if *a >= start && *a < start + code.len() as u64 {
+                code[(*a - start) as usize] = bp.orig;
+            }
+        }
+        let mut decoder = Decoder::with_ip(64, &code, start, DecoderOptions::NONE);
+        let mut formatter = IntelFormatter::new();
+        let mut out = Vec::new();
+        let mut last_line: Option<(String, u32)> = None;
+        let mut text = String::new();
+        while decoder.can_decode() && out.len() < 4000 {
+            let ins = decoder.decode();
+            text.clear();
+            formatter.format(&ins, &mut text);
+            let off = (ins.ip() - start) as usize;
+            let bytes = code[off..off + ins.len()].iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+            let here = self.line_of(ins.ip()).map(|(f, l, _)| (f, l));
+            let source = match &here {
+                Some(h) if Some(h) != last_line.as_ref() => Some((PathBuf::from(&h.0), h.1)),
+                _ => None,
+            };
+            if here.is_some() {
+                last_line = here;
+            }
+            out.push(Asm { address: ins.ip(), bytes, text: text.clone(), source, current: ins.ip() == rip });
+        }
+        (name, out)
     }
 
     /// The data breakpoint a single-step exception on `tid` came from, if it did.

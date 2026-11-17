@@ -168,6 +168,7 @@ const ID_GIT_HISTORY: i32 = 280;
 const ID_GIT_BLAME: i32 = 281;
 const ID_MEMORY_WIN: i32 = 282;
 const ID_DATA_BP: i32 = 283;
+const ID_DISASSEMBLY: i32 = 284;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -999,6 +1000,7 @@ fn build_menu() -> HMENU {
         add(debug, ID_THREADS_WIN, t("Threads Window"), "Ctrl+Alt+H");
         add(debug, ID_EXCEPTIONS, t("Exception Settings..."), "Ctrl+Alt+E");
         add(debug, ID_MEMORY_WIN, t("Memory Window"), "Ctrl+Alt+M");
+        add(debug, ID_DISASSEMBLY, t("Disassembly"), "Ctrl+Alt+D");
         add(debug, ID_DATA_BP, t("New Data Breakpoint..."), "");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
@@ -3768,6 +3770,45 @@ impl Studio {
         }
     }
 
+    /// The Disassembly window, when it shows and the program is paused: the code asked for.
+    pub fn ask_disassembly(&self) {
+        let Some(b) = self.bottom.as_ref() else { return };
+        if !unsafe { wm::IsWindowVisible(b.disassembly) }.as_bool() {
+            return;
+        }
+        match (&self.debug, self.paused) {
+            (Some(d), true) => d.send(phai_debug::Command::Disassemble),
+            _ => win::set_text(b.disassembly, t("The program is not paused: start it with F5 and stop at a breakpoint.")),
+        }
+    }
+
+    /// The Disassembly window filled: each source line, then its instructions; scrolled to where
+    /// the program stopped.
+    fn show_disassembly(&mut self, function: &str, lines: &[phai_debug::Asm]) {
+        let Some(b) = self.bottom.as_ref() else { return };
+        let mut files: std::collections::HashMap<PathBuf, Vec<String>> = std::collections::HashMap::new();
+        let mut out = format!("{function}\r\n");
+        let mut at = 0usize;
+        for a in lines {
+            if let Some((f, n)) = &a.source {
+                let text = files.entry(f.clone()).or_insert_with(|| std::fs::read_to_string(f).unwrap_or_default().lines().map(str::to_string).collect());
+                let code = text.get(*n as usize - 1).map(|l| l.trim_end().to_string()).unwrap_or_default();
+                out.push_str(&format!("\r\n{:>5}: {code}\r\n", n));
+            }
+            if a.current {
+                at = out.matches('\n').count();
+            }
+            out.push_str(&format!("{} {:016X}  {:<24} {}\r\n", if a.current { "→" } else { " " }, a.address, a.bytes, a.text));
+        }
+        if DEBUG_TEST.load(Ordering::Relaxed) > 0 {
+            println!("disassembly: {function}, {} instructions; at: {}", lines.len(), out.lines().nth(at).unwrap_or("").trim());
+        }
+        win::set_text(b.disassembly, &out);
+        unsafe {
+            wm::SendMessageW(b.disassembly, 0x00B6 /* EM_LINESCROLL */, Some(WPARAM(0)), Some(LPARAM(at.saturating_sub(4) as isize)));
+        }
+    }
+
     /// Debug > New Data Breakpoint: stop when a variable changes - the local chosen in Locals by
     /// default.
     fn new_data_breakpoint(&mut self) {
@@ -3941,6 +3982,8 @@ impl Studio {
                     }
                 }
                 self.paused = true;
+                self.ask_disassembly();
+                self.paused = true;
                 self.clear_debug_line();
                 if let Some(f) = file.as_ref().filter(|f| f.is_file()) {
                     self.open_code(f);
@@ -4081,6 +4124,7 @@ impl Studio {
                     win::set_text(b.memory, &text);
                 }
             }
+            Event::Disassembly { function, lines } => self.show_disassembly(&function, &lines),
             Event::DataBreakpoint(result) => match result {
                 Ok(what) => {
                     let said = tf("Data breakpoint: stops when {0} changes", &[&what]);
@@ -4130,6 +4174,11 @@ impl Studio {
                 // `PHAI_MEMORY=at`: the Memory window shown at the first stop; `PHAI_DATA_BP`: a
                 // data breakpoint set there, the line breakpoints taken away so it is what stops.
                 if n == 1 {
+                    // `PHAI_DISASM`: the Disassembly window shown at the first stop.
+                    if std::env::var_os("PHAI_DISASM").is_some() {
+                        self.paused = true;
+                        self.command(ID_DISASSEMBLY);
+                    }
                     if let Ok(at) = std::env::var("PHAI_MEMORY") {
                         self.paused = true;
                         self.show_memory(&at);
@@ -5227,6 +5276,12 @@ impl Studio {
                 }
             }
             ID_DATA_BP => self.new_data_breakpoint(),
+            ID_DISASSEMBLY => {
+                self.show_pane(Pane::Output, true);
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(13);
+                }
+            }
             ID_THREADS_WIN => {
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
@@ -6123,6 +6178,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x48 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_THREADS_WIN),
             0x45 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_EXCEPTIONS),
             0x4D if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_MEMORY_WIN),
+            0x44 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DISASSEMBLY),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),

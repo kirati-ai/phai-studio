@@ -377,3 +377,33 @@ fn memory_is_read_and_a_data_breakpoint_stops_on_a_change() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_function_stopped_in_is_disassembled() {
+    let dir = std::env::temp_dir().join(format!("phai-debug-dis-{}", std::process::id()));
+    let Some(exe) = build(&dir) else { return };
+    let src = dir.join("main.rs");
+    let (tx, rx) = channel();
+    let s = Session::launch(&exe, &dir, vec![(src.clone(), 2)], move |e| {
+        let _ = tx.send(e);
+    });
+    let _ = stopped(&rx);
+    s.send(Command::Disassemble);
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("quiet") {
+            Event::Disassembly { function, lines } => {
+                assert!(function.contains("add"), "{function}");
+                assert!(lines.len() > 3);
+                assert_eq!(lines.iter().filter(|l| l.current).count(), 1, "one place stopped at");
+                assert!(lines.iter().any(|l| l.source.as_ref().is_some_and(|(_, n)| *n == 2)), "line 2's code begins somewhere");
+                assert!(lines.iter().any(|l| l.text.starts_with("ret")), "a function ends with ret");
+                assert!(!lines.iter().any(|l| l.text == "int3" && l.current), "our breakpoint is not shown");
+                break;
+            }
+            Event::Failed(e) => panic!("{e}"),
+            _ => {}
+        }
+    }
+    s.send(Command::Stop);
+    let _ = std::fs::remove_dir_all(&dir);
+}
