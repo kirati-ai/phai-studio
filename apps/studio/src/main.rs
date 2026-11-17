@@ -30,6 +30,7 @@ mod crates;
 mod diag;
 mod attach;
 mod githistory;
+mod merge;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -169,6 +170,7 @@ const ID_GIT_BLAME: i32 = 281;
 const ID_MEMORY_WIN: i32 = 282;
 const ID_DATA_BP: i32 = 283;
 const ID_DISASSEMBLY: i32 = 284;
+const ID_MERGE: i32 = 285;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -1020,6 +1022,7 @@ fn build_menu() -> HMENU {
         add(gitm, ID_GIT_CHANGES, t("Git Changes..."), "Ctrl+Alt+G");
         sep(gitm);
         add(gitm, ID_GIT_HISTORY, t("View History of This File..."), "");
+        add(gitm, ID_MERGE, t("Resolve Merge Conflicts..."), "");
         add(gitm, ID_GIT_BLAME, t("Show Line Blame"), "");
         if studio().is_some_and(|s| s.blame_on) {
             wm::CheckMenuItem(gitm, ID_GIT_BLAME as u32, wm::MF_CHECKED.0);
@@ -1369,6 +1372,30 @@ impl Studio {
             }
         }
         phai_editor::view::set_lenses(h, all);
+    }
+
+    /// Git > Resolve Merge Conflicts: the Merge Editor on the file in front when it has conflicts,
+    /// else on the first file of its repository that does; the editor shows the result after.
+    fn resolve_conflicts(&mut self) {
+        let from = self.doc.path.clone().or_else(|| std::env::current_dir().ok());
+        let Some(repo) = from.as_deref().and_then(gitpane::repository_of) else {
+            win::message(Some(self.hwnd), t("This file is not in a Git repository."), t("Merge Editor"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        let files = merge::conflicted(&repo);
+        let here = self.doc.path.as_deref().and_then(|p| std::path::absolute(p).ok());
+        let file = here.clone().filter(|h| files.iter().any(|f| phai_editor::lsp::same_path(f, h))).or_else(|| files.first().cloned());
+        let Some(file) = file else {
+            win::message(Some(self.hwnd), t("Nothing in this repository has merge conflicts."), t("Merge Editor"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        if merge::open(self.hwnd, &repo, &file) {
+            self.open_code(&file);
+            if let Some(h) = self.doc.code {
+                phai_editor::view::replace_whole(h, &std::fs::read_to_string(&file).unwrap_or_default());
+            }
+            self.say_status(&tf("{0}: merged and staged", &[&file.file_name().unwrap_or_default().to_string_lossy()]));
+        }
     }
 
     /// Git blame of the code file in front read again (from what is saved), when it is shown.
@@ -5401,6 +5428,7 @@ impl Studio {
                     win::message(Some(self.hwnd), t("This file is not in a Git repository."), t("View History of This File..."), wm::MB_ICONINFORMATION);
                 }
             },
+            ID_MERGE => self.resolve_conflicts(),
             ID_GIT_BLAME => {
                 self.blame_on = !self.blame_on;
                 remember_setting("blame", if self.blame_on { "1" } else { "0" });
@@ -6642,6 +6670,11 @@ fn main() {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
             }
+        }
+        // `--merge-test`: Git > Resolve Merge Conflicts, settled as `PHAI_MERGE_TAKE` says.
+        if args.iter().any(|a| a == "--merge-test") {
+            s.command(ID_MERGE);
+            std::process::exit(0);
         }
         // `--history-test`: Git > View History of the file in front, printed; `--blame-test`: its
         // blame, the caret's line shown.
