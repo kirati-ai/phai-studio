@@ -15,6 +15,7 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, NTSTATUS};
 use windows::Win32::System::Diagnostics::Debug::*;
+use windows::Win32::System::Memory::{VirtualAllocEx, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 use windows::Win32::System::Threading::{
     CreateProcessW, TerminateProcess, DEBUG_ONLY_THIS_PROCESS, CREATE_NEW_CONSOLE, PROCESS_INFORMATION, STARTUPINFOW,
 };
@@ -918,13 +919,55 @@ impl Engine {
         while types.tag(t) == TAG_TYPEDEF {
             t = types.inner(t).ok_or("?")?;
         }
+        if types.tag(t) == TAG_UDT {
+            return self.set_text(&types, t, addr, value);
+        }
         if types.tag(t) != TAG_BASE {
-            return Err("only a number, bool or char can be changed here".into());
+            return Err("only a number, bool, char, &str or String can be changed here".into());
         }
         let bt = types.info_u32(t, TI_GET_BASETYPE).unwrap_or(0);
         let len = types.len(t) as usize;
         let bytes = encode_value(bt, len, value.trim())?;
         unsafe { WriteProcessMemory(self.process, addr as _, bytes.as_ptr() as _, bytes.len(), None) }.map_err(|e| e.to_string())
+    }
+
+    /// A `&str` or `String` given new words (quoted or not). A `&str` points at a copy made in the
+    /// program's memory; a `String` takes them in its own buffer, so they may be no longer than
+    /// its capacity - its allocator must be able to free that buffer later.
+    fn set_text(&self, types: &Types, t: u32, addr: u64, value: &str) -> Result<(), String> {
+        let v = value.trim();
+        let words = if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') { unescape(&v[1..v.len() - 1]) } else { v.to_string() };
+        let bytes = words.as_bytes();
+        let name = types.sym_name(t).unwrap_or_default();
+        let write = |at: u64, b: &[u8]| unsafe { WriteProcessMemory(self.process, at as _, b.as_ptr() as _, b.len(), None) }.map_err(|e| e.to_string());
+        if name.starts_with("ref$<str$>") || name == "&str" {
+            let (Some(p), Some(l)) = (types.path(t, &["data_ptr"]), types.path(t, &["length"])) else { return Err("this &str's parts are not in the symbols".into()) };
+            let at = if bytes.is_empty() {
+                1 // a dangling, well-aligned pointer, as Rust's own empty strings have
+            } else {
+                let mem = unsafe { VirtualAllocEx(self.process, None, bytes.len(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) } as u64;
+                if mem == 0 {
+                    return Err("no memory could be had in the program".into());
+                }
+                write(mem, bytes)?;
+                mem
+            };
+            write(addr + p, &at.to_le_bytes())?;
+            return write(addr + l, &(bytes.len() as u64).to_le_bytes());
+        }
+        if name == "alloc::string::String" {
+            let ptr = types.path(t, &["vec", "buf", "inner", "ptr"]).or_else(|| types.path(t, &["vec", "buf", "ptr"]));
+            let cap = [&["vec", "buf", "inner", "cap", "__0"][..], &["vec", "buf", "inner", "cap"], &["vec", "buf", "cap", "__0"], &["vec", "buf", "cap"]].iter().find_map(|p| types.path(t, p));
+            let len = types.path(t, &["vec", "len"]);
+            let (Some(p), Some(c), Some(l)) = (ptr, cap, len) else { return Err("this String's parts are not in the symbols".into()) };
+            let (Some(at), Some(cap)) = (types.read_u64(addr + p), types.read_u64(addr + c)) else { return Err("the String cannot be read".into()) };
+            if bytes.len() as u64 > cap {
+                return Err(format!("{} bytes do not fit: this String has room for {cap}", bytes.len()));
+            }
+            write(at, bytes)?;
+            return write(addr + l, &(bytes.len() as u64).to_le_bytes());
+        }
+        Err(format!("a {} cannot be typed over - only its number, bool, char or text fields", rust_name(&name)))
     }
 
     /// A path's value as plain text: a number, `true`, a string's words without quotes.
@@ -947,6 +990,27 @@ impl Engine {
             _ => None,
         }
     }
+}
+
+/// `\"`, `\\`, `\n`, `\t` as the characters they stand for.
+fn unescape(s: &str) -> String {
+    let mut out = String::new();
+    let mut it = s.chars();
+    while let Some(c) = it.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match it.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some('0') => out.push('\0'),
+            Some(o) => out.push(o),
+            None => out.push('\\'),
+        }
+    }
+    out
 }
 
 /// The bytes a value typed in takes in memory, for a base type of `len` bytes.

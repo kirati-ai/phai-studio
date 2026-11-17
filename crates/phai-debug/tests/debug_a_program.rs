@@ -97,14 +97,6 @@ fn break_step_and_read_locals() {
         }
     };
     assert_eq!(local(&locals, "y"), "7");
-    s.send(Command::SetValue { expr: "name".into(), value: "x".into() });
-    loop {
-        if let Event::ValueSet { result, .. } = rx.recv_timeout(Duration::from_secs(20)).expect("no answer") {
-            assert!(result.is_err(), "a &str is not typed over");
-            break;
-        }
-    }
-
     s.send(Command::StepOver);
     assert_eq!(stopped(&rx).1, 9);
     s.send(Command::StepOver);
@@ -113,6 +105,21 @@ fn break_step_and_read_locals() {
     assert_eq!(local(&locals, "name"), "\"phai\"");
     assert_eq!(local(&locals, "text"), "\"ไผ่\"");
 
+    // Words typed over: a &str gets a copy anywhere, a String only within its capacity.
+    let set = |expr: &str, value: &str| {
+        s.send(Command::SetValue { expr: expr.into(), value: value.into() });
+        loop {
+            if let Event::ValueSet { result, .. } = rx.recv_timeout(Duration::from_secs(20)).expect("no answer") {
+                break result;
+            }
+        }
+    };
+    let locals = set("name", "\"ไผ่ \\\"studio\\\"\"").expect("a &str");
+    assert_eq!(local(&locals, "name"), "\"ไผ่ \\\"studio\\\"\"");
+    let locals = set("text", "Phai").expect("fits in 9 bytes");
+    assert_eq!(local(&locals, "text"), "\"Phai\"");
+    assert!(set("text", "far too long for nine bytes").is_err(), "beyond its capacity");
+
     // Watch: paths and comparisons, while paused.
     s.send(Command::Evaluate { id: 7, exprs: vec!["text".into(), "y == 7".into(), "x == y".into(), "nothing".into()] });
     let vars = loop {
@@ -120,7 +127,7 @@ fn break_step_and_read_locals() {
             break vars;
         }
     };
-    assert_eq!(vars[0].value, "\"ไผ่\"");
+    assert_eq!(vars[0].value, "\"Phai\"", "as typed over above");
     assert_eq!(vars[1].value, "true");
     assert_eq!(vars[2].value, "false");
     assert!(vars[3].value.contains("no `nothing`"), "{vars:?}");
