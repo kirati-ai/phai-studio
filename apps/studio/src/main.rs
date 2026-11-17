@@ -147,6 +147,8 @@ const ID_BM_TOGGLE: i32 = 265;
 const ID_BM_NEXT: i32 = 266;
 const ID_BM_PREV: i32 = 267;
 const ID_BM_CLEAR: i32 = 268;
+const ID_PROJECT_PROPS: i32 = 269;
+const ID_MANAGE_CRATES: i32 = 270;
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -932,6 +934,11 @@ fn build_menu() -> HMENU {
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
         add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
+        let proj = wm::CreatePopupMenu().unwrap_or_default();
+        add(proj, ID_MANAGE_CRATES, t("Manage Crates..."), "");
+        sep(proj);
+        add(proj, ID_PROJECT_PROPS, &tf("{0} Properties...", &[&project]), "Alt+F7");
+        sub(t("&Project"), proj);
         let test = wm::CreatePopupMenu().unwrap_or_default();
         add(test, ID_RUN_TESTS, &tf("Run Tests of {0}", &[&project]), "Ctrl+R, T");
         add(test, ID_RUN_ALL_TESTS, t("Run All Tests"), "Ctrl+R, A");
@@ -2206,6 +2213,60 @@ impl Studio {
         }
         unsafe {
             let _ = wm::DestroyWindow(frame);
+        }
+    }
+
+    /// Project > Properties: the project's name, version, edition, description and authors - what
+    /// Cargo.toml says of it - changed in a form and written back, the rest of the file kept.
+    fn project_properties(&mut self) {
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        let get = |k: &str| cargo::package_field(&dir, k).unwrap_or_default();
+        let version = cargo::package_version(&dir).unwrap_or_default();
+        let now = [get("name"), version, get("edition"), get("description"), get("authors")];
+        let answers = match std::env::var("PHAI_PROPS_TEST") {
+            // `PHAI_PROPS_TEST=description`: that description set, the rest as it is.
+            Ok(d) => vec![now[0].clone(), now[1].clone(), now[2].clone(), d, now[4].clone()],
+            Err(_) => {
+                let fields = [
+                    phai_ui::dialogs::Field::Text(t("Package name (the program's file name):"), &now[0]),
+                    phai_ui::dialogs::Field::Text(t("Version:"), &now[1]),
+                    phai_ui::dialogs::Field::Text(t("Rust edition (2021 or 2024):"), &now[2]),
+                    phai_ui::dialogs::Field::Text(t("Description:"), &now[3]),
+                    phai_ui::dialogs::Field::Text(t("Authors (comma between):"), &now[4]),
+                ];
+                let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("{0} Properties", &[&now[0]]), &fields) else { return };
+                a
+            }
+        };
+        let name = answers[0].trim();
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+            win::message(Some(self.hwnd), t("A package name is letters, digits, - and _ only."), "Phai Studio", wm::MB_ICONWARNING);
+            return;
+        }
+        let Ok(mut text) = std::fs::read_to_string(dir.join("Cargo.toml")) else { return };
+        let keys = [("name", false), ("version", false), ("edition", false), ("description", false), ("authors", true)];
+        for (k, (key, list)) in keys.iter().enumerate() {
+            if answers[k].trim() != now[k] {
+                text = cargo::with_package_field(&text, key, answers[k].trim(), *list);
+            }
+        }
+        match std::fs::write(dir.join("Cargo.toml"), &text) {
+            Ok(()) => {
+                controls::status_text(self.status, 0, &tf("Saved {0}", &[&"Cargo.toml"]));
+                self.rebuild_menu();
+                if let Some(e) = self.explorer.as_mut() {
+                    e.show_project_of(self.doc.path.as_deref());
+                }
+            }
+            Err(e) => {
+                win::message(Some(self.hwnd), &e.to_string(), "Phai Studio", wm::MB_ICONWARNING);
+            }
+        }
+        if std::env::var_os("PHAI_PROPS_TEST").is_some() {
+            println!("description now: {}", cargo::package_field(&dir, "description").unwrap_or_default());
         }
     }
 
@@ -4553,6 +4614,7 @@ impl Studio {
             },
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
+            ID_PROJECT_PROPS => self.project_properties(),
             ID_NEW_WINDOW => self.new_window(),
             ID_CLOSE_PEEK => {
                 // Left for another of this program's windows than the peek's own editor.
@@ -5223,6 +5285,10 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
 /// Shortcuts, before a box can take the key: Ctrl+N/O/S/Z/Y and F5.
 fn shortcut(msg: &wm::MSG) -> Option<i32> {
     // Alt+F11: Run Code Analysis on Solution. F10 comes as a system key: Step Over.
+    // Alt+F7: the project's properties.
+    if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x76 {
+        return Some(ID_PROJECT_PROPS);
+    }
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x7A {
         return Some(ID_ANALYSE_ALL);
     }
