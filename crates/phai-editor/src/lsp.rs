@@ -170,6 +170,7 @@ impl Lsp {
                         "definition": { "linkSupport": true },
                         "references": {},
                         "rename": { "prepareSupport": true },
+                        "codeAction": { "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["", "quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite", "source"] } } },
                         "signatureHelp": { "signatureInformation": { "parameterInformation": { "labelOffsetSupport": true } } }
                     },
                     "workspace": { "workspaceEdit": { "documentChanges": true } },
@@ -247,6 +248,16 @@ impl Lsp {
     /// What the call the caret is in takes, and which of it the caret is at (Parameter Info).
     pub fn signature_help(&mut self, path: &Path, line: u32, character: u32) -> i64 {
         self.at("textDocument/signatureHelp", path, line, character, json!({}))
+    }
+
+    /// The fixes and refactorings offered from `start` to `end` (Quick Actions, Ctrl+.).
+    pub fn code_actions(&mut self, path: &Path, start: (u32, u32), end: (u32, u32)) -> i64 {
+        let params = json!({
+            "textDocument": { "uri": uri_of(path) },
+            "range": { "start": { "line": start.0, "character": start.1 }, "end": { "line": end.0, "character": end.1 } },
+            "context": { "diagnostics": [] }
+        });
+        self.request("textDocument/codeAction", params)
     }
 
     /// Every place the thing at a place is used, its definition too (Shift+F12).
@@ -354,6 +365,31 @@ pub fn signature_text(result: &Value) -> Option<String> {
         shown.push_str(m.trim());
     }
     Some(shown)
+}
+
+/// A Quick Action: its title and the changes it makes (a workspace edit).
+#[derive(Clone, Debug)]
+pub struct Action {
+    pub title: String,
+    pub edit: Value,
+}
+
+/// The actions of a codeAction answer that carry their changes, fixes first.
+pub fn actions_of(result: &Value) -> Vec<Action> {
+    let mut v: Vec<(bool, Action)> = result
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| {
+                    let edit = x.get("edit")?.clone();
+                    let fix = x.get("kind").and_then(Value::as_str).is_some_and(|k| k.starts_with("quickfix"));
+                    Some((!fix, Action { title: x.get("title")?.as_str()?.to_string(), edit }))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort_by_key(|(later, _)| *later);
+    v.into_iter().map(|(_, a)| a).collect()
 }
 
 /// A completion's label and the text it puts in.

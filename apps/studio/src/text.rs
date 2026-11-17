@@ -415,6 +415,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Task List", "รายการงาน"),
     ("{0} tasks in {1} files", "งาน {0} รายการใน {1} ไฟล์"),
     ("Parameter Info", "ข้อมูลพารามิเตอร์"),
+    ("Quick Actions and Refactorings...", "การแก้ไขด่วนและปรับโครงสร้าง..."),
+    ("No quick actions here", "ไม่มีการแก้ไขด่วนที่นี่"),
+    ("{0}: {1} changes in {2} files", "{0}: แก้ {1} แห่งใน {2} ไฟล์"),
 ];
 
 #[cfg(test)]
