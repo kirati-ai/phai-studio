@@ -700,8 +700,25 @@ impl Studio {
         }
     }
 
-    /// A property typed into its box: the model takes it now, the canvas shows it now.
+    /// A property typed into its box: the model takes it now, the canvas shows it now. Several
+    /// controls chosen: each of them takes it.
     pub fn apply(&mut self, key: Key, text: &str) {
+        let chosen = self.selection();
+        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme);
+        if chosen.len() > 1 && !form_key && !matches!(key, Key::Id | Key::Event) {
+            let primary = self.selected;
+            for j in chosen {
+                self.selected = Some(j);
+                self.apply_one(key, text);
+            }
+            self.selected = primary;
+            self.say_selection();
+            return;
+        }
+        self.apply_one(key, text);
+    }
+
+    fn apply_one(&mut self, key: Key, text: &str) {
         // A composite typed in whole: its parts, one by one.
         match key {
             Key::Location | Key::Size | Key::FormSize => {
@@ -711,15 +728,15 @@ impl Studio {
                     Key::Size => (Key::W, Key::H),
                     _ => (Key::FormWidth, Key::FormHeight),
                 };
-                self.apply(ka, &a.to_string());
-                return self.apply(kb, &b.to_string());
+                self.apply_one(ka, &a.to_string());
+                return self.apply_one(kb, &b.to_string());
             }
             Key::FontAll => {
                 let Some((size, bold)) = props::font_spec(text) else { return };
                 // The form's own size is no size of this control's.
                 let own = size.filter(|n| Some(*n) != self.doc.form.form.font_size.or(Some(9)));
-                self.apply(Key::Font, &own.map(|n| n.to_string()).unwrap_or_default());
-                return self.apply(Key::Bold, if bold { "True" } else { "False" });
+                self.apply_one(Key::Font, &own.map(|n| n.to_string()).unwrap_or_default());
+                return self.apply_one(Key::Bold, if bold { "True" } else { "False" });
             }
             _ => {}
         }
@@ -4251,8 +4268,14 @@ fn main() {
             }
         }
         // `--select N` chooses control N; `--events` shows the Events view - for checking by picture.
-        if let Some(n) = args.iter().position(|a| a == "--select").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
-            s.select(Some(n));
+        // `--select 2` or `--select 2,3`: those controls chosen.
+        if let Some(list) = args.iter().position(|a| a == "--select").and_then(|i| args.get(i + 1)) {
+            let many: Vec<usize> = list.split(',').filter_map(|n| n.trim().parse().ok()).collect();
+            match many.as_slice() {
+                [n] => s.select(Some(*n)),
+                [] => {}
+                _ => s.select_many(&many),
+            }
         }
         if args.iter().any(|a| a == "--events") {
             if let Some(p) = s.props.as_mut() {

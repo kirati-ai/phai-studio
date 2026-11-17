@@ -246,8 +246,31 @@ impl Props {
         p
     }
 
-    /// The properties of what is chosen, from the model.
+    /// The properties of what is chosen, from the model. Several controls chosen: the
+    /// properties they all have, each value shown where all agree and left empty where they
+    /// differ - as Visual Studio does. A value typed in then goes to all of them.
     fn gather(&self) -> Vec<Prop> {
+        let Some(s) = studio() else { return vec![] };
+        let mut v = self.gather_one(s.selected);
+        let chosen = s.selection();
+        if self.mode == 0 && chosen.len() > 1 {
+            v.retain(|p| p.key != Key::Id);
+            for j in chosen.into_iter().filter(|j| Some(*j) != s.selected) {
+                let other = self.gather_one(Some(j));
+                v.retain(|p| other.iter().any(|q| q.key == p.key));
+                for p in v.iter_mut() {
+                    if other.iter().any(|q| q.key == p.key && q.value != p.value) {
+                        p.value.clear();
+                        p.set = false;
+                    }
+                }
+            }
+        }
+        v
+    }
+
+    /// The properties of one control - or the form's, for `None`.
+    fn gather_one(&self, sel: Option<usize>) -> Vec<Prop> {
         let Some(s) = studio() else { return vec![] };
         let f = &s.doc.form;
         let p = |category, key, name, value: String, ed, help| Prop { category, key, name, value, ed, help, parent: None, set: false };
@@ -256,7 +279,7 @@ impl Props {
         let bools = Ed::Bool;
         if self.mode == 1 {
             // Events: the control's, or the form's own and its menus' and toolbar's.
-            return match s.selected.and_then(|i| f.control.get(i)) {
+            return match sel.and_then(|i| f.control.get(i)) {
                 Some(c) => match c.kind.event() {
                     Some(e) => {
                         let name = match e {
@@ -277,7 +300,7 @@ impl Props {
                 }
             };
         }
-        let Some(c) = s.selected.and_then(|i| f.control.get(i)) else {
+        let Some(c) = sel.and_then(|i| f.control.get(i)) else {
             return [
                 p(t("Design"), Key::FormName, t("Name"), f.form.name.clone(), Ed::Text, t("The window's name in code: a struct, and its files' names.")),
                 p(t("Appearance"), Key::FormTitle, t("Title"), f.form.title.clone(), Ed::Text, t("The words in the title bar - an English key, translated by the program.")),
@@ -449,7 +472,7 @@ impl Props {
             for c in &f.control {
                 add(format!("{}\t{}", c.id, crate::kind_label(c.kind)));
             }
-            wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(s.selected.map(|i| i + 1).unwrap_or(0))), None);
+            wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(if s.selection().len() > 1 { usize::MAX } else { s.selected.map(|i| i + 1).unwrap_or(0) })), None);
         }
         let keep = self.chosen.and_then(|l| self.lines.get(l)).and_then(|l| if let Line::Prop(i) = l { self.props.get(*i).map(|p| p.key) } else { None });
         self.props = self.gather();
