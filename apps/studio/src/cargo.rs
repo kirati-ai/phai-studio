@@ -267,7 +267,7 @@ fn step(target: isize, project: &Path, args: &[String], out: &mut Outcome) {
                     .args(args)
                     .arg("--manifest-path")
                     .arg(&manifest)
-                    .current_dir(&project)
+                    .current_dir(project)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .creation_flags(CREATE_NO_WINDOW)
