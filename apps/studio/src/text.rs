@@ -591,6 +591,17 @@ pub static THAI: &[(&str, &str)] = &[
     ("Threads", "เธรด"),
     ("Threads Window", "หน้าต่างเธรด"),
     ("(no name)", "(ไม่มีชื่อ)"),
+    ("Exception Settings...", "ตั้งค่าข้อยกเว้น..."),
+    ("Exception Settings", "ตั้งค่าข้อยกเว้น"),
+    ("Break when a Rust program panics", "หยุดเมื่อโปรแกรม Rust panic"),
+    ("Access violation", "เข้าถึงหน่วยความจำผิด"),
+    ("Integer divide by zero", "หารจำนวนเต็มด้วยศูนย์"),
+    ("Integer overflow", "จำนวนเต็มล้น"),
+    ("Illegal instruction", "คำสั่งเครื่องไม่ถูกต้อง"),
+    ("Stack overflow", "สแตกล้น"),
+    ("C++ exception", "ข้อยกเว้น C++"),
+    ("Exception Settings: {0}", "ตั้งค่าข้อยกเว้น: {0}"),
+    ("nothing stops the program but breakpoints", "มีแต่ breakpoint ที่หยุดโปรแกรม"),
 ];
 
 #[cfg(test)]

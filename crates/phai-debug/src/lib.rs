@@ -33,6 +33,10 @@ pub enum Command {
     Stop,
     /// Let the program go on alone, the debugger gone from it (Detach All).
     Detach,
+    /// Exception Settings: whether a panic stops the program, and the Windows exceptions (by
+    /// code, `0xC0000005` an access violation) that stop it as soon as they happen - before the
+    /// program's own handlers see them. Others stop it only when nothing handles them.
+    Exceptions { panics: bool, first_chance: Vec<u32> },
     /// While paused: look at this thread instead - its stack and locals said again by a
     /// [`Event::Stopped`] (reason `thread`), and the steps taken on it.
     Thread(u32),
@@ -231,6 +235,9 @@ struct Engine {
     detaching: bool,
     /// The thread the program began with: Windows gives it no name.
     main_thread: u32,
+    /// Exception Settings: see [`Command::Exceptions`].
+    break_on_panic: bool,
+    first_chance: Vec<u32>,
 }
 
 /// The program file of a running process, if it may be looked at.
@@ -360,7 +367,7 @@ impl Engine {
     }
 
     fn new(process: HANDLE, exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say, attached: bool) -> Engine {
-        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0 }
+        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![] }
     }
 
     /// Attach to Process: the debugger joins a program already running. Windows then tells of its
@@ -425,6 +432,10 @@ impl Engine {
                         let _ = DebugBreakProcess(self.process);
                     },
                     Ok(Command::Breakpoints(list)) => self.set_breakpoints(list),
+                    Ok(Command::Exceptions { panics, first_chance }) => {
+                        self.break_on_panic = panics;
+                        self.first_chance = first_chance;
+                    }
                     Ok(Command::Conditions(list)) => {
                         self.conds = list;
                         let w = self.wanted.clone();
@@ -524,14 +535,15 @@ impl Engine {
             }
         }
         if std::env::var_os("PHAI_DEBUG_LOG").is_some() {
-            for n in ["main", "prog::main", "rust_panic"] {
+            for n in ["main", "prog::main", "rust_panic", "std::panicking::rust_panic"] {
                 let a = self.symbol_address(n);
                 eprintln!("{n}: {a:x?} {:?}", a.and_then(|a| self.line_of(a)));
             }
         }
         let wanted = std::mem::take(&mut self.wanted);
         self.set_breakpoints(wanted);
-        if let Some(addr) = self.symbol_address("rust_panic") {
+        // Every panic passes through it - named in full by today's Rust, plainly by older ones.
+        if let Some(addr) = self.symbol_address("std::panicking::rust_panic").or_else(|| self.symbol_address("rust_panic")) {
             self.arm(addr, Kind::Panic);
         }
     }
@@ -744,6 +756,10 @@ impl Engine {
                                 return DBG_CONTINUE;
                             }
                         }
+                        // Panics left to run their course (Exception Settings).
+                        if bp.kind == Kind::Panic && !self.break_on_panic {
+                            return DBG_CONTINUE;
+                        }
                         // A breakpoint ends any step on the way to it.
                         self.forget_temps();
                         self.step = None;
@@ -766,6 +782,11 @@ impl Engine {
             _ if info.dwFirstChance == 0 => {
                 // Nobody in the program took it: show where, then let it end the program.
                 self.pause(tid, &format!("exception 0x{code:08X}"));
+                DBG_EXCEPTION_NOT_HANDLED
+            }
+            _ if self.first_chance.contains(&code) => {
+                // Asked for in Exception Settings: shown where it happened, before any handler.
+                self.pause(tid, &format!("first-chance exception 0x{code:08X}"));
                 DBG_EXCEPTION_NOT_HANDLED
             }
             _ => DBG_EXCEPTION_NOT_HANDLED,
@@ -907,6 +928,11 @@ impl Engine {
                     continue;
                 }
                 Command::Pause => continue,
+                Command::Exceptions { panics, first_chance } => {
+                    self.break_on_panic = panics;
+                    self.first_chance = first_chance;
+                    continue;
+                }
                 Command::Thread(t) => {
                     if self.threads.contains_key(&t) {
                         tid = t;

@@ -162,6 +162,17 @@ const ID_ATTACH: i32 = 275;
 const ID_DETACH: i32 = 276;
 const ID_BREAKPOINTS_WIN: i32 = 277;
 const ID_THREADS_WIN: i32 = 278;
+const ID_EXCEPTIONS: i32 = 279;
+
+/// Exception Settings: the Windows exceptions that can stop the program as soon as they happen.
+const EXCEPTIONS: [(u32, &str); 6] = [
+    (0xC000_0005, "Access violation"),
+    (0xC000_0094, "Integer divide by zero"),
+    (0xC000_0095, "Integer overflow"),
+    (0xC000_001D, "Illegal instruction"),
+    (0xC000_00FD, "Stack overflow"),
+    (0xE06D_7363, "C++ exception"),
+];
 static DESIGN_TEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const BAND_STANDARD: u32 = 1;
 const BAND_LAYOUT: u32 = 2;
@@ -974,6 +985,7 @@ fn build_menu() -> HMENU {
         add(debug, ID_DIAG_TOOLS, t("Show Diagnostic Tools"), "Ctrl+Alt+F2");
         add(debug, ID_BREAKPOINTS_WIN, t("Breakpoints Window"), "Ctrl+Alt+B");
         add(debug, ID_THREADS_WIN, t("Threads Window"), "Ctrl+Alt+H");
+        add(debug, ID_EXCEPTIONS, t("Exception Settings..."), "Ctrl+Alt+E");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
@@ -3694,6 +3706,49 @@ impl Studio {
         self.debug_session(exe, None);
     }
 
+    /// Exception Settings as remembered: whether a panic stops the program, and the exceptions
+    /// that stop it at once.
+    fn exceptions() -> phai_debug::Command {
+        let words = setting("exceptions").unwrap_or_else(|| "panic".into());
+        let on: Vec<&str> = words.split(',').map(str::trim).collect();
+        let first_chance = EXCEPTIONS.iter().filter(|(c, _)| on.contains(&format!("0x{c:08X}").as_str())).map(|(c, _)| *c).collect();
+        phai_debug::Command::Exceptions { panics: on.contains(&"panic"), first_chance }
+    }
+
+    /// Debug > Exception Settings: what stops the program - a panic, and which exceptions as soon
+    /// as they happen (before the program's handlers); remembered, and the debugger told.
+    fn exception_settings(&mut self) {
+        let phai_debug::Command::Exceptions { panics, first_chance } = Self::exceptions() else { return };
+        let label = |c: u32, name: &'static str| format!("{} (0x{c:08X})", t(name));
+        let labels: Vec<String> = EXCEPTIONS.iter().map(|(c, n)| label(*c, n)).collect();
+        let mut fields = vec![phai_ui::dialogs::Field::Check(t("Break when a Rust program panics"), panics)];
+        for (i, (c, _)) in EXCEPTIONS.iter().enumerate() {
+            fields.push(phai_ui::dialogs::Field::Check(&labels[i], first_chance.contains(c)));
+        }
+        let answer = match std::env::var("PHAI_EXCEPTIONS_TEST") {
+            // `PHAI_EXCEPTIONS_TEST=1,0,1,...`: the ticks, without the question - for testing.
+            Ok(t) => t.split(',').map(str::to_string).collect(),
+            Err(_) => match phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Exception Settings"), &fields) {
+                Some(a) => a,
+                None => return,
+            },
+        };
+        let mut on = Vec::new();
+        if answer.first().is_some_and(|v| v == "1") {
+            on.push("panic".to_string());
+        }
+        for (i, (c, _)) in EXCEPTIONS.iter().enumerate() {
+            if answer.get(i + 1).is_some_and(|v| v == "1") {
+                on.push(format!("0x{c:08X}"));
+            }
+        }
+        remember_setting("exceptions", &on.join(","));
+        if let Some(d) = &self.debug {
+            d.send(Self::exceptions());
+        }
+        self.say_status(&tf("Exception Settings: {0}", &[&if on.is_empty() { t("nothing stops the program but breakpoints").to_string() } else { on.join(", ") }]));
+    }
+
     /// Debug > Attach to Process: a running program chosen, the debugger joined to it.
     fn attach_to_process(&mut self) {
         if self.debug.is_some() {
@@ -3740,6 +3795,9 @@ impl Studio {
             if let Some(d) = &self.debug {
                 d.send(phai_debug::Command::Conditions(self.conds.clone()));
             }
+        }
+        if let Some(d) = &self.debug {
+            d.send(Self::exceptions());
         }
         self.show_debug_bar(true);
         let name = exe.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -5026,6 +5084,7 @@ impl Studio {
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_ATTACH => self.attach_to_process(),
+            ID_EXCEPTIONS => self.exception_settings(),
             ID_THREADS_WIN => {
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
@@ -5890,6 +5949,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x50 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_ATTACH),
             0x42 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_BREAKPOINTS_WIN),
             0x48 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_THREADS_WIN),
+            0x45 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_EXCEPTIONS),
             0x77 if shift && !ctrl => return Some(ID_PREV_ERROR),
             0x77 if !ctrl => return Some(ID_NEXT_ERROR),
             0x78 if ctrl && shift => return Some(ID_CLEAR_BPS),
@@ -6350,6 +6410,13 @@ fn main() {
                 phai_editor::view::toggle_all_folds(h);
                 println!("{} lines folded", phai_editor::view::hidden_lines(h));
             }
+        }
+        // `--exceptions-test`: Exception Settings set from `PHAI_EXCEPTIONS_TEST`, then read back.
+        if args.iter().any(|a| a == "--exceptions-test") {
+            s.command(ID_EXCEPTIONS);
+            println!("remembered: {:?}", setting("exceptions"));
+            println!("given to the debugger: {:?}", Studio::exceptions());
+            std::process::exit(0);
         }
         // `--bpwin-test`: breakpoints on lines 4 and 5 (5 with a condition), the Breakpoints window
         // shown, the first unticked there as a click would; what the debugger is given printed.
