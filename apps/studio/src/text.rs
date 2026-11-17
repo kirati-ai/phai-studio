@@ -442,12 +442,12 @@ pub static THAI: &[(&str, &str)] = &[
     ("Commit All", "Commit ทั้งหมด"),
     ("Pull", "ดึง (Pull)"),
     ("Push", "ส่ง (Push)"),
-    ("Branch: {0}", "Branch: {0}"),
+    ("Branch: {0}", "สาขา (branch): {0}"),
     ("Commit All ({0})", "Commit ทั้งหมด ({0})"),
     ("Write a message first: what this commit does.", "เขียนข้อความก่อน: commit นี้ทำอะไร"),
     ("Nothing to commit: no file has changed.", "ไม่มีอะไรให้ commit: ไม่มีไฟล์ที่เปลี่ยน"),
     ("Git Changes...", "การเปลี่ยนแปลงใน Git..."),
-    ("&Git", "&Git"),
+    ("&Git", "&Git (กิต)"),
     ("This project is not in a Git repository. Run git init in its folder to start one.", "โปรเจกต์นี้ไม่ได้อยู่ใน Git repository - สั่ง git init ในโฟลเดอร์ของมันเพื่อเริ่ม"),
 ];
 
