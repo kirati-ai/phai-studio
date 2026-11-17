@@ -82,11 +82,13 @@ pub struct Model {
     /// The undo step typing is adding to, if any.
     typing: bool,
     pub dirty: bool,
+    /// More carets, each with its selection's other end: (caret, anchor). Typing goes to all.
+    pub extra: Vec<(usize, usize)>,
 }
 
 impl Model {
     pub fn new(text: &str) -> Model {
-        Model { buf: Buffer::new(text), caret: 0, anchor: 0, goal: None, undo: vec![], redo: vec![], typing: false, dirty: false }
+        Model { buf: Buffer::new(text), caret: 0, anchor: 0, goal: None, undo: vec![], redo: vec![], typing: false, dirty: false, extra: vec![] }
     }
 
     pub fn selection(&self) -> (usize, usize) {
@@ -442,6 +444,120 @@ impl Model {
         true
     }
 
+    /// Every caret with its selection, the main one first: (caret, anchor).
+    pub fn carets(&self) -> Vec<(usize, usize)> {
+        std::iter::once((self.caret, self.anchor)).chain(self.extra.iter().copied()).collect()
+    }
+
+    /// One change at every caret, as one undo step: `change` gives each caret's span to replace
+    /// (from, to) and its text; afterwards each caret sits after its new text.
+    fn at_every_caret(&mut self, change: impl Fn(&Model, usize, usize) -> (usize, usize, String)) {
+        let all = self.carets();
+        let mut spans: Vec<(usize, usize, String, usize)> = all.iter().enumerate().map(|(k, &(c, a))| {
+            let (from, to, text) = change(self, c, a);
+            (from, to, text, k)
+        }).collect();
+        spans.sort_by_key(|s| s.0);
+        // Spans that run into each other: the later one goes.
+        let mut kept: Vec<(usize, usize, String, usize)> = Vec::new();
+        for s in spans {
+            if kept.last().is_some_and(|l| s.0 < l.1) {
+                continue;
+            }
+            kept.push(s);
+        }
+        let refs: Vec<(usize, usize, &str)> = kept.iter().map(|(a, b, t, _)| (*a, *b, t.as_str())).collect();
+        self.edit_many(&refs);
+        // Where each caret is now: after its text, every earlier change counted.
+        let mut shift: isize = 0;
+        let mut placed: Vec<(usize, usize)> = vec![(0, 0); all.len()];
+        let mut got = vec![false; all.len()];
+        for (a, b, t, k) in &kept {
+            let at = (*a as isize + shift) as usize + t.len();
+            placed[*k] = (at, at);
+            got[*k] = true;
+            shift += t.len() as isize - (*b - *a) as isize;
+        }
+        let main = if got[0] { placed[0] } else { (self.caret, self.caret) };
+        self.caret = main.0.min(self.buf.len());
+        self.anchor = self.caret;
+        self.extra = (1..all.len()).filter(|k| got[*k]).map(|k| placed[k]).collect();
+        self.typing = false;
+    }
+
+    /// Typed with several carets: the text at each.
+    pub fn type_all(&mut self, text: &str) {
+        let t = text.to_string();
+        self.at_every_caret(|_, c, a| (c.min(a), c.max(a), t.clone()));
+    }
+
+    /// Backspace with several carets: each selection, or the character before each caret.
+    pub fn backspace_all(&mut self) {
+        self.at_every_caret(|m, c, a| {
+            if c != a {
+                return (c.min(a), c.max(a), String::new());
+            }
+            let (line, col) = m.buf.position(c);
+            let s = m.buf.line(line);
+            let from = if col > 0 { m.buf.line_start(line) + prev_stop(&s, col) } else { c.saturating_sub(1) };
+            (from, c, String::new())
+        });
+    }
+
+    /// Delete with several carets: each selection, or the character after each caret.
+    pub fn delete_all(&mut self) {
+        self.at_every_caret(|m, c, a| {
+            if c != a {
+                return (c.min(a), c.max(a), String::new());
+            }
+            let (line, col) = m.buf.position(c);
+            let s = m.buf.line(line);
+            let to = if col < s.len() { m.buf.line_start(line) + next_stop(&s, col) } else { (c + 1).min(m.buf.len()) };
+            (c, to, String::new())
+        });
+    }
+
+    /// Shift+Alt+.: the next place the selection's words are, chosen too, with a caret of its own.
+    pub fn add_next_match(&mut self) -> bool {
+        let (a, b) = self.selection();
+        if a == b {
+            return false;
+        }
+        let word = self.buf.slice(a, b);
+        let text = self.buf.text();
+        let last = self.carets().iter().map(|(c, an)| (*c).max(*an)).max().unwrap_or(b);
+        let found = text[last..].find(&word).map(|i| last + i).or_else(|| text.find(&word));
+        match found {
+            Some(at) if !self.carets().iter().any(|(c, an)| (*c).min(*an) == at) => {
+                // The newest becomes the main caret, as Visual Studio does.
+                self.extra.push((self.caret, self.anchor));
+                self.anchor = at;
+                self.caret = at + word.len();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Alt+drag: a box from (line, column) to (line, column), byte columns clamped to each line -
+    /// a caret and selection on every line of it, the last line's the main one.
+    pub fn box_select(&mut self, from: (usize, usize), to: (usize, usize)) {
+        let (l0, l1) = (from.0.min(to.0), from.0.max(to.0));
+        let mut sels = Vec::new();
+        for l in l0..=l1 {
+            let s = self.buf.line(l);
+            let clamp = |chars: usize| s.char_indices().nth(chars).map(|(i, _)| i).unwrap_or(s.len());
+            let start = self.buf.line_start(l);
+            sels.push((start + clamp(to.1), start + clamp(from.1)));
+        }
+        let main = if to.0 >= from.0 { sels.pop() } else { Some(sels.remove(0)) };
+        if let Some((c, a)) = main {
+            self.caret = c;
+            self.anchor = a;
+        }
+        self.extra = sels;
+    }
+
     /// The lines the selection (or the caret) is on: a selection ending at a line's start leaves
     /// that line out.
     fn chosen_lines(&self) -> (usize, usize) {
@@ -766,6 +882,29 @@ mod tests {
         m.caret = text.len();
         m.anchor = m.caret;
         m
+    }
+
+    #[test]
+    fn several_carets_type_together() {
+        let mut m = Model::new("let a = 1;\nlet b = 2;\nlet c = 3;");
+        // A box from "a" to "c": one caret on each line, before the letter.
+        m.box_select((0, 4), (2, 4));
+        assert_eq!(m.carets().len(), 3);
+        m.type_all("my_");
+        assert_eq!(m.buf.text(), "let my_a = 1;\nlet my_b = 2;\nlet my_c = 3;");
+        m.backspace_all();
+        assert_eq!(m.buf.text(), "let mya = 1;\nlet myb = 2;\nlet myc = 3;");
+        m.undo();
+        assert_eq!(m.buf.text(), "let my_a = 1;\nlet my_b = 2;\nlet my_c = 3;", "one undo step for all");
+        // Shift+Alt+.: the next "let" chosen too, then typed over.
+        let mut m = Model::new("let x;\nlet y;");
+        m.anchor = 0;
+        m.caret = 3;
+        assert!(m.add_next_match());
+        m.type_all("var");
+        assert_eq!(m.buf.text(), "var x;\nvar y;");
+        m.delete_all();
+        assert_eq!(m.buf.text(), "varx;\nvary;");
     }
 
     #[test]
