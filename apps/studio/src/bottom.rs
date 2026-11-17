@@ -29,12 +29,13 @@ pub const ID_THREADS: i32 = 526;
 pub const ID_MEMORY_INPUT: i32 = 527;
 pub const ID_MEMORY: i32 = 528;
 pub const ID_DISASSEMBLY: i32 = 529;
+pub const ID_COVERAGE: i32 = 530;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
 /// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints, 11 threads,
-/// 12 memory, 13 disassembly.
-fn labels() -> [&'static str; 14] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads"), t("Memory"), t("Disassembly")]
+/// 12 memory, 13 disassembly, 14 code coverage.
+fn labels() -> [&'static str; 15] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads"), t("Memory"), t("Disassembly"), t("Code Coverage")]
 }
 
 pub struct Bottom {
@@ -59,6 +60,7 @@ pub struct Bottom {
     pub memory: HWND,
     pub memory_input: HWND,
     pub disassembly: HWND,
+    pub coverage: HWND,
     layout: Layout,
 }
 
@@ -129,12 +131,14 @@ impl Bottom {
         }
         layout.add(memory_input, Item { bounds: Rect::new(0, 30, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: true, right: true, bottom: false } });
         layout.add(memory, Item { bounds: Rect::new(0, 56, 800, 84), dock: Dock::None, anchor: Anchor::ALL });
+        let coverage = win::list(hwnd, ID_COVERAGE, font, &[(t("File"), 420), (t("Covered"), 100), (t("Lines"), 100), (t("Coverage"), 100)]);
+        layout.add(coverage, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         let disassembly = win::edit_lines(hwnd, "", ID_DISASSEMBLY, font);
         unsafe {
             wm::SendMessageW(disassembly, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
         layout.add(disassembly, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, layout });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -163,6 +167,7 @@ impl Bottom {
         win::show(self.memory, i == 12);
         win::show(self.memory_input, i == 12);
         win::show(self.disassembly, i == 13);
+        win::show(self.coverage, i == 14);
         // Shown while paused: the code of where it stopped, asked for.
         if i == 13 {
             if let Some(s) = crate::studio() {
