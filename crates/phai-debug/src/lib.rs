@@ -37,6 +37,9 @@ pub enum Command {
     /// While paused: the values of these expressions (`total`, `order.items.len`), answered by
     /// [`Event::Values`] with the same `id` - for Watch, and for a data tip.
     Evaluate { id: u64, exprs: Vec<String> },
+    /// While paused: a number, `bool` or `char` given a new value, as Visual Studio lets a
+    /// value in Locals be typed over. Answered by [`Event::ValueSet`].
+    SetValue { expr: String, value: String },
 }
 
 /// A frame of the call stack: the function, and where in the source when the PDB says.
@@ -73,6 +76,8 @@ pub enum Event {
     Failed(String),
     /// The values asked for by [`Command::Evaluate`].
     Values { id: u64, vars: Vec<Var> },
+    /// [`Command::SetValue`] done - the locals as they are now - or why not.
+    ValueSet { expr: String, result: Result<Vec<Var>, String> },
 }
 
 /// A program running under the debugger.
@@ -645,6 +650,11 @@ impl Engine {
                     (self.say)(Event::Values { id, vars });
                     continue;
                 }
+                Command::SetValue { expr, value } => {
+                    let result = self.set_value(tid, &expr, &value).map(|_| self.locals(tid));
+                    (self.say)(Event::ValueSet { expr, result });
+                    continue;
+                }
                 Command::Pause => continue,
                 Command::Stop => unsafe {
                     let _ = TerminateProcess(self.process, 1);
@@ -824,6 +834,22 @@ impl Engine {
         }
     }
 
+    /// Writes `value` over a number, `bool` or `char` in the program's memory.
+    fn set_value(&self, tid: u32, expr: &str, value: &str) -> Result<(), String> {
+        let (m, mut t, addr) = self.place(tid, expr.trim())?;
+        let types = Types { process: self.process, base: m, engine: self };
+        while types.tag(t) == TAG_TYPEDEF {
+            t = types.inner(t).ok_or("?")?;
+        }
+        if types.tag(t) != TAG_BASE {
+            return Err("only a number, bool or char can be changed here".into());
+        }
+        let bt = types.info_u32(t, TI_GET_BASETYPE).unwrap_or(0);
+        let len = types.len(t) as usize;
+        let bytes = encode_value(bt, len, value.trim())?;
+        unsafe { WriteProcessMemory(self.process, addr as _, bytes.as_ptr() as _, bytes.len(), None) }.map_err(|e| e.to_string())
+    }
+
     /// A path's value as plain text: a number, `true`, a string's words without quotes.
     fn text_of(&self, tid: u32, path: &str) -> Result<String, String> {
         let (m, t, addr) = self.place(tid, path)?;
@@ -844,6 +870,42 @@ impl Engine {
             _ => None,
         }
     }
+}
+
+/// The bytes a value typed in takes in memory, for a base type of `len` bytes.
+fn encode_value(bt: u32, len: usize, v: &str) -> Result<Vec<u8>, String> {
+    let bad = || format!("`{v}` is not a value of this type");
+    let mut out = match bt {
+        6 | 13 => {
+            let n: i128 = v.replace('_', "").parse().map_err(|_| bad())?;
+            let bits = len * 8;
+            if bits < 128 && (n < -(1i128 << (bits - 1)) || n >= 1i128 << (bits - 1)) {
+                return Err(format!("{n} does not fit in {bits} bits"));
+            }
+            n.to_le_bytes().to_vec()
+        }
+        7 | 14 => {
+            let n: u128 = v.replace('_', "").parse().map_err(|_| bad())?;
+            if len < 16 && n >= 1u128 << (len * 8) {
+                return Err(format!("{n} does not fit in {} bits", len * 8));
+            }
+            n.to_le_bytes().to_vec()
+        }
+        8 if len == 4 => v.parse::<f32>().map_err(|_| bad())?.to_le_bytes().to_vec(),
+        8 => v.parse::<f64>().map_err(|_| bad())?.to_le_bytes().to_vec(),
+        10 => vec![match v {
+            "true" | "1" => 1,
+            "false" | "0" => 0,
+            _ => return Err(bad()),
+        }],
+        2 | 3 | 32 => {
+            let c = unquote(v).chars().next().ok_or_else(bad)?;
+            (c as u32).to_le_bytes().to_vec()
+        }
+        _ => return Err("this type cannot be changed here".into()),
+    };
+    out.resize(len, 0);
+    Ok(out)
 }
 
 /// `x >= 5` as (`x`, `>=`, `5`); `None` for a plain path.
@@ -1220,5 +1282,16 @@ mod tests {
         assert!(compare("42", ">", "5") && !compare("42", "<", "5"));
         assert!(compare("phai", "==", "phai") && compare("10", "==", "10.0"));
         assert_eq!(unquote("\"ไผ่\""), "ไผ่");
+    }
+
+    #[test]
+    fn typed_values_become_bytes() {
+        assert_eq!(encode_value(6, 4, "-2").unwrap(), (-2i32).to_le_bytes());
+        assert_eq!(encode_value(7, 1, "255").unwrap(), [255]);
+        assert!(encode_value(7, 1, "256").is_err());
+        assert!(encode_value(6, 1, "128").is_err());
+        assert_eq!(encode_value(8, 8, "1.5").unwrap(), 1.5f64.to_le_bytes());
+        assert_eq!(encode_value(10, 1, "true").unwrap(), [1]);
+        assert_eq!(encode_value(32, 4, "'ไ'").unwrap(), ('ไ' as u32).to_le_bytes());
     }
 }

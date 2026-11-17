@@ -345,6 +345,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Change the columns, then Ctrl+Shift+E makes the table; Refresh shows it.", "แก้คอลัมน์ แล้วกด Ctrl+Shift+E เพื่อสร้างตาราง กดรีเฟรชเพื่อดู"),
     ("The table as it is now:", "ตารางตอนนี้:"),
     ("Take the -- off a change and Ctrl+Shift+E makes it:", "ลบ -- หน้าคำสั่งที่ต้องการ แล้วกด Ctrl+Shift+E เพื่อแก้ตาราง:"),
+    ("Change {0}", "เปลี่ยน {0}"),
+    ("A new value for {0} ({1}):", "ค่าใหม่ของ {0} ({1}):"),
+    ("{0} changed", "เปลี่ยน {0} แล้ว"),
 ];
 
 #[cfg(test)]
