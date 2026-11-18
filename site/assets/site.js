@@ -1,7 +1,8 @@
 // phai-studio.monrak.net: the page's motion, after monrak.net and desktopserver.monrak.net, without libraries.
 // The slider and its gallery, every card's hover, cards fading in, and the strip that says how far down you are.
 
-// slider: moves every 5 seconds, pauses under the pointer, swipes on a phone; thumbnails and caption follow
+// slider: moves only when asked (arrows, thumbnails, a swipe); thumbnails and caption follow.
+// It never moves by itself or scrolls the page: only the thumbnail strip scrolls, to show the chosen one.
 (() => {
     const box = document.querySelector('.slider');
     if (!box) return;
@@ -9,7 +10,8 @@
     const thumbs = [...document.querySelectorAll('.thumbs button')];
     const cap = document.getElementById('shot-caption');
     const n = thumbs.length;
-    let at = 0, timer = null;
+    const strip = document.querySelector('.thumbs');
+    let at = 0;
     const go = (i) => {
         at = (i + n) % n;
         track.style.transform = 'translateX(' + (-100 * at) + '%)';
@@ -20,23 +22,19 @@
         b.textContent = t.dataset.captionH;
         cap.append(b, ' — ' + t.dataset.captionP);
         if (window.thaiWrap) window.thaiWrap(cap);
-        t.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        const l = t.offsetLeft - strip.offsetLeft, r = l + t.offsetWidth;
+        if (l < strip.scrollLeft) strip.scrollTo({ left: l - 8, behavior: 'smooth' });
+        else if (r > strip.scrollLeft + strip.clientWidth) strip.scrollTo({ left: r - strip.clientWidth + 8, behavior: 'smooth' });
     };
-    const stop = () => { if (timer) clearInterval(timer); timer = null; };
-    const start = () => { stop(); timer = setInterval(() => go(at + 1), 5000); };
-    box.querySelector('.sl-prev').onclick = () => { go(at - 1); start(); };
-    box.querySelector('.sl-next').onclick = () => { go(at + 1); start(); };
-    thumbs.forEach((t, k) => t.onclick = () => { go(k); start(); });
-    box.addEventListener('mouseenter', stop);
-    box.addEventListener('mouseleave', start);
+    box.querySelector('.sl-prev').onclick = () => go(at - 1);
+    box.querySelector('.sl-next').onclick = () => go(at + 1);
+    thumbs.forEach((t, k) => t.onclick = () => go(k));
     let x0 = null;
-    box.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; stop(); }, { passive: true });
+    box.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
     box.addEventListener('touchend', (e) => {
         const dx = e.changedTouches[0].clientX - x0;
         if (Math.abs(dx) > 40) go(at + (dx < 0 ? 1 : -1));
-        start();
     });
-    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) start();
 })();
 
 // gallery: a picture opens large; arrows or keys move, Esc or a click outside closes
