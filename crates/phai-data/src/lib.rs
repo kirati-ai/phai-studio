@@ -590,3 +590,113 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 }
+
+/// A table bound to a grid on a form, as a WinForms BindingSource with its TableAdapter: the rows
+/// are read with [`Binding::load`], and [`Binding::save`] writes back what the grid now holds -
+/// changed cells updated by the primary key, new rows inserted, rows taken out deleted.
+/// Every row the grid shows from the table carries its place in what was loaded (1, 2, ...);
+/// a row the person added carries 0.
+#[derive(Debug)]
+pub struct Binding {
+    pub conn: Connection,
+    pub database: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub keys: Vec<String>,
+    loaded: std::sync::Mutex<Vec<Vec<String>>>,
+}
+
+impl Binding {
+    pub fn new(conn: Connection, database: &str, table: &str, columns: &[&str], keys: &[&str]) -> Binding {
+        Binding { conn, database: database.into(), table: table.into(), columns: columns.iter().map(|c| c.to_string()).collect(), keys: keys.iter().map(|c| c.to_string()).collect(), loaded: Default::default() }
+    }
+
+    fn db(&self) -> Option<&str> {
+        (!self.database.is_empty()).then_some(self.database.as_str())
+    }
+
+    /// The table's rows, its columns in the binding's order - and kept, to know later what changed.
+    pub fn load(&self) -> Result<Vec<Vec<String>>, String> {
+        let cols: Vec<String> = self.columns.iter().map(|c| self.conn.q(c)).collect();
+        let sql = format!("SELECT {} FROM {}", cols.join(", "), self.conn.table_ref(&self.database, &self.table));
+        let grid = self.conn.query(self.db(), &sql)?;
+        *self.loaded.lock().unwrap_or_else(|e| e.into_inner()) = grid.rows.clone();
+        Ok(grid.rows)
+    }
+
+    /// Writes back the grid's rows - each with its place in what was loaded (0 for a new row) -
+    /// and says how many changes were made. `NULL` in a cell is SQL's NULL; a new row's empty cells
+    /// are left to the table's defaults (an id that numbers itself).
+    pub fn save(&self, rows: &[(usize, Vec<String>)]) -> Result<usize, String> {
+        let loaded = self.loaded.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let at = |name: &str| self.columns.iter().position(|c| c == name);
+        let key_of = |row: &[String]| -> Result<Vec<(String, String)>, String> {
+            if self.keys.is_empty() {
+                return Err(format!("{} has no primary key, so its rows cannot be changed or deleted - only added", self.table));
+            }
+            self.keys.iter().map(|k| at(k).and_then(|i| row.get(i)).map(|v| (k.clone(), v.clone())).ok_or_else(|| format!("the key {k} is not among the bound columns"))).collect()
+        };
+        let value = |v: &str| (v != "NULL").then(|| v.to_string());
+        let mut seen = vec![false; loaded.len()];
+        let mut changes = 0;
+        for (place, row) in rows {
+            match place.checked_sub(1).filter(|&k| k < loaded.len()) {
+                Some(k) => {
+                    seen[k] = true;
+                    let before = &loaded[k];
+                    for (i, col) in self.columns.iter().enumerate() {
+                        let (now, was) = (row.get(i).map(String::as_str).unwrap_or(""), before.get(i).map(String::as_str).unwrap_or(""));
+                        if now != was {
+                            self.conn.update_cell(&self.database, &self.table, col, value(now).as_deref(), &key_of(before)?)?;
+                            changes += 1;
+                        }
+                    }
+                }
+                None => {
+                    let values: Vec<(String, Option<String>)> = self.columns.iter().zip(row).filter(|(_, v)| !v.is_empty()).map(|(c, v)| (c.clone(), value(v))).collect();
+                    if !values.is_empty() {
+                        self.conn.insert_row(&self.database, &self.table, &values)?;
+                        changes += 1;
+                    }
+                }
+            }
+        }
+        for (k, before) in loaded.iter().enumerate() {
+            if !seen[k] {
+                self.conn.delete_row(&self.database, &self.table, &key_of(before)?)?;
+                changes += 1;
+            }
+        }
+        Ok(changes)
+    }
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+
+    #[test]
+    fn a_bound_table_saves_what_the_grid_holds() {
+        let path = std::env::temp_dir().join(format!("phai-bind-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let c = Connection { host: path.to_string_lossy().to_string(), kind: Kind::Sqlite, ..Default::default() };
+        c.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT); INSERT INTO customers (name, phone) VALUES ('Somchai', '081'), ('Monrak', '02'), ('Gone', NULL);").unwrap();
+        let b = Binding::new(c.clone(), "main", "customers", &["id", "name", "phone"], &["id"]);
+        let rows = b.load().unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[2][2], "NULL");
+        // The grid now: the first changed, the second as it was, the third taken out, one added.
+        let mut first = rows[0].clone();
+        first[1] = "สมชาย".into();
+        let grid = vec![(1, first), (2, rows[1].clone()), (0, vec![String::new(), "ใหม่".into(), "099".into()])];
+        assert_eq!(b.save(&grid).unwrap(), 3, "one cell, one new row, one deleted");
+        let after = b.load().unwrap();
+        let names: Vec<&str> = after.iter().map(|r| r[1].as_str()).collect();
+        assert_eq!(names, ["สมชาย", "Monrak", "ใหม่"]);
+        assert_eq!(after[2][0], "4", "the new row numbered by the table");
+        // Nothing changed: nothing written.
+        let same: Vec<(usize, Vec<String>)> = after.iter().enumerate().map(|(i, r)| (i + 1, r.clone())).collect();
+        assert_eq!(b.save(&same).unwrap(), 0);
+        let _ = std::fs::remove_file(&path);
+    }
+}

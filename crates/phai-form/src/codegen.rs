@@ -111,6 +111,10 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for c in &f.control {
         let _ = writeln!(w, "    pub {}: HWND,", c.id);
     }
+    for c in f.control.iter().filter(|c| c.bind.is_some()) {
+        let _ = writeln!(w, "    /// The table {} shows, and what it held when last read.", c.id);
+        let _ = writeln!(w, "    pub {}_data: phai_data::Binding,", c.id);
+    }
     let _ = writeln!(w, "    layout: Layout,");
     let _ = writeln!(w, "}}");
     let _ = writeln!(w);
@@ -170,6 +174,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        unsafe {{");
     let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default();");
     let _ = writeln!(w, "            let ui = Self::build(hwnd);");
+    for c in f.control.iter().filter(|c| c.bind.is_some()) {
+        let _ = writeln!(w, "            if let Err(e) = ui.reload_{}() {{", c.id);
+        let _ = writeln!(w, "                win::message(Some(hwnd), &e, t({}), wm::MB_ICONWARNING);", lit(&f.form.title));
+        let _ = writeln!(w, "            }}");
+    }
     let _ = writeln!(w, "            let mut host = Box::new(Host {{ ui, events }});");
     let _ = writeln!(w, "            host.events.loaded(&host.ui);");
     let _ = writeln!(w, "            win::set_state(hwnd, host);");
@@ -269,7 +278,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Picture => format!("phai_ui::picture::picture(hwnd, {id}, {})", lit(c.image.as_deref().unwrap_or(""))),
             Kind::Flow | Kind::Table => format!("win::panel(hwnd, {id}, false)"),
             Kind::Rich => format!("phai_ui::grid::richtext(hwnd, {id}, {font}, {})", lit(&text_of(c))),
-            Kind::Grid => format!("phai_ui::grid::grid(hwnd, {id}, {font}, &[{}])", c.columns.iter().map(|(s, n)| format!("(t({}), {n})", lit(s))).collect::<Vec<_>>().join(", ")),
+            Kind::Grid => {
+                // A bound grid's headings that are its columns' own names: shown as they are.
+                let raw = |i: usize, s: &String| c.bind.as_ref().is_some_and(|b| b.columns.get(i) == Some(s));
+                format!("phai_ui::grid::grid(hwnd, {id}, {font}, &[{}])", c.columns.iter().enumerate().map(|(i, (s, n))| if raw(i, s) { format!("({}, {n})", lit(s)) } else { format!("(t({}), {n})", lit(s)) }).collect::<Vec<_>>().join(", "))
+            }
             // A context menu is the window's own too: made when a right-click asks for it.
             Kind::ContextMenu => "hwnd".to_string(),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
@@ -302,6 +315,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let ch = if c.kind == Kind::Statusbar { format!("unscale(controls::status_height({}), dpi)", c.id) } else { ch.to_string() };
         let _ = writeln!(w, "        layout.add({}, Item {{ bounds: Rect::new({x}, {y}, {cw}, {ch}), dock: {}, anchor: {} }});", c.id, dock_code(c), anchor_code(c));
     }
+    for c in &f.control {
+        if let Some(b) = &c.bind {
+            let list = |v: &[String]| v.iter().map(|x| lit(x)).collect::<Vec<_>>().join(", ");
+            let _ = writeln!(w, "        let {}_data = phai_data::Binding::new(crate::data_sources::connection(), {}, {}, &[{}], &[{}]);", c.id, lit(&b.database), lit(&b.table), list(&b.columns), list(&b.keys));
+        }
+    }
     let _ = writeln!(w, "        {ui} {{");
     let _ = writeln!(w, "            hwnd,");
     let _ = writeln!(w, "            font,");
@@ -311,10 +330,34 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for c in &f.control {
         let _ = writeln!(w, "            {},", c.id);
     }
+    for c in f.control.iter().filter(|c| c.bind.is_some()) {
+        let _ = writeln!(w, "            {}_data,", c.id);
+    }
     let _ = writeln!(w, "            layout,");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+
+    // bound grids
+    for c in f.control.iter().filter(|c| c.bind.is_some()) {
+        let id = &c.id;
+        let table = &c.bind.as_ref().map(|b| b.table.clone()).unwrap_or_default();
+        let _ = writeln!(w, "    /// {id}'s rows read again from {table}.");
+        let _ = writeln!(w, "    pub fn reload_{id}(&self) -> Result<(), String> {{");
+        let _ = writeln!(w, "        let rows = self.{id}_data.load()?;");
+        let _ = writeln!(w, "        phai_ui::grid::grid_fill(self.{id}, &rows);");
+        let _ = writeln!(w, "        Ok(())");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// What {id} holds written back to {table} - changed cells, new rows, rows taken out -");
+        let _ = writeln!(w, "    /// then read again. How many changes were made.");
+        let _ = writeln!(w, "    pub fn save_{id}(&self) -> Result<usize, String> {{");
+        let _ = writeln!(w, "        let n = self.{id}_data.save(&phai_ui::grid::grid_tagged_rows(self.{id}))?;");
+        let _ = writeln!(w, "        self.reload_{id}()?;");
+        let _ = writeln!(w, "        Ok(n)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
 
     // relabel
     let _ = writeln!(w, "    /// Every word again in the language now chosen - after `phai_ui::text::set_thai`.");
@@ -432,6 +475,17 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let id = format!("CONTROL_{}", c.id.to_ascii_uppercase());
         let call = c.handler().map(|h| format!("events.{h}(ui)"));
         match c.kind {
+            Kind::Button if c.bind_action.is_some() => {
+                // Save or Reload for a bound grid, then the button's own handler if it has one.
+                let (grid, what) = c.bind_action.as_deref().and_then(|a| a.split_once(':')).unwrap_or(("", "reload"));
+                let run = if what == "save" { format!("ui.save_{grid}().map(|_| ())") } else { format!("ui.reload_{grid}()") };
+                let after = call.map(|c| format!(" {c};")).unwrap_or_default();
+                let _ = writeln!(w, "                {id} if code == 0 => {{");
+                let _ = writeln!(w, "                    if let Err(e) = {run} {{");
+                let _ = writeln!(w, "                        win::message(Some(hwnd), &e, t({}), wm::MB_ICONWARNING);", lit(&f.form.title));
+                let _ = writeln!(w, "                    }}{after}");
+                let _ = writeln!(w, "                }}");
+            }
             Kind::Button | Kind::Checkbox | Kind::Radio => {
                 if let Some(call) = call {
                     let _ = writeln!(w, "                {id} if code == 0 => {call},");

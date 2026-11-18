@@ -233,13 +233,14 @@ impl Servers {
         const NEW_TABLE: u32 = 7;
         const DESIGN: u32 = 8;
         const AS_SQL: u32 = 9;
+        const TO_FORM: u32 = 10;
         let sel = self.selected();
         let kind = sel.as_ref().map(|(_, n)| n.kind.clone()).unwrap_or(Kind::Root);
         let items: Vec<(u32, &str)> = match kind {
             Kind::Root | Kind::Waiting => vec![(ADD, t("Add Connection..."))],
             Kind::Server => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete"))],
             Kind::Database => vec![(QUERY, t("New Query")), (NEW_TABLE, t("New Table...")), (REFRESH, t("Refresh"))],
-            Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (AS_SQL, t("Script as SQL")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (REFRESH, t("Refresh"))],
+            Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (AS_SQL, t("Script as SQL")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (TO_FORM, t("Add to Form")), (REFRESH, t("Refresh"))],
             Kind::Table { view: true } => vec![(ROWS, t("Show Table Data")), (QUERY, t("New Query")), (REFRESH, t("Refresh"))],
         };
         match win::popup(owner, &items) {
@@ -297,6 +298,24 @@ impl Servers {
             ROWS => {
                 if let (Some((_, n)), Some(s)) = (sel, studio()) {
                     s.show_table_rows(n.conn, &n.db, &n.table);
+                }
+            }
+            TO_FORM => {
+                // The table onto the form being designed: a grid bound to it, Reload and Save.
+                if let Some((_, n)) = sel {
+                    let c = self.conns[n.conn].clone();
+                    let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
+                    match dialogs::wait_for(Some(owner), t("Add to Form"), t("Connecting..."), move |_| c2.columns(&d2, &t2)) {
+                        Some(Ok(cols)) => {
+                            if let Some(s) = studio() {
+                                s.bind_table(&c, &n.db, &n.table, &cols);
+                            }
+                        }
+                        Some(Err(e)) => {
+                            win::message(Some(owner), &e, t("Add to Form"), wm::MB_ICONWARNING);
+                        }
+                        None => {}
+                    }
                 }
             }
             CODE => {

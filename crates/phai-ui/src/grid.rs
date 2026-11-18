@@ -51,6 +51,41 @@ pub fn grid_clear(h: HWND) {
     }
 }
 
+/// A row's tag: a number the grid keeps with the row, whatever moves around it (rows taken out
+/// above it, or added). A new row's is 0.
+fn tag(h: HWND, row: usize) -> usize {
+    let mut item = cc::LVITEMW { mask: cc::LVIF_PARAM, iItem: row as i32, ..Default::default() };
+    unsafe {
+        wm::SendMessageW(h, cc::LVM_GETITEMW, None, Some(LPARAM(&mut item as *mut _ as isize)));
+    }
+    item.lParam.0.max(0) as usize
+}
+
+fn set_tag(h: HWND, row: usize, value: usize) {
+    let item = cc::LVITEMW { mask: cc::LVIF_PARAM, iItem: row as i32, lParam: LPARAM(value as isize), ..Default::default() };
+    unsafe {
+        wm::SendMessageW(h, cc::LVM_SETITEMW, None, Some(LPARAM(&item as *const _ as isize)));
+    }
+}
+
+/// The grid emptied and filled with `rows` as a table gave them: each row tagged with its place
+/// (1, 2, ...), so that after the person changes, adds and deletes rows, [`grid_tagged_rows`] still
+/// says which row each one was - what a data binding needs to save.
+pub fn grid_fill(h: HWND, rows: &[Vec<String>]) {
+    grid_clear(h);
+    for (i, r) in rows.iter().enumerate() {
+        let cells: Vec<&str> = r.iter().map(String::as_str).collect();
+        grid_add(h, &cells);
+        set_tag(h, i, i + 1);
+    }
+}
+
+/// The grid's rows with their tags: the place each had when [`grid_fill`] put it there, 0 for a row
+/// added since.
+pub fn grid_tagged_rows(h: HWND) -> Vec<(usize, Vec<String>)> {
+    grid_rows(h).into_iter().enumerate().map(|(i, r)| (tag(h, i), r)).collect()
+}
+
 /// One cell's text.
 pub fn cell(h: HWND, row: usize, col: usize) -> String {
     let mut buf = vec![0u16; 1024];

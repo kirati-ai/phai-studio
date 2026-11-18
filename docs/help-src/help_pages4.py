@@ -111,7 +111,7 @@ BODY['database.html'] = r'''
   <tr><th>คลิกขวาที่</th><th>คำสั่ง</th></tr>
   <tr><td>การเชื่อมต่อ</td><td>New Query, Refresh, Add Connection..., Delete</td></tr>
   <tr><td>ฐานข้อมูล</td><td>New Query, New Table..., Refresh</td></tr>
-  <tr><td>ตาราง</td><td>Show Table Data, Design Table, Script as SQL, New Query, Copy code for a program, Refresh</td></tr>
+  <tr><td>ตาราง</td><td>Show Table Data, Design Table, Script as SQL, New Query, Copy code for a program, Add to Form, Refresh</td></tr>
   <tr><td>view</td><td>Show Table Data, New Query, Refresh</td></tr>
 </table>
 <ul>
@@ -129,6 +129,31 @@ BODY['database.html'] = r'''
 </ol>
 <p>ใส่หลายคำสั่งในไฟล์เดียวได้ ผลที่แสดงคือผลของคำสั่งสุดท้ายที่มีแถวข้อมูล</p>
 <div class="note">คำสั่ง <code>UPDATE</code> และ <code>DELETE</code> ที่ไม่มี <code>WHERE</code> จะแก้หรือลบทุกแถวในตาราง ควรลองกับฐานข้อมูลทดลองก่อน และสำรองข้อมูลจริงไว้เสมอ</div>
+
+<h2>ใส่ตารางลงฟอร์ม (Data binding)</h2>
+<p>วิธีที่เร็วที่สุดในการทำโปรแกรมจัดการข้อมูล เหมือนลากตารางจากหน้าต่าง Data Sources ของ Visual Studio:</p>
+<ol>
+  <li>เปิดฟอร์มของโปรเจกต์ไว้ในตัวออกแบบ</li>
+  <li>ใน Server Explorer คลิกขวาที่ตาราง แล้วเลือก <b>Add to Form</b></li>
+  <li>Phai Studio วางตารางข้อมูล (Data grid) ที่ผูกกับตารางนั้นลงในฟอร์ม พร้อมปุ่ม <b>Reload</b> และ <b>Save</b> ด้านล่าง แล้วกด <kbd>Ctrl</kbd>+<kbd>S</kbd> บันทึกฟอร์ม</li>
+  <li>กด <kbd>F5</kbd> โปรแกรมจะโหลดข้อมูลมาแสดงเองตอนเปิดหน้าต่าง</li>
+</ol>
+<p>ในโปรแกรมที่รัน:</p>
+<ul>
+  <li>ดับเบิลคลิกช่องเพื่อแก้ค่า กด <kbd>Enter</kbd> เพื่อเก็บ</li>
+  <li>ดับเบิลคลิกใต้แถวสุดท้ายเพื่อเพิ่มแถวใหม่ ช่องที่เว้นว่างจะใช้ค่าเริ่มต้นของตาราง เช่น รหัสที่รันเอง</li>
+  <li>เลือกแถวแล้วกด <kbd>Delete</kbd> เพื่อเอาแถวออก</li>
+  <li>กด <b>Save</b> เพื่อบันทึกทุกอย่างที่แก้ลงฐานข้อมูลทีเดียว แล้วโหลดใหม่ให้ ถ้ายังไม่กด Save ข้อมูลในฐานข้อมูลยังไม่เปลี่ยน กด <b>Reload</b> เพื่อทิ้งที่แก้และโหลดใหม่</li>
+  <li>ช่องที่เขียนว่า <code>NULL</code> คือไม่มีค่า</li>
+</ul>
+<p>ครั้งแรกที่ใส่ตารางลงฟอร์ม Phai Studio เตรียมโปรเจกต์ให้ด้วย:</p>
+<ul>
+  <li><code>src/data_sources.rs</code> บอกว่าข้อมูลอยู่ที่เซิร์ฟเวอร์ไหน (เหมือน connection string ของ WinForms) แก้ไฟล์นี้ได้ เช่น ตอนย้ายไปใช้เซิร์ฟเวอร์จริง รหัสผ่านไม่ได้เขียนไว้ในไฟล์ แต่อ่านจากตัวแปรสภาพแวดล้อม <code>PHAI_DB_PASSWORD</code></li>
+  <li>เพิ่ม <code>phai-data</code> ใน <code>Cargo.toml</code> และ <code>mod data_sources;</code> ใน <code>main.rs</code></li>
+  <li>เพิ่มคำแปลไทยของปุ่ม Reload และ Save ในตารางคำแปล</li>
+</ul>
+<p>ในโค้ดของฟอร์มสั่งเองได้ด้วย <code>ui.reload_customers()</code> และ <code>ui.save_customers()</code> (ชื่อตามตาราง) หัวคอลัมน์แสดงชื่อคอลัมน์ในฐานข้อมูลตามจริง ถ้าแก้หัวคอลัมน์ในฟอร์มเป็นคำอื่น คำนั้นจะแปลไทยได้เหมือนข้อความอื่น</p>
+<div class="note">การแก้และลบแถวต้องรู้ว่าแถวไหนคือแถวไหน ตารางจึงต้องมีคีย์หลัก (primary key) ตารางที่ไม่มีคีย์หลักจะเพิ่มแถวได้อย่างเดียว ถ้าเป็น SQLite โปรแกรมจะเปิดไฟล์ฐานข้อมูลตามพาธที่เลือกตอนเพิ่มการเชื่อมต่อ ถ้าจะแจกโปรแกรม ให้แก้พาธใน <code>data_sources.rs</code> ให้ชี้ไปที่ไฟล์บนเครื่องผู้ใช้</div>
 
 <h2>ให้โปรแกรมของคุณอ่านฐานข้อมูล</h2>
 <p>คลิกขวาที่ตาราง แล้วเลือก <b>Copy code for a program</b> Phai Studio จะคัดลอกโค้ด Rust ลงคลิปบอร์ดให้ วางในไฟล์ของคุณได้เลย ในโค้ดมี:</p>
@@ -156,6 +181,6 @@ INSERT INTO customers (name, phone) VALUES ('Monrak Net', '02-111-2222');
 SELECT * FROM customers;</code></pre>
 <ol start="3">
   <li>ดูผลที่แท็บ Results แล้วคลิกขวาที่การเชื่อมต่อ เลือก Refresh จะเห็นตาราง <code>customers</code></li>
-  <li>คลิกขวาที่ตาราง เลือก Copy code for a program แล้วลองเอาไปแสดงในตาราง (list) บนฟอร์มของคุณ</li>
+  <li>เปิดฟอร์มหลักของโปรเจกต์ คลิกขวาที่ตาราง <code>customers</code> เลือก Add to Form บันทึกฟอร์ม แล้วกด <kbd>F5</kbd> ลองแก้ชื่อลูกค้า เพิ่มลูกค้าใหม่ แล้วกด Save</li>
 </ol>
 '''
