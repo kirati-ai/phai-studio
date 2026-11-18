@@ -87,7 +87,7 @@ $T = $th ? [
     'desc' => 'Phai Studio เครื่องมือเขียนโปรแกรม (IDE) ฟรีแบบโอเพนซอร์ส (MIT) สำหรับสร้างโปรแกรม Windows ด้วยภาษา Rust ลากวางออกแบบหน้าจอ เขียนโค้ด ดีบัก ทดสอบ และทำตัวติดตั้งได้ในที่เดียว หน้าจอภาษาไทย พร้อมคู่มือสอน Rust ภาษาไทยสำหรับมือใหม่',
     'nav' => ['features' => 'ความสามารถ', 'learn' => 'คู่มือภาษาไทย', 'install' => 'วิธีติดตั้ง', 'download' => 'ดาวน์โหลด'],
     'tag' => 'วิทยาทาน · โอเพนซอร์ส · ฟรี',
-    'h1' => 'เขียนโปรแกรม Windows ด้วย Rust<br>ง่ายแบบ Visual Studio',
+    'h1' => 'เขียนโปรแกรม Windows ด้วย Rust <em>ง่ายแบบ Visual Studio</em>',
     'lead' => 'ลากวางปุ่ม ช่องกรอก ตาราง ลงบนฟอร์ม ดับเบิลคลิกเขียนโค้ด กด F5 ก็ได้โปรแกรม Windows จริง พร้อมตัวแก้โค้ดที่เติมคำให้ ดีบักเกอร์ เทสต์ Git และทำตัวติดตั้งให้ด้วย หน้าจอภาษาไทย และมีคู่มือสอน Rust ภาษาไทยในตัว',
     'btnDownload' => 'ดาวน์โหลดตัวติดตั้ง', 'btnGithub' => 'โค้ดบน GitHub', 'btnGuide' => 'อ่านคู่มือภาษาไทย',
     'meta' => fn ($c) => "รุ่น {$release['version']} · {$mb} MB · Windows 10/11 (64 บิต) · <b>ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง</b> · เข้าชม {$c['visitors']} คน",
@@ -116,7 +116,20 @@ $T = $th ? [
         ['ti-language', 'ไทย / อังกฤษ', 'สลับภาษาหน้าจอได้ทันที โปรแกรมที่สร้างก็ทำสองภาษาได้ และแสดงตัวอักษรไทยถูกต้อง'],
     ],
     'shotsH' => 'หน้าจอจริง', 'shotsSub' => 'ภาพจากการใช้งานจริง หน้าตาแบบ Windows มาตรฐาน คนที่เคยใช้ Visual Studio คุ้นมือทันที',
-    'shots' => [['designer', 'ออกแบบฟอร์ม'], ['editor', 'ตัวแก้โค้ด'], ['debugger', 'ดีบัก'], ['tests', 'เทสต์'], ['coverage', 'Code Coverage']],
+    'shots' => [
+        ['designer', 'ออกแบบฟอร์ม', 'ลากวางปุ่ม ช่องกรอก และตาราง แล้วแก้คุณสมบัติในหน้าต่าง Properties'],
+        ['editor', 'ตัวแก้โค้ด', 'สีตามไวยากรณ์ จำนวนที่ใช้งาน และเติมคำอัตโนมัติด้วย rust-analyzer'],
+        ['debugger', 'ดีบักทีละบรรทัด', 'หยุดที่ breakpoint และดู thread ทั้งหมดของโปรแกรม'],
+        ['breakpoints', 'Breakpoints', 'breakpoint แบบมีเงื่อนไข และนับจำนวนครั้ง เปิดปิดได้จากรายการ'],
+        ['memory', 'หน่วยความจำ', 'ดูค่าในหน่วยความจำแบบ hex ระหว่างหยุดโปรแกรม'],
+        ['disassembly', 'Disassembly', 'ดูภาษาเครื่อง คู่กับบรรทัดในซอร์สโค้ด'],
+        ['tests', 'เทสต์', 'รันเทสต์ทั้งหมดหรือทีละตัว เห็นผลผ่านและไม่ผ่าน'],
+        ['coverage', 'Code Coverage', 'แถบสีบอกบรรทัดที่เทสต์ครอบคลุม และยังไม่ครอบคลุม'],
+        ['program', 'โปรแกรมที่สร้าง', 'โปรแกรม Windows หน้าจอภาษาไทย ที่สร้างด้วย Phai Studio'],
+    ],
+    'statVisitors' => 'ผู้เข้าชมทั้งหมด', 'statDownloads' => 'ดาวน์โหลดแล้ว', 'statVersion' => 'เวอร์ชัน', 'cta' => 'ดาวน์โหลด',
+    'zoom' => 'คลิกเพื่อดูภาพเต็ม', 'prev' => 'ก่อนหน้า', 'next' => 'ถัดไป', 'close' => 'ปิด',
+    'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'วิทยาทาน · โอเพนซอร์ส', 'คู่มือ RUST ภาษาไทย', 'ดาวน์โหลดฟรี'],
     'whyH' => 'ทำไมต้อง Phai Studio',
     'why' => [
         ['ฟรีทุกฟีเจอร์ ไม่มีรุ่นเสียเงิน', 'สัญญาอนุญาต MIT ใช้ แก้ และแจกต่อได้ รวมถึงใช้ทำโปรแกรมขาย'],
@@ -165,7 +178,7 @@ $T = $th ? [
     'desc' => 'Phai Studio is a free, open-source (MIT) IDE for building Windows programs in Rust: drag-and-drop form designer, code editor, debugger, tests and installer in one place. English and Thai interface, with a Thai Rust guide for beginners.',
     'nav' => ['features' => 'Features', 'learn' => 'Thai guide', 'install' => 'Install', 'download' => 'Download'],
     'tag' => 'A gift of knowledge · Open source · Free',
-    'h1' => 'Build Windows programs in Rust<br>the Visual Studio way',
+    'h1' => 'Build Windows programs in Rust <em>the Visual Studio way</em>',
     'lead' => 'Drag buttons, text boxes and grids onto a form, double-click to write the code, press F5 and you have a real Windows program. A code editor that completes for you, a debugger, tests, Git and an installer maker come with it, in English or Thai, with a Thai Rust guide built in.',
     'btnDownload' => 'Download the installer', 'btnGithub' => 'Code on GitHub', 'btnGuide' => 'Read the guide (Thai)',
     'meta' => fn ($c) => "Version {$release['version']} · {$mb} MB · Windows 10/11 (64-bit) · <b>Downloaded {$c['downloads']} times</b> · {$c['visitors']} visitors",
@@ -194,7 +207,20 @@ $T = $th ? [
         ['ti-language', 'English / Thai', 'Switch the interface language at once; the programs you make can be bilingual too, with Thai shown right'],
     ],
     'shotsH' => 'Real screens', 'shotsSub' => 'Taken from real use: a standard Windows look that anyone who has used Visual Studio knows',
-    'shots' => [['designer', 'Form designer'], ['editor', 'Code editor'], ['debugger', 'Debugging'], ['tests', 'Tests'], ['coverage', 'Code coverage']],
+    'shots' => [
+        ['designer', 'Form designer', 'Drag buttons, text boxes and grids, and set their properties in the Properties window'],
+        ['editor', 'Code editor', 'Syntax colours, reference counts and completion, with rust-analyzer'],
+        ['debugger', 'Step by step', 'Stopped at a breakpoint, with every thread of the program'],
+        ['breakpoints', 'Breakpoints', 'Conditions and hit counts, ticked on and off from the list'],
+        ['memory', 'Memory', 'The memory of the program in hex while it is paused'],
+        ['disassembly', 'Disassembly', 'Machine code beside the source lines it comes from'],
+        ['tests', 'Tests', 'Run every test or one, and see what passed and failed'],
+        ['coverage', 'Code coverage', 'A coloured bar by every line the tests reach, and the ones they miss'],
+        ['program', 'What you make', 'A Windows program with a Thai interface, made with Phai Studio'],
+    ],
+    'statVisitors' => 'Visitors', 'statDownloads' => 'Downloads', 'statVersion' => 'Version', 'cta' => 'Download',
+    'zoom' => 'Click to see it full size', 'prev' => 'Previous', 'next' => 'Next', 'close' => 'Close',
+    'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'A GIFT OF KNOWLEDGE', 'LEARN RUST IN THAI', 'FREE DOWNLOAD'],
     'whyH' => 'Why Phai Studio',
     'why' => [
         ['Every feature free, no paid edition', 'MIT licence: use it, change it, pass it on, and sell the programs you make'],
@@ -259,12 +285,19 @@ $base = 'https://phai-studio.monrak.net/';
     <link rel="stylesheet" href="<?= v('site.css') ?>">
 </head>
 <body>
+<div id="grid-bg" aria-hidden="true"></div>
+<div id="hud" aria-hidden="true"><i></i><span id="hud-pct">0%</span><b>|</b><span id="hud-text"><?= e($T['hud'][0]) ?></span></div>
+
 <header class="top">
     <div class="wrap top-row">
-        <a class="brand" href="<?= $B ?>"><img src="<?= v('logo.svg') ?>" alt="" width="34" height="34"><span>Phai Studio</span></a>
+        <a class="brand" href="<?= $B ?>"><img src="<?= v('logo.svg') ?>" alt="" width="34" height="34"><span><small>MONRAK</small><b>Phai Studio</b></span></a>
         <nav class="nav">
-            <?php foreach ($T['nav'] as $id => $label): ?><a href="#<?= $id ?>"><?= e($label) ?></a>
-            <?php endforeach ?><a class="lang" href="?lang=<?= $th ? 'en' : 'th' ?>"><i class="ti ti-world"></i> <?= $th ? 'English' : 'ภาษาไทย' ?></a>
+            <a class="hide-sm" href="#screens"><?= e($T['shotsH']) ?></a>
+            <a class="hide-sm" href="#learn"><?= e($T['nav']['learn']) ?></a>
+            <a class="hide-sm" href="#features"><?= e($T['nav']['features']) ?></a>
+            <a class="hide-sm" href="#install"><?= e($T['nav']['install']) ?></a>
+            <a class="lang" href="?lang=<?= $th ? 'en' : 'th' ?>"><i class="ti ti-world"></i> <?= $th ? 'EN' : 'ไทย' ?></a>
+            <a class="cta" href="#download"><?= e($T['cta']) ?> <i class="ti ti-arrow-right"></i></a>
         </nav>
     </div>
 </header>
@@ -272,161 +305,172 @@ $base = 'https://phai-studio.monrak.net/';
 <main>
 <section class="hero">
     <div class="wrap hero-row">
-        <div class="hero-text">
-            <span class="tag"><?= e($T['tag']) ?></span>
+        <div>
+            <span class="label"><i class="ti ti-bolt"></i> <?= e($T['tag']) ?></span>
             <h1><?= $T['h1'] ?></h1>
             <p class="lead"><?= e($T['lead']) ?></p>
             <div class="actions">
                 <a class="btn btn-primary" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a>
-                <a class="btn btn-ghost" href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> <?= e($T['btnGithub']) ?></a>
                 <a class="btn btn-ghost" href="<?= $B ?>help/"><i class="ti ti-book"></i> <?= e($T['btnGuide']) ?></a>
+                <a class="btn btn-ghost" href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> GitHub</a>
             </div>
-            <p class="meta"><?= $T['meta']($c) ?></p>
+            <div class="stats">
+                <div><small><?= e($T['statVisitors']) ?></small><b><?= number_format($c['visitors']) ?></b></div>
+                <div><small><?= e($T['statDownloads']) ?></small><b><?= number_format($c['downloads']) ?></b></div>
+                <div><small><?= e($T['statVersion']) ?></small><b><?= e($release['version']) ?></b></div>
+            </div>
         </div>
-        <div class="hero-art" aria-hidden="true"><img src="<?= v('logo.svg') ?>" alt="" width="260" height="260"></div>
+        <div class="hero-art" aria-hidden="true"><img src="<?= v('logo.svg') ?>" alt="" width="300" height="300"></div>
     </div>
 </section>
 
-<section id="learn" class="section alt">
+<section id="screens" class="section tint">
     <div class="wrap">
-        <h2><?= e($T['learnH']) ?></h2>
-        <p class="sub learn-text"><?= e($T['learnSub']) ?></p>
-        <div class="learn">
-            <ul class="learn-list">
-                <?php foreach ($T['learn'] as [$icon, $b, $s]): ?>
-                    <li><i class="ti <?= $icon ?>"></i><div><b><?= e($b) ?></b><span><?= e($s) ?></span></div></li>
+        <span class="label">Real screens</span>
+        <h2><?= e($T['shotsH']) ?></h2>
+        <p class="sub"><?= e($T['shotsSub']) ?></p>
+        <div class="gallery">
+            <div class="slider">
+                <div class="slides">
+                    <?php foreach ($T['shots'] as $i => [$f, $h, $p]): ?>
+                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e("$h — $p") ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
+                    <?php endforeach ?>
+                </div>
+                <button type="button" class="nav-btn sl-prev" aria-label="<?= e($T['prev']) ?>"><i class="ti ti-chevron-left"></i></button>
+                <button type="button" class="nav-btn sl-next" aria-label="<?= e($T['next']) ?>"><i class="ti ti-chevron-right"></i></button>
+                <span class="zoom"><i class="ti ti-photo"></i> <?= e($T['zoom']) ?></span>
+            </div>
+            <p class="caption" id="shot-caption"><b><?= e($T['shots'][0][1]) ?></b> — <?= e($T['shots'][0][2]) ?></p>
+            <div class="thumbs">
+                <?php foreach ($T['shots'] as $i => [$f, $h, $p]): ?>
+                    <button type="button" class="<?= $i ? '' : 'on' ?>" data-caption-h="<?= e($h) ?>" data-caption-p="<?= e($p) ?>" aria-label="<?= e($h) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="" width="120" height="81" loading="lazy"></button>
                 <?php endforeach ?>
-            </ul>
-            <figure class="shot">
-                <a href="<?= v('shots/program.jpg') ?>" target="_blank" rel="noopener"><img src="<?= v('shots/program.jpg') ?>" alt="<?= e($T['learnShot']) ?>" width="973" height="817" loading="lazy"></a>
-                <figcaption class="muted"><?= e($T['learnShot']) ?></figcaption>
-            </figure>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="learn" class="section">
+    <div class="wrap">
+        <span class="label">Learn Rust in Thai</span>
+        <h2><?= e($T['learnH']) ?></h2>
+        <p class="sub"><?= e($T['learnSub']) ?></p>
+        <div class="grid g3">
+            <?php foreach ($T['learn'] as [$icon, $b, $s]): ?>
+                <a class="card lesson" href="<?= $B ?>help/"><div class="icon"><i class="ti <?= $icon ?>"></i></div><b><?= e($b) ?></b><p><?= e($s) ?></p></a>
+            <?php endforeach ?>
         </div>
         <p class="mt"><a class="btn btn-primary" href="<?= $B ?>help/"><i class="ti ti-book"></i> <?= e($T['learnBtn']) ?></a></p>
     </div>
 </section>
 
-<section id="features" class="section">
+<section id="features" class="section tint">
     <div class="wrap">
+        <span class="label">Features</span>
         <h2><?= e($T['featH']) ?></h2>
         <p class="sub"><?= e($T['featSub']) ?></p>
-        <div class="grid">
+        <div class="grid g3">
             <?php foreach ($T['feat'] as [$icon, $h, $p]): ?>
-                <article class="card"><i class="ti <?= $icon ?> card-icon"></i><h3><?= e($h) ?></h3><p><?= e($p) ?></p></article>
+                <article class="card"><div class="icon"><i class="ti <?= $icon ?>"></i></div><h3><?= e($h) ?></h3><p><?= e($p) ?></p></article>
             <?php endforeach ?>
         </div>
-    </div>
-</section>
-
-<section id="screens" class="section alt">
-    <div class="wrap">
-        <h2><?= e($T['shotsH']) ?></h2>
-        <p class="sub"><?= e($T['shotsSub']) ?></p>
-        <div class="shots" role="tablist">
-            <?php foreach ($T['shots'] as $i => [$f, $label]): ?>
-                <button type="button" role="tab" aria-selected="<?= $i ? 'false' : 'true' ?>" data-shot="<?= $i ?>"><?= e($label) ?></button>
-            <?php endforeach ?>
-        </div>
-        <?php foreach ($T['shots'] as $i => [$f, $label]): ?>
-            <figure class="shot" data-shot="<?= $i ?>"<?= $i ? ' hidden' : '' ?>>
-                <a href="<?= v("shots/$f.jpg") ?>" target="_blank" rel="noopener"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($label) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
-            </figure>
-        <?php endforeach ?>
     </div>
 </section>
 
 <section class="section">
     <div class="wrap">
+        <span class="label">Why Phai Studio</span>
         <h2><?= e($T['whyH']) ?></h2>
-        <ul class="points">
+        <div class="grid g3 mt">
             <?php foreach ($T['why'] as [$b, $s]): ?>
-                <li><i class="ti ti-check"></i><div><b><?= e($b) ?></b><span><?= e($s) ?></span></div></li>
+                <article class="card row"><div class="icon"><i class="ti ti-check"></i></div><div><h3><?= e($b) ?></h3><p><?= e($s) ?></p></div></article>
             <?php endforeach ?>
-        </ul>
+        </div>
     </div>
 </section>
 
-<section id="install" class="section alt">
+<section id="install" class="section tint">
     <div class="wrap">
+        <span class="label">Install</span>
         <h2><?= e($T['insH']) ?></h2>
         <p class="sub"><?= e($T['insSub']) ?></p>
-        <div class="panel">
-            <ol class="steps"><?php foreach ($T['ins'] as $s): ?><li><?= $s ?></li><?php endforeach ?></ol>
+        <div class="grid g3">
+            <?php foreach ($T['ins'] as $i => $s): ?>
+                <article class="card step"><span class="num"><?= $i + 1 ?></span><p><?= $s ?></p></article>
+            <?php endforeach ?>
         </div>
         <p class="note mt"><i class="ti ti-shield-exclamation"></i> <?= $T['smart'] ?></p>
-        <p class="note"><?= e($T['uninst']) ?></p>
+        <p class="note"><i class="ti ti-trash"></i> <?= e($T['uninst']) ?></p>
     </div>
 </section>
 
 <section id="support" class="section">
     <div class="wrap">
+        <span class="label">Learning together</span>
         <h2><?= e($T['supH']) ?></h2>
         <p class="sub"><?= e($T['supSub']) ?></p>
-        <div class="two">
-            <div class="panel">
-                <h3><i class="ti ti-book"></i> <?= e($T['selfH']) ?></h3>
-                <p><?= e($T['selfP']) ?></p>
-                <a class="btn btn-ghost" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a>
-            </div>
-            <div class="panel panel-pro">
-                <h3><i class="ti ti-users"></i> <?= e($T['proH']) ?></h3>
-                <p><?= e($T['proP']) ?></p>
-                <ol class="steps"><?php foreach ($T['pro'] as $s): ?><li><?= $s ?></li><?php endforeach ?></ol>
-                <p class="contact-title"><b><?= e($T['contact']) ?></b></p>
-                <div class="contact">
-                    <a class="contact-item line" href="https://line.me/ti/p/~fahroong55" target="_blank" rel="noopener"><i class="ti ti-brand-line"></i><span><b>LINE</b><small>fahroong55</small></span></a>
-                    <a class="contact-item fb" href="https://www.facebook.com/defahroong" target="_blank" rel="noopener"><i class="ti ti-brand-facebook"></i><span><b>Facebook</b><small>defahroong</small></span></a>
-                    <a class="contact-item mail" href="mailto:defahroong@hotmail.com" target="_blank" rel="noopener"><i class="ti ti-mail"></i><span><b>Email</b><small>defahroong@hotmail.com</small></span></a>
-                </div>
-            </div>
+        <div class="grid g2">
+            <article class="card"><div class="icon"><i class="ti ti-book"></i></div><h3><?= e($T['selfH']) ?></h3><p><?= e($T['selfP']) ?></p>
+                <p class="mt"><a class="btn btn-ghost" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a></p></article>
+            <article class="card main"><div class="icon"><i class="ti ti-users"></i></div><h3><?= e($T['proH']) ?></h3><p><?= e($T['proP']) ?></p>
+                <ul class="muted"><?php foreach ($T['pro'] as $s): ?><li><?= $s ?></li><?php endforeach ?></ul></article>
+        </div>
+        <h3 class="mt"><?= e($T['contact']) ?></h3>
+        <div class="contacts">
+            <a class="card contact line" href="https://line.me/ti/p/~fahroong55" target="_blank" rel="noopener"><div class="icon"><i class="ti ti-brand-line"></i></div><span><b>LINE</b><small>fahroong55</small></span></a>
+            <a class="card contact fb" href="https://www.facebook.com/defahroong" target="_blank" rel="noopener"><div class="icon"><i class="ti ti-brand-facebook"></i></div><span><b>Facebook</b><small>defahroong</small></span></a>
+            <a class="card contact mail" href="mailto:defahroong@hotmail.com"><div class="icon"><i class="ti ti-mail"></i></div><span><b>Email</b><small>defahroong@hotmail.com</small></span></a>
         </div>
     </div>
 </section>
 
-<section id="download" class="section alt">
+<section id="download" class="section tint">
     <div class="wrap">
+        <span class="label">Download</span>
         <h2><?= e($T['dlH']) ?></h2>
-        <div class="product">
-            <ul class="files">
-                <li>
-                    <div class="file-text">
-                        <b><?= e($T['dlName']) ?></b>
-                        <span><?= e($T['dlDesc']) ?></span>
-                        <details><summary><code><?= e($release['file']) ?></code></summary><?php if ($release['sha256']): ?><small>SHA-256 <code class="sha"><?= e($release['sha256']) ?></code></small><?php endif ?></details>
-                    </div>
-                    <a class="btn btn-primary" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= $mb ?> MB</a>
-                </li>
-            </ul>
-            <p class="meta"><?= $T['dlMeta']($c) ?></p>
-            <p class="note mt"><?= $T['dlBuilt'] ?></p>
-            <p class="note"><i class="ti ti-certificate"></i> <?= $T['dlSign'] ?></p>
-            <p class="note mt"><?= e($T['dlGit']) ?> <a href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> github.com/kirati-ai/phai-studio</a></p>
-            <pre><code>git clone https://github.com/kirati-ai/phai-studio.git</code></pre>
+        <div class="card main file mt">
+            <div>
+                <h3><?= e($T['dlName']) ?></h3>
+                <p><?= e($T['dlDesc']) ?></p>
+                <details><summary><code><?= e($release['file']) ?></code></summary><?php if ($release['sha256']): ?><small>SHA-256 <code class="sha"><?= e($release['sha256']) ?></code></small><?php endif ?></details>
+            </div>
+            <a class="btn btn-primary" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= $mb ?> MB</a>
         </div>
+        <p class="note mt"><?= $T['dlMeta']($c) ?></p>
+        <p class="note"><i class="ti ti-brand-github"></i> <?= $T['dlBuilt'] ?></p>
+        <p class="note"><i class="ti ti-certificate"></i> <?= $T['dlSign'] ?></p>
+        <p class="note mt"><?= e($T['dlGit']) ?></p>
+        <pre><code>git clone https://github.com/kirati-ai/phai-studio.git</code></pre>
     </div>
 </section>
 </main>
 
 <footer class="foot">
     <div class="wrap">
+        <span class="label">MIT License</span>
         <p class="note"><?= e($T['license']) ?></p>
         <blockquote><?= e($T['quote']) ?></blockquote>
-        <h3 class="mt"><?= e($T['family']) ?></h3>
-        <div class="suite">
+        <h3><?= e($T['family']) ?></h3>
+        <div class="grid g3 family">
             <?php foreach ($T['suite'] as [$href, $b, $s]): ?>
-                <a href="<?= $href ?>"><b><?= e($b) ?></b><span><?= e($s) ?></span></a>
+                <a class="card" href="<?= $href ?>"><b><?= e($b) ?></b><span><?= e($s) ?></span></a>
             <?php endforeach ?>
         </div>
-        <p class="copy">© 2026 <a href="https://www.monrak.net/">Monrak Net</a></p>
+        <p class="copy">© 2026 <a href="https://www.monrak.net/">Monrak Net</a> · <?= $th ? 'ทำด้วยความรักในอินเทอร์เน็ต' : 'made with a love of the internet' ?></p>
     </div>
 </footer>
+
+<div class="lightbox" id="lightbox" hidden>
+    <button type="button" class="lb-close" aria-label="<?= e($T['close']) ?>"><i class="ti ti-x"></i></button>
+    <button type="button" class="lb-prev" aria-label="<?= e($T['prev']) ?>"><i class="ti ti-chevron-left"></i></button>
+    <button type="button" class="lb-next" aria-label="<?= e($T['next']) ?>"><i class="ti ti-chevron-right"></i></button>
+    <div class="lb-stage"><img alt=""></div>
+    <p class="lb-caption"></p>
+</div>
+
 <script src="<?= v('thai-wrap.js') ?>"></script>
-<script>
-document.querySelectorAll('.shots [data-shot]').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('.shots [data-shot]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-    document.querySelectorAll('figure.shot[data-shot]').forEach((f) => { f.hidden = f.dataset.shot !== b.dataset.shot; });
-}));
-setTimeout(() => navigator.sendBeacon && navigator.sendBeacon('<?= $B ?>seen'), 1500);
-</script>
+<script>window.HUD_WORDS = <?= json_encode($T['hud'], JSON_UNESCAPED_UNICODE) ?>;</script>
+<script src="<?= v('site.js') ?>"></script>
+<script>setTimeout(() => navigator.sendBeacon && navigator.sendBeacon('<?= $B ?>seen'), 1500);</script>
 </body>
 </html>
