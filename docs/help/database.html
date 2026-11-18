@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ทำงานกับฐานข้อมูล - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html" class="here">ทำงานกับฐานข้อมูล</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>ทำงานกับฐานข้อมูล</h1>
+<p class="lead">หน้าต่าง Server Explorer ของ Phai Studio ต่อฐานข้อมูล MySQL / MariaDB, PostgreSQL และไฟล์ SQLite ได้ ดูตาราง ดูข้อมูล เขียนคำสั่ง SQL และสร้างโค้ด Rust สำหรับอ่านตารางให้ เหมือน Server Explorer ของ Visual Studio</p>
+
+<h2>เปิด Server Explorer</h2>
+<p>เมนู View &gt; Server Explorer หรือ Data &gt; Server Explorer หรือกด <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> หน้าต่างจะอยู่ข้างหน้าต่าง Project มีหัวข้อ Data Connections เป็นรากของทุกการเชื่อมต่อ</p>
+
+<h2>เพิ่มการเชื่อมต่อ</h2>
+<ol>
+  <li>Data &gt; Add Connection... หรือคลิกขวาที่ Data Connections แล้วเลือก Add Connection...</li>
+  <li>เลือกชนิด: MySQL / MariaDB, PostgreSQL หรือ SQLite file...</li>
+  <li>ถ้าเป็น MySQL หรือ PostgreSQL กรอก Server (เช่น <code>localhost</code>) Port User Password และ Database (เว้นว่างได้ จะเห็นทุกฐานข้อมูลที่มีสิทธิ์)</li>
+  <li>ถ้าเป็น SQLite เลือกไฟล์ <code>.db</code> ที่มีอยู่ หรือพิมพ์ชื่อไฟล์ใหม่ SQLite จะสร้างให้</li>
+  <li>Phai Studio ลองเชื่อมต่อก่อนเก็บ ถ้าสำเร็จจะบอกชนิดและเวอร์ชันของฐานข้อมูลที่แถบสถานะ</li>
+</ol>
+<table>
+  <tr><th>ฐานข้อมูล</th><th>พอร์ตปกติ</th><th>ผู้ใช้ที่ใส่ไว้ให้</th></tr>
+  <tr><td>MySQL / MariaDB</td><td>3306</td><td>root</td></tr>
+  <tr><td>PostgreSQL</td><td>5432</td><td>postgres</td></tr>
+  <tr><td>SQLite</td><td>ไม่มี (เป็นไฟล์)</td><td>ไม่มี</td></tr>
+</table>
+<div class="note">ถ้าต่อเซิร์ฟเวอร์ข้ามอินเทอร์เน็ต ให้ติ๊ก <b>Encrypt the connection (TLS)</b> ข้อมูลกับรหัสผ่านจะถูกเข้ารหัสระหว่างทาง ส่วน <b>Trust the server's own certificate</b> ใช้กับเซิร์ฟเวอร์ที่ใช้ใบรับรองที่ทำเอง Phai Studio จำการเชื่อมต่อไว้ให้ รหัสผ่านถูกเก็บแบบเข้ารหัสด้วยระบบของ Windows</div>
+
+<h2>ดูโครงสร้าง</h2>
+<p>กดลูกศรหน้าการเชื่อมต่อ จะเห็นฐานข้อมูล ใต้ฐานข้อมูลคือตารางและ view ใต้ตารางคือคอลัมน์ พร้อมชนิดข้อมูล และบอกว่าเป็นคีย์หลักหรือเว้นว่างได้ไหม Phai Studio อ่านจากเซิร์ฟเวอร์ตอนเปิดกิ่งนั้นครั้งแรก ถ้ามีคนแก้ฐานข้อมูลระหว่างนั้น คลิกขวาแล้วเลือก Refresh</p>
+
+<h2>คลิกขวาทำอะไรได้บ้าง</h2>
+<table>
+  <tr><th>คลิกขวาที่</th><th>คำสั่ง</th></tr>
+  <tr><td>การเชื่อมต่อ</td><td>New Query, Refresh, Add Connection..., Delete</td></tr>
+  <tr><td>ฐานข้อมูล</td><td>New Query, New Table..., Refresh</td></tr>
+  <tr><td>ตาราง</td><td>Show Table Data, Design Table, Script as SQL, New Query, Copy code for a program, Refresh</td></tr>
+  <tr><td>view</td><td>Show Table Data, New Query, Refresh</td></tr>
+</table>
+<ul>
+  <li><b>Show Table Data</b> แสดงข้อมูลในตาราง ที่แท็บ Results ด้านล่าง แก้ค่าในตารางผลลัพธ์ได้โดยตรง</li>
+  <li><b>Design Table</b> เปิดตัวออกแบบตาราง (Table Designer) แบบ Visual Studio เป็นตารางของคอลัมน์ แก้ชื่อ ชนิดข้อมูล เว้นว่างได้ไหม คีย์หลัก ตัวเลขรันอัตโนมัติ และค่าเริ่มต้น ได้ด้วยการคลิก ด้านล่างมี index และ foreign key และมีคำสั่ง SQL ที่จะใช้แก้ตาราง เขียนให้ดูไปพร้อมกัน กด Update เพื่อแก้ตารางจริง</li>
+  <li><b>New Table...</b> เปิดตัวออกแบบตารางเดียวกัน สำหรับสร้างตารางใหม่ในฐานข้อมูลนั้น</li>
+  <li><b>Script as SQL</b> เปิดคำสั่ง <code>CREATE TABLE</code> ของตารางนี้ พร้อมตัวอย่างคำสั่งแก้ตารางที่ใส่ <code>--</code> ไว้ เอา <code>--</code> หน้าบรรทัดที่ต้องการออก แล้วกด <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> เพื่อแก้ตาราง</li>
+</ul>
+
+<h2>เขียนและรันคำสั่ง SQL</h2>
+<ol>
+  <li>Data &gt; New Query หรือคลิกขวาแล้ว New Query จะเปิดไฟล์ <code>Query1.sql</code> บรรทัดแรกบอกว่าต่อกับเซิร์ฟเวอร์และฐานข้อมูลไหน</li>
+  <li>พิมพ์คำสั่ง เช่น <code>SELECT * FROM customers WHERE active = 1;</code></li>
+  <li>กด <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> (Data &gt; Execute Query) ผลลัพธ์จะขึ้นที่แท็บ Results ถ้าเป็นคำสั่งแก้ข้อมูล จะบอกว่าเปลี่ยนไปกี่แถว</li>
+</ol>
+<p>ใส่หลายคำสั่งในไฟล์เดียวได้ ผลที่แสดงคือผลของคำสั่งสุดท้ายที่มีแถวข้อมูล</p>
+<div class="note">คำสั่ง <code>UPDATE</code> และ <code>DELETE</code> ที่ไม่มี <code>WHERE</code> จะแก้หรือลบทุกแถวในตาราง ควรลองกับฐานข้อมูลทดลองก่อน และสำรองข้อมูลจริงไว้เสมอ</div>
+
+<h2>ให้โปรแกรมของคุณอ่านฐานข้อมูล</h2>
+<p>คลิกขวาที่ตาราง แล้วเลือก <b>Copy code for a program</b> Phai Studio จะคัดลอกโค้ด Rust ลงคลิปบอร์ดให้ วางในไฟล์ของคุณได้เลย ในโค้ดมี:</p>
+<ul>
+  <li>ฟังก์ชัน <code>connection()</code> ที่บอกว่าต่อเซิร์ฟเวอร์ไหน</li>
+  <li><code>struct</code> หนึ่งแถวของตาราง ชื่อฟิลด์และชนิดตรงกับคอลัมน์ คอลัมน์ที่เว้นว่างได้จะเป็น <code>Option</code></li>
+  <li>ฟังก์ชัน <code>all_ชื่อตาราง()</code> ที่อ่านทุกแถว คืนค่าเป็น <code>Vec</code> ของ struct นั้น</li>
+</ul>
+<p>โค้ดนี้ใช้ <code>phai-data</code> ตัวเดียวกับที่ Server Explorer ใช้ ให้เพิ่มใน <code>Cargo.toml</code> ของโปรเจกต์ตามบรรทัดแรกของโค้ด</p>
+<div class="note">โค้ดที่สร้างให้ไม่ได้เขียนรหัสผ่านลงในโค้ด แต่อ่านจากตัวแปรสภาพแวดล้อม <code>PHAI_DB_PASSWORD</code> เพราะโค้ดมักถูกแชร์หรือขึ้น Git รหัสผ่านไม่ควรอยู่ในนั้น</div>
+
+<h2>ลองทำ: สมุดรายชื่อลูกค้าด้วย SQLite</h2>
+<p>SQLite ไม่ต้องติดตั้งเซิร์ฟเวอร์ ฐานข้อมูลทั้งก้อนเป็นไฟล์เดียว เหมาะกับการหัด</p>
+<ol>
+  <li>Data &gt; Add Connection... เลือก SQLite file... แล้วตั้งชื่อไฟล์ใหม่ <code>shop.db</code></li>
+  <li>คลิกขวาที่การเชื่อมต่อ แล้ว New Query พิมพ์คำสั่งข้างล่าง แล้วกด <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></li>
+</ol>
+<pre><code>CREATE TABLE customers (
+    id    INTEGER PRIMARY KEY,
+    name  TEXT NOT NULL,
+    phone TEXT
+);
+INSERT INTO customers (name, phone) VALUES ('สมชาย ใจดี', '081-234-5678');
+INSERT INTO customers (name, phone) VALUES ('Monrak Net', '02-111-2222');
+SELECT * FROM customers;</code></pre>
+<ol start="3">
+  <li>ดูผลที่แท็บ Results แล้วคลิกขวาที่การเชื่อมต่อ เลือก Refresh จะเห็นตาราง <code>customers</code></li>
+  <li>คลิกขวาที่ตาราง เลือก Copy code for a program แล้วลองเอาไปแสดงในตาราง (list) บนฟอร์มของคุณ</li>
+</ol>
+<div class="pager"><a href="css.html">← ตกแต่งหน้าตาด้วย CSS</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+</main>
+</div>
+</body>
+</html>
