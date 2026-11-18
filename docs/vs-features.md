@@ -149,3 +149,4 @@
 | | หน้าต่าง Disassembly (Debug, Ctrl+Alt+D): ภาษาเครื่องของฟังก์ชันที่หยุดอยู่ (ถอดด้วย iced-x86, MIT) แทรกบรรทัดซอร์สที่มาของแต่ละช่วง ลูกศรที่คำสั่งปัจจุบัน อัปเดตทุกครั้งที่หยุด - ทดสอบแล้ว | ✅ |
 | | Merge Editor (Git > Resolve Merge Conflicts): conflict ทีละจุด Current กับ Incoming ข้างกัน, Take Current / Incoming / Both, ดูผลลัพธ์ทั้งไฟล์, Accept Merge เขียนไฟล์และ git add - ทดสอบกับ conflict จริง | ✅ |
 | ★ | Code Coverage (Test > Analyze Code Coverage for All Tests): รันเทสต์ด้วย -C instrument-coverage ของ Rust แล้ววัดด้วย llvm-tools (ฟรี, เสนอติดตั้งให้ถ้ายังไม่มี) - % ต่อไฟล์ และแถบเขียว/แดงที่ขอบซ้ายของแต่ละบรรทัด - ทดสอบ: ฟังก์ชันที่ไม่มีเทสต์เป็นสีแดง | ✅ |
+| ★ | คู่มือภาษาไทย (Help > Phai Studio Guide, F1): วิธีใช้ Phai Studio และบทเรียน Rust 11 บทสำหรับมือใหม่ พร้อมแบบฝึกหัด เปิดได้โดยไม่ต้องต่อเน็ต ติดตั้งมากับตัวติดตั้ง - ตัวอย่างโค้ดตรวจคอมไพล์แล้ว | ✅ |

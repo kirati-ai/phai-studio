@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7. Vec, String, HashMap - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html" class="here">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>7. Vec, String, HashMap</h1>
+<p class="lead">เก็บข้อมูลหลายชิ้น และเครื่องมือจัดการรายการ</p>
+
+<h2>Vec: รายการที่ยืดหดได้</h2>
+<pre><code>let mut scores: Vec&lt;i32&gt; = Vec::new();
+scores.push(80);
+scores.push(65);
+
+let names = vec!["ก้อง", "นิด", "ต้น"];   // สร้างพร้อมค่า
+
+println!("มี {} คน", names.len());
+println!("คนแรก {}", names[0]);         // เกินขนาด = panic
+if let Some(n) = names.get(5) {        // ปลอดภัย ได้ Option
+    println!("{n}");
+}
+
+for s in &amp;scores {                     // วนแบบยืม รายการยังอยู่
+    println!("{s}");
+}
+scores.sort();
+scores.retain(|s| *s &gt;= 70);           // เก็บเฉพาะที่ผ่านเงื่อนไข
+let last = scores.pop();               // เอาตัวท้ายออก ได้ Option</code></pre>
+
+<h2>String กับ &amp;str</h2>
+<table>
+  <tr><th></th><th><code>String</code></th><th><code>&amp;str</code></th></tr>
+  <tr><td>คืออะไร</td><td>ข้อความที่เป็นเจ้าของเอง แก้ไขได้</td><td>มุมมองไปยังข้อความที่มีอยู่แล้ว อ่านอย่างเดียว</td></tr>
+  <tr><td>ได้มาจาก</td><td><code>String::from("..")</code>, <code>"..".to_string()</code>, <code>format!(..)</code></td><td><code>"ข้อความในเครื่องหมายคำพูด"</code>, <code>&amp;my_string</code></td></tr>
+  <tr><td>ใช้เป็นพารามิเตอร์</td><td>เมื่อฟังก์ชันต้องเก็บข้อความไว้</td><td>เมื่อแค่อ่าน (ส่วนใหญ่)</td></tr>
+</table>
+<pre><code>let mut s = String::from("สวัสดี");
+s.push_str(" ครับ");
+s.push('!');
+let full = format!("{s} วันนี้ {}", 18);
+
+println!("{}", s.contains("ครับ"));     // true
+println!("{}", s.replace("ครับ", "ค่ะ"));
+for word in "ไผ่ สตูดิโอ ฟรี".split(' ') {
+    println!("{word}");
+}
+let trimmed = "  มีช่องว่าง  ".trim();</code></pre>
+<div class="warn">ข้อความใน Rust เก็บแบบ UTF-8 อักษรไทยหนึ่งตัวใช้ 3 ไบต์ <code>s.len()</code> จึงนับ<b>ไบต์</b> ไม่ใช่ตัวอักษร นับตัวอักษรใช้ <code>s.chars().count()</code> และอย่าตัดข้อความด้วย <code>&amp;s[0..2]</code> กับภาษาไทย เพราะอาจตัดกลางตัวอักษรแล้ว panic ใช้ <code>s.chars().take(2).collect::&lt;String&gt;()</code> แทน</div>
+
+<h2>HashMap: เก็บคู่ คีย์ → ค่า</h2>
+<pre><code>use std::collections::HashMap;
+
+let mut stock: HashMap&lt;String, u32&gt; = HashMap::new();
+stock.insert("กาแฟ".to_string(), 10);
+stock.insert("ชา".to_string(), 4);
+
+if let Some(n) = stock.get("กาแฟ") {
+    println!("กาแฟเหลือ {n}");
+}
+
+// นับคำ: ถ้ายังไม่มีให้เริ่มที่ 0 แล้วบวก 1
+let mut counts = HashMap::new();
+for word in "ชา กาแฟ ชา ชา".split(' ') {
+    *counts.entry(word).or_insert(0) += 1;
+}
+
+for (name, n) in &amp;stock {
+    println!("{name}: {n}");
+}</code></pre>
+
+<h2>Iterator และ closure</h2>
+<p>closure คือฟังก์ชันสั้น ๆ ไม่มีชื่อ เขียนแบบ <code>|x| x * 2</code> ใช้คู่กับ iterator เพื่อแปลงและกรองรายการได้สั้นและอ่านง่าย</p>
+<pre><code>let prices = vec![120, 45, 300, 80];
+
+let total: i32 = prices.iter().sum();
+let expensive: Vec&lt;i32&gt; = prices.iter().filter(|p| **p &gt; 100).cloned().collect();
+let with_vat: Vec&lt;f64&gt; = prices.iter().map(|p| *p as f64 * 1.07).collect();
+let max = prices.iter().max();                    // Option
+let any_free = prices.iter().any(|p| *p == 0);    // false
+let position = prices.iter().position(|p| *p == 300);  // Some(2)</code></pre>
+<div class="note">ถ้ายังไม่ถนัด iterator เขียนด้วย <code>for</code> ธรรมดาก็ได้ผลเหมือนกัน ค่อย ๆ เปลี่ยนเมื่อคุ้นแล้ว</div>
+
+<div class="try">
+<ol>
+<li>รับข้อความยาวหนึ่งย่อหน้า นับว่าแต่ละคำปรากฏกี่ครั้งด้วย <code>HashMap</code> แล้วพิมพ์คำที่ใช้บ่อยที่สุด</li>
+<li>จากรายการคะแนน หาค่าเฉลี่ย คะแนนสูงสุด และจำนวนคนที่ได้มากกว่า 50 ด้วย iterator</li>
+</ol>
+</div>
+<div class="pager"><a href="rust-06.html">← 6. จัดการข้อผิดพลาด</a><a href="rust-08.html">8. trait และ generic →</a></div>
+</main>
+</div>
+</body>
+</html>

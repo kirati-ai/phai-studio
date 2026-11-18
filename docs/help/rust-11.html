@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>11. เธรด และก้าวต่อไป - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html" class="here">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>11. เธรด และก้าวต่อไป</h1>
+<p class="lead">ทำหลายอย่างพร้อมกันอย่างปลอดภัย แล้วจะเรียนอะไรต่อ</p>
+
+<h2>เธรด: ทำงานพร้อมกัน</h2>
+<pre><code>use std::thread;
+use std::time::Duration;
+
+fn main() {
+    let worker = thread::spawn(|| {
+        for i in 1..=3 {
+            println!("งานเบื้องหลัง {i}");
+            thread::sleep(Duration::from_millis(100));
+        }
+        42   // ค่าที่เธรดคืน
+    });
+
+    println!("main ทำอย่างอื่นไปพลาง ๆ");
+    let answer = worker.join().unwrap();   // รอให้เธรดเสร็จ
+    println!("ได้ {answer}");
+}</code></pre>
+<div class="note">ในโปรแกรมฟอร์ม งานที่ใช้เวลานาน (ดาวน์โหลด คำนวณหนัก อ่านไฟล์ใหญ่) ควรทำในเธรดแยก ไม่อย่างนั้นหน้าต่างจะค้างจนกว่างานจะเสร็จ</div>
+
+<h2>ส่งข้อมูลระหว่างเธรดด้วย channel</h2>
+<pre><code>use std::sync::mpsc;
+use std::thread;
+
+fn main() {
+    let (tx, rx) = mpsc::channel();
+    for id in 1..=3 {
+        let tx = tx.clone();
+        thread::spawn(move || {          // move = ย้ายตัวแปรที่ใช้เข้าไปในเธรด
+            tx.send(format!("งาน {id} เสร็จ")).unwrap();
+        });
+    }
+    drop(tx);                            // ปิดฝั่งส่งของ main
+    for msg in rx {                      // รับจนกว่าทุกฝั่งส่งจะปิด
+        println!("{msg}");
+    }
+}</code></pre>
+
+<h2>ใช้ข้อมูลร่วมกันด้วย Arc และ Mutex</h2>
+<pre><code>use std::sync::{Arc, Mutex};
+use std::thread;
+
+fn main() {
+    let counter = Arc::new(Mutex::new(0));   // Arc = แชร์ได้หลายเธรด, Mutex = แก้ได้ทีละคน
+    let mut handles = vec![];
+    for _ in 0..10 {
+        let c = Arc::clone(&amp;counter);
+        handles.push(thread::spawn(move || {
+            *c.lock().unwrap() += 1;
+        }));
+    }
+    for h in handles {
+        h.join().unwrap();
+    }
+    println!("รวม {}", *counter.lock().unwrap());   // 10 เสมอ
+}</code></pre>
+<p>ถ้าลืมใส่ <code>Mutex</code> แล้วพยายามแก้ค่าจากหลายเธรด Rust จะไม่ยอม build นี่คือสิ่งที่ภาษาอื่นทำไม่ได้: บั๊กแบบ data race ถูกจับตั้งแต่ตอนคอมไพล์ ใน Phai Studio หน้าต่าง Threads (<kbd>Ctrl+Alt+H</kbd>) ช่วยดูว่าแต่ละเธรดกำลังทำอะไรตอนดีบัก</p>
+
+<h2>ก้าวต่อไป</h2>
+<h3>ฝึกด้วยโปรเจกต์จริง</h3>
+<ul>
+  <li><b>โปรแกรมจดรายรับรายจ่าย</b> ฟอร์มกรอกข้อมูล + ตาราง (Grid) + บันทึกลงไฟล์หรือ SQLite</li>
+  <li><b>โปรแกรมจับเวลา</b> ใช้ Timer บนฟอร์ม</li>
+  <li><b>ตัวเปลี่ยนชื่อไฟล์ทีละมาก</b> อ่านโฟลเดอร์ด้วย <code>std::fs::read_dir</code></li>
+  <li><b>เกมทายตัวเลข</b> ใช้ crate <code>rand</code></li>
+</ul>
+<h3>หัวข้อที่ควรเรียนต่อ</h3>
+<ul>
+  <li><code>serde</code> และ <code>serde_json</code> อ่านเขียน JSON</li>
+  <li>smart pointer: <code>Box</code>, <code>Rc</code>, <code>RefCell</code></li>
+  <li>iterator ขั้นสูง และการเขียน iterator เอง</li>
+  <li><code>async</code> / <code>await</code> สำหรับงานเครือข่าย</li>
+</ul>
+<h3>แหล่งเรียนรู้</h3>
+<ul>
+  <li><a href="https://doc.rust-lang.org/book/">The Rust Programming Language</a> หนังสือทางการ อ่านต่อจากคู่มือนี้ได้เลย</li>
+  <li><a href="https://doc.rust-lang.org/rust-by-example/">Rust by Example</a></li>
+  <li><a href="https://github.com/rust-lang/rustlings">Rustlings</a> แบบฝึกหัดเล็ก ๆ ที่ให้แก้โค้ดให้คอมไพล์ผ่าน</li>
+  <li><a href="https://doc.rust-lang.org/std/">เอกสารไลบรารีมาตรฐาน</a></li>
+</ul>
+<p>ขอให้สนุกกับการเขียน Rust ครับ</p>
+<div class="pager"><a href="rust-10.html">← 10. อ่าน error ของคอมไพเลอร์</a><span></span></div>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10. อ่าน error ของคอมไพเลอร์ - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html" class="here">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>10. อ่าน error ของคอมไพเลอร์</h1>
+<p class="lead">คอมไพเลอร์ของ Rust ไม่ได้ดุ มันเป็นครูที่ละเอียดที่สุดที่คุณจะได้เจอ</p>
+
+<h2>อ่าน error อย่างไร</h2>
+<pre><code>error[E0382]: borrow of moved value: `name`
+ --&gt; src/main.rs:4:20
+  |
+2 |     let name = String::from("ไผ่");
+  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait
+3 |     let other = name;
+  |                 ---- value moved here
+4 |     println!("{}", name);
+  |                    ^^^^ value borrowed here after move
+  |
+help: consider cloning the value if the performance cost is acceptable
+  |
+3 |     let other = name.clone();
+  |                     ++++++++</code></pre>
+<ol>
+  <li><b>บรรทัดแรก</b> คือปัญหาโดยรวม และรหัส <code>E0382</code></li>
+  <li><b><code>--&gt;</code></b> บอกไฟล์ บรรทัด และคอลัมน์ ใน Phai Studio ดับเบิลคลิกในแท็บ Errors เพื่อไปที่นั่น</li>
+  <li><b>เส้นใต้</b> ชี้แต่ละจุดที่เกี่ยวข้อง พร้อมคำอธิบายสั้น ๆ อ่านตามลำดับเลขบรรทัด จะเห็นเรื่องราวว่าเกิดอะไรขึ้น</li>
+  <li><b><code>help:</code></b> คือวิธีแก้ที่คอมไพเลอร์แนะนำ บ่อยครั้งแก้ตามนี้ได้เลย</li>
+</ol>
+<div class="note">ใน Phai Studio กด <kbd>Ctrl+.</kbd> ที่เส้นหยัก มักมีปุ่มแก้ให้อัตโนมัติ และถ้าอยากรู้ละเอียด เปิดหน้า <code>https://doc.rust-lang.org/error_codes/E0382.html</code> (เปลี่ยนเลขตามรหัส)</div>
+
+<h2>error ที่มือใหม่เจอบ่อย</h2>
+<table>
+  <tr><th>ข้อความ (ส่วนสำคัญ)</th><th>แปลว่า</th><th>แก้อย่างไร</th></tr>
+  <tr><td><code>cannot assign twice to immutable variable</code></td><td>แก้ค่าตัวแปรที่ไม่ได้ประกาศ <code>mut</code></td><td><code>let mut x</code></td></tr>
+  <tr><td><code>mismatched types: expected i32, found f64</code></td><td>ชนิดไม่ตรงกับที่ต้องการ</td><td>แปลงด้วย <code>as</code> หรือ <code>.parse()</code> หรือแก้ชนิดที่ประกาศไว้</td></tr>
+  <tr><td><code>mismatched types: expected i32, found ()</code></td><td>ฟังก์ชันควรคืนค่า แต่บรรทัดสุดท้ายมี <code>;</code></td><td>ลบ <code>;</code> ท้ายบรรทัดที่คืนค่า</td></tr>
+  <tr><td><code>borrow of moved value</code></td><td>ใช้ตัวแปรหลังจากยกให้คนอื่นไปแล้ว</td><td>ส่งเป็น <code>&amp;x</code> แทน หรือ <code>.clone()</code></td></tr>
+  <tr><td><code>cannot borrow `x` as mutable because it is also borrowed as immutable</code></td><td>แก้ค่าขณะที่ยังมีคนยืมอ่านอยู่</td><td>ใช้ค่าที่ยืมให้เสร็จก่อน แล้วค่อยแก้ หรือสลับลำดับ</td></tr>
+  <tr><td><code>cannot borrow `x` as mutable, as it is not declared as mutable</code></td><td>ยืมแก้ตัวแปรที่ไม่มี <code>mut</code></td><td><code>let mut x</code></td></tr>
+  <tr><td><code>cannot find value `x` in this scope</code></td><td>ไม่มีตัวแปรชื่อนี้ตรงนี้ (สะกดผิด หรือประกาศไว้ใน <code>{ }</code> อื่น)</td><td>ตรวจชื่อ และตำแหน่งที่ประกาศ</td></tr>
+  <tr><td><code>cannot find type `HashMap` in this scope</code></td><td>ยังไม่ได้ <code>use</code></td><td><code>use std::collections::HashMap;</code> (หรือกด <kbd>Ctrl+.</kbd>)</td></tr>
+  <tr><td><code>non-exhaustive patterns</code></td><td><code>match</code> ไม่ครบทุกกรณี</td><td>เพิ่มกรณีที่ขาด หรือ <code>_ =&gt;</code></td></tr>
+  <tr><td><code>the `?` operator can only be used in a function that returns `Result`</code></td><td>ใช้ <code>?</code> ในฟังก์ชันที่ไม่ได้คืน <code>Result</code></td><td>เปลี่ยนชนิดที่คืน หรือใช้ <code>match</code></td></tr>
+  <tr><td><code>`Foo` doesn't implement `std::fmt::Display`</code></td><td>พิมพ์ด้วย <code>{}</code> ไม่ได้</td><td>ใช้ <code>{:?}</code> กับ <code>#[derive(Debug)]</code> หรือเขียน <code>impl Display</code></td></tr>
+  <tr><td><code>missing lifetime specifier</code></td><td>คืนค่าที่ยืมมา แต่คอมไพเลอร์ไม่รู้ว่ายืมจากอะไร</td><td>คืนเป็น <code>String</code> แทน <code>&amp;str</code> (ง่ายที่สุด) หรือใส่ lifetime ตาม help</td></tr>
+</table>
+
+<h2>warning ไม่ใช่ error</h2>
+<p>warning (สีเหลือง) ไม่ทำให้ build ล้มเหลว แต่ควรอ่าน เช่น <code>unused variable</code> (ประกาศแล้วไม่ใช้ ถ้าตั้งใจให้ขึ้นต้นชื่อด้วย <code>_</code>) หรือ <code>unused import</code> และ <b>Build &gt; Run Code Analysis</b> (Clippy) จะแนะนำวิธีเขียนที่ดีขึ้นเพิ่มเติม</p>
+
+<h2>เมื่อโปรแกรม panic ตอนรัน</h2>
+<pre><code>thread 'main' panicked at src/main.rs:12:18:
+index out of bounds: the len is 3 but the index is 5</code></pre>
+<p>บอกไฟล์และบรรทัดชัดเจน รันด้วย <kbd>F5</kbd> แทน <kbd>Ctrl+F5</kbd> ดีบักเกอร์ของ Phai Studio จะหยุดตรงจุดที่ panic ให้ดูค่าตัวแปร (Locals) และเส้นทางที่มาถึง (Call Stack) ได้ทันที</p>
+
+<h2>ทัศนคติที่ช่วยได้</h2>
+<ul>
+  <li>แก้ทีละ error จาก<b>ข้อแรก</b> error ข้อหลัง ๆ มักเป็นผลพวงจากข้อแรก</li>
+  <li>error เยอะไม่ได้แปลว่าโค้ดแย่ บางทีลืม <code>}</code> ตัวเดียวก็ขึ้นเป็นสิบ</li>
+  <li>ทุกครั้งที่คอมไพเลอร์ติ คือบั๊กหนึ่งตัวที่ไม่หลุดไปถึงผู้ใช้</li>
+</ul>
+<div class="pager"><a href="rust-09.html">← 9. โมดูล crate และเทสต์</a><a href="rust-11.html">11. เธรด และก้าวต่อไป →</a></div>
+</main>
+</div>
+</body>
+</html>

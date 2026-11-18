@@ -649,6 +649,13 @@ pub static THAI: &[(&str, &str)] = &[
     ("Code coverage needs Rust's llvm-tools component (free). Install it with: rustup component add llvm-tools", "การวัดความครอบคลุมต้องใช้ llvm-tools ของ Rust (ฟรี) ติดตั้งด้วย: rustup component add llvm-tools"),
     ("The project has no tests to measure.", "โปรเจกต์นี้ไม่มีเทสต์ให้วัด"),
     ("Code coverage: {0} of {1} lines run by the tests ({2})", "ความครอบคลุม: เทสต์รัน {0} จาก {1} บรรทัด ({2})"),
+    ("&Help", "&ช่วยเหลือ"),
+    ("Phai Studio Guide", "คู่มือ Phai Studio"),
+    ("Learn Rust", "เรียนภาษา Rust"),
+    ("Reading Compiler Errors", "อ่าน error ของคอมไพเลอร์"),
+    ("About Phai Studio", "เกี่ยวกับ Phai Studio"),
+    ("The guide is not installed with this copy of Phai Studio.", "Phai Studio ชุดนี้ไม่ได้ติดตั้งคู่มือมาด้วย"),
+    ("Phai Studio {0}\n\nA free, open-source studio for Windows programs in Rust.\nMIT License - Monrak Net\n\n{1}", "Phai Studio {0}\n\nเครื่องมือฟรีและเปิดซอร์ส สำหรับสร้างโปรแกรม Windows ด้วย Rust\nสัญญาอนุญาต MIT - Monrak Net\n\n{1}"),
 ];
 
 #[cfg(test)]

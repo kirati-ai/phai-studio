@@ -75,6 +75,17 @@ cargo run --release -p phai-setup --example make_installer
 It is written to `dist/PhaiStudio-<version>-setup.exe`. Quiet install: `/S`, another folder:
 `/D=C:\path`.
 
+## Guide in Thai / คู่มือภาษาไทย
+
+`docs/help/` holds a Thai guide that opens from **Help > Phai Studio Guide** (F1) and works
+offline: how to use Phai Studio, and eleven lessons on Rust for people who have never programmed -
+variables, ownership, structs and enums, errors, collections, traits, modules and tests, reading
+compiler errors, and threads. The pages are built from `docs/help-src/` with
+`python docs/help-src/help_gen.py`.
+
+คู่มือภาษาไทยใน `docs/help/` เปิดจากเมนู **ช่วยเหลือ > คู่มือ Phai Studio** (F1) ใช้ได้โดยไม่ต้องต่อเน็ต
+มีวิธีใช้ Phai Studio และบทเรียน Rust 11 บทสำหรับคนที่เริ่มจากศูนย์
+
 ## The repository
 
 | | |

@@ -173,6 +173,10 @@ const ID_DATA_BP: i32 = 283;
 const ID_DISASSEMBLY: i32 = 284;
 const ID_MERGE: i32 = 285;
 const ID_COVERAGE: i32 = 286;
+const ID_HELP_STUDIO: i32 = 287;
+const ID_HELP_RUST: i32 = 288;
+const ID_HELP_ERRORS: i32 = 289;
+const ID_ABOUT: i32 = 290;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -1050,6 +1054,13 @@ fn build_menu() -> HMENU {
         sep(th);
         add(th, ID_THEME_NONE, t("No theme"), "");
         sub(t("&Theme"), th);
+        let help = wm::CreatePopupMenu().unwrap_or_default();
+        add(help, ID_HELP_STUDIO, t("Phai Studio Guide"), "F1");
+        add(help, ID_HELP_RUST, t("Learn Rust"), "");
+        add(help, ID_HELP_ERRORS, t("Reading Compiler Errors"), "");
+        sep(help);
+        add(help, ID_ABOUT, t("About Phai Studio"), "");
+        sub(t("&Help"), help);
         bar
     }
 }
@@ -1381,6 +1392,23 @@ impl Studio {
             }
         }
         phai_editor::view::set_lenses(h, all);
+    }
+
+    /// The Thai guide's page `page` opened in the browser: from beside Phai Studio when it is
+    /// installed, else from the source's docs folder.
+    fn open_help(&self, page: &str) {
+        match help_page(page) {
+            Some(p) => {
+                if std::env::var_os("PHAI_HELP_TEST").is_some() {
+                    println!("help: {}", p.display());
+                    return;
+                }
+                open_with_windows(&p.to_string_lossy());
+            }
+            None => {
+                win::message(Some(self.hwnd), t("The guide is not installed with this copy of Phai Studio."), t("Phai Studio Guide"), wm::MB_ICONINFORMATION);
+            }
+        }
     }
 
     /// Test > Analyze Code Coverage: the project's tests run with coverage (a wait shown), each
@@ -5567,6 +5595,13 @@ impl Studio {
             }
             ID_RUN_ALL_TESTS => self.start_job(cargo::Job::Test, true),
             ID_COVERAGE => self.analyze_coverage(),
+            ID_HELP_STUDIO => self.open_help("studio.html"),
+            ID_HELP_RUST => self.open_help("rust-01.html"),
+            ID_HELP_ERRORS => self.open_help("rust-10.html"),
+            ID_ABOUT => {
+                let words = tf("Phai Studio {0}\n\nA free, open-source studio for Windows programs in Rust.\nMIT License - Monrak Net\n\n{1}", &[&env!("CARGO_PKG_VERSION"), &env!("CARGO_PKG_REPOSITORY")]);
+                win::message(Some(self.hwnd), &words, t("About Phai Studio"), wm::MB_ICONINFORMATION);
+            }
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
@@ -5987,6 +6022,17 @@ fn get_clipboard(owner: HWND) -> Option<String> {
     }
 }
 
+/// A page of the Thai guide: `help\` beside the program (installed), or `docs\help\` of the
+/// source tree it was built in.
+fn help_page(page: &str) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    std::iter::once(dir.join("help"))
+        .chain(exe.ancestors().map(|a| a.join("docs").join("help")))
+        .map(|d| d.join(page))
+        .find(|p| p.is_file())
+}
+
 /// A file or web address, opened by whatever Windows opens it with.
 pub fn open_with_windows(what: &str) {
     let w = wide(what);
@@ -6327,6 +6373,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             }
         }
         match msg.wParam.0 {
+            0x70 if !ctrl && !shift => return Some(ID_HELP_STUDIO),
             0x45 if ctrl && shift => return Some(ID_EXECUTE),
             0x46 if ctrl && shift => return Some(ID_FIND_IN_FILES),
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
@@ -6814,6 +6861,12 @@ fn main() {
             if std::env::var_os("PHAI_SHOT").is_none() {
                 std::process::exit(0);
             }
+        }
+        // `--help-test`: where Help > Phai Studio Guide would open, printed.
+        if args.iter().any(|a| a == "--help-test") {
+            std::env::set_var("PHAI_HELP_TEST", "1");
+            s.command(ID_HELP_STUDIO);
+            std::process::exit(0);
         }
         // `--merge-test`: Git > Resolve Merge Conflicts, settled as `PHAI_MERGE_TAKE` says.
         if args.iter().any(|a| a == "--merge-test") {

@@ -59,6 +59,14 @@ fn main() {
         files.push((format!("phai-ui/{rel}"), data));
     }
     let _ = std::fs::read(root.join("LICENSE")).map(|l| files.push(("LICENSE.txt".into(), l)));
+    // The Thai guide, opened by Help > Phai Studio Guide (F1) from help\ beside the program.
+    if let Ok(dir) = std::fs::read_dir(root.join("docs").join("help")) {
+        for e in dir.flatten() {
+            if let (Some(name), Ok(data)) = (e.file_name().to_str().map(str::to_string), std::fs::read(e.path())) {
+                files.push((format!("help/{name}"), data));
+            }
+        }
+    }
     let m = phai_pack::Manifest { name: "Phai Studio".into(), version: version.clone(), publisher: "Monrak Net".into(), exe: "phai-studio.exe".into(), desktop: true, all_users: false, files: vec![] };
     let out_dir = root.join("dist");
     std::fs::create_dir_all(&out_dir).expect("dist folder");
