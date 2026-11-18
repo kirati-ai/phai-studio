@@ -2403,3 +2403,39 @@ pub fn popup(owner: HWND, items: &[(u32, &str)]) -> u32 {
         chosen.0 as u32
     }
 }
+
+/// Puts a window over the middle of `owner` - where a second window or a dialog is expected.
+pub fn center_on(h: HWND, owner: HWND) {
+    unsafe {
+        let (mut r, mut o) = (RECT::default(), RECT::default());
+        if wm::GetWindowRect(h, &mut r).is_ok() && wm::GetWindowRect(owner, &mut o).is_ok() {
+            let (w, ht) = (r.right - r.left, r.bottom - r.top);
+            let x = o.left + ((o.right - o.left) - w) / 2;
+            let y = o.top + ((o.bottom - o.top) - ht) / 2;
+            let _ = wm::SetWindowPos(h, None, x.max(0), y.max(0), 0, 0, wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
+        }
+    }
+}
+
+/// Runs a modal window: `owner` takes no input until `dialog` is closed, then has it back and is
+/// in front again - as `ShowDialog` does in WinForms. Returns when `dialog` is gone.
+pub fn modal_loop(dialog: HWND, owner: HWND) {
+    unsafe {
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(owner, false);
+        let mut msg = wm::MSG::default();
+        while wm::IsWindow(Some(dialog)).as_bool() {
+            if !wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                // WM_QUIT belongs to the program's own loop: put it back for that one.
+                wm::PostQuitMessage(msg.wParam.0 as i32);
+                break;
+            }
+            if wm::IsDialogMessageW(dialog, &msg).as_bool() {
+                continue;
+            }
+            let _ = wm::TranslateMessage(&msg);
+            wm::DispatchMessageW(&msg);
+        }
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(owner, true);
+        let _ = wm::SetForegroundWindow(owner);
+    }
+}

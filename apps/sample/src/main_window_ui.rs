@@ -88,6 +88,23 @@ impl MainWindowUi {
 
     /// Makes the window and shows it; the caller runs the message loop.
     pub fn create<E: MainWindowEvents + 'static>(events: E) -> HWND {
+        Self::make(None, events)
+    }
+
+    /// Shows this window beside `owner` (another window of the program) and returns at once,
+    /// as `Show()` in WinForms. Closing it leaves the program running.
+    pub fn show<E: MainWindowEvents + 'static>(owner: HWND, events: E) -> HWND {
+        Self::make(Some(owner), events)
+    }
+
+    /// Shows this window over `owner` and waits until it is closed, `owner` taking no input
+    /// meanwhile - as `ShowDialog()` in WinForms.
+    pub fn show_dialog<E: MainWindowEvents + 'static>(owner: HWND, events: E) {
+        let hwnd = Self::make(Some(owner), events);
+        win::modal_loop(hwnd, owner);
+    }
+
+    fn make<E: MainWindowEvents + 'static>(owner: Option<HWND>, events: E) -> HWND {
         win::init();
         if let Ok(sheet) = theme::Theme::parse(include_str!("../theme.css")) {
             theme::set(sheet);
@@ -95,7 +112,7 @@ impl MainWindowUi {
         let class = win::register("Phai.MainWindow", Some(proc_::<E>), None);
         let title = wide(t("Customers"));
         unsafe {
-            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(Self::menu()), Some(win::instance()), None).unwrap_or_default();
+            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, Some(Self::menu()), Some(win::instance()), None).unwrap_or_default();
             let ui = Self::build(hwnd);
             let mut host = Box::new(Host { ui, events });
             host.events.loaded(&host.ui);
@@ -105,6 +122,9 @@ impl MainWindowUi {
             let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 480), bottom: win::px(hwnd, 360) };
             let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), true, Default::default(), win::dpi(hwnd) as u32);
             let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
+            if let Some(o) = owner {
+                win::center_on(hwnd, o);
+            }
             win::show_top(hwnd);
             // A debug build follows the theme file as it is saved.
             #[cfg(debug_assertions)]
@@ -138,6 +158,7 @@ impl MainWindowUi {
     fn build(hwnd: HWND) -> MainWindowUi {
         let font = win::font(hwnd, 0, false);
         let dpi = win::dpi(hwnd);
+        #[allow(unused_mut)]
         let mut layout = Layout::new((480, 360));
         let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &Self::toolbar_items());
         layout.add(toolbar, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() });
@@ -262,7 +283,10 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
             LRESULT(0)
         }
         wm::WM_DESTROY => {
-            unsafe { wm::PostQuitMessage(0) };
+            // The program ends with its main window; a window shown over another only closes.
+            if unsafe { wm::GetWindow(hwnd, wm::GW_OWNER) }.map_or(true, |o| o.is_invalid()) {
+                unsafe { wm::PostQuitMessage(0) };
+            }
             LRESULT(0)
         }
         wm::WM_NCDESTROY => {

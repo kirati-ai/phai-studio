@@ -177,6 +177,8 @@ const ID_HELP_STUDIO: i32 = 287;
 const ID_HELP_RUST: i32 = 288;
 const ID_HELP_ERRORS: i32 = 289;
 const ID_ABOUT: i32 = 290;
+/// Project > Add Form: a second window for the project.
+const ID_ADD_FORM: i32 = 291;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -1021,6 +1023,8 @@ fn build_menu() -> HMENU {
         add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
         let proj = wm::CreatePopupMenu().unwrap_or_default();
+        add(proj, ID_ADD_FORM, t("Add Form..."), "");
+        sep(proj);
         add(proj, ID_MANAGE_CRATES, t("Manage Crates..."), "");
         sep(proj);
         add(proj, ID_PROJECT_PROPS, &tf("{0} Properties...", &[&project]), "Alt+F7");
@@ -3333,6 +3337,52 @@ impl Studio {
         self.rebuild();
     }
 
+    /// Project > Add Form, as Visual Studio's "Add Form (Windows Forms)": a new window in the
+    /// project's `src` - its form, its generated code and the programmer's file - declared in
+    /// main.rs, and opened to design. Another window shows it with `<Name>Ui::show(ui.hwnd, ...)`.
+    fn add_form(&mut self) {
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Open a form of the project first, so the new form can join it."), t("Add Form"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        let src = dir.join("src");
+        let mut n = 2;
+        while src.join(format!("form{n}.phaiform")).exists() {
+            n += 1;
+        }
+        let default = format!("Form{n}");
+        let Some(answer) = phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Add Form"), &[phai_ui::dialogs::Field::Text(t("Name"), &default)]) else { return };
+        let name = form_type_name(&answer[0]);
+        if name.is_empty() {
+            return;
+        }
+        let file = snake(&name);
+        let path = src.join(format!("{file}.phaiform"));
+        if path.exists() || src.join(format!("{file}.rs")).exists() || src.join(format!("{file}_ui.rs")).exists() {
+            win::message(Some(self.hwnd), &tf("The project already has {0}", &[&file]), t("Add Form"), wm::MB_ICONINFORMATION);
+            return;
+        }
+        let (path, declared) = match write_new_form(&dir, &name) {
+            Ok(r) => r,
+            Err(e) => {
+                win::message(Some(self.hwnd), &format!("{}
+
+{e}", tf("{0} cannot be saved", &[&path.display()])), t("Add Form"), wm::MB_ICONWARNING);
+                return;
+            }
+        };
+        self.open_path(&path);
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(Some(&path));
+        }
+        let how = format!("{name}Ui::show(ui.hwnd, {file}::{name}::default())");
+        if declared {
+            self.say_status(&tf("Added {0} - show it from another window with {1}", &[&name, &how]));
+        } else {
+            self.say_status(&tf("Added {0} - add `mod {1}; mod {1}_ui;` to main.rs", &[&name, &file]));
+        }
+    }
+
     fn theme_from_standard(&mut self) {
         let Some(path) = self.doc.path.clone() else {
             win::message(Some(self.hwnd), t("Save the form first, so its theme can sit beside it."), "Phai Studio", wm::MB_ICONINFORMATION);
@@ -5535,6 +5585,7 @@ impl Studio {
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_PROJECT_PROPS => self.project_properties(),
+            ID_ADD_FORM => self.add_form(),
             ID_MANAGE_CRATES => match self.doc.path.as_deref().and_then(cargo::project_of) {
                 Some(dir) => {
                     let dir = std::path::absolute(&dir).unwrap_or(dir);
@@ -7149,5 +7200,153 @@ fn main() {
             let _ = wm::TranslateMessage(&msg);
             wm::DispatchMessageW(&msg);
         }
+    }
+}
+
+/// A new form in the project at `dir`: `src/<name>.phaiform`, its generated `_ui.rs` and the
+/// programmer's file, and main.rs told of it. The form's path, and whether main.rs was changed.
+fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
+    let src = dir.join("src");
+    let file = snake(name);
+    let path = src.join(format!("{file}.phaiform"));
+    let mut f = FormFile::new(name);
+    f.form.title = name.to_string();
+    f.form.size = [400, 300];
+    if dir.join("theme.css").is_file() {
+        f.form.theme = Some("../theme.css".into());
+    }
+    let opts = theme_options(&path, f.form.theme.as_deref());
+    std::fs::create_dir_all(&src)?;
+    std::fs::write(&path, f.to_toml())?;
+    std::fs::write(src.join(format!("{file}_ui.rs")), codegen::generate(&f, &opts))?;
+    std::fs::write(src.join(format!("{file}.rs")), codegen::user_stub(&f))?;
+    let main_rs = src.join("main.rs");
+    let declared = std::fs::read_to_string(&main_rs).map(|text| declare_form(&text, name)).and_then(|text| std::fs::write(&main_rs, text)).is_ok();
+    Ok((path, declared))
+}
+
+/// What a person typed as a form's name, as a Rust type name: letters and digits only, the first
+/// a capital - "settings window" is `SettingsWindow`.
+fn form_type_name(typed: &str) -> String {
+    let mut out = String::new();
+    let mut up = true;
+    for c in typed.trim().chars() {
+        if c.is_ascii_alphanumeric() {
+            if up {
+                out.extend(c.to_uppercase());
+            } else {
+                out.push(c);
+            }
+            up = false;
+        } else {
+            up = true;
+        }
+    }
+    if out.starts_with(|c: char| c.is_ascii_digit()) {
+        out.insert_str(0, "Form");
+    }
+    out
+}
+
+/// main.rs with a new form's two modules declared after the last `mod` line (or at the top), with
+/// a line saying how to show it; unchanged if they are there already.
+fn declare_form(main_rs: &str, name: &str) -> String {
+    let file = snake(name);
+    if main_rs.lines().any(|l| l.trim() == format!("mod {file};")) {
+        return main_rs.to_string();
+    }
+    let block = format!("// {name}: show it from another window with {name}Ui::show(ui.hwnd, {file}::{name}::default())
+// (or {name}Ui::show_dialog(...) to wait until it is closed).
+#[allow(dead_code)]
+mod {file};
+#[allow(dead_code)]
+mod {file}_ui;
+");
+    let lines: Vec<&str> = main_rs.lines().collect();
+    let at = lines.iter().rposition(|l| l.trim_start().starts_with("mod ") && l.trim_end().ends_with(';')).map(|i| i + 1).unwrap_or(0);
+    let mut out = String::new();
+    for (i, l) in lines.iter().enumerate() {
+        if i == at {
+            out.push_str(&block);
+        }
+        out.push_str(l);
+        out.push(char::from(10));
+    }
+    if at >= lines.len() {
+        out.push_str(&block);
+    }
+    out
+}
+
+#[cfg(test)]
+mod add_form_tests {
+    use super::*;
+
+    #[test]
+    fn a_new_form_is_named_and_declared() {
+        assert_eq!(form_type_name("settings window"), "SettingsWindow");
+        assert_eq!(form_type_name("Form2"), "Form2");
+        assert_eq!(form_type_name("2nd"), "Form2nd");
+        let main = "//! app
+
+mod main_window;
+mod main_window_ui;
+mod text;
+
+fn main() {}
+";
+        let out = declare_form(main, "Form2");
+        assert!(out.contains("mod text;
+// Form2: show it"), "{out}");
+        assert!(out.contains("#[allow(dead_code)]
+mod form2;
+#[allow(dead_code)]
+mod form2_ui;
+
+fn main()"), "{out}");
+        assert_eq!(declare_form(&out, "Form2"), out, "declared once");
+    }
+
+    /// A real project with a second form shown from the first, both ways, built by Cargo.
+    #[test]
+    #[ignore = "builds a project with cargo"]
+    fn a_project_with_a_second_form_builds() {
+        let dir = std::env::temp_dir().join(format!("phai-addform-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let (path, declared) = write_new_form(&dir, &form_type_name("Settings Window")).unwrap();
+        assert!(declared && path.ends_with("settings_window.phaiform"));
+        let user = dir.join("src").join("main_window.rs");
+        let text = std::fs::read_to_string(&user).unwrap();
+        let text = text.replacen("fn ok_clicked(&mut self, ui: &MainWindowUi) {", "fn ok_clicked(&mut self, ui: &MainWindowUi) {
+        crate::settings_window_ui::SettingsWindowUi::show(ui.hwnd, crate::settings_window::SettingsWindow::default());
+        crate::settings_window_ui::SettingsWindowUi::show_dialog(ui.hwnd, crate::settings_window::SettingsWindow::default());", 1);
+        std::fs::write(&user, text).unwrap();
+        let cargo = crate::cargo::find_cargo().expect("cargo");
+        let out = std::process::Command::new(cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", std::env::temp_dir().join("phai-addform-target")).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let warnings = String::from_utf8_lossy(&out.stderr).matches("warning").count();
+        assert_eq!(warnings, 0, "{}", String::from_utf8_lossy(&out.stderr));
+        // Running: the second window opened and closed, and the program goes on - its main window
+        // still running when the timer fires (42); quitting with the second window would end it at 0.
+        let text = std::fs::read_to_string(&user).unwrap();
+        let text = text.replacen("impl MainWindowEvents for MainWindow {", "impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        let second = crate::settings_window_ui::SettingsWindowUi::show(ui.hwnd, crate::settings_window::SettingsWindow::default());
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(second);
+            unsafe extern \"system\" fn done(_: windows::Win32::Foundation::HWND, _: u32, _: usize, _: u32) { std::process::exit(42) }
+            windows::Win32::UI::WindowsAndMessaging::SetTimer(None, 0, 700, Some(done));
+        }
+    }
+", 1);
+        std::fs::write(&user, text).unwrap();
+        let target = std::env::temp_dir().join("phai-addform-target");
+        let out = std::process::Command::new(crate::cargo::find_cargo().unwrap()).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-addform.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
+        assert_eq!(code, Some(42), "the program ended when its second window closed");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

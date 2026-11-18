@@ -141,6 +141,23 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// Makes the window and shows it; the caller runs the message loop.");
     let _ = writeln!(w, "    pub fn create<E: {events} + 'static>(events: E) -> HWND {{");
+    let _ = writeln!(w, "        Self::make(None, events)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// Shows this window beside `owner` (another window of the program) and returns at once,");
+    let _ = writeln!(w, "    /// as `Show()` in WinForms. Closing it leaves the program running.");
+    let _ = writeln!(w, "    pub fn show<E: {events} + 'static>(owner: HWND, events: E) -> HWND {{");
+    let _ = writeln!(w, "        Self::make(Some(owner), events)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// Shows this window over `owner` and waits until it is closed, `owner` taking no input");
+    let _ = writeln!(w, "    /// meanwhile - as `ShowDialog()` in WinForms.");
+    let _ = writeln!(w, "    pub fn show_dialog<E: {events} + 'static>(owner: HWND, events: E) {{");
+    let _ = writeln!(w, "        let hwnd = Self::make(Some(owner), events);");
+    let _ = writeln!(w, "        win::modal_loop(hwnd, owner);");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    fn make<E: {events} + 'static>(owner: Option<HWND>, events: E) -> HWND {{");
     let _ = writeln!(w, "        win::init();");
     if let Some(inc) = &opts.theme_include {
         let _ = writeln!(w, "        if let Ok(sheet) = theme::Theme::parse(include_str!({})) {{", lit(inc));
@@ -151,7 +168,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        let title = wide(t({}));", lit(&f.form.title));
     let menu = if f.menu.is_empty() { "None" } else { "Some(Self::menu())" };
     let _ = writeln!(w, "        unsafe {{");
-    let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, {menu}, Some(win::instance()), None).unwrap_or_default();");
+    let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default();");
     let _ = writeln!(w, "            let ui = Self::build(hwnd);");
     let _ = writeln!(w, "            let mut host = Box::new(Host {{ ui, events }});");
     let _ = writeln!(w, "            host.events.loaded(&host.ui);");
@@ -161,6 +178,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            let mut r = RECT {{ left: 0, top: 0, right: win::px(hwnd, {}), bottom: win::px(hwnd, {}) }};", f.form.size[0], f.form.size[1]);
     let _ = writeln!(w, "            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), {}, Default::default(), win::dpi(hwnd) as u32);", !f.menu.is_empty());
     let _ = writeln!(w, "            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);");
+    let _ = writeln!(w, "            if let Some(o) = owner {{");
+    let _ = writeln!(w, "                win::center_on(hwnd, o);");
+    let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            win::show_top(hwnd);");
     if let Some(watch) = &opts.theme_watch {
         let _ = writeln!(w, "            // A debug build follows the theme file as it is saved.");
@@ -211,6 +231,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    fn build(hwnd: HWND) -> {ui} {{");
     let _ = writeln!(w, "        let font = win::font(hwnd, {}, false);", f.form.font_size.unwrap_or(0));
     let _ = writeln!(w, "        let dpi = win::dpi(hwnd);");
+    // A form with nothing laid out yet (a new one, or only timers) changes nothing in it.
+    let _ = writeln!(w, "        #[allow(unused_mut)]");
     let _ = writeln!(w, "        let mut layout = Layout::new(({}, {}));", f.form.size[0], f.form.size[1]);
     if !f.toolbar.is_empty() {
         let _ = writeln!(w, "        let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &Self::toolbar_items());");
@@ -523,7 +545,10 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_DESTROY => {{");
-    let _ = writeln!(w, "            unsafe {{ wm::PostQuitMessage(0) }};");
+    let _ = writeln!(w, "            // The program ends with its main window; a window shown over another only closes.");
+    let _ = writeln!(w, "            if unsafe {{ wm::GetWindow(hwnd, wm::GW_OWNER) }}.map_or(true, |o| o.is_invalid()) {{");
+    let _ = writeln!(w, "                unsafe {{ wm::PostQuitMessage(0) }};");
+    let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_NCDESTROY => {{");
@@ -555,6 +580,11 @@ pub fn user_stub(f: &FormFile) -> String {
     let _ = writeln!(w, "pub struct {name} {{}}");
     let _ = writeln!(w);
     let _ = writeln!(w, "impl {name}Events for {name} {{");
+    if f.handlers().is_empty() {
+        // A form with no events yet: the one every window has, so there is a place to start.
+        let _ = writeln!(w, "    /// The window is made and about to show.");
+        let _ = writeln!(w, "    fn loaded(&mut self, _ui: &{name}Ui) {{}}");
+    }
     for (i, h) in f.handlers().iter().enumerate() {
         if i > 0 {
             let _ = writeln!(w);

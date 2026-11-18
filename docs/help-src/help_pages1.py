@@ -76,6 +76,16 @@ BODY['studio.html'] = r'''
   <li>มี Menu bar, Context menu, Timer, Tree view, Picture, ตาราง (Grid), Rich text และแผงจัดวางอัตโนมัติ (Flow, Table)</li>
 </ul>
 
+<h3>เพิ่มฟอร์มที่สอง</h3>
+<p>โปรแกรมส่วนใหญ่มีมากกว่าหนึ่งหน้าต่าง เช่น หน้าตั้งค่า หรือหน้าต่างถามยืนยัน เลือก <b>Project &gt; Add Form...</b> ตั้งชื่อ เช่น <code>Settings</code> Phai Studio จะสร้างฟอร์มใหม่ในโฟลเดอร์ <code>src</code> พร้อมไฟล์โค้ด และบอก <code>main.rs</code> ให้รู้จักให้เอง แล้วเปิดให้ออกแบบต่อ</p>
+<p>เปิดฟอร์มใหม่จากโค้ดของหน้าต่างหลัก เช่น ในเมธอดของปุ่ม ได้สองแบบ เหมือน WinForms:</p>
+<pre><code>// เปิดคู่กัน หน้าต่างหลักยังใช้ได้ (แบบ Show)
+crate::settings_ui::SettingsUi::show(ui.hwnd, crate::settings::Settings::default());
+
+// เปิดแล้วรอจนปิด หน้าต่างหลักกดไม่ได้ระหว่างนั้น (แบบ ShowDialog)
+crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::default());</code></pre>
+<p>ปิดฟอร์มที่สองแล้ว โปรแกรมยังทำงานต่อ โปรแกรมจะจบเมื่อปิดหน้าต่างหลักเท่านั้น</p>
+
 <p>สี เส้นขอบ และมุมมนของทุก control มาจากไฟล์ <code>theme.css</code> อ่านวิธีแต่งได้ที่ <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a></p>
 
 <h2>เขียนโค้ด</h2>
