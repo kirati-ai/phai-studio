@@ -1,0 +1,111 @@
+# Builds Phai Studio and its installer from source on GitHub's own Windows machines - the
+# verifiable build that code signing asks for. A tag `v*` also attaches the installer to a
+# GitHub Release.
+#
+# Signing (SignPath Foundation, free for open source) is switched off until the project is
+# accepted. To switch it on: set the repository variable SIGNPATH_ENABLED to `true`, the
+# variable SIGNPATH_ORGANIZATION_ID, and the secret SIGNPATH_API_TOKEN, with the project and
+# signing policy slugs SignPath gives. Every signing request is then approved by hand in SignPath.
+
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      SIGNING: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build Phai Studio and its setup program
+        run: cargo build --release --locked -p phai-studio -p phai-setup
+
+      - name: Upload the programs to sign
+        if: env.SIGNING == 'true'
+        id: programs
+        uses: actions/upload-artifact@v4
+        with:
+          name: programs
+          path: |
+            target/release/phai-studio.exe
+            target/release/phai-setup.exe
+
+      # Stage 1: the programs themselves, signed before they are packed into the installer.
+      - name: Sign the programs
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: phai-studio
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: programs
+          github-artifact-id: ${{ steps.programs.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Use the signed programs
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: Copy-Item signed/*.exe target/release/ -Force
+
+      - name: Make the installer
+        run: cargo run --release --locked -p phai-setup --example make_installer
+
+      - name: Upload the installer to sign
+        if: env.SIGNING == 'true'
+        id: installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: dist/*.exe
+
+      # Stage 2: the installer, signed after packing (the package is found past the signature).
+      - name: Sign the installer
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: phai-studio
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist-signed
+
+      - name: Use the signed installer
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: Copy-Item dist-signed/*.exe dist/ -Force
+
+      - name: Keep the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhaiStudio-setup
+          path: dist/*.exe
+
+      - name: Attach it to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create $tag --title "Phai Studio $tag" --notes "Installer built from source by GitHub Actions." }
+          gh release upload $tag (Get-ChildItem dist/*.exe).FullName --clobber

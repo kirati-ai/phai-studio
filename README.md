@@ -101,6 +101,12 @@ compiler errors, and threads. The pages are built from `docs/help-src/` with
 
 Every window is checked by its picture: `PHAI_SHOT=out.png` photographs any phai-ui program.
 
+## Code signing policy
+
+Phai Studio has applied for free code signing from SignPath Foundation. What is signed, who
+approves it, and what the program sends over the network:
+[docs/code-signing-policy.md](docs/code-signing-policy.md).
+
 ## License
 
 MIT - see [LICENSE](LICENSE). © 2026 Monrak Net. Part of the Phai family (Phai ERP, PhaiDesk).
