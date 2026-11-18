@@ -6,6 +6,8 @@
 > ข้อกำหนดอ่านจาก <https://signpath.org/terms> เมื่อ 2026-11-18 (หน้านั้นระบุว่ายังเป็นฉบับร่าง)
 > ก่อนส่ง ควรเปิดดูอีกครั้งว่ามีอะไรเปลี่ยนไหม SignPath ไม่ได้รับประกันว่าจะรับทุกโปรเจกต์
 
+> **สถานะ:** ส่งใบสมัครแล้วเมื่อ 2026-11-18 รอ SignPath ตอบทางอีเมล
+
 ## สิ่งที่ต้องทำเอง ก่อนกดส่ง
 
 1. **เปิด 2FA (การยืนยันตัวตนสองขั้นตอน) ใน GitHub** ที่ GitHub > Settings > Password and authentication
@@ -32,7 +34,7 @@
 | ไม่มีโค้ดปิด (proprietary) | ✅ ทุกส่วนเปิดซอร์ส crate ที่ใช้ทั้ง 130 ตัวเป็นสัญญาอนุญาตเปิด (ส่วนใหญ่ MIT หรือ Apache-2.0 มี BSD, Zlib, Unicode บ้าง) | `Cargo.toml` |
 | ไม่มีมัลแวร์ / โปรแกรมไม่พึงประสงค์ / เครื่องมือแฮก | ✅ | - |
 | ดูแลอยู่ (actively maintained) | ✅ commit สม่ำเสมอ | ประวัติ git |
-| ออก release แล้ว ในรูปแบบที่จะเซ็น | ⬜ ต้องออก v0.1.0 (ข้อ 2 ด้านบน) | หน้า Releases |
+| ออก release แล้ว ในรูปแบบที่จะเซ็น | ✅ v0.1.0 (2026-11-18) | หน้า Releases |
 | อธิบายความสามารถในหน้าดาวน์โหลด | ✅ | `README.md` |
 | หน้าแรกมีหัวข้อ "Code signing policy" | ✅ | `README.md` → `docs/code-signing-policy.md` |
 | ระบุบทบาทในทีม (committer, reviewer, approver) | ✅ | `docs/code-signing-policy.md` |
@@ -42,7 +44,7 @@
 | ไฟล์ที่เซ็นมีชื่อผลิตภัณฑ์และเวอร์ชัน | ✅ ProductName "Phai Studio", เวอร์ชันจาก Cargo.toml | `apps/*/build.rs` |
 | มีตัวถอนการติดตั้ง | ✅ ถอนผ่าน Settings > Apps | `apps/setup` |
 | แจ้งก่อนเปลี่ยนแปลงระบบ | ✅ ตัวติดตั้งบอกที่ติดตั้งและทางลัดก่อนทำ | `apps/setup` |
-| MFA ทั้ง GitHub และ SignPath | ⬜ ต้องเปิดเอง (ข้อ 1 ด้านบน) | - |
+| MFA ทั้ง GitHub และ SignPath | ✅ GitHub (authenticator app) - SignPath เปิดตอนได้บัญชี | - |
 
 ## คำตอบสำหรับแบบฟอร์ม (คัดลอกได้)
 
