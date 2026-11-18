@@ -14,6 +14,8 @@ fn main() {
     // product's name and version (from Cargo.toml), who makes it.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let mut res = winresource::WindowsResource::new();
+        // Icon 1: what Explorer, the browser's downloads and the taskbar show.
+        res.set_icon("../studio/phai-studio.ico");
         res.set("ProductName", "Phai Studio");
         res.set("FileDescription", "Phai Studio Setup");
         res.set("CompanyName", "Monrak Net");
@@ -24,4 +26,5 @@ fn main() {
         }
     }
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=../studio/phai-studio.ico");
 }

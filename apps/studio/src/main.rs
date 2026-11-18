@@ -6518,11 +6518,13 @@ fn main() {
         theme::set(Theme::dark());
     }
     win::init();
-    let icon = phai_ui::icon::glyph_icon(glyph::APPS, 32, theme::Color::rgb(0x12, 0x85, 0x5f));
+    // Phai Studio's own icon (phai-studio.ico, embedded by build.rs): </> grown from bamboo.
+    let icon = phai_ui::icon::app_icon(32).or_else(|| phai_ui::icon::glyph_icon(glyph::APPS, 32, theme::Color::rgb(0x12, 0x85, 0x5f)));
     let class = win::register("PhaiStudio", Some(proc_), icon);
     let title = wide("Phai Studio");
     unsafe {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(build_menu()), Some(win::instance()), None).unwrap_or_default();
+        phai_ui::icon::set_app_icon(hwnd);
         let font = win::font(hwnd, 0, false);
         // The bars lie in a tray, as Visual Studio's: each has a grip to drag it along its row,
         // to another row, or up beside the other.
