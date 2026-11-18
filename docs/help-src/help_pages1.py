@@ -9,6 +9,8 @@ BODY['index.html'] = r'''
   <a class="card" href="studio.html"><b>ใช้งาน Phai Studio</b><span>สร้างโปรเจกต์ ออกแบบหน้าต่าง เขียนโค้ด รัน และดีบัก</span></a>
   <a class="card" href="rust-01.html"><b>เรียน Rust ตั้งแต่ศูนย์</b><span>11 บท ตั้งแต่ตัวแปรไปจนถึงเธรด พร้อมแบบฝึกหัด</span></a>
   <a class="card" href="rust-10.html"><b>อ่าน error ของคอมไพเลอร์</b><span>เจอข้อความแดง ๆ แล้วไม่รู้จะทำอะไร เปิดหน้านี้</span></a>
+  <a class="card" href="css.html"><b>ตกแต่งหน้าตาด้วย CSS</b><span>สี เส้นขอบ มุมมน ของทั้งโปรแกรม จากไฟล์เดียว</span></a>
+  <a class="card" href="database.html"><b>ทำงานกับฐานข้อมูล</b><span>MySQL, PostgreSQL, SQLite ดูตาราง รัน SQL และสร้างโค้ดให้</span></a>
 </div>
 
 <h2>ถ้าคุณไม่เคยเขียนโปรแกรมเลย</h2>
@@ -74,6 +76,8 @@ BODY['studio.html'] = r'''
   <li>มี Menu bar, Context menu, Timer, Tree view, Picture, ตาราง (Grid), Rich text และแผงจัดวางอัตโนมัติ (Flow, Table)</li>
 </ul>
 
+<p>สี เส้นขอบ และมุมมนของทุก control มาจากไฟล์ <code>theme.css</code> อ่านวิธีแต่งได้ที่ <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a></p>
+
 <h2>เขียนโค้ด</h2>
 <p>ตัวแก้โค้ดใช้ rust-analyzer ช่วย จึงทำได้เกือบทุกอย่างที่ Visual Studio ทำ:</p>
 <ul>
@@ -138,6 +142,7 @@ BODY['studio.html'] = r'''
 
 <h2>ฐานข้อมูล</h2>
 <p><b>Data &gt; Add Connection...</b> ต่อ MySQL/MariaDB, PostgreSQL หรือไฟล์ SQLite ได้ ดูตารางใน Server Explorer (<kbd>Ctrl+Alt+S</kbd>) เขียน SQL แล้วกด <kbd>Ctrl+Shift+E</kbd> เพื่อรัน แก้ข้อมูลในตารางผลลัพธ์ได้โดยตรง</p>
+<p>อ่านละเอียดที่ <a href="database.html">ทำงานกับฐานข้อมูล</a></p>
 
 <h2>ปุ่มลัดที่ใช้บ่อย</h2>
 <table>

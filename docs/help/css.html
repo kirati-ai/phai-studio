@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตกแต่งหน้าตาด้วย CSS - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html" class="here">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>ตกแต่งหน้าตาด้วย CSS</h1>
+<p class="lead">สีพื้น สีตัวอักษร เส้นขอบ มุมมน และตัวหนา ของทุกปุ่มทุกช่องในโปรแกรม มาจากไฟล์ <code>theme.css</code> ไฟล์เดียว แก้ที่เดียวแล้วเปลี่ยนทั้งโปรแกรม ไม่ต้องไล่แก้ทีละปุ่ม</p>
+
+<h2>ทำไมใช้ CSS</h2>
+<p>ถ้าเคยทำเว็บมาก่อน จะคุ้นกับ CSS อยู่แล้ว Phai Studio ใช้ CSS ส่วนเล็ก ๆ ที่พอสำหรับบอกว่า control แต่ละแบบ หน้าตาเป็นอย่างไรในแต่ละสถานะ ตัว control ยังเป็นของ Windows จริงทุกตัว CSS แค่บอกสีกับเส้น</p>
+<ul>
+  <li><b>ทั้งโปรแกรมเป็นสไตล์เดียวกัน</b> ปุ่มทุกปุ่มหน้าตาเหมือนกัน เพราะมาจากกฎเดียวกัน</li>
+  <li><b>เปลี่ยนธีมง่าย</b> อยากได้สีหลักเป็นสีน้ำเงิน แก้บรรทัดเดียว</li>
+  <li><b>เห็นผลทันที</b> บันทึกไฟล์ CSS แล้วหน้าต่างที่เปิดอยู่เปลี่ยนตามเลย ทั้งในตัวออกแบบและในโปรแกรมที่กำลังรัน</li>
+</ul>
+
+<h2>ไฟล์ theme.css อยู่ตรงไหน</h2>
+<p>ตอนสร้างโปรเจกต์ใหม่ Phai Studio ใส่ <code>theme.css</code> ไว้ในโฟลเดอร์โปรเจกต์ให้แล้ว เป็นธีมมาตรฐานสีสว่าง มีคำอธิบายทุกบรรทัด เปิดจากหน้าต่าง Project แล้วแก้ได้เลย ตอน build ธีมถูกรวมเข้าไปในโปรแกรม ไม่ต้องแจกไฟล์ CSS แยก</p>
+<table>
+  <tr><th>เมนู Theme</th><th>ทำอะไร</th></tr>
+  <tr><td>New theme from the standard...</td><td>สร้าง <code>theme.css</code> จากธีมมาตรฐาน ข้างไฟล์ฟอร์ม (ฟอร์มต้องบันทึกก่อน)</td></tr>
+  <tr><td>Import CSS...</td><td>เลือกไฟล์ CSS ที่มีอยู่แล้ว Phai Studio คัดลอกเข้าโปรเจกต์ให้ แล้วใช้เป็นธีม</td></tr>
+  <tr><td>No theme</td><td>เลิกใช้ไฟล์ธีม กลับไปใช้ธีมในตัว</td></tr>
+</table>
+<div class="note">เมนู View &gt; Light / Dark เปลี่ยนสีของตัว Phai Studio เอง ไม่เกี่ยวกับธีมของโปรแกรมที่คุณสร้าง</div>
+
+<h2>หน้าตาของกฎ</h2>
+<pre><code>:root { --accent: #12855f; }
+
+button          { background: #ffffff; border-color: #d4d4d4; border-radius: 4px; }
+button:hover    { background: #e7f3ef; border-color: var(--accent); }
+button.primary  { background: var(--accent); color: #ffffff; }
+#save           { font-weight: 600; }</code></pre>
+<p>อ่านว่า: ปุ่มทุกปุ่มพื้นขาว ขอบเทา มุมมน 4 พิกเซล พอเอาเมาส์ชี้ให้พื้นเป็นเขียวอ่อน ปุ่มที่มี class <code>primary</code> เป็นปุ่มสีเขียวตัวหนังสือขาว และปุ่มที่ id เป็น <code>save</code> ให้ตัวหนา</p>
+
+<h2>ตัวเลือก (selector)</h2>
+<table>
+  <tr><th>เขียนแบบนี้</th><th>หมายถึง</th></tr>
+  <tr><td><code>button</code></td><td>control ทุกตัวชนิดนั้น: <code>window label button checkbox radio edit combo list group tabs toolbar statusbar date progress slider menubar tree</code> (ช่องตัวเลขนับเป็น <code>edit</code>)</td></tr>
+  <tr><td><code>*</code></td><td>ทุก control</td></tr>
+  <tr><td><code>.primary</code></td><td>control ที่ใส่ class นี้ไว้ ในช่อง Class ของหน้าต่าง Properties</td></tr>
+  <tr><td><code>#save</code></td><td>control ตัวเดียว ตาม Id ของมัน</td></tr>
+  <tr><td><code>:hover :pressed :focus :disabled :selected :checked</code></td><td>สถานะ: เมาส์ชี้ กดค้าง กำลังพิมพ์ ใช้ไม่ได้ ถูกเลือก ถูกติ๊ก ใส่ต่อกันได้ เช่น <code>button.primary:hover</code></td></tr>
+  <tr><td><code>button, label</code></td><td>หลายตัวเลือกใช้กฎเดียวกัน คั่นด้วยจุลภาค</td></tr>
+</table>
+<p>กฎที่เจาะจงกว่าชนะ: id ชนะ class และสถานะ ซึ่งชนะชนิดของ control ถ้าเจาะจงเท่ากัน กฎที่อยู่ล่างกว่าชนะ เหมือนในเว็บ</p>
+<div class="note">ไม่มี <code>a b</code> หรือ <code>a &gt; b</code> (ตัวเลือกแบบซ้อนกัน) เพราะหน้าต่างของ Windows วาง control แบน ๆ ไม่ได้ซ้อนเป็นชั้นแบบหน้าเว็บ กฎแบบนั้นจะเดาผลยาก</div>
+
+<h2>สิ่งที่ตั้งได้</h2>
+<table>
+  <tr><th>property</th><th>ค่า</th></tr>
+  <tr><td><code>background</code> <code>color</code> <code>border-color</code></td><td>สี: <code>#rgb</code> <code>#rrggbb</code> <code>#rrggbbaa</code> <code>rgb(r, g, b)</code> ชื่อสีอย่าง <code>white</code> <code>black</code> <code>transparent</code> หรือ <code>var(--ชื่อ)</code></td></tr>
+  <tr><td><code>border-width</code> <code>border-radius</code></td><td>พิกเซลที่ขนาดจอ 100% เช่น <code>4</code> หรือ <code>4px</code></td></tr>
+  <tr><td><code>accent-color</code></td><td>สีเครื่องหมายถูก จุดของ radio และเส้นใต้แท็บที่เลือก</td></tr>
+  <tr><td><code>icon-color</code></td><td>สีไอคอนในแถบเครื่องมือ</td></tr>
+  <tr><td><code>font-size</code> <code>font-weight</code></td><td>ขนาดเป็น point เช่น <code>10pt</code> และความหนา <code>400</code> <code>600</code> <code>700</code> หรือ <code>bold</code></td></tr>
+</table>
+
+<h2>ตัวแปร: เปลี่ยนสีหลักทั้งโปรแกรมในบรรทัดเดียว</h2>
+<p>ตั้งค่าไว้ใน <code>:root</code> แล้วเรียกใช้ด้วย <code>var(--ชื่อ)</code> ธีมมาตรฐานใช้ <code>--accent</code> เป็นสีหลัก เปลี่ยนตัวเดียว ปุ่ม แท็บ และช่องที่ถูกเลือก เปลี่ยนตามหมด</p>
+<pre><code>:root { --accent: #2563eb; }   /* จากเขียวเป็นน้ำเงิน */</code></pre>
+
+<h2>แก้นิดเดียว ไม่ต้องคัดลอกทั้งไฟล์</h2>
+<p>ถ้าชอบธีมมาตรฐานอยู่แล้ว แค่อยากเปลี่ยนบางอย่าง เขียนไฟล์ของตัวเองสั้น ๆ แบบนี้ได้</p>
+<pre><code>@import "phai:light";          /* หรือ "phai:dark" ธีมมืด */
+
+:root  { --accent: #2563eb; }
+button { border-radius: 10px; }</code></pre>
+<p><code>@import "other.css";</code> ดึงไฟล์อื่นที่อยู่ข้างกันเข้ามาได้ด้วย</p>
+
+<h2>แก้ทีละตัวในหน้าต่าง Properties</h2>
+<p>ในหัวข้อ Appearance ของหน้าต่าง Properties มี Back colour, Fore colour, Border colour, Corner radius และ Font ตั้งให้ control ตัวเดียวได้ ค่าที่ตั้งตรงนี้ทับธีม เหมาะกับจุดพิเศษที่มีจุดเดียว ถ้าหลายตัวต้องหน้าตาเหมือนกัน ใส่ class ให้ทั้งหมด แล้วเขียนกฎใน CSS ทีเดียวดีกว่า</p>
+
+<h2>ถ้าเขียนผิด</h2>
+<p>ถ้า CSS มีจุดที่อ่านไม่ออก Phai Studio จะบอกว่าผิดบรรทัดไหน และหน้าต่างใช้ธีมเดิมไปก่อน ไม่ข้ามกฎที่ผิดไปเงียบ ๆ เพราะธีมที่ใช้ได้ครึ่งเดียว จะดูเหมือน control เสีย</p>
+
+<h2>ลองทำ</h2>
+<ol>
+  <li>ลากปุ่มลงฟอร์ม ในหน้าต่าง Properties พิมพ์ <code>danger</code> ในช่อง Class</li>
+  <li>เปิด <code>theme.css</code> แล้วเพิ่มกฎ <code>button.danger { background: #dc2626; color: white; }</code> บันทึกไฟล์</li>
+  <li>ดูปุ่มในตัวออกแบบเปลี่ยนเป็นสีแดง แล้วลองเพิ่ม <code>button.danger:hover</code> ให้สีเข้มขึ้นตอนเอาเมาส์ชี้</li>
+</ol>
+<div class="pager"><a href="studio.html">← ใช้งาน Phai Studio</a><a href="database.html">ทำงานกับฐานข้อมูล →</a></div>
+</main>
+</div>
+</body>
+</html>
