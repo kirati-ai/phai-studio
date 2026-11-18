@@ -18,6 +18,89 @@ pub fn phai_ui_path() -> PathBuf {
     here.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(here)
 }
 
+/// Where phai-data is on this machine, as [`phai_ui_path`] finds phai-ui: beside Phai Studio when
+/// installed, else the source it was built from.
+pub fn phai_data_path() -> PathBuf {
+    if let Some(installed) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("phai-data"))).filter(|d| d.join("Cargo.toml").is_file()) {
+        return installed;
+    }
+    let here = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("crates").join("phai-data");
+    here.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(here)
+}
+
+/// How a project names phai-data - the same way as phai-ui.
+pub fn phai_data_dependency() -> String {
+    let local = phai_data_path();
+    let repo = env!("CARGO_PKG_REPOSITORY");
+    if local.join("Cargo.toml").is_file() || repo.is_empty() {
+        format!("{{ path = {:?} }}", local.to_string_lossy().replace('\\', "/"))
+    } else {
+        format!("{{ git = {repo:?} }}")
+    }
+}
+
+/// A project's Cargo.toml with phai-data among its dependencies (unchanged when it is there).
+pub fn with_phai_data(cargo_toml: &str) -> String {
+    if cargo_toml.lines().any(|l| l.trim_start().starts_with("phai-data")) {
+        return cargo_toml.to_string();
+    }
+    let mut out = String::new();
+    let mut added = false;
+    for l in cargo_toml.lines() {
+        out.push_str(l);
+        out.push(char::from(10));
+        if !added && l.trim() == "[dependencies]" {
+            out.push_str(&format!("phai-data = {}", phai_data_dependency()));
+            out.push(char::from(10));
+            added = true;
+        }
+    }
+    if !added {
+        out.push_str(&format!("{}[dependencies]{}phai-data = {}{}", char::from(10), char::from(10), phai_data_dependency(), char::from(10)));
+    }
+    out
+}
+
+/// `src/data_sources.rs`: where the program's data is - the server of the tables its forms show,
+/// as WinForms keeps a connection string. The password is never written here: it comes from the
+/// PHAI_DB_PASSWORD environment variable, so the code can be shared and kept in Git.
+pub fn data_sources_rs(c: &phai_data::Connection) -> String {
+    let server = if c.kind == phai_data::Kind::Sqlite {
+        String::new()
+    } else {
+        format!(
+            "        port: {},\n        user: {:?}.into(),\n        // The password from the environment, never from the code.\n        password: std::env::var(\"PHAI_DB_PASSWORD\").unwrap_or_default(),\n        database: {:?}.into(),\n        ssl: {},\n        trust_cert: {},\n",
+            c.port, c.user, c.database, c.ssl, c.trust_cert
+        )
+    };
+    format!(
+        "//! Where this program's data is: the database server the forms' tables come from.\n//! Phai Studio wrote it when a table was first put on a form; it is yours to change.\n\n/// The connection every bound grid uses.\npub fn connection() -> phai_data::Connection {{\n    phai_data::Connection {{\n        kind: phai_data::Kind::{:?},\n        host: {:?}.into(),\n{server}        ..Default::default()\n    }}\n}}\n",
+        c.kind, c.host
+    )
+}
+
+/// The project's Thai table (`src/text.rs`) with these sentences added - the ones it does not
+/// have yet - so its test that every sentence has Thai still passes after Phai Studio adds
+/// words to a form. A sentence with no Thai yet is given its English, to change later.
+pub fn add_thai(src: &Path, pairs: &[(&str, &str)]) -> std::io::Result<()> {
+    let path = src.join("text.rs");
+    let Ok(text) = std::fs::read_to_string(&path) else { return Ok(()) };
+    let Some(start) = text.find("pub static THAI") else { return Ok(()) };
+    let Some(end) = text[start..].find("];").map(|i| start + i) else { return Ok(()) };
+    let mut add = String::new();
+    for (en, th) in pairs {
+        let key = format!("({en:?},");
+        if !text.contains(&key) && !add.contains(&key) {
+            add.push_str(&format!("    ({en:?}, {th:?}),"));
+            add.push(char::from(10));
+        }
+    }
+    if add.is_empty() {
+        return Ok(());
+    }
+    std::fs::write(&path, format!("{}{add}{}", &text[..end], &text[end..]))
+}
+
 /// A folder name as a Cargo package name: lowercase letters, digits, `-` and `_`.
 pub fn package_name(folder: &str) -> String {
     let mut s: String = folder.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();

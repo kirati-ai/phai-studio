@@ -268,6 +268,27 @@ pub struct Control {
     /// program never sees it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locked: Option<bool>,
+    /// A grid bound to a database table: its rows read when the window opens, written back by a
+    /// button with `bind_action` - as a WinForms DataGridView with its BindingSource.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bind: Option<Bind>,
+    /// A button that saves or reloads a bound grid: `"customers:save"`, `"customers:reload"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bind_action: Option<String>,
+}
+
+/// Which table a grid shows: its database (`main` for SQLite), the table, the columns in the
+/// grid's order, and the primary key that finds a row again to change or delete it. The server
+/// itself is the project's, in `src/data_sources.rs`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bind {
+    #[serde(default)]
+    pub database: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys: Vec<String>,
 }
 
 impl Control {
@@ -312,6 +333,8 @@ impl Control {
             max: None,
             value: None,
             locked: None,
+            bind: None,
+            bind_action: None,
             image: None,
             on_tick: None,
             cols: None,
@@ -558,6 +581,25 @@ impl FormFile {
             out.extend(wrong("cols", c.cols.is_none() || c.kind == Kind::Table));
             out.extend(wrong("columns", c.columns.is_empty() || matches!(c.kind, Kind::List | Kind::Grid)));
             out.extend(wrong("tabs", c.tabs.is_empty() || c.kind == Kind::Tabs));
+            out.extend(wrong("bind", c.bind.is_none() || c.kind == Kind::Grid));
+            out.extend(wrong("bind_action", c.bind_action.is_none() || c.kind == Kind::Button));
+            if let Some(b) = &c.bind {
+                if b.table.is_empty() || b.columns.is_empty() {
+                    out.push((format!("{}: bind needs a table and its columns", c.id), at.clone()));
+                }
+                if b.columns.len() != c.columns.len() {
+                    out.push((format!("{}: bind has {} columns, the grid {}", c.id, b.columns.len(), c.columns.len()), at.clone()));
+                }
+                if let Some(k) = b.keys.iter().find(|k| !b.columns.contains(k)) {
+                    out.push((format!("{}: the key {k} is not among the bound columns", c.id), at.clone()));
+                }
+            }
+            if let Some(a) = &c.bind_action {
+                let ok = a.split_once(':').is_some_and(|(g, what)| matches!(what, "save" | "reload") && self.control.iter().any(|x| x.id == g && x.bind.is_some()));
+                if !ok {
+                    out.push((format!("{}: bind_action {a:?} - a bound grid's id, then :save or :reload", c.id), at.clone()));
+                }
+            }
             out.extend(wrong("parts", c.parts.is_empty() || c.kind == Kind::Statusbar));
             out.extend(wrong("password", c.password.is_none() || c.kind == Kind::Edit));
             out.extend(wrong("checked", c.checked.is_none() || matches!(c.kind, Kind::Checkbox | Kind::Radio)));
@@ -709,7 +751,9 @@ impl FormFile {
                 }
             }
             c.items.iter().for_each(|s| add(s));
-            c.columns.iter().for_each(|(s, _)| add(s));
+            // A bound grid's headings that are its table's own column names are shown as they are,
+            // not translated; one renamed in the form is a sentence like any other.
+            c.columns.iter().enumerate().filter(|(i, (s, _))| c.bind.as_ref().is_none_or(|b| b.columns.get(*i) != Some(s))).for_each(|(_, (s, _))| add(s));
             c.tabs.iter().for_each(|s| add(s));
         }
         out

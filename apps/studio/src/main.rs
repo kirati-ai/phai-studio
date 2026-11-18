@@ -3383,6 +3383,31 @@ impl Studio {
         }
     }
 
+    /// Server Explorer's "Add to Form", as dragging a table from Data Sources in Visual Studio: a
+    /// grid bound to the table under what the form has, with Reload and Save buttons below it;
+    /// the project told where the data is (`src/data_sources.rs`, phai-data in Cargo.toml).
+    pub fn bind_table(&mut self, conn: &phai_data::Connection, database: &str, table: &str, cols: &[phai_data::Column]) {
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Open a form of the project first, so the table can go on it."), t("Add to Form"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        if cols.is_empty() {
+            return;
+        }
+        let (controls, need) = bound_controls(&self.doc.form, database, table, cols);
+        self.edit(|f| {
+            f.control.extend(controls);
+            if f.form.size[1] < need {
+                f.form.size[1] = need;
+            }
+        });
+        if let Err(e) = bind_project_files(&dir, conn) {
+            win::message(Some(self.hwnd), &e.to_string(), t("Add to Form"), wm::MB_ICONWARNING);
+        }
+        let keyless = cols.iter().all(|c| c.key != "PRI");
+        self.say_status(&if keyless { tf("{0} is on the form - it has no primary key, so rows can only be added", &[&table]) } else { tf("{0} is on the form: its rows load when the window opens, Save writes changes back", &[&table]) });
+    }
+
     fn theme_from_standard(&mut self) {
         let Some(path) = self.doc.path.clone() else {
             win::message(Some(self.hwnd), t("Save the form first, so its theme can sit beside it."), "Phai Studio", wm::MB_ICONINFORMATION);
@@ -7220,9 +7245,89 @@ fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
     std::fs::write(&path, f.to_toml())?;
     std::fs::write(src.join(format!("{file}_ui.rs")), codegen::generate(&f, &opts))?;
     std::fs::write(src.join(format!("{file}.rs")), codegen::user_stub(&f))?;
+    project::add_thai(&src, &[(name, &format!("ฟอร์ม {name}"))])?;
     let main_rs = src.join("main.rs");
     let declared = std::fs::read_to_string(&main_rs).map(|text| declare_form(&text, name)).and_then(|text| std::fs::write(&main_rs, text)).is_ok();
     Ok((path, declared))
+}
+
+/// A table's controls for a form: a grid bound to it under what the form has (anchored to grow
+/// with the window), Reload and Save below it at the right. And how tall the form must be.
+fn bound_controls(form: &FormFile, database: &str, table: &str, cols: &[phai_data::Column]) -> (Vec<phai_form::Control>, i32) {
+    let taken: Vec<String> = form.control.iter().map(|c| c.id.clone()).collect();
+    let free = |base: String| -> String {
+        let mut id = base.clone();
+        let mut n = 2;
+        while taken.contains(&id) {
+            id = format!("{base}{n}");
+            n += 1;
+        }
+        id
+    };
+    let grid_id = free(bound_id(table));
+    let reload_id = free(format!("{grid_id}_reload"));
+    let save_id = free(format!("{grid_id}_save"));
+    let fw = form.form.size[0];
+    let top = form.control.iter().filter(|c| c.dock.is_none() && !c.kind.is_component()).filter_map(|c| c.bounds).map(|[_, y, _, h]| y + h).max().map_or(11, |b| b + 8);
+    let width = (fw - 22).max(200);
+    let mut grid = phai_form::Control::new(Kind::Grid, &grid_id, [11, top, width, 200]);
+    grid.columns = cols.iter().map(|c| (c.name.clone(), 120)).collect();
+    grid.anchor = Some("all".into());
+    grid.bind = Some(phai_form::Bind {
+        database: database.to_string(),
+        table: table.to_string(),
+        columns: cols.iter().map(|c| c.name.clone()).collect(),
+        keys: cols.iter().filter(|c| c.key == "PRI").map(|c| c.name.clone()).collect(),
+    });
+    let mut reload = phai_form::Control::new(Kind::Button, &reload_id, [11 + width - 162, top + 208, 75, 23]);
+    reload.text = Some("Reload".into());
+    reload.anchor = Some("right bottom".into());
+    reload.bind_action = Some(format!("{grid_id}:reload"));
+    let mut save = phai_form::Control::new(Kind::Button, &save_id, [11 + width - 75, top + 208, 75, 23]);
+    save.text = Some("Save".into());
+    save.class = Some("primary".into());
+    save.anchor = Some("right bottom".into());
+    save.bind_action = Some(format!("{grid_id}:save"));
+    (vec![grid, reload, save], top + 208 + 23 + 11)
+}
+
+/// The project made ready for a bound table: `src/data_sources.rs` saying where the data is
+/// (written once), `mod data_sources;` in main.rs, phai-data in Cargo.toml, and Thai for the
+/// buttons' words so the project's test of its Thai table still passes.
+fn bind_project_files(dir: &Path, conn: &phai_data::Connection) -> std::io::Result<()> {
+    let src = dir.join("src");
+    let sources = src.join("data_sources.rs");
+    if !sources.exists() {
+        std::fs::write(&sources, project::data_sources_rs(conn))?;
+    }
+    let main_rs = src.join("main.rs");
+    if let Ok(text) = std::fs::read_to_string(&main_rs) {
+        if !text.lines().any(|l| l.trim() == "mod data_sources;") {
+            let lines: Vec<&str> = text.lines().collect();
+            let at = lines.iter().rposition(|l| l.trim_start().starts_with("mod ") && l.trim_end().ends_with(';')).map_or(0, |i| i + 1);
+            let mut out: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
+            out.insert(at, "mod data_sources;".into());
+            std::fs::write(&main_rs, out.join("\n") + "\n")?;
+        }
+    }
+    let cargo_toml = dir.join("Cargo.toml");
+    if let Ok(text) = std::fs::read_to_string(&cargo_toml) {
+        let with = project::with_phai_data(&text);
+        if with != text {
+            std::fs::write(&cargo_toml, with)?;
+        }
+    }
+    project::add_thai(&src, &[("Reload", "โหลดใหม่"), ("Save", "บันทึก")])
+}
+
+/// A table's name as a control's id: `Order Items` is `order_items`.
+fn bound_id(table: &str) -> String {
+    let mut id: String = table.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
+    id = id.trim_matches('_').to_string();
+    if id.is_empty() || id.starts_with(|c: char| c.is_ascii_digit()) || ["type", "match", "fn", "struct", "use", "mod", "ref", "loop", "move", "self", "impl", "let"].contains(&id.as_str()) {
+        id.insert_str(0, "t_");
+    }
+    id
 }
 
 /// What a person typed as a form's name, as a Rust type name: letters and digits only, the first
@@ -7344,9 +7449,55 @@ fn main()"), "{out}");
         let target = std::env::temp_dir().join("phai-addform-target");
         let out = std::process::Command::new(crate::cargo::find_cargo().unwrap()).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let tests = std::process::Command::new(crate::cargo::find_cargo().unwrap()).args(["test", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(tests.status.success(), "the project's own tests: {}{}", String::from_utf8_lossy(&tests.stdout), String::from_utf8_lossy(&tests.stderr));
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-addform.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
         assert_eq!(code, Some(42), "the program ended when its second window closed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A real project with a SQLite table on its form: built, its Thai test passing, and run -
+    /// the grid filled when the window opens, a cell changed and saved, the file holding it.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn a_table_on_a_form_loads_and_saves() {
+        let dir = std::env::temp_dir().join(format!("phai-bind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let db = dir.join("shop.db");
+        let conn = phai_data::Connection { kind: phai_data::Kind::Sqlite, host: db.to_string_lossy().to_string(), ..Default::default() };
+        conn.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT); INSERT INTO customers (name, phone) VALUES ('Somchai', '081-234-5678'), ('Monrak Net', '02-111-2222');").unwrap();
+        let cols = conn.columns("main", "customers").unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let (controls, need) = bound_controls(&f, "main", "customers", &cols);
+        f.control.extend(controls);
+        f.form.size[1] = f.form.size[1].max(need);
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        bind_project_files(&dir, &conn).unwrap();
+        // The program: when its window opens, the grid must hold both rows; one cell changed and
+        // saved must be in the file, and the grid read again.
+        let user = dir.join("src").join("main_window.rs");
+        let text = std::fs::read_to_string(&user).unwrap().replacen(
+            "impl MainWindowEvents for MainWindow {",
+            "impl MainWindowEvents for MainWindow {\n    fn loaded(&mut self, ui: &MainWindowUi) {\n        let rows = phai_ui::grid::grid_rows(ui.customers);\n        if rows.len() != 2 || rows[1][1] != \"Monrak Net\" { std::process::exit(3) }\n        phai_ui::grid::set_cell(ui.customers, 0, 1, \"สมชาย ใจดี\");\n        let n = ui.save_customers().unwrap_or(99);\n        let now = crate::data_sources::connection().query(None, \"SELECT name FROM customers WHERE id = 1\").unwrap();\n        let again = phai_ui::grid::grid_rows(ui.customers);\n        std::process::exit(if n == 1 && now.rows[0][0] == \"สมชาย ใจดี\" && again[0][1] == \"สมชาย ใจดี\" { 42 } else { 4 });\n    }\n",
+            1,
+        );
+        std::fs::write(&user, text).unwrap();
+        let target = std::env::temp_dir().join("phai-bind-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let run = |args: &[&str]| std::process::Command::new(&cargo).args(args).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        let out = run(&["build", "--quiet"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stderr).matches("warning").count(), 0, "{}", String::from_utf8_lossy(&out.stderr));
+        let out = run(&["test", "--quiet"]);
+        assert!(out.status.success(), "the project's own tests: {}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-bind.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
+        assert_eq!(code, Some(42), "3: the grid was not filled, 4: the change was not saved");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

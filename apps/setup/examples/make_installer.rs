@@ -50,13 +50,16 @@ fn main() {
         .unwrap_or_else(|| "0.1.0".into());
     let stub = read(release.join("phai-setup.exe"));
     let mut files = vec![("phai-studio.exe".to_string(), read(release.join("phai-studio.exe"))), ("phai-setup.exe".to_string(), stub.clone())];
-    // phai-ui's source under phai-ui/, its Cargo.toml standing alone.
-    let ui = root.join("crates").join("phai-ui");
-    let mut ui_files = Vec::new();
-    files_under(&ui, &ui, &mut ui_files);
-    for (rel, data) in ui_files {
-        let data = if rel == "Cargo.toml" { standalone(&String::from_utf8_lossy(&data), &version).into_bytes() } else { data };
-        files.push((format!("phai-ui/{rel}"), data));
+    // phai-ui's source under phai-ui/, and phai-data's (a form bound to a database table) under
+    // phai-data/, each Cargo.toml standing alone.
+    for lib in ["phai-ui", "phai-data"] {
+        let dir = root.join("crates").join(lib);
+        let mut lib_files = Vec::new();
+        files_under(&dir, &dir, &mut lib_files);
+        for (rel, data) in lib_files {
+            let data = if rel == "Cargo.toml" { standalone(&String::from_utf8_lossy(&data), &version).into_bytes() } else { data };
+            files.push((format!("{lib}/{rel}"), data));
+        }
     }
     let _ = std::fs::read(root.join("LICENSE")).map(|l| files.push(("LICENSE.txt".into(), l)));
     // The Thai guide, opened by Help > Phai Studio Guide (F1) from help\ beside the program.
