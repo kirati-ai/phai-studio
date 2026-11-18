@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1. เริ่มต้นกับ Rust - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html" class="here">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>1. เริ่มต้นกับ Rust</h1>
+<p class="lead">Rust คืออะไร ทำไมถึงน่าเรียน และโปรแกรมแรกของคุณ</p>
+
+<h2>Rust คืออะไร</h2>
+<p>Rust เป็นภาษาโปรแกรมที่ได้โปรแกรมเร็วเท่า C และ C++ แต่ปลอดภัยกว่ามาก คอมไพเลอร์ของ Rust ตรวจโค้ดอย่างละเอียดก่อนจะยอมสร้างโปรแกรมให้ จึงจับบั๊กประเภทที่ภาษาอื่นปล่อยหลุดไปถึงผู้ใช้ได้ตั้งแต่ตอนเขียน เช่น ใช้หน่วยความจำที่คืนไปแล้ว ลืมจัดการกรณีที่ไม่มีค่า หรือสองเธรดแก้ข้อมูลเดียวกันพร้อมกัน</p>
+<p>Rust ใช้สร้างได้ทั้งโปรแกรมบน Windows, เว็บเซิร์ฟเวอร์, เครื่องมือบรรทัดคำสั่ง, เกม ไปจนถึงระบบปฏิบัติการ</p>
+
+<h2>ภาษาคอมไพล์ หมายความว่าอะไร</h2>
+<p>โค้ด Rust ที่คุณเขียน (ไฟล์ <code>.rs</code>) คอมพิวเตอร์ยังรันไม่ได้ทันที ต้องผ่าน<b>คอมไพเลอร์</b> (<code>rustc</code>) ก่อน มันจะแปลงโค้ดเป็นไฟล์ <code>.exe</code> ที่รันได้เลย ขั้นตอนนี้เรียกว่า <b>build</b> ถ้าโค้ดผิด คอมไพเลอร์จะไม่ยอมสร้าง <code>.exe</code> และบอกว่าผิดตรงไหน</p>
+
+<h2>Cargo: ผู้ช่วยจัดการโปรเจกต์</h2>
+<p>ใน Rust แทบไม่มีใครเรียก <code>rustc</code> เอง เราใช้ <b>Cargo</b> ซึ่งมากับ Rust อยู่แล้ว Cargo ทำหน้าที่สร้างโปรเจกต์ build รันเทสต์ และดาวน์โหลดไลบรารี (ใน Rust เรียกไลบรารีว่า <b>crate</b>) จาก <a href="https://crates.io">crates.io</a></p>
+<table>
+  <tr><th>คำสั่ง</th><th>ทำอะไร</th><th>ใน Phai Studio</th></tr>
+  <tr><td><code>cargo new ชื่อ</code></td><td>สร้างโปรเจกต์ใหม่</td><td>File &gt; New project</td></tr>
+  <tr><td><code>cargo build</code></td><td>build</td><td><kbd>Ctrl+B</kbd></td></tr>
+  <tr><td><code>cargo run</code></td><td>build แล้วรัน</td><td><kbd>Ctrl+F5</kbd></td></tr>
+  <tr><td><code>cargo test</code></td><td>รันเทสต์</td><td><kbd>Ctrl+R, T</kbd></td></tr>
+  <tr><td><code>cargo add ชื่อ</code></td><td>เพิ่ม crate</td><td>Project &gt; Manage Crates</td></tr>
+</table>
+
+<h2>โครงสร้างโปรเจกต์</h2>
+<pre><code>hello/
+├── Cargo.toml      ← ชื่อโปรเจกต์ เวอร์ชัน และ crate ที่ใช้
+└── src/
+    └── main.rs     ← โปรแกรมเริ่มทำงานที่นี่</code></pre>
+
+<h2>โปรแกรมแรก</h2>
+<pre><code>fn main() {
+    println!("สวัสดี Rust!");
+}</code></pre>
+<ul>
+  <li><code>fn</code> คือการประกาศฟังก์ชัน <code>main</code> เป็นฟังก์ชันพิเศษ โปรแกรมเริ่มที่นี่เสมอ</li>
+  <li><code>{ }</code> ครอบสิ่งที่อยู่ในฟังก์ชัน</li>
+  <li><code>println!</code> พิมพ์ข้อความแล้วขึ้นบรรทัดใหม่ เครื่องหมาย <code>!</code> บอกว่ามันเป็น <b>macro</b> (ตอนนี้คิดว่าเป็นฟังก์ชันชนิดพิเศษไปก่อน)</li>
+  <li>ทุกคำสั่งจบด้วย <code>;</code></li>
+</ul>
+
+<h3>ใส่ค่าลงในข้อความ</h3>
+<pre><code>fn main() {
+    let name = "ไผ่";
+    let age = 7;
+    println!("ชื่อ {name} อายุ {age} ปี");
+    println!("ปีหน้าอายุ {} ปี", age + 1);
+}</code></pre>
+<p>เขียนชื่อตัวแปรใน <code>{ }</code> ได้เลย หรือใช้ <code>{}</code> เปล่า ๆ แล้วใส่ค่าตามหลัง</p>
+
+<h3>Comment</h3>
+<pre><code>// บรรทัดนี้คอมไพเลอร์ไม่อ่าน ใช้อธิบายโค้ด
+/* หรือแบบ
+   หลายบรรทัด */
+/// comment สามขีด ใช้อธิบายฟังก์ชันที่อยู่ข้างล่าง แสดงตอนเอาเมาส์ชี้</code></pre>
+
+<div class="try">สร้างโปรเจกต์ใหม่แบบ console ใน Phai Studio หรือ <code>cargo new hello</code> แก้ <code>main.rs</code> ให้พิมพ์ชื่อของคุณสามบรรทัด กด <kbd>Ctrl+F5</kbd> แล้วลองลบ <code>;</code> ออกหนึ่งตัวเพื่อดูว่าคอมไพเลอร์บอกอะไร</div>
+<div class="pager"><a href="studio.html">← ใช้งาน Phai Studio</a><a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน →</a></div>
+</main>
+</div>
+</body>
+</html>

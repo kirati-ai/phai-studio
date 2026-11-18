@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html" class="here">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</h1>
+<p class="lead">พื้นฐานที่ทุกโปรแกรมต้องใช้</p>
+
+<h2>ตัวแปรด้วย let</h2>
+<pre><code>let price = 120;
+println!("{price}");</code></pre>
+<p>ใน Rust ตัวแปร<b>แก้ไม่ได้</b>โดยค่าเริ่มต้น ถ้าต้องการแก้ ต้องบอกด้วย <code>mut</code> (มาจาก mutable)</p>
+<pre><code>let mut count = 0;
+count = count + 1;   // ได้ เพราะมี mut
+count += 1;          // แบบย่อ
+
+let total = 10;
+total = 20;          // error: cannot assign twice to immutable variable</code></pre>
+<div class="note">ทำไมต้องแก้ไม่ได้? เพราะส่วนใหญ่ค่าไม่ได้เปลี่ยน การบังคับให้เขียน <code>mut</code> ทำให้คนอ่านโค้ดรู้ทันทีว่าตัวแปรไหนจะเปลี่ยนค่า และคอมไพเลอร์ช่วยจับได้ถ้าเผลอแก้</div>
+
+<h3>Shadowing: ประกาศชื่อเดิมซ้ำ</h3>
+<pre><code>let input = "42";
+let input: i32 = input.parse().unwrap();  // ชื่อเดิม แต่เป็นตัวแปรใหม่ ชนิดใหม่
+println!("{}", input + 1);  // 43</code></pre>
+
+<h2>ชนิดข้อมูลพื้นฐาน</h2>
+<table>
+  <tr><th>ชนิด</th><th>เก็บอะไร</th><th>ตัวอย่าง</th></tr>
+  <tr><td><code>i32</code></td><td>จำนวนเต็ม (บวกหรือลบ) ใช้บ่อยที่สุด</td><td><code>-5</code>, <code>2024</code></td></tr>
+  <tr><td><code>i64</code>, <code>u8</code>, <code>u32</code>, <code>u64</code></td><td>จำนวนเต็มขนาดอื่น <code>u</code> = ไม่ติดลบ</td><td><code>255u8</code></td></tr>
+  <tr><td><code>usize</code></td><td>จำนวนเต็มที่ใช้นับตำแหน่งและขนาด</td><td><code>list.len()</code></td></tr>
+  <tr><td><code>f64</code></td><td>ทศนิยม</td><td><code>3.14</code></td></tr>
+  <tr><td><code>bool</code></td><td>จริง/เท็จ</td><td><code>true</code>, <code>false</code></td></tr>
+  <tr><td><code>char</code></td><td>ตัวอักษรหนึ่งตัว (ใส่ <code>' '</code>)</td><td><code>'ก'</code>, <code>'A'</code></td></tr>
+  <tr><td><code>&amp;str</code></td><td>ข้อความที่อ่านอย่างเดียว (ใส่ <code>" "</code>)</td><td><code>"สวัสดี"</code></td></tr>
+  <tr><td><code>String</code></td><td>ข้อความที่แก้ไขและเพิ่มได้</td><td><code>String::from("ไผ่")</code></td></tr>
+</table>
+<p>ส่วนใหญ่ไม่ต้องบอกชนิด Rust เดาให้จากค่า แต่จะบอกเองก็ได้ด้วย <code>:</code></p>
+<pre><code>let a = 5;          // Rust รู้ว่าเป็น i32
+let b: f64 = 5.0;   // บอกเอง
+let c = 10 / 3;     // 3  (จำนวนเต็มหารกันได้จำนวนเต็ม)
+let d = 10.0 / 3.0; // 3.3333333333333335</code></pre>
+<div class="warn">Rust ไม่แปลงชนิดให้อัตโนมัติ <code>5 + 2.0</code> คือ error ต้องแปลงเองด้วย <code>as</code> เช่น <code>5 as f64 + 2.0</code></div>
+
+<h3>Tuple และ array</h3>
+<pre><code>let point = (10, 20);            // tuple: หลายค่า ต่างชนิดกันได้
+println!("x = {}", point.0);
+
+let days = ["จ", "อ", "พ"];        // array: ชนิดเดียวกัน จำนวนคงที่
+println!("{}", days[0]);          // "จ"
+println!("มี {} วัน", days.len());</code></pre>
+
+<h2>ฟังก์ชัน</h2>
+<pre><code>fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn greet(name: &amp;str) {
+    println!("สวัสดี {name}");
+}
+
+fn main() {
+    let sum = add(3, 4);
+    greet("ไผ่");
+    println!("{sum}");
+}</code></pre>
+<ul>
+  <li>พารามิเตอร์ต้องบอกชนิดเสมอ</li>
+  <li><code>-&gt; i32</code> บอกชนิดของค่าที่คืน ถ้าไม่คืนอะไรก็ไม่ต้องเขียน</li>
+  <li><b>บรรทัดสุดท้ายที่ไม่มี <code>;</code> คือค่าที่คืน</b> (เขียน <code>return a + b;</code> ก็ได้ แต่คนเขียน Rust นิยมแบบไม่มี <code>;</code>)</li>
+</ul>
+<div class="warn">เผลอใส่ <code>;</code> หลัง <code>a + b</code> จะได้ error "mismatched types" เพราะบรรทัดนั้นกลายเป็นคำสั่ง ไม่คืนค่าแล้ว</div>
+
+<h3>Block ก็มีค่า</h3>
+<pre><code>let grade = {
+    let score = 75;
+    if score &gt;= 50 { "ผ่าน" } else { "ไม่ผ่าน" }
+};</code></pre>
+
+<div class="try">เขียนฟังก์ชัน <code>fn area(width: f64, height: f64) -&gt; f64</code> คืนพื้นที่สี่เหลี่ยม แล้วพิมพ์พื้นที่ของห้องขนาด 3.5 × 4 เมตร จากนั้นเขียน <code>fn celsius_to_f(c: f64) -&gt; f64</code> (สูตร c × 9 / 5 + 32)</div>
+<div class="pager"><a href="rust-01.html">← 1. เริ่มต้นกับ Rust</a><a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ →</a></div>
+</main>
+</div>
+</body>
+</html>

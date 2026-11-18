@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4. Ownership และการยืม - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html" class="here">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>4. Ownership และการยืม</h1>
+<p class="lead">เรื่องที่ทำให้ Rust ต่างจากทุกภาษา อ่านช้า ๆ ไม่ต้องรีบ</p>
+
+<h2>ปัญหาที่ Rust แก้</h2>
+<p>ทุกโปรแกรมต้องขอหน่วยความจำมาใช้ และต้องคืนเมื่อใช้เสร็จ ภาษาอย่าง C ให้โปรแกรมเมอร์คืนเอง ลืมคืนก็เปลือง คืนซ้ำหรือใช้หลังคืนก็พัง ภาษาอย่าง C# หรือ Java มีตัวเก็บขยะ (garbage collector) คอยตามเก็บ แต่ต้องแลกด้วยความเร็วและการหยุดชะงักเป็นระยะ</p>
+<p>Rust ใช้วิธีที่สาม: <b>กฎความเป็นเจ้าของ</b> ที่คอมไพเลอร์ตรวจตอน build จึงคืนหน่วยความจำได้ถูกจังหวะเสมอ โดยไม่ต้องมีตัวเก็บขยะ</p>
+
+<h2>กฎสามข้อ</h2>
+<ol>
+  <li>ค่าแต่ละค่ามี<b>เจ้าของ</b>หนึ่งคน (คือตัวแปร)</li>
+  <li>ในเวลาหนึ่งมีเจ้าของได้<b>คนเดียว</b></li>
+  <li>เมื่อเจ้าของหมดอายุ (ออกจาก <code>{ }</code> ที่มันอยู่) ค่านั้นถูกคืนทันที</li>
+</ol>
+
+<h2>การย้าย (move)</h2>
+<p>นึกถึงหนังสือหนึ่งเล่ม ถ้าผมให้หนังสือคุณ หนังสือก็เป็นของคุณ ผมไม่มีแล้ว</p>
+<pre><code>let a = String::from("หนังสือ");
+let b = a;              // ย้ายความเป็นเจ้าของจาก a ไป b
+println!("{b}");        // ได้
+println!("{a}");        // error: borrow of moved value: `a`</code></pre>
+<p>ส่งให้ฟังก์ชันก็คือการย้ายเหมือนกัน:</p>
+<pre><code>fn read(book: String) {
+    println!("อ่าน {book}");
+}   // book หมดอายุตรงนี้ หนังสือถูกคืน
+
+fn main() {
+    let mine = String::from("นิยาย");
+    read(mine);
+    // println!("{mine}");  // error: mine ถูกย้ายไปแล้ว
+}</code></pre>
+<div class="note">ชนิดเล็ก ๆ อย่าง <code>i32</code>, <code>f64</code>, <code>bool</code>, <code>char</code> ไม่ถูกย้าย แต่ถูก<b>คัดลอก</b> เพราะคัดลอกถูกมาก <code>let b = a;</code> แล้วใช้ <code>a</code> ต่อได้ตามปกติ</div>
+
+<h2>การยืม (borrow) ด้วย &amp;</h2>
+<p>ส่วนใหญ่เราไม่ได้อยากยกหนังสือให้ใคร แค่<b>ให้ยืมอ่าน</b> แล้วเขาก็คืน ใน Rust เขียนด้วย <code>&amp;</code></p>
+<pre><code>fn read(book: &amp;String) {      // ยืม ไม่ได้เอาไป
+    println!("อ่าน {book}");
+}
+
+fn main() {
+    let mine = String::from("นิยาย");
+    read(&amp;mine);                // ให้ยืม
+    read(&amp;mine);                // ให้ยืมอีกก็ได้
+    println!("ยังเป็นของฉัน: {mine}");
+}</code></pre>
+
+<h3>ยืมไปแก้ด้วย &amp;mut</h3>
+<pre><code>fn add_note(book: &amp;mut String) {
+    book.push_str(" (มีโน้ต)");
+}
+
+fn main() {
+    let mut mine = String::from("สมุด");
+    add_note(&amp;mut mine);
+    println!("{mine}");   // สมุด (มีโน้ต)
+}</code></pre>
+
+<h2>กฎของการยืม</h2>
+<p>ในช่วงเวลาหนึ่ง เลือกได้อย่างเดียว:</p>
+<ul>
+  <li>ยืมอ่าน (<code>&amp;</code>) กี่คนก็ได้ <b>หรือ</b></li>
+  <li>ยืมแก้ (<code>&amp;mut</code>) ได้คนเดียว และระหว่างนั้นห้ามคนอื่นยืมเลย</li>
+</ul>
+<p>เหมือนเอกสารบนโต๊ะ หลายคนอ่านพร้อมกันได้ แต่ถ้ามีคนกำลังแก้ คนอื่นต้องรอ ไม่อย่างนั้นจะมีคนอ่านเจอข้อความที่แก้ไปครึ่งเดียว กฎนี้แหละที่ทำให้ Rust ป้องกันบั๊กประเภท "ข้อมูลเปลี่ยนใต้มือ" ได้ตั้งแต่ตอนคอมไพล์</p>
+<pre><code>let mut list = vec![1, 2, 3];
+let first = &amp;list[0];   // ยืมอ่าน
+list.push(4);           // error: ยืมแก้ ขณะที่ first ยังยืมอ่านอยู่
+println!("{first}");</code></pre>
+<p>ทำไมถึงห้าม? เพราะ <code>push</code> อาจทำให้รายการย้ายไปอยู่ที่ใหม่ในหน่วยความจำ แล้ว <code>first</code> จะชี้ไปที่ที่ว่างเปล่า ภาษาอื่นปล่อยให้พังตอนรัน Rust ไม่ยอมให้ build</p>
+
+<h2>เมื่อติดเรื่อง ownership ทำอย่างไร</h2>
+<ul>
+  <li>ฟังก์ชันแค่อ่านค่า: รับเป็น <code>&amp;</code> (สำหรับข้อความ ใช้ <code>&amp;str</code> ดีกว่า <code>&amp;String</code>)</li>
+  <li>ฟังก์ชันต้องแก้ค่า: รับเป็น <code>&amp;mut</code></li>
+  <li>อยากได้สำเนาแยกจริง ๆ: <code>.clone()</code> (ใช้ได้ ไม่ผิด แค่เปลืองกว่านิดหน่อย มือใหม่ใช้ไปก่อนได้)</li>
+  <li>อ่านข้อความ error ให้จบ คอมไพเลอร์มักบอกวิธีแก้ไว้ท้ายข้อความ ดู<a href="rust-10.html">บทที่ 10</a></li>
+</ul>
+
+<div class="try">
+<ol>
+<li>เขียน <code>fn shout(text: &amp;str) -&gt; String</code> คืนข้อความเป็นตัวพิมพ์ใหญ่ (<code>text.to_uppercase()</code>) เรียกสองครั้งด้วยตัวแปรเดิม</li>
+<li>เขียน <code>fn double_all(numbers: &amp;mut Vec&lt;i32&gt;)</code> ที่คูณทุกตัวด้วย 2 (ใช้ <code>for n in numbers.iter_mut() { *n *= 2; }</code>)</li>
+<li>ลองเขียนโค้ดที่ผิดกฎในหน้านี้ แล้วอ่าน error ที่ได้</li>
+</ol>
+</div>
+<div class="pager"><a href="rust-03.html">← 3. เงื่อนไขและการวนซ้ำ</a><a href="rust-05.html">5. struct, enum และ match →</a></div>
+</main>
+</div>
+</body>
+</html>

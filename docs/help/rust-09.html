@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9. โมดูล crate และเทสต์ - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html" class="here">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>9. โมดูล crate และเทสต์</h1>
+<p class="lead">จัดโค้ดให้เป็นระเบียบ ใช้ไลบรารีของคนอื่น และพิสูจน์ว่าโค้ดถูก</p>
+
+<h2>แยกโค้ดเป็นหลายไฟล์ด้วย mod</h2>
+<pre><code>src/
+├── main.rs
+├── shop.rs        ← โมดูล shop
+└── report.rs      ← โมดูล report</code></pre>
+<pre><code>// main.rs
+mod shop;           // บอกว่ามีไฟล์ shop.rs
+mod report;
+
+use shop::Product;  // ดึงชื่อมาใช้สั้น ๆ
+
+fn main() {
+    let p = Product::new("กาแฟ", 45.0);
+    report::print(&amp;p);
+}</code></pre>
+<pre><code>// shop.rs
+pub struct Product {       // pub = ไฟล์อื่นมองเห็น
+    pub name: String,
+    pub price: f64,
+}
+
+impl Product {
+    pub fn new(name: &amp;str, price: f64) -&gt; Product {
+        Product { name: name.into(), price }
+    }
+}</code></pre>
+<pre><code>// report.rs
+use crate::shop::Product;  // crate:: = เริ่มจากรากของโปรเจกต์
+
+pub fn print(p: &amp;Product) {
+    println!("{} ราคา {}", p.name, p.price);
+}</code></pre>
+<p>ทุกอย่างเป็น <b>ส่วนตัว</b>โดยค่าเริ่มต้น ต้องใส่ <code>pub</code> ถึงจะใช้จากไฟล์อื่นได้</p>
+
+<h2>ใช้ crate จาก crates.io</h2>
+<p>ใน Phai Studio เปิด <b>Project &gt; Manage Crates</b> ค้นหา แล้วกด Add (เท่ากับ <code>cargo add ชื่อ</code>) Cargo จะเพิ่มบรรทัดใน <code>Cargo.toml</code>:</p>
+<pre><code>[dependencies]
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }</code></pre>
+<pre><code>use rand::Rng;
+
+fn main() {
+    let n = rand::thread_rng().gen_range(1..=6);
+    println!("ทอยได้ {n}");
+}</code></pre>
+<div class="note">ก่อนใช้ crate ไหน ดูที่ crates.io ว่ามีคนดาวน์โหลดเยอะไหม อัปเดตล่าสุดเมื่อไร และอ่านตัวอย่างในหน้าเอกสาร (docs.rs)</div>
+
+<h2>เขียนเทสต์</h2>
+<p>เทสต์คือโค้ดที่ตรวจว่าโค้ดของเราทำงานถูก เขียนไว้ในไฟล์เดียวกันได้เลย:</p>
+<pre><code>pub fn vat(price: f64) -&gt; f64 {
+    price * 0.07
+}
+
+pub fn grade(score: u32) -&gt; char {
+    match score {
+        80..=100 =&gt; 'A',
+        70..=79 =&gt; 'B',
+        60..=69 =&gt; 'C',
+        50..=59 =&gt; 'D',
+        _ =&gt; 'F',
+    }
+}
+
+#[cfg(test)]            // คอมไพล์เฉพาะตอนรันเทสต์
+mod tests {
+    use super::*;       // ใช้ทุกอย่างจากไฟล์ข้างบน
+
+    #[test]
+    fn vat_is_seven_percent() {
+        assert_eq!(vat(100.0), 7.0);
+    }
+
+    #[test]
+    fn grades_follow_the_ranges() {
+        assert_eq!(grade(85), 'A');
+        assert_eq!(grade(50), 'D');
+        assert_eq!(grade(10), 'F');
+    }
+
+    #[test]
+    #[should_panic]
+    fn reading_past_the_end_panics() {
+        let v: Vec&lt;i32&gt; = vec![];
+        let _ = v[0];
+    }
+}</code></pre>
+<table>
+  <tr><th>macro</th><th>ตรวจอะไร</th></tr>
+  <tr><td><code>assert!(x)</code></td><td><code>x</code> เป็นจริง</td></tr>
+  <tr><td><code>assert_eq!(a, b)</code></td><td><code>a == b</code> ถ้าไม่เท่าจะแสดงทั้งสองค่า</td></tr>
+  <tr><td><code>assert_ne!(a, b)</code></td><td><code>a != b</code></td></tr>
+</table>
+<p>ใน Phai Studio กด <kbd>Ctrl+R, T</kbd> ผลแต่ละเทสต์ขึ้นในแท็บ Tests ดับเบิลคลิกเทสต์ที่ไม่ผ่านเพื่อไปที่โค้ด และใช้ <b>Test &gt; Analyze Code Coverage</b> ดูว่าบรรทัดไหนยังไม่มีเทสต์ไปถึง (แถบแดงที่ขอบซ้าย)</p>
+
+<div class="try">เพิ่มเทสต์ให้ฟังก์ชันที่คุณเขียนในบทก่อน ๆ อย่างน้อยฟังก์ชันละ 2 เทสต์ ลองทำให้เทสต์หนึ่งไม่ผ่านโดยตั้งใจ แล้วดูว่า Phai Studio แสดงผลอย่างไร</div>
+<div class="pager"><a href="rust-08.html">← 8. trait และ generic</a><a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์ →</a></div>
+</main>
+</div>
+</body>
+</html>
