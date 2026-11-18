@@ -66,7 +66,7 @@ pub type Files = Vec<(String, Vec<u8>)>;
 
 /// The setup program `stub` with `files` (path, bytes) packed onto it.
 pub fn pack(stub: &[u8], manifest: &Manifest, files: &[(String, Vec<u8>)]) -> Vec<u8> {
-    let stub = strip(stub);
+    let stub = unsigned(strip(stub));
     let mut m = manifest.clone();
     // No files: the manifest as it is - an uninstaller, which only needs to know what to take away.
     if !files.is_empty() {
@@ -98,19 +98,64 @@ pub fn strip(exe: &[u8]) -> &[u8] {
     }
 }
 
-fn offset_of(exe: &[u8]) -> Option<usize> {
+/// A signed program's certificate table: where it starts (at the end of the file), and where the
+/// PE header records it.
+fn certificate_table(exe: &[u8]) -> Option<(usize, usize)> {
+    let word = |at: usize| exe.get(at..at + 4).and_then(|b| b.try_into().ok()).map(u32::from_le_bytes);
+    let pe = word(0x3c)? as usize;
+    if exe.get(pe..pe + 4)? != b"PE\0\0" {
+        return None;
+    }
+    let optional = pe + 24;
+    let magic = u16::from_le_bytes(exe.get(optional..optional + 2)?.try_into().ok()?);
+    // The data directories, PE32+ or PE32; the fifth (index 4) is the certificate table.
+    let security = optional + if magic == 0x20b { 112 } else { 96 } + 4 * 8;
+    let (at, size) = (word(security)? as usize, word(security + 4)? as usize);
+    (at > 0 && size > 0 && at + size == exe.len()).then_some((at, security))
+}
+
+/// A program with its signature taken off, to have more packed on: what follows a signature
+/// would leave it broken, and the setup made from it is signed whole afterwards.
+fn unsigned(exe: &[u8]) -> Vec<u8> {
+    match certificate_table(exe) {
+        Some((at, security)) => {
+            let mut out = exe[..at].to_vec();
+            out[security..security + 8].fill(0);
+            out
+        }
+        None => exe.to_vec(),
+    }
+}
+
+/// Where what is packed ends: the end of the file - or, once the setup program is signed, where
+/// Windows' certificate table begins. Signing puts that table after everything else (padded to
+/// eight bytes), and the PE header says where it starts.
+fn package_end(exe: &[u8]) -> usize {
     let n = exe.len();
+    let mut end = certificate_table(exe).map(|(at, _)| at).unwrap_or(n);
+    // The zeros signing adds to reach an eight-byte boundary.
+    for _ in 0..7 {
+        if end < 16 || &exe[end - 16..end - 8] == MAGIC || exe[end - 1] != 0 {
+            break;
+        }
+        end -= 1;
+    }
+    end
+}
+
+fn offset_of(exe: &[u8]) -> Option<usize> {
+    let n = package_end(exe);
     if n < 16 || &exe[n - 16..n - 8] != MAGIC {
         return None;
     }
-    let o = u64::from_le_bytes(exe[n - 8..].try_into().ok()?) as usize;
+    let o = u64::from_le_bytes(exe[n - 8..n].try_into().ok()?) as usize;
     (o < n - 16).then_some(o)
 }
 
 /// What a setup program carries: its manifest, and its files when `with_files`.
 pub fn unpack(exe: &[u8], with_files: bool) -> Result<(Manifest, Files), String> {
     let o = offset_of(exe).ok_or("nothing is packed in this program")?;
-    let end = exe.len() - 16;
+    let end = package_end(exe) - 16;
     let mut at = o;
     let take = |at: &mut usize, n: usize| -> Result<&[u8], String> {
         if *at + n > end {
@@ -162,5 +207,49 @@ mod tests {
         assert_eq!(strip(&pack(&setup, &m, &files)), &stub[..]);
         assert!(unpack(&stub, false).is_err());
         assert_eq!(Manifest { name: "a:b?".into(), ..Default::default() }.safe_name(), "ab");
+    }
+
+    /// A setup program signed after packing, as code signing does: a certificate table after
+    /// everything (zeros first, to an eight-byte boundary), its place in the PE header.
+    fn signed(setup: &[u8]) -> Vec<u8> {
+        let mut out = setup.to_vec();
+        while !out.len().is_multiple_of(8) {
+            out.push(0);
+        }
+        let at = out.len() as u32;
+        let certificate = vec![0x30u8; 1200];
+        out.extend_from_slice(&certificate);
+        // PE32+: the certificate table is data directory 4, at optional header + 112 + 32.
+        let security = 0x40 + 24 + 112 + 32;
+        out[security..security + 4].copy_from_slice(&at.to_le_bytes());
+        out[security + 4..security + 8].copy_from_slice(&(certificate.len() as u32).to_le_bytes());
+        out
+    }
+
+    #[test]
+    fn a_signed_setup_still_finds_its_files() {
+        // A stub with a DOS header pointing at a PE header with a PE32+ optional header.
+        let mut stub = vec![0u8; 0x200];
+        stub[0..2].copy_from_slice(b"MZ");
+        stub[0x3c..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        stub[0x40..0x44].copy_from_slice(b"PE\0\0");
+        stub[0x40 + 24..0x40 + 26].copy_from_slice(&0x20bu16.to_le_bytes());
+        let m = Manifest { name: "Shop".into(), version: "1.0.0".into(), exe: "shop.exe".into(), ..Default::default() };
+        let files = vec![("shop.exe".to_string(), vec![7u8; 5000])];
+        // Lengths of every kind: the zeros signing adds are not taken for the package.
+        for name in ["Shop", "Shop!", "Shop!!", "Shop!!!"] {
+            let setup = pack(&stub, &Manifest { name: name.into(), ..m.clone() }, &files);
+            let signed = signed(&setup);
+            let (back, got) = unpack(&signed, true).expect("the package is found past the signature");
+            assert_eq!(got, files);
+            assert_eq!(back.name, name);
+            // The program alone: as long as it was (signing changed its header, not its size).
+            assert_eq!(strip(&signed).len(), stub.len());
+        }
+        // A signed program packed onto: its old signature taken off first, so none is left broken.
+        let signed_stub = signed(&stub);
+        let setup = pack(&signed_stub, &m, &files);
+        assert_eq!(&setup[..stub.len()], &stub[..], "the program as it was before signing");
+        assert_eq!(unpack(&setup, true).expect("found").1, files);
     }
 }

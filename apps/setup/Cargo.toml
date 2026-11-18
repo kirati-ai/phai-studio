@@ -27,3 +27,7 @@ windows = { workspace = true, features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[build-dependencies]
+# Version information in the .exe (MIT); pinned to a long-standing release.
+winresource = "=0.1.31"

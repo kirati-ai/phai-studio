@@ -9,5 +9,18 @@ fn main() {
             "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
         );
     }
+    // Version information Windows shows in a file's Properties - and code signing checks: the
+    // product's name and version (from Cargo.toml), who makes it.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        let mut res = winresource::WindowsResource::new();
+        res.set("ProductName", "Phai Studio");
+        res.set("FileDescription", "Phai Studio");
+        res.set("CompanyName", "Monrak Net");
+        res.set("LegalCopyright", "MIT License - Monrak Net");
+        res.set("OriginalFilename", "phai-studio.exe");
+        if let Err(e) = res.compile() {
+            println!("cargo:warning=no version information in phai-studio.exe: {e}");
+        }
+    }
     println!("cargo:rerun-if-changed=build.rs");
 }
