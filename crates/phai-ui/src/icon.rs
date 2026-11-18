@@ -393,3 +393,25 @@ mod tests {
         assert!(px.as_chunks::<4>().0.iter().all(|p| p[..3] == [0x5f, 0x85, 0x12]), "BGRA, in the colour asked");
     }
 }
+
+/// The program's own icon, from its resources (the `.ico` its `build.rs` embeds as icon 1), at
+/// `size` pixels - Windows picks the best of the sizes inside. None when the program has none.
+pub fn app_icon(size: i32) -> Option<HICON> {
+    unsafe {
+        let h = wm::LoadImageW(Some(crate::win::instance()), windows::core::PCWSTR(std::ptr::without_provenance(1)) /* MAKEINTRESOURCE(1) */, wm::IMAGE_ICON, size, size, wm::LR_DEFAULTCOLOR).ok()?;
+        Some(HICON(h.0))
+    }
+}
+
+/// Gives a window the program's icon at both sizes Windows shows: the title bar and Alt+Tab.
+pub fn set_app_icon(hwnd: windows::Win32::Foundation::HWND) {
+    unsafe {
+        let small = wm::GetSystemMetrics(wm::SM_CXSMICON);
+        let big = wm::GetSystemMetrics(wm::SM_CXICON);
+        for (which, size) in [(wm::ICON_SMALL, small), (wm::ICON_BIG, big)] {
+            if let Some(i) = app_icon(size) {
+                wm::SendMessageW(hwnd, wm::WM_SETICON, Some(windows::Win32::Foundation::WPARAM(which as usize)), Some(windows::Win32::Foundation::LPARAM(i.0 as isize)));
+            }
+        }
+    }
+}

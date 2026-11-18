@@ -326,7 +326,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
 
 fn wizard(me: Vec<u8>, m: Manifest, files: Vec<(String, Vec<u8>)>, dir: PathBuf) {
     win::init();
-    let class = win::register("PhaiSetup", Some(proc_), None);
+    let class = win::register("PhaiSetup", Some(proc_), phai_ui::icon::app_icon(32));
     let caption = HSTRING::from(fill(tr("Install {0} {1}"), &[&m.name, &m.version]));
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), &caption, wm::WS_OVERLAPPED | wm::WS_CAPTION | wm::WS_SYSMENU | wm::WS_MINIMIZEBOX, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, None, Some(win::instance()), None).unwrap_or_default();
