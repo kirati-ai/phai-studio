@@ -1,0 +1,13 @@
+# phai-studio.monrak.net: everything that is not a file goes to index.php (/download/setup, /seen).
+Options -Indexes
+DirectoryIndex index.php index.html
+RewriteEngine On
+RewriteRule ^(storage|release\.json|build\.py) - [F,L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L]
+<IfModule mod_headers.c>
+    <FilesMatch "\.(jpg|png|svg|css|woff2)$">
+        Header set Cache-Control "public, max-age=2592000"
+    </FilesMatch>
+</IfModule>

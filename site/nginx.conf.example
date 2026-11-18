@@ -1,0 +1,8 @@
+# phai-studio.monrak.net on the VPS (aaPanel): the site's URL rewrite
+# (/www/server/panel/vhost/rewrite/phai-studio.monrak.net.conf). SSL: Let's Encrypt.
+location ^~ /storage/ { return 404; }
+location = /release.json { return 404; }
+location = /nginx.conf.example { return 404; }
+location / {
+    try_files $uri $uri/ /index.php$is_args$args;
+}
