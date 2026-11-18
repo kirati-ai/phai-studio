@@ -1,0 +1,3 @@
+# The installer is linked, not crawled: bots that follow /download/ make the download count lie.
+User-agent: *
+Disallow: /download/

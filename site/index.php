@@ -46,13 +46,22 @@ $B = rtrim(str_replace(chr(92), '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/index.
 $path = '/' . ltrim(substr(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', strlen($B)), '/');
 $path = rtrim($path, '/');
 
+/** A crawler, a script or an AI collecting pages - counted as nobody. */
+function is_bot(): bool
+{
+    $ua = strtolower($_SERVER['HTTP_USER_AGENT'] ?? '');
+    return $ua === '' || (bool) preg_match('/bot|crawl|spider|slurp|curl|wget|python|httpclient|java\/|go-http|headless|preview|scan|monitor|fetch|gptbot|claude|perplexity|bytespider|facebookexternal|whatsapp|telegram|discord|slack/', $ua);
+}
+
 if ($path === '/download/setup') {
-    counts($countsFile, fn ($c) => ['downloads' => $c['downloads'] + 1] + $c);
+    if (!is_bot()) {
+        counts($countsFile, fn ($c) => ['downloads' => $c['downloads'] + 1] + $c);
+    }
     header('Location: ' . $setupUrl, true, 302);
     exit;
 }
 if ($path === '/seen') {
-    if (empty($_COOKIE['seen'])) {
+    if (empty($_COOKIE['seen']) && !is_bot()) {
         counts($countsFile, fn ($c) => ['visitors' => $c['visitors'] + 1] + $c);
         setcookie('seen', '1', ['expires' => time() + 86400 * 365, 'path' => $B, 'samesite' => 'Lax', 'secure' => !empty($_SERVER['HTTPS'])]);
     }
@@ -310,7 +319,7 @@ $base = 'https://phai-studio.monrak.net/';
             <h1><?= $T['h1'] ?></h1>
             <p class="lead"><?= e($T['lead']) ?></p>
             <div class="actions">
-                <a class="btn btn-primary" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a>
+                <a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a>
                 <a class="btn btn-ghost" href="<?= $B ?>help/"><i class="ti ti-book"></i> <?= e($T['btnGuide']) ?></a>
                 <a class="btn btn-ghost" href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> GitHub</a>
             </div>
@@ -411,7 +420,7 @@ $base = 'https://phai-studio.monrak.net/';
         <p class="sub"><?= e($T['supSub']) ?></p>
         <div class="grid g2">
             <article class="card"><div class="icon"><i class="ti ti-book"></i></div><h3><?= e($T['selfH']) ?></h3><p><?= e($T['selfP']) ?></p>
-                <p class="mt"><a class="btn btn-ghost" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a></p></article>
+                <p class="mt"><a class="btn btn-ghost" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a></p></article>
             <article class="card main"><div class="icon"><i class="ti ti-users"></i></div><h3><?= e($T['proH']) ?></h3><p><?= e($T['proP']) ?></p>
                 <ul class="muted"><?php foreach ($T['pro'] as $s): ?><li><?= $s ?></li><?php endforeach ?></ul></article>
         </div>
@@ -434,7 +443,7 @@ $base = 'https://phai-studio.monrak.net/';
                 <p><?= e($T['dlDesc']) ?></p>
                 <details><summary><code><?= e($release['file']) ?></code></summary><?php if ($release['sha256']): ?><small>SHA-256 <code class="sha"><?= e($release['sha256']) ?></code></small><?php endif ?></details>
             </div>
-            <a class="btn btn-primary" href="<?= $B ?>download/setup"><i class="ti ti-download"></i> <?= $mb ?> MB</a>
+            <a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= $mb ?> MB</a>
         </div>
         <p class="note mt"><?= $T['dlMeta']($c) ?></p>
         <p class="note"><i class="ti ti-brand-github"></i> <?= $T['dlBuilt'] ?></p>
@@ -471,6 +480,19 @@ $base = 'https://phai-studio.monrak.net/';
 <script src="<?= v('thai-wrap.js') ?>"></script>
 <script>window.HUD_WORDS = <?= json_encode($T['hud'], JSON_UNESCAPED_UNICODE) ?>;</script>
 <script src="<?= v('site.js') ?>"></script>
-<script>setTimeout(() => navigator.sendBeacon && navigator.sendBeacon('<?= $B ?>seen'), 1500);</script>
+<script>
+// A visitor is counted once a person does something on the page - moves the mouse, scrolls,
+// touches or types - not when a monitoring robot only opens it.
+(() => {
+    let done = false;
+    const seen = () => {
+        if (done) return;
+        done = true;
+        ['pointermove', 'scroll', 'touchstart', 'keydown'].forEach((e) => removeEventListener(e, seen));
+        setTimeout(() => navigator.sendBeacon && navigator.sendBeacon('<?= $B ?>seen'), 800);
+    };
+    ['pointermove', 'scroll', 'touchstart', 'keydown'].forEach((e) => addEventListener(e, seen, { passive: true }));
+})();
+</script>
 </body>
 </html>
