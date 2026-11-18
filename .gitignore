@@ -3,3 +3,4 @@
 !docs/**/*.png
 /dist
 /site/storage
+__pycache__/
