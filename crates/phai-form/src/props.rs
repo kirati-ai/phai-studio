@@ -139,6 +139,7 @@ const BORDERS: &[&str] = &["sizable", "fixed_single", "fixed_dialog", "fixed_too
 pub const FORM: &[Spec] = &[
     spec("accept_button", "AcceptButton", "Misc", Ty::Button, "", &[], How::Code, "The button Enter clicks, wherever the focus is."),
     spec("cancel_button", "CancelButton", "Misc", Ty::Button, "", &[], How::Code, "The button Escape clicks."),
+    spec("key_preview", "KeyPreview", "Misc", Ty::Bool, "false", &[], How::Code, "The window's KeyDown, KeyUp and KeyPress hear keys meant for its controls, first."),
     spec("border", "FormBorderStyle", "Appearance", Ty::Choice(BORDERS), "sizable", &[], How::Code, "Sizable: its edges drag. Fixed: they do not. Dialog: a dialog's frame. Tool: a small title bar. None: no frame at all."),
     spec("maximize_box", "MaximizeBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's Maximize button."),
     spec("minimize_box", "MinimizeBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's Minimize button."),

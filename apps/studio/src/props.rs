@@ -70,6 +70,22 @@ pub enum Key {
     More(&'static str),
     /// The form's, from the table.
     FormMore(&'static str),
+    /// A control's event from phai-form's events table, by its name.
+    On(&'static str),
+    /// The form's event.
+    FormOn(&'static str),
+}
+
+/// The Events tab's category of an event, as Visual Studio groups them.
+fn event_category(name: &str) -> &'static str {
+    match name {
+        "enter" | "leave" => t("Focus"),
+        "key_down" | "key_up" | "key_press" => t("Key"),
+        "resize" => t("Layout"),
+        "shown" | "closing" | "closed" | "activated" | "deactivate" => t("Behavior"),
+        n if n.starts_with("mouse_") => t("Mouse"),
+        _ => t("Action"),
+    }
 }
 
 /// The editor a table property's kind wants.
@@ -320,23 +336,38 @@ impl Props {
         let bools = Ed::Bool;
         if self.mode == 1 {
             // Events: the control's, or the form's own and its menus' and toolbar's.
+            let methods = user_methods();
+            let row = |key, name: &'static str, help: &'static str, value: Option<&String>| {
+                let ev_name = match key {
+                    Key::On(n) | Key::FormOn(n) => n,
+                    _ => "",
+                };
+                Prop { category: event_category(ev_name), key, name, value: value.cloned().unwrap_or_default(), ed: Ed::Choice(methods.clone(), true), help: t(help), parent: None, set: value.is_some() }
+            };
             return match sel.and_then(|i| f.control.get(i)) {
-                Some(c) => match c.kind.event() {
-                    Some(e) => {
+                Some(c) => {
+                    let mut v = Vec::new();
+                    if let Some(e) = c.kind.event() {
                         let name = match e {
                             "on_click" => t("Click"),
                             "on_change" => t("Change"),
                             "on_tick" => t("Tick"),
                             _ => t("Select"),
                         };
-                        vec![p(t("Events"), Key::Event, name, c.handler().unwrap_or_default().to_string(), Ed::Choice(user_methods(), true), t("The method that runs when this happens. Double-click the control to write it."))]
+                        v.push(p(t("Action"), Key::Event, name, c.handler().unwrap_or_default().to_string(), Ed::Choice(methods.clone(), true), t("The method that runs when this happens. Double-click the control to write it.")));
                     }
-                    None => vec![],
-                },
+                    for e in phai_form::events::of_kind(c.kind) {
+                        v.push(row(Key::On(e.name), e.label, e.help, c.events.get(e.name)));
+                    }
+                    v
+                }
                 None => {
-                    let mut v = vec![p(t("Events"), Key::Event, "loaded", "loaded".into(), Ed::ReadOnly, t("Runs once the window is made, before it shows."))];
+                    let mut v = vec![p(t("Behavior"), Key::Event, "Load", "loaded".into(), Ed::ReadOnly, t("Runs once the window is made, before it shows."))];
+                    for e in phai_form::events::FORM {
+                        v.push(row(Key::FormOn(e.name), e.label, e.help, f.form.events.get(e.name)));
+                    }
                     for h in f.handlers() {
-                        v.push(p(t("Events"), Key::Event, Box::leak(h.clone().into_boxed_str()), h, Ed::ReadOnly, t("A menu item, toolbar button or control runs this method.")));
+                        v.push(p(t("Menus and toolbars"), Key::Event, Box::leak(h.clone().into_boxed_str()), h, Ed::ReadOnly, t("A menu item, toolbar button or control runs this method.")));
                     }
                     v
                 }
@@ -824,6 +855,16 @@ impl Props {
                 self.arrange();
                 self.update_scroll();
             }
+            Line::Prop(i) if double && x < self.split() && matches!(self.props[i].key, Key::On(_) | Key::FormOn(_) | Key::Event) => {
+                // As Visual Studio: a double-click on an event writes its method and goes to it.
+                self.chosen = Some(k);
+                let key = self.props[i].key;
+                if let Some(s) = studio() {
+                    unsafe {
+                        let _ = wm::PostMessageW(Some(s.hwnd), crate::WM_EVENT_METHOD, WPARAM(event_key_index(key)), LPARAM(0));
+                    }
+                }
+            }
             Line::Prop(i) => {
                 self.chosen = Some(k);
                 self.say_help();
@@ -990,6 +1031,25 @@ impl Props {
             }
             _ => {}
         }
+    }
+}
+
+/// An event's key as a number to post: the control's events from 1, the form's from 1000, 0 the
+/// control's one `on_...`.
+pub fn event_key_index(key: Key) -> usize {
+    match key {
+        Key::On(n) => 1 + phai_form::events::CONTROL.iter().position(|e| e.name == n).unwrap_or(0),
+        Key::FormOn(n) => 1000 + phai_form::events::FORM.iter().position(|e| e.name == n).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// The key [`event_key_index`] posted.
+pub fn event_key_of(i: usize) -> Key {
+    match i {
+        0 => Key::Event,
+        1000.. => Key::FormOn(phai_form::events::FORM.get(i - 1000).map(|e| e.name).unwrap_or("shown")),
+        _ => Key::On(phai_form::events::CONTROL.get(i - 1).map(|e| e.name).unwrap_or("click")),
     }
 }
 

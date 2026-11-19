@@ -9,6 +9,7 @@
 use std::fmt::Write;
 
 use crate::model::{parse_anchor, snake, Control, FormFile, HasProps, Kind};
+use crate::events::{self as ev, Args, Source};
 use crate::props;
 
 /// Where the theme is, if the form has one.
@@ -89,6 +90,34 @@ pub fn tab_order(f: &FormFile) -> Vec<usize> {
     v
 }
 
+/// `phai_ui::events`' name for an event code.
+fn event_const(code: u16) -> &'static str {
+    use phai_ui::events as e;
+    match code {
+        e::ENTER => "ENTER",
+        e::LEAVE => "LEAVE",
+        e::KEY_DOWN => "KEY_DOWN",
+        e::KEY_UP => "KEY_UP",
+        e::KEY_PRESS => "KEY_PRESS",
+        e::MOUSE_ENTER => "MOUSE_ENTER",
+        e::MOUSE_LEAVE => "MOUSE_LEAVE",
+        e::MOUSE_DOWN => "MOUSE_DOWN",
+        e::MOUSE_UP => "MOUSE_UP",
+        e::MOUSE_MOVE => "MOUSE_MOVE",
+        e::CLICK => "CLICK",
+        e::DOUBLE_CLICK => "DOUBLE_CLICK",
+        _ => "RESIZE",
+    }
+}
+
+/// The call of a method given the event's arguments from `l` (a `WM_EVENT`'s) - or none.
+fn event_call(h: &str, a: Args) -> String {
+    match a.param() {
+        Some(p) => format!("events.{h}(ui, unsafe {{ phai_ui::events::args::<{p}>(l) }})"),
+        None => format!("events.{h}(ui)"),
+    }
+}
+
 /// `<name>_ui.rs`.
 pub fn generate(f: &FormFile, opts: &Options) -> String {
     let name = &f.form.name;
@@ -163,6 +192,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for h in &handlers {
         let _ = writeln!(w, "    fn {h}(&mut self, ui: &{ui}) {{}}");
     }
+    for (h, a) in f.event_methods().into_iter().filter(|(h, _)| !handlers.contains(h)) {
+        let _ = writeln!(w, "    fn {h}(&mut self, ui: &{ui}{}) {{}}", a.param().map(|p| format!(", e: &{p}")).unwrap_or_default());
+    }
     let _ = writeln!(w, "}}");
     let _ = writeln!(w);
     let _ = writeln!(w, "struct Host<E> {{");
@@ -213,7 +245,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let opt = |v: Option<&str>| v.map(|s| format!("Some({})", lit(s))).unwrap_or_else(|| "None".into());
         let _ = writeln!(w, "        theme::set_window_colors({}, {});", opt(back), opt(fore));
     }
-    let _ = writeln!(w, "        let class = win::register({}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
+    if f.form.events.contains_key("double_click") {
+        let _ = writeln!(w, "        let class = win::register_with(win::ClassStyle::DoubleClicks, {}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
+    } else {
+        let _ = writeln!(w, "        let class = win::register({}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
+    }
     let _ = writeln!(w, "        let title = wide(t({}));", lit(&f.form.title));
     let menu = if f.menu.is_empty() { "None" } else { "Some(Self::menu())" };
     let fm = &f.form;
@@ -258,6 +294,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            win::show_maximized(hwnd);");
     } else {
         let _ = writeln!(w, "            win::show_top(hwnd);");
+    }
+    if f.form.events.contains_key("shown") {
+        let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(hwnd), phai_ui::events::WM_SHOWN, WPARAM(0), LPARAM(0));");
     }
     if let Some(watch) = &opts.theme_watch {
         let _ = writeln!(w, "            // A debug build follows the theme file as it is saved.");
@@ -394,6 +433,16 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             let list = |v: &[String]| v.iter().map(|x| lit(x)).collect::<Vec<_>>().join(", ");
             let _ = writeln!(w, "        let {}_data = phai_data::Binding::new(crate::data_sources::connection(), {}, {}, &[{}], &[{}]);", c.id, lit(&b.database), lit(&b.table), list(&b.columns), list(&b.keys));
         }
+    }
+    let preview = f.form.flag("key_preview", false) && ["key_down", "key_up", "key_press"].iter().any(|e| f.form.events.contains_key(*e));
+    for (i, c) in f.control.iter().enumerate() {
+        let hooked: Vec<&str> = c.events.keys().filter_map(|e| ev::find(c.kind, e)).filter_map(|s| if let Source::Hook(code) = s.source { Some(event_const(code)) } else { None }).collect();
+        let keys = preview && props::find(c.kind, "tab_index").is_some();
+        if hooked.is_empty() && !keys {
+            continue;
+        }
+        let mask = if hooked.is_empty() { "0".to_string() } else { hooked.iter().map(|k| format!("phai_ui::events::bit(phai_ui::events::{k})")).collect::<Vec<_>>().join(" | ") };
+        let _ = writeln!(w, "        phai_ui::events::hook({}, hwnd, {}, {mask}, {keys});", c.id, control_id(i));
     }
     let order = tab_order(f);
     if !order.is_empty() {
@@ -535,8 +584,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let _ = writeln!(w, "    let Some(host) = (unsafe {{ win::state::<Host<E>>(hwnd) }}) else {{ return win::def(hwnd, msg, w, l) }};");
     let _ = writeln!(w, "    match msg {{");
+    let form_ev = |e: &str| f.form.events.get(e).cloned();
     let _ = writeln!(w, "        wm::WM_SIZE => {{");
     let _ = writeln!(w, "            host.ui.layout.apply(hwnd);");
+    if let Some(h) = form_ev("resize") {
+        let _ = writeln!(w, "            host.events.{h}(&host.ui);");
+    }
     if f.control.iter().any(|c| c.kind.arranges() && !f.arranged_in(f.control.iter().position(|x| std::ptr::eq(x, c)).unwrap_or(0)).is_empty()) {
         let _ = writeln!(w, "            host.ui.arrange();");
     }
@@ -578,6 +631,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                 let before = call.map(|c| format!("{c}; ")).unwrap_or_default();
                 let _ = writeln!(w, "                {id} if code == 0 => {{ {before}phai_ui::form::close_with(hwnd, {answer}); }}");
             }
+            Kind::Checkbox | Kind::Radio if c.events.contains_key("checked_changed") => {
+                let changed = format!("events.{}(ui);", c.events["checked_changed"]);
+                let first = call.map(|c| format!("{c}; ")).unwrap_or_default();
+                let _ = writeln!(w, "                {id} if code == 0 => {{ {first}{changed} }}");
+            }
             Kind::Button | Kind::Checkbox | Kind::Radio => {
                 if let Some(call) = call {
                     let _ = writeln!(w, "                {id} if code == 0 => {call},");
@@ -591,6 +649,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Combo => {
                 if let Some(call) = call {
                     let _ = writeln!(w, "                {id} if code == 1 => {call}, // CBN_SELCHANGE");
+                }
+                if let Some(h) = c.events.get("text_changed") {
+                    let _ = writeln!(w, "                {id} if code == 5 => events.{h}(ui), // CBN_EDITCHANGE");
                 }
             }
             Kind::Tabs => {
@@ -645,37 +706,148 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            LRESULT(0)");
         let _ = writeln!(w, "        }}");
     }
-    let trees: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::Tree && c.on_select.is_some()).collect();
-    if !trees.is_empty() {
-        let _ = writeln!(w, "        wm::WM_NOTIFY if unsafe {{ (*(l.0 as *const windows::Win32::UI::Controls::NMHDR)).code }} == (-451i32) as u32 => {{");
-        let _ = writeln!(w, "            // TVN_SELCHANGEDW: a tree's item chosen.");
-        let _ = writeln!(w, "            let from = unsafe {{ (*(l.0 as *const windows::Win32::UI::Controls::NMHDR)).idFrom }};");
+    // WM_NOTIFY: a tree's item chosen, a list's row chosen, a heading clicked, a grid's row changed.
+    let notify: Vec<&Control> = f.control.iter().filter(|c| (matches!(c.kind, Kind::Tree | Kind::List) && c.on_select.is_some()) || c.events.contains_key("column_click") || c.events.contains_key("selection_changed")).collect();
+    if !notify.is_empty() {
+        let _ = writeln!(w, "        wm::WM_NOTIFY => {{");
+        let _ = writeln!(w, "            use windows::Win32::UI::Controls as cc;");
+        let _ = writeln!(w, "            let hdr = unsafe {{ &*(l.0 as *const cc::NMHDR) }};");
         let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
-        for c in trees {
-            let _ = writeln!(w, "            if from == CONTROL_{} as usize {{", c.id.to_ascii_uppercase());
-            let _ = writeln!(w, "                events.{}(ui);", c.on_select.as_deref().unwrap_or_default());
+        for c in notify {
+            let idc = format!("CONTROL_{}", c.id.to_ascii_uppercase());
+            if c.kind == Kind::Tree {
+                if let Some(h) = &c.on_select {
+                    let _ = writeln!(w, "            if hdr.idFrom == {idc} as usize && hdr.code == (-451i32) as u32 {{ // TVN_SELCHANGEDW");
+                    let _ = writeln!(w, "                events.{h}(ui);");
+                    let _ = writeln!(w, "            }}");
+                }
+                continue;
+            }
+            let row_chosen = |h: &str| {
+                format!("            if hdr.idFrom == {idc} as usize && hdr.code == cc::LVN_ITEMCHANGED {{\n                let it = unsafe {{ &*(l.0 as *const cc::NMLISTVIEW) }};\n                if it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0 {{\n                    events.{h}(ui);\n                }}\n            }}")
+            };
+            if c.kind == Kind::List {
+                if let Some(h) = &c.on_select {
+                    let _ = writeln!(w, "{}", row_chosen(h));
+                }
+            }
+            if let Some(h) = c.events.get("selection_changed") {
+                let _ = writeln!(w, "{}", row_chosen(h));
+            }
+            if let Some(h) = c.events.get("column_click") {
+                let _ = writeln!(w, "            if hdr.idFrom == {idc} as usize && hdr.code == cc::LVN_COLUMNCLICK {{");
+                let _ = writeln!(w, "                let it = unsafe {{ &*(l.0 as *const cc::NMLISTVIEW) }};");
+                let _ = writeln!(w, "                events.{h}(ui, &phai_ui::events::ItemEventArgs {{ index: it.iSubItem as usize }});");
+                let _ = writeln!(w, "            }}");
+            }
+        }
+        let _ = writeln!(w, "            win::def(hwnd, msg, w, l)");
+        let _ = writeln!(w, "        }}");
+    }
+    // The controls' own events, and the form's keys first when it previews them.
+    let mut arms: Vec<String> = Vec::new();
+    for c in &f.control {
+        for (e, h) in &c.events {
+            if let Some(s) = ev::find(c.kind, e) {
+                if let Source::Hook(code) = s.source {
+                    arms.push(format!("                (CONTROL_{}, phai_ui::events::{}) => {},", c.id.to_ascii_uppercase(), event_const(code), event_call(h, s.args)));
+                }
+            }
+        }
+    }
+    for k in ["key_down", "key_up", "key_press"] {
+        if let (Some(h), Some(s)) = (form_ev(k), ev::find_form(k)) {
+            arms.push(format!("                (0, phai_ui::events::{}) => {},", k.to_ascii_uppercase(), event_call(&h, s.args)));
+        }
+    }
+    if !arms.is_empty() {
+        let _ = writeln!(w, "        phai_ui::events::WM_EVENT => {{");
+        let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
+        let _ = writeln!(w, "            match phai_ui::events::decode(w) {{");
+        for a in arms {
+            let _ = writeln!(w, "{a}");
+        }
+        let _ = writeln!(w, "                _ => {{}}");
+        let _ = writeln!(w, "            }}");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    // The form's own.
+    if let Some(h) = form_ev("shown") {
+        let _ = writeln!(w, "        phai_ui::events::WM_SHOWN => {{");
+        let _ = writeln!(w, "            host.events.{h}(&host.ui);");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    if let Some(h) = form_ev("closing") {
+        let _ = writeln!(w, "        wm::WM_CLOSE => {{");
+        let _ = writeln!(w, "            let e = phai_ui::events::ClosingEventArgs::default();");
+        let _ = writeln!(w, "            host.events.{h}(&host.ui, &e);");
+        let _ = writeln!(w, "            if e.cancelled() {{");
+        let _ = writeln!(w, "                return LRESULT(0);");
+        let _ = writeln!(w, "            }}");
+        let _ = writeln!(w, "            win::def(hwnd, msg, w, l)");
+        let _ = writeln!(w, "        }}");
+    }
+    let (act, deact) = (form_ev("activated"), form_ev("deactivate"));
+    if act.is_some() || deact.is_some() {
+        let _ = writeln!(w, "        wm::WM_ACTIVATE => {{");
+        if let Some(h) = act {
+            let _ = writeln!(w, "            if win::loword(w.0) != 0 {{");
+            let _ = writeln!(w, "                host.events.{h}(&host.ui);");
+            let _ = writeln!(w, "            }}");
+        }
+        if let Some(h) = deact {
+            let _ = writeln!(w, "            if win::loword(w.0) == 0 {{");
+            let _ = writeln!(w, "                host.events.{h}(&host.ui);");
+            let _ = writeln!(w, "            }}");
+        }
+        let _ = writeln!(w, "            win::def(hwnd, msg, w, l)");
+        let _ = writeln!(w, "        }}");
+    }
+    // The form's own mouse: messages on the window itself, not on a control.
+    let down = form_ev("mouse_down");
+    let up = form_ev("mouse_up");
+    let click = form_ev("click");
+    if down.is_some() {
+        let _ = writeln!(w, "        wm::WM_LBUTTONDOWN | wm::WM_RBUTTONDOWN | wm::WM_MBUTTONDOWN => {{");
+        let _ = writeln!(w, "            host.events.{}(&host.ui, &phai_ui::events::mouse_of(msg, l));", down.as_deref().unwrap_or_default());
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    if up.is_some() || click.is_some() {
+        let _ = writeln!(w, "        wm::WM_LBUTTONUP | wm::WM_RBUTTONUP | wm::WM_MBUTTONUP => {{");
+        if let Some(h) = &up {
+            let _ = writeln!(w, "            host.events.{h}(&host.ui, &phai_ui::events::mouse_of(msg, l));");
+        }
+        if let Some(h) = &click {
+            let _ = writeln!(w, "            if msg == wm::WM_LBUTTONUP {{");
+            let _ = writeln!(w, "                host.events.{h}(&host.ui);");
             let _ = writeln!(w, "            }}");
         }
         let _ = writeln!(w, "            LRESULT(0)");
         let _ = writeln!(w, "        }}");
     }
-    let lists: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::List && c.on_select.is_some()).collect();
-    if !lists.is_empty() {
-        let _ = writeln!(w, "        wm::WM_NOTIFY => {{");
-        let _ = writeln!(w, "            use windows::Win32::UI::Controls as cc;");
-        let _ = writeln!(w, "            let hdr = unsafe {{ &*(l.0 as *const cc::NMHDR) }};");
-        let _ = writeln!(w, "            if hdr.code == cc::LVN_ITEMCHANGED {{");
-        let _ = writeln!(w, "                let it = unsafe {{ &*(l.0 as *const cc::NMLISTVIEW) }};");
-        let _ = writeln!(w, "                let chosen = it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0;");
-        let _ = writeln!(w, "                let Host {{ ui, events, .. }} = host;");
-        for c in lists {
-            let _ = writeln!(w, "                if chosen && hdr.idFrom == CONTROL_{} as usize {{", c.id.to_ascii_uppercase());
-            let _ = writeln!(w, "                    events.{}(ui);", c.on_select.as_deref().unwrap_or_default());
-            let _ = writeln!(w, "                }}");
-        }
-        let _ = writeln!(w, "            }}");
-        let _ = writeln!(w, "            win::def(hwnd, msg, w, l)");
+    if let Some(h) = form_ev("double_click") {
+        let _ = writeln!(w, "        wm::WM_LBUTTONDBLCLK => {{");
+        let _ = writeln!(w, "            host.events.{h}(&host.ui);");
+        let _ = writeln!(w, "            LRESULT(0)");
         let _ = writeln!(w, "        }}");
+    }
+    if let Some(h) = form_ev("mouse_move") {
+        let _ = writeln!(w, "        wm::WM_MOUSEMOVE => {{");
+        let _ = writeln!(w, "            host.events.{h}(&host.ui, &phai_ui::events::mouse_of(msg, l));");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    // The form's own keys, when it has the focus itself.
+    for (k, m, maker) in [("key_down", "wm::WM_KEYDOWN", "key_of(w)"), ("key_up", "wm::WM_KEYUP", "key_of(w)"), ("key_press", "wm::WM_CHAR", "key_press_of(w)")] {
+        if let Some(h) = form_ev(k) {
+            let _ = writeln!(w, "        {m} => {{");
+            let _ = writeln!(w, "            host.events.{h}(&host.ui, &phai_ui::events::{maker});");
+            let _ = writeln!(w, "            LRESULT(0)");
+            let _ = writeln!(w, "        }}");
+        }
     }
     let _ = writeln!(w, "        0x02E0 => {{");
     let _ = writeln!(w, "            // WM_DPICHANGED: the window, its font and its icons at the new scale.");
@@ -691,6 +863,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_DESTROY => {{");
+    if let Some(h) = form_ev("closed") {
+        let _ = writeln!(w, "            host.events.{h}(&host.ui);");
+    }
     let _ = writeln!(w, "            // The program ends with its main window; a window shown over another only closes.");
     let _ = writeln!(w, "            if host.main {{");
     let _ = writeln!(w, "                unsafe {{ wm::PostQuitMessage(0) }};");
@@ -726,7 +901,7 @@ pub fn user_stub(f: &FormFile) -> String {
     let _ = writeln!(w, "pub struct {name} {{}}");
     let _ = writeln!(w);
     let _ = writeln!(w, "impl {name}Events for {name} {{");
-    if f.handlers().is_empty() {
+    if f.handlers().is_empty() && f.event_methods().is_empty() {
         // A form with no events yet: the one every window has, so there is a place to start.
         let _ = writeln!(w, "    /// The window is made and about to show.");
         let _ = writeln!(w, "    fn loaded(&mut self, _ui: &{name}Ui) {{}}");
@@ -737,6 +912,11 @@ pub fn user_stub(f: &FormFile) -> String {
         }
         let _ = writeln!(w, "    fn {h}(&mut self, _ui: &{name}Ui) {{}}");
     }
+    let plain = f.handlers();
+    for (h, a) in f.event_methods().into_iter().filter(|(h, _)| !plain.contains(h)) {
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    fn {h}(&mut self, _ui: &{name}Ui{}) {{}}", a.param().map(|p| format!(", _e: &{p}")).unwrap_or_default());
+    }
     let _ = writeln!(w, "}}");
     o
 }
@@ -745,6 +925,12 @@ pub fn user_stub(f: &FormFile) -> String {
 /// found by its text only; the designer never parses the programmer's code. `None` when it is
 /// there, or when the file has no `impl ...Events for` to put it in.
 pub fn add_handler(user_src: &str, form_name: &str, handler: &str) -> Option<String> {
+    add_handler_with(user_src, form_name, handler, None)
+}
+
+/// [`add_handler`] for an event whose method is given `param` (`phai_ui::events::KeyEventArgs`).
+pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: Option<&str>) -> Option<String> {
+    let extra = param.map(|p| format!(", _e: &{p}")).unwrap_or_default();
     if user_src.contains(&format!("fn {handler}(")) {
         return None;
     }
@@ -753,7 +939,7 @@ pub fn add_handler(user_src: &str, form_name: &str, handler: &str) -> Option<Str
     // The impl's closing brace: the first `}` at the start of a line after it.
     let at = start + user_src[start..].find("\n}")?;
     // An empty line inside, indented, for the caret to land on and the code to start from.
-    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui) {{\n        \n    }}{}", &user_src[..at], &user_src[at..]))
+    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui{extra}) {{\n        \n    }}{}", &user_src[..at], &user_src[at..]))
 }
 
 #[cfg(test)]

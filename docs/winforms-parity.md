@@ -22,7 +22,7 @@
 | P | Padding, Margin | 🟡 `gap` ของ flow/table | 🟡 |
 | P | RightToLeft | — (ไทย/อังกฤษไม่ต้องใช้) | — |
 | M | Focus, Show, Hide, Refresh, BringToFront, SendToBack | ดูหัวข้อ Methods | ⬜ |
-| E | Enter, Leave, KeyDown/Up/Press, MouseDown/Up/Enter/Leave, DoubleClick, Resize | ดูหัวข้อ Events | ⬜ |
+| E | Click, DoubleClick, Enter, Leave, KeyDown, KeyUp, KeyPress, MouseEnter, MouseLeave, MouseDown, MouseUp, MouseMove, Resize | `events = { key_down = "..." }` (`phai_ui::events`) | ✅ |
 
 ## Form
 
@@ -38,10 +38,11 @@
 | P | TopMost, ShowInTaskbar, Opacity | `top_most`, `show_in_taskbar`, `opacity` | ✅ |
 | P | BackColor, ForeColor | `back_color`, `fore_color` (ทั้งโปรแกรม ไม่ใช่รายหน้าต่าง) | 🟡 |
 | P | Font | `font_size` | ✅ |
-| P | KeyPreview | ดู Events | ⬜ |
+| P | KeyPreview | `key_preview` | ✅ |
 | P | BackgroundImage, AutoScroll, AllowDrop | ⬜ (ทำทีหลัง) | ⬜ |
 | M | Show, ShowDialog (คืน DialogResult), Close | `show`, `show_dialog`, `close` | 🟡 |
-| E | Load, Shown, FormClosing, FormClosed, Resize, Activated | `loaded` | 🟡 |
+| E | Load, Shown, FormClosing (e.cancel()), FormClosed, Resize, Activated, Deactivate | `loaded`, `events = { shown, closing, closed, resize, activated, deactivate }` | ✅ |
+| E | Click, DoubleClick, MouseDown/Up/Move, KeyDown/Up/Press | `events = { click, ... }` | ✅ |
 
 ## Button
 
@@ -59,7 +60,7 @@
 |---|---|---|---|
 | P | Text, TextAlign, BorderStyle | `text`, `text_align`, `border` | ✅ |
 | P | AutoSize | ⬜ | ⬜ |
-| E | Click | | ⬜ |
+| E | Click, DoubleClick, MouseEnter/Leave | `events = { click = "..." }` | ✅ |
 
 ## TextBox (`edit`, `textarea`)
 
@@ -71,7 +72,7 @@
 | P | ScrollBars, WordWrap (textarea) | ⬜ (ต้องสร้าง control ใหม่) | ⬜ |
 | M | Clear, SelectAll, AppendText, Copy, Cut, Paste, Undo, ScrollToCaret | | ⬜ |
 | E | TextChanged | `on_change` | ✅ |
-| E | KeyDown, KeyPress, Enter, Leave | | ⬜ |
+| E | KeyDown, KeyPress, Enter, Leave | `events` | ✅ |
 
 ## RichTextBox (`richtext`)
 
@@ -88,7 +89,7 @@
 | P | Text, Checked | `text`, `checked`; radio `group` | ✅ |
 | P | ThreeState, Appearance | ⬜ | ⬜ |
 | E | Click | `on_click` | ✅ |
-| E | CheckedChanged | | ⬜ |
+| E | CheckedChanged | `events = { checked_changed = "..." }` | ✅ |
 
 ## ComboBox (`combo`)
 
@@ -98,7 +99,7 @@
 | P | DropDownStyle (DropDown/DropDownList), Sorted, MaxDropDownItems | `editable`, `sorted`, `max_drop_down_items` | ✅ |
 | M | Items.Add, Items.Clear, FindString, BeginUpdate/EndUpdate | | ⬜ |
 | E | SelectedIndexChanged | `on_change` | ✅ |
-| E | TextChanged | | ⬜ |
+| E | TextChanged (พิมพ์ได้) | `events = { text_changed = "..." }` | ✅ |
 
 ## ListView (`list`)
 
@@ -107,7 +108,7 @@
 | P | Columns, View, FullRowSelect, GridLines, MultiSelect, CheckBoxes, HeaderStyle, HideSelection | `columns`, `view`, `full_row_select`, `grid_lines`, `multi_select`, `check_boxes`, `header`, `hide_selection` | ✅ |
 | M | Items.Add, Items.Clear, EnsureVisible | | ⬜ |
 | E | SelectedIndexChanged | `on_select` | ✅ |
-| E | DoubleClick, ColumnClick | | ⬜ |
+| E | DoubleClick, ColumnClick | `events = { double_click, column_click }` | ✅ |
 
 ## DataGridView (`grid`)
 
@@ -117,7 +118,7 @@
 | P | ReadOnly, GridLines, MultiSelect | `read_only`, `grid_lines`, `multi_select` | ✅ |
 | M | Rows.Add, Rows.Clear, Refresh | | ⬜ |
 | E | CellValueChanged | `on_change` | ✅ |
-| E | SelectionChanged, CellDoubleClick | | ⬜ |
+| E | SelectionChanged, DoubleClick, ColumnClick | `events` | ✅ |
 
 ## DateTimePicker (`date`)
 
@@ -154,7 +155,7 @@
 |---|---|---|---|
 | P | Image, SizeMode, BorderStyle | `image`, `size_mode`, `border` | ✅ |
 | M | Load | | ⬜ |
-| E | Click | | ⬜ |
+| E | Click, DoubleClick | `events` | ✅ |
 
 ## TreeView (`tree`)
 
@@ -165,7 +166,7 @@
 | P | LabelEdit | ⬜ | ⬜ |
 | M | ExpandAll, CollapseAll | `expand_all` (property และ `phai_ui::props::expand_all`) | ✅ |
 | E | AfterSelect | `on_select` | ✅ |
-| E | NodeMouseDoubleClick | | ⬜ |
+| E | DoubleClick | `events = { double_click = "..." }` | ✅ |
 
 ## TabControl (`tabs`)
 

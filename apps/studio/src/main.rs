@@ -122,6 +122,8 @@ const EVAL_IMMEDIATE: u64 = 2;
 const EVAL_TIP: u64 = 1000;
 /// Posted by the debugger's thread for each thing it says; `LPARAM` is a `Box<phai_debug::Event>`.
 const WM_DEBUG: u32 = wm::WM_APP + 0x0E01;
+/// Posted by the Events tab: write the method of the event `wparam` names (`props::event_key_of`).
+pub const WM_EVENT_METHOD: u32 = wm::WM_APP + 0x0E02;
 /// `--design`: opens the Table Designer once the loop runs.
 const ID_DESIGN_TEST: i32 = 239;
 const ID_PUBLISH: i32 = 240;
@@ -1129,7 +1131,7 @@ impl Studio {
     /// controls chosen: each of them takes it.
     pub fn apply(&mut self, key: Key, text: &str) {
         let chosen = self.selection();
-        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme | Key::FormStart | Key::FormState | Key::FormMore(_));
+        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme | Key::FormStart | Key::FormState | Key::FormMore(_) | Key::FormOn(_));
         if chosen.len() > 1 && !form_key && !matches!(key, Key::Id | Key::Event) {
             let primary = self.selected;
             for j in chosen {
@@ -1200,6 +1202,14 @@ impl Studio {
             }
             (Key::FormStart, _) => f.form.start = (text == t("Windows default")).then(|| "windows".to_string()),
             (Key::FormState, _) => f.form.maximized = (text == t("Maximized")).then_some(true),
+            (Key::FormOn(name), _) => {
+                let h = text.trim();
+                if h.is_empty() {
+                    f.form.events.remove(name);
+                } else {
+                    f.form.events.insert(name.to_string(), h.to_string());
+                }
+            }
             (Key::FormMore(name), _) => {
                 let Some(sp) = phai_form::props::find_form(name) else { return };
                 let Ok(v) = phai_form::props::parse(sp, text) else { return };
@@ -1293,6 +1303,14 @@ impl Studio {
                         c.value = (v != 0).then_some(v);
                     }
                     Key::Image => c.image = (!text.trim().is_empty()).then(|| text.trim().replace('\\', "/")),
+                    Key::On(name) => {
+                        let h = text.trim();
+                        if h.is_empty() {
+                            c.events.remove(name);
+                        } else {
+                            c.events.insert(name.to_string(), h.to_string());
+                        }
+                    }
                     Key::More(name) => {
                         let Some(sp) = phai_form::props::find(c.kind, name) else { return };
                         let Ok(v) = phai_form::props::parse(sp, text) else { return };
@@ -1738,7 +1756,13 @@ impl Studio {
             return;
         };
         let c = &self.doc.form.control[i];
-        let Some(event) = c.kind.event() else { return };
+        let Some(event) = c.kind.event() else {
+            // No one event of its own: its Click, as a WinForms label's double-click writes.
+            if phai_form::events::find(c.kind, "click").is_some() {
+                self.add_event_method(Key::On("click"));
+            }
+            return;
+        };
         let name = c.handler().map(str::to_string).unwrap_or_else(|| {
             let verb = match event {
                 "on_click" => "clicked",
@@ -1762,6 +1786,55 @@ impl Studio {
             }
         }
         // Then to it, as Visual Studio goes to the handler it writes.
+        let src = std::fs::read_to_string(&user).unwrap_or_default();
+        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
+        self.open_code_at(&user, line);
+    }
+
+    /// A double-click on an event in the Events tab: the method it names - or a new one, named as
+    /// Visual Studio names it (`name_key_down`, `main_window_closing`) - written into the
+    /// programmer's file with what the event gives it, and the code opened there.
+    pub fn add_event_method(&mut self, key: Key) {
+        let form = self.doc.form.form.name.clone();
+        let (name, param) = match (key, self.selected) {
+            (Key::Event, _) => return self.add_handler_for_selected(),
+            (Key::FormOn(e), _) => {
+                let Some(spec) = phai_form::events::find_form(e) else { return };
+                let name = self.doc.form.form.events.get(e).cloned().unwrap_or_else(|| format!("{}_{e}", snake(&form)));
+                if !self.doc.form.form.events.contains_key(e) {
+                    let n = name.clone();
+                    self.edit(|f| {
+                        f.form.events.insert(e.to_string(), n);
+                    });
+                }
+                (name, spec.args.param())
+            }
+            (Key::On(e), Some(i)) => {
+                let c = &self.doc.form.control[i];
+                let Some(spec) = phai_form::events::find(c.kind, e) else { return };
+                let name = c.events.get(e).cloned().unwrap_or_else(|| phai_form::events::method_name(&c.id, e));
+                if !c.events.contains_key(e) {
+                    let n = name.clone();
+                    self.edit(|f| {
+                        f.control[i].events.insert(e.to_string(), n);
+                    });
+                }
+                (name, spec.args.param())
+            }
+            _ => return,
+        };
+        self.refresh_props();
+        let Some(path) = self.doc.path.clone() else { return };
+        // Saved first, so the generated trait has the method the new code implements.
+        self.save(false);
+        let user = path.with_file_name(format!("{}.rs", snake(&form)));
+        if let Ok(src) = std::fs::read_to_string(&user) {
+            if let Some(more) = codegen::add_handler_with(&src, &form, &name, param) {
+                if std::fs::write(&user, more).is_ok() {
+                    controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
+                }
+            }
+        }
         let src = std::fs::read_to_string(&user).unwrap_or_default();
         let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
         self.open_code_at(&user, line);
@@ -6442,6 +6515,10 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             }
             LRESULT(0)
         }
+        WM_EVENT_METHOD => {
+            s.add_event_method(props::event_key_of(w.0));
+            LRESULT(0)
+        }
         WM_DEBUG => {
             let e = unsafe { Box::from_raw(l.0 as *mut phai_debug::Event) };
             s.debug_event(*e);
@@ -7692,6 +7769,116 @@ fn main()"), "{out}");
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-props.png")).status().unwrap().code();
         assert_eq!(code, Some(42), "100 + the bits of what the window lacks");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A real project whose controls and form have events from the table - built and run, the
+    /// events made with Win32 messages, each method marking that it ran.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn events_reach_the_programmers_methods() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-events-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut name = Control::new(Kind::Edit, "name", [11, 40, 200, 23]);
+        for e in ["enter", "key_down", "key_press"] {
+            name.events.insert(e.into(), phai_form::events::method_name("name", e));
+        }
+        let mut hint = Control::new(Kind::Label, "hint", [11, 70, 200, 23]);
+        hint.text = Some("Hint".into());
+        hint.events.insert("click".into(), "hint_click".into());
+        hint.events.insert("mouse_enter".into(), "hint_mouse_enter".into());
+        let mut agree = Control::new(Kind::Checkbox, "agree", [11, 100, 200, 23]);
+        agree.text = Some("Agree".into());
+        agree.events.insert("checked_changed".into(), "agree_changed".into());
+        f.control.extend([name, hint, agree]);
+        f.form.set_prop("key_preview", Some(phai_form::toml::Value::Boolean(true)));
+        for e in ["key_down", "closing", "resize", "shown"] {
+            f.form.events.insert(e.into(), format!("window_{e}"));
+        }
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f, "the events are kept in the file");
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Hint", "คำแนะนำ"), ("Agree", "ยอมรับ")]).unwrap();
+        // The methods, each a bit; a timer makes the events once the window shows, another reads the bits.
+        let user = dir.join("src").join("main_window.rs");
+        let methods = r#"use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering::SeqCst};
+static HIT: AtomicU32 = AtomicU32::new(0);
+static WIN: AtomicIsize = AtomicIsize::new(0);
+static NAME: AtomicIsize = AtomicIsize::new(0);
+static HINT: AtomicIsize = AtomicIsize::new(0);
+static AGREE: AtomicIsize = AtomicIsize::new(0);
+fn hit(bit: u32) { HIT.fetch_or(1 << bit, SeqCst); }
+fn h(a: &AtomicIsize) -> windows::Win32::Foundation::HWND { windows::Win32::Foundation::HWND(a.load(SeqCst) as *mut _) }
+unsafe extern "system" fn poke(_: windows::Win32::Foundation::HWND, _: u32, id: usize, _: u32) {
+    use windows::Win32::UI::WindowsAndMessaging as wm;
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    unsafe {
+        let _ = wm::KillTimer(None, id);
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(h(&NAME)));
+        wm::SendMessageW(h(&NAME), wm::WM_KEYDOWN, Some(WPARAM(0x41)), Some(LPARAM(0)));
+        wm::SendMessageW(h(&NAME), wm::WM_KEYDOWN, Some(WPARAM(0x58)), Some(LPARAM(0)));
+        wm::SendMessageW(h(&NAME), wm::WM_CHAR, Some(WPARAM('z' as usize)), Some(LPARAM(0)));
+        wm::SendMessageW(h(&NAME), wm::WM_CHAR, Some(WPARAM('b' as usize)), Some(LPARAM(0)));
+        wm::SendMessageW(h(&HINT), wm::WM_MOUSEMOVE, Some(WPARAM(0)), Some(LPARAM((5 << 16) | 5)));
+        wm::SendMessageW(h(&HINT), wm::WM_LBUTTONDOWN, Some(WPARAM(1)), Some(LPARAM((5 << 16) | 5)));
+        wm::SendMessageW(h(&HINT), wm::WM_LBUTTONUP, Some(WPARAM(0)), Some(LPARAM((5 << 16) | 5)));
+        wm::SendMessageW(h(&AGREE), 0x00F5, None, None);
+        let _ = wm::SetWindowPos(h(&WIN), None, 0, 0, 700, 500, wm::SWP_NOMOVE | wm::SWP_NOZORDER);
+        wm::SendMessageW(h(&WIN), wm::WM_CLOSE, None, None);
+        if !wm::IsWindow(Some(h(&WIN))).as_bool() { std::process::exit(5) }
+        if phai_ui::win::text_of(h(&NAME)) != "b" { std::process::exit(6) }
+        let bits = HIT.load(SeqCst);
+        std::process::exit(if bits == 0x3FF { 42 } else { 1000 + bits as i32 });
+    }
+}
+
+impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        WIN.store(ui.hwnd.0 as isize, SeqCst);
+        NAME.store(ui.name.0 as isize, SeqCst);
+        HINT.store(ui.hint.0 as isize, SeqCst);
+        AGREE.store(ui.agree.0 as isize, SeqCst);
+    }
+    fn window_shown(&mut self, _ui: &MainWindowUi) {
+        hit(0);
+        unsafe { windows::Win32::UI::WindowsAndMessaging::SetTimer(None, 0, 200, Some(poke)); }
+    }
+    fn name_enter(&mut self, _ui: &MainWindowUi) { hit(1) }
+    fn name_key_down(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::KeyEventArgs) {
+        if e.key == 0x41 { hit(2) }
+    }
+    fn window_key_down(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::KeyEventArgs) {
+        // The form first: X never reaches the box.
+        if e.key == 0x58 { hit(3); e.set_handled(); }
+    }
+    fn name_key_press(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::KeyPressEventArgs) {
+        if e.ch == 'z' { hit(4); e.set_handled(); }
+    }
+    fn hint_mouse_enter(&mut self, _ui: &MainWindowUi) { hit(5) }
+    fn hint_click(&mut self, _ui: &MainWindowUi) { hit(6) }
+    fn agree_changed(&mut self, _ui: &MainWindowUi) { hit(7) }
+    fn window_resize(&mut self, _ui: &MainWindowUi) { hit(8) }
+    fn window_closing(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::ClosingEventArgs) { hit(9); e.cancel(); }
+"#;
+        let src = std::fs::read_to_string(&user).unwrap();
+        let src = src.replacen("impl MainWindowEvents for MainWindow {", methods, 1);
+        std::fs::write(&user, src).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let run = |args: &[&str]| std::process::Command::new(&cargo).args(args).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        let out = run(&["build", "--quiet"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stderr).matches("warning").count(), 0, "{}", String::from_utf8_lossy(&out.stderr));
+        let tests = run(&["test", "--quiet"]);
+        assert!(tests.status.success(), "the project's own tests: {}{}", String::from_utf8_lossy(&tests.stdout), String::from_utf8_lossy(&tests.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-events.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of the methods that ran");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -20,6 +20,7 @@
 
 pub mod controls;
 pub mod dialogs;
+pub mod events;
 pub mod form;
 pub mod grid;
 pub mod icon;

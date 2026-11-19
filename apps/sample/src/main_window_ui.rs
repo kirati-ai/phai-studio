@@ -264,11 +264,10 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
-            if hdr.code == cc::LVN_ITEMCHANGED {
+            let Host { ui, events, .. } = host;
+            if hdr.idFrom == CONTROL_CUSTOMERS as usize && hdr.code == cc::LVN_ITEMCHANGED {
                 let it = unsafe { &*(l.0 as *const cc::NMLISTVIEW) };
-                let chosen = it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0;
-                let Host { ui, events, .. } = host;
-                if chosen && hdr.idFrom == CONTROL_CUSTOMERS as usize {
+                if it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0 {
                     events.customer_chosen(ui);
                 }
             }
