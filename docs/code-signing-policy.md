@@ -1,9 +1,10 @@
 # Code signing policy
 
-Phai Studio has applied for free code signing for open-source projects from
-[SignPath Foundation](https://signpath.org). Until the application is accepted, the programs and
-the installer are not signed, and Windows SmartScreen may warn before the installer runs
-(**More info > Run anyway**).
+The programs and the installer are not code-signed yet, and Windows SmartScreen may warn before
+the installer runs (**More info > Run anyway**). Phai Studio applied for free code signing for
+open-source projects from [SignPath Foundation](https://signpath.org) in November 2026; the
+Foundation asks for wider public adoption first, and Phai Studio will apply again once it has it.
+Until then every installer is built from source by GitHub Actions, and anyone can check the build.
 
 <!-- Shown once SignPath Foundation accepts the project, as its terms ask:
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
