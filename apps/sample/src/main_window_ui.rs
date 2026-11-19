@@ -139,6 +139,9 @@ impl MainWindowUi {
             // A debug build follows the theme file as it is saved.
             #[cfg(debug_assertions)]
             win::watch_theme(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/theme.css")));
+            // F12 in a debug build: the Live Inspector, which saves into the form.
+            #[cfg(debug_assertions)]
+            phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main_window.phaiform")));
             hwnd
         }
     }

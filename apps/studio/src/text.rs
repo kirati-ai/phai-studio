@@ -852,6 +852,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Toolbar icons", "ไอคอนบนแถบเครื่องมือ"),
     ("Colours that blend across it: linear-gradient(to bottom, #ffffff, #dde3ea) - #id { background-image }.", "สีที่ไล่ต่อกันไปทั่วตัว เช่น linear-gradient(to bottom, #ffffff, #dde3ea) - #id { background-image }"),
     ("A soft shadow: 0 2px 6px rgba(0, 0, 0, 0.25) - across, down, blur, colour - #id { box-shadow }.", "เงานุ่ม เช่น 0 2px 6px rgba(0, 0, 0, 0.25) - เลื่อนขวา เลื่อนลง ความฟุ้ง สี - #id { box-shadow }"),
+    ("{0} was changed outside Phai Studio - by the Live Inspector, perhaps. Load it as the file has it now? Undo brings back the form as it is here.", "{0} ถูกแก้จากนอก Phai Studio - อาจเป็นตัวตรวจสด (Live Inspector) จะโหลดตามที่ไฟล์เป็นตอนนี้ไหม? กด Undo ได้ฟอร์มที่นี่คืน"),
+    ("{0} changed outside Phai Studio and was loaded again", "{0} ถูกแก้จากนอก Phai Studio และโหลดใหม่แล้ว"),
 ];
 
 #[cfg(test)]

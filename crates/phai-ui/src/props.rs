@@ -467,6 +467,20 @@ pub fn size_mode(h: HWND, mode: &str) {
     crate::picture::set_size_mode(h, mode);
 }
 
+/// The properties [`apply`] knows, by their `.phaiform` names, with what their values are: `b` true
+/// or false, `n` a whole number, `t` words - how the Live Inspector writes them into a form.
+pub const NAMES: &[(&str, char)] = &[
+    ("tab_stop", 'b'), ("tooltip", 't'), ("cursor", 't'), ("text_align", 't'), ("border", 't'), ("read_only", 'b'),
+    ("max_length", 'n'), ("placeholder", 't'), ("char_casing", 't'), ("word_wrap", 'b'), ("detect_urls", 'b'),
+    ("increment", 'n'), ("hexadecimal", 'b'), ("thousands", 'b'), ("small_change", 'n'), ("large_change", 'n'),
+    ("tick_frequency", 'n'), ("step", 'n'), ("marquee", 'b'), ("selected_index", 'n'), ("max_drop_down_items", 'n'),
+    ("view", 't'), ("grid_lines", 'b'), ("full_row_select", 'b'), ("multi_select", 'b'), ("check_boxes", 'b'),
+    ("header", 't'), ("hide_selection", 'b'), ("show_lines", 'b'), ("show_plus_minus", 'b'), ("show_root_lines", 'b'),
+    ("expand_all", 'b'), ("format", 't'), ("custom_format", 't'), ("date", 't'), ("min_date", 't'), ("max_date", 't'),
+    ("size_mode", 't'), ("auto_size", 'b'), ("three_state", 'b'), ("indeterminate", 'b'), ("appearance", 't'),
+    ("orientation", 't'), ("label_edit", 'b'), ("allow_drop", 'b'),
+];
+
 /// One property by its `.phaiform` name and its value as words - `true`, `40`, `left` - as the
 /// designer has them. A name this does not know does nothing.
 pub fn apply(h: HWND, name: &str, value: &str) {

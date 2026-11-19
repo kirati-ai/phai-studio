@@ -20,6 +20,9 @@ pub struct Options {
     /// Relative to the crate's `Cargo.toml`: the file a debug build watches, so a saved change to
     /// the theme shows in the running program.
     pub theme_watch: Option<String>,
+    /// Relative to the crate's `Cargo.toml`: the form file itself, which a debug build's Live
+    /// Inspector (F12) saves into.
+    pub form_file: Option<String>,
 }
 
 /// The id a control's window gets: 2000 and up, in form order.
@@ -345,6 +348,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            // A debug build follows the theme file as it is saved.");
         let _ = writeln!(w, "            #[cfg(debug_assertions)]");
         let _ = writeln!(w, "            win::watch_theme(hwnd, std::path::Path::new(concat!(env!(\"CARGO_MANIFEST_DIR\"), {})));", lit(&format!("/{watch}")));
+    }
+    if let Some(form) = &opts.form_file {
+        let _ = writeln!(w, "            // F12 in a debug build: the Live Inspector, which saves into the form.");
+        let _ = writeln!(w, "            #[cfg(debug_assertions)]");
+        let _ = writeln!(w, "            phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!(\"CARGO_MANIFEST_DIR\"), {})));", lit(&format!("/{form}")));
     }
     let _ = writeln!(w, "            hwnd");
     let _ = writeln!(w, "        }}");
@@ -1079,7 +1087,7 @@ mod tests {
     const GENERATED: &str = include_str!("../../../apps/sample/src/main_window_ui.rs");
 
     pub fn sample_options() -> Options {
-        Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()) }
+        Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phaiform".into()) }
     }
 
     /// The sample program builds from `main_window_ui.rs`, so the generator's output compiles; and

@@ -171,6 +171,20 @@ window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* lab
 "มาจาก button.primary:hover ในธีม บรรทัด 40", แสดง control บนฟอร์มในสถานะนั้น, และปุ่ม "ส่งไปที่ธีม" ย้ายทุกค่าเป็น
 `kind.class { }` / `kind.class:hover { }` ต่อท้าย theme.css แล้วให้ control ใช้ class นั้นแทน
 
+## ตัวตรวจสด (Live Inspector) — F12 ในโปรแกรมที่รันอยู่
+
+โปรแกรมที่ build แบบ debug: กด **F12** (หรือ Ctrl+Shift+I) ในหน้าต่าง → ตัวตรวจเปิดข้างหน้าต่าง (`phai_ui::inspect`)
+
+- **ชี้เลือก** แล้วคลิก control ในหน้าต่าง (กรอบสีฟ้าบอกว่าตัวไหน, Esc เลิก) หรือเลือกจากรายการ
+- **ลุคทีละสถานะ** (ปกติ hover pressed focus disabled checked): พิมพ์แล้ว control ในโปรแกรมเปลี่ยนทันที และแสดงสถานะนั้นให้ดู
+  แต่ละค่าบอกที่มา (`own :hover`, `button.primary:hover · phai:light`)
+- **ข้อความ, Enabled, Visible** และ property ใน `phai_ui::props::NAMES` (เช่น `tooltip`, `read_only`)
+- **เก็บลงฟอร์ม** เขียนเฉพาะบรรทัดของ control นั้นใน `.phaiform` (คอมเมนต์และบรรทัดอื่นคงเดิม): ลุคสถานะปกติ → `back_color`
+  `fore_color` `border_color` `radius` `bold` `border_width` `gradient` `shadow` `accent_color` `icon_color`; สถานะอื่น → `states = { }`
+- **ย้อนทั้งหมด** คืนลุค ข้อความ Enabled/Visible ตอนเปิดตัวตรวจ
+- Phai Studio ที่เปิดฟอร์มนั้นอยู่ โหลดฟอร์มใหม่เมื่อสลับกลับมา (Undo ได้) และเขียน `_ui.rs` ใหม่ให้รอบต่อไป
+- โค้ด `.rs` ของโปรแกรมไม่ถูกแตะ; build แบบ release ไม่มีตัวตรวจ (codegen ใส่ `#[cfg(debug_assertions)] phai_ui::inspect::attach(...)`)
+
 ## โค้ดที่สร้าง
 
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:

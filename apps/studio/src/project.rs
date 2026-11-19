@@ -277,7 +277,7 @@ pub fn create(dir: &Path) -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(&src)?;
     let f = first_form();
     let form_path = src.join("main_window.phaiform");
-    let opts = codegen::Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()) };
+    let opts = codegen::Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phaiform".into()) };
     let files: [(PathBuf, String); 9] = [
         (dir.join("Cargo.toml"), cargo_toml(&name)),
         (dir.join("build.rs"), BUILD_RS.to_string()),

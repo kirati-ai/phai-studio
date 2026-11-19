@@ -646,6 +646,12 @@ fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, Strin
 static CURRENT: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
 static WINDOW_OVER: RwLock<Option<Style>> = RwLock::new(None);
 static STATE_RULES: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
+static STATE_RULES_CSS: RwLock<String> = RwLock::new(String::new());
+
+/// The state rules as last given to [`set_state_rules`], as CSS.
+pub fn state_rules_css() -> String {
+    STATE_RULES_CSS.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 /// The controls' own looks in their states - `#ok:hover { background: #e0f2fe }` - which the
 /// designer's Style tab writes and the generated code gives here; over the theme and the
@@ -653,6 +659,7 @@ static STATE_RULES: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
 pub fn set_state_rules(css: &str) -> Result<(), ThemeError> {
     if css.trim().is_empty() {
         *STATE_RULES.write().unwrap_or_else(|e| e.into_inner()) = None;
+        STATE_RULES_CSS.write().unwrap_or_else(|e| e.into_inner()).clear();
         return Ok(());
     }
     let vars = current().vars.clone();
@@ -664,6 +671,7 @@ pub fn set_state_rules(css: &str) -> Result<(), ThemeError> {
     sheet.push_str(css);
     let t = Theme::parse(&sheet).map_err(|e| ThemeError { line: e.line.saturating_sub(1), message: e.message })?;
     *STATE_RULES.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(t));
+    *STATE_RULES_CSS.write().unwrap_or_else(|e| e.into_inner()) = css.to_string();
     Ok(())
 }
 

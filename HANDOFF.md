@@ -74,6 +74,11 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - **CSS** = Cascading Style Sheets (cascading = ไหลลงเป็นชั้น); แนวเดียวกับ Skin (DevExpress), Style (WPF), QSS (Qt)
   ภาพเคลื่อนไหวใน CSS เรียก `transition`, `@keyframes` + `animation`, `transform`, `opacity`, easing (เป็น property / at-rule ไม่ใช่ tag)
 - ข้อมูลไลบรารี/ราคาเป็นความรู้ที่มี ไม่ได้ค้นเว็บ — ตรวจใหม่ก่อนใช้อ้างอิงสาธารณะ
+- **ตัวตน (2026-11-19):** ไม่ใช่ WebForms; เป็นแบบ WinForms (ฟอร์ม property event, โปรแกรม Windows ตัวจริง) + แต่งลุคแบบเว็บ (CSS)
+  และ **HomeSite + ImageStyler ไม่ใช่ Dreamweaver**: โค้ด/ไฟล์ข้อความคือของจริง, เครื่องมือแก้ทีละบรรทัดไม่เขียนทับ, ลุคเป็น style สำเร็จ
+- **Live Inspector (F12) เสร็จ 2026-11-19** — `crates/phai-ui/src/inspect.rs`, docs/phaiform.md หัวข้อ "ตัวตรวจสด"
+- **iOS / Android (เจ้านายถาม 2026-11-19 "หรือไม่ลองทำ"):** phai-ui เป็น Win32 ล้วน; ที่พกไปได้คือ logic Rust + `.phaiform` + CSS
+  ต้องมี backend ที่สอง; Android build บน Windows ได้ (NDK ฟรี), iOS ต้องมี Mac + Xcode เพื่อ build/เซ็น
 
 ## ทำเสร็จแล้ว 2026-11-19 (งานข้อ 0-3 เดิม) — checklist: `docs/winforms-parity.md`
 

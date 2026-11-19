@@ -3510,6 +3510,7 @@ impl Studio {
         let name = path.display().to_string();
         match std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|src| FormFile::parse(&src).map_err(|e| e.to_string())) {
             Ok(f) => {
+                form_seen(path);
                 self.set_doc(f, Some(path.to_path_buf()));
                 remember_recent(path);
                 self.rebuild_menu();
@@ -3518,6 +3519,42 @@ impl Studio {
                 win::message(Some(self.hwnd), &format!("{}\n\n{e}", tf("{0} cannot be opened", &[&name])), "Phai Studio", wm::MB_ICONWARNING);
             }
         }
+    }
+
+    /// The form open here changed on disk since Phai Studio last read or wrote it - the running
+    /// program's Live Inspector (F12) saved into it: the form as the file has it now, which Undo
+    /// takes back, and its generated code written again for the next run. Unsaved changes here
+    /// are given up only when the person says so.
+    pub fn check_form_on_disk(&mut self) -> bool {
+        if self.doc.code.is_some() {
+            return false;
+        }
+        let Some(path) = self.doc.path.clone() else { return false };
+        let Ok(stamp) = std::fs::metadata(&path).and_then(|m| m.modified()) else { return false };
+        let before = FORMS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(std::collections::HashMap::new).insert(path.clone(), stamp);
+        if before.is_none_or(|b| b == stamp) {
+            return false;
+        }
+        let Ok(f) = std::fs::read_to_string(&path).map_err(|_| ()).and_then(|s| FormFile::parse(&s).map_err(|_| ())) else { return false };
+        if f == self.doc.form {
+            return false;
+        }
+        let file = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        if self.doc.dirty && win::message(Some(self.hwnd), &tf("{0} was changed outside Phai Studio - by the Live Inspector, perhaps. Load it as the file has it now? Undo brings back the form as it is here.", &[&file]), "Phai Studio", wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
+            return false;
+        }
+        let was_dirty = self.doc.dirty;
+        self.edit(|form| *form = f);
+        self.doc.dirty = was_dirty;
+        self.say_title();
+        self.refresh_tabs();
+        self.rebuild();
+        self.refresh_props();
+        let ui_path = path.with_file_name(format!("{}_ui.rs", snake(&self.doc.form.form.name)));
+        let opts = theme_options(&path, self.doc.form.form.theme.as_deref());
+        let _ = std::fs::write(&ui_path, codegen::generate(&self.doc.form, &opts));
+        controls::status_text(self.status, 0, &tf("{0} changed outside Phai Studio and was loaded again", &[&file]));
+        true
     }
 
     /// Writes the form, its generated code and - the first time - the programmer's file.
@@ -3562,6 +3599,7 @@ impl Studio {
         let wrote = std::fs::write(&path, f.to_toml()).and_then(|_| std::fs::write(&ui_path, codegen::generate(f, &opts))).and_then(|_| if user_path.exists() { Ok(()) } else { std::fs::write(&user_path, codegen::user_stub(f)) });
         match wrote {
             Ok(()) => {
+                form_seen(&path);
                 self.doc.path = Some(path.clone());
                 self.doc.dirty = false;
                 self.say_title();
@@ -6301,10 +6339,13 @@ impl Studio {
 /// Where the theme is for the generated code: beside the form for `include_str!`, and from the
 /// crate's `Cargo.toml` for a debug build to watch.
 pub fn theme_options(form: &Path, theme_file: Option<&str>) -> codegen::Options {
-    let Some(th) = theme_file else { return codegen::Options::default() };
     let dir = form.with_file_name("");
-    let watch = dir.ancestors().find(|d| d.join("Cargo.toml").exists()).and_then(|root| dir.join(th).strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")));
-    codegen::Options { theme_include: Some(th.replace('\\', "/")), theme_watch: watch }
+    let root = dir.ancestors().find(|d| d.join("Cargo.toml").exists()).map(Path::to_path_buf);
+    let rel = |p: PathBuf| root.as_ref().and_then(|r| p.strip_prefix(r).ok().map(|p| p.to_string_lossy().replace('\\', "/")));
+    // The Live Inspector saves into the form itself.
+    let form_file = rel(form.to_path_buf());
+    let Some(th) = theme_file else { return codegen::Options { form_file, ..Default::default() } };
+    codegen::Options { theme_include: Some(th.replace('\\', "/")), theme_watch: rel(dir.join(th)), form_file }
 }
 
 /// Where Phai Studio keeps what it remembers for this person: `%APPDATA%\Phai Studio`.
@@ -6484,9 +6525,23 @@ fn file_dialog(owner: HWND, save: bool, description: &str, pattern: &str, sugges
     })
 }
 
+/// When Phai Studio last read or wrote each form file, to see one changed outside it.
+static FORMS_SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, std::time::SystemTime>>> = std::sync::Mutex::new(None);
+
+fn form_seen(path: &Path) {
+    if let Ok(stamp) = std::fs::metadata(path).and_then(|m| m.modified()) {
+        FORMS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(std::collections::HashMap::new).insert(path.to_path_buf(), stamp);
+    }
+}
+
 extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     let Some(s) = studio().filter(|s| s.hwnd == hwnd) else { return win::def(hwnd, msg, w, l) };
     match msg {
+        // Back from the running program: its Live Inspector may have saved into the form.
+        wm::WM_ACTIVATEAPP if w.0 != 0 => {
+            s.check_form_on_disk();
+            win::def(hwnd, msg, w, l)
+        }
         wm::WM_TIMER if w.0 == TIMER_DIAG => {
             s.diag_tick();
             LRESULT(0)
@@ -7376,6 +7431,22 @@ fn main() {
         // `--exceptions-test`: Exception Settings set from `PHAI_EXCEPTIONS_TEST`, then read back.
         // `--style-test`: control 6 given a pressed colour and a transition through the Style
         // tab's keys, then sent to the theme as `save`; what the form and the theme hold printed.
+        // `--reload-test`: the open form's file changed outside, as the Live Inspector saves it;
+        // whether Phai Studio took it, and Undo taking it back - printed. The file is left changed.
+        if args.iter().any(|a| a == "--reload-test") {
+            let path = s.doc.path.clone().unwrap_or_default();
+            let was = s.doc.form.form.title.clone();
+            let src = std::fs::read_to_string(&path).unwrap_or_default();
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+            let _ = std::fs::write(&path, src.replacen(&format!("title = {was:?}"), "title = \"From the inspector\"", 1));
+            let took = s.check_form_on_disk();
+            let now = s.doc.form.form.title.clone();
+            let again = s.check_form_on_disk();
+            s.undo_redo(true);
+            println!("took {took}, title {now:?}, again {again}, after undo {:?}, dirty {}", s.doc.form.form.title, s.doc.dirty);
+            let _ = std::fs::write(&path, src);
+            std::process::exit(0);
+        }
         if args.iter().any(|a| a == "--style-test") {
             s.select(Some(6));
             s.apply(props::Key::StyleProp("color", 2), "#ffcc00");
@@ -8460,6 +8531,79 @@ impl MainWindowEvents for MainWindow {
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(&exe).status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The Live Inspector in a real project's running program: a control found under the mouse,
+    /// its look changed in the normal state and in hover, its words and a property - then saved
+    /// into the form, whose other lines and comments stay as they were, and which still loads.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn the_live_inspector_saves_into_the_form() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-inspect-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut go = Control::new(Kind::Button, "go", [11, 40, 100, 28]);
+        go.text = Some("Go".into());
+        f.control.push(go);
+        let src = format!("{}\n# kept: a comment of the programmer's\n", f.to_toml());
+        std::fs::write(&form_path, &src).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/src/main_window.phaiform\")))"));
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Go", "ไป")]).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use phai_ui::inspect;
+
+#[derive(Default)]
+pub struct MainWindow {}
+
+impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        phai_ui::win::show(ui.hwnd, true);
+        // The layout places the controls after this; the button where the mouse will point.
+        phai_ui::win::move_to(ui.go.hwnd(), 20, 60, 100, 28);
+        let insp = inspect::open(ui.hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main_window.phaiform")));
+        let mut r = windows::Win32::Foundation::RECT::default();
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::GetWindowRect(ui.go.hwnd(), &mut r);
+        }
+        let mut bits = 0;
+        if inspect::test_pick(insp, (r.left + r.right) / 2, (r.top + r.bottom) / 2).as_deref() == Some("go") { bits |= 1 }
+        if inspect::test_select(insp, "go", "") && inspect::test_set_look(insp, "background", "#123456") && inspect::test_set_look(insp, "border-radius", "6") { bits |= 2 }
+        if !inspect::test_set_look(insp, "background", "not a colour") { bits |= 4 }
+        if inspect::test_origin(insp, "background").starts_with("own") { bits |= 8 }
+        if inspect::test_select(insp, "go", "hover") && inspect::test_set_look(insp, "color", "#ffcc00") { bits |= 16 }
+        if inspect::test_set(insp, "text", "Start") && inspect::test_set(insp, "tooltip", "Begins") && phai_ui::win::text_of(ui.go.hwnd()) == "Start" { bits |= 32 }
+        if inspect::test_save(insp).is_ok_and(|n| n == 5) { bits |= 64 }
+        std::process::exit(if bits == 127 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let saved = std::fs::read_to_string(&form_path).unwrap();
+        assert!(saved.contains("# kept: a comment of the programmer's"), "{saved}");
+        let f2 = FormFile::parse(&saved).unwrap();
+        assert!(f2.check().is_empty(), "{:?}", f2.check());
+        let go = f2.control.iter().find(|c| c.id == "go").unwrap();
+        assert_eq!(go.back_color.as_deref(), Some("#123456"));
+        assert_eq!(go.radius, Some(6));
+        assert_eq!(go.text.as_deref(), Some("Start"));
+        assert_eq!(go.states.get("hover").map(String::as_str), Some("color: #ffcc00"));
+        assert_eq!(go.prop("tooltip").and_then(|v| v.as_str()), Some("Begins"));
+        // Nothing else of the form changed.
+        let others = |f: &FormFile| f.control.iter().filter(|c| c.id != "go").cloned().collect::<Vec<_>>();
+        assert_eq!(others(&f2), others(&f));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

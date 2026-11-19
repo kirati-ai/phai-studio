@@ -281,6 +281,35 @@ pub fn rust_literal(s: &Spec, v: &toml::Value) -> String {
 mod tests {
     use super::*;
 
+    /// The Live Inspector (in phai-ui, which cannot read this table) writes a look of the normal
+    /// state as the property this table has for it - for exactly the kinds that have it - and a
+    /// property with the type this table gives it.
+    #[test]
+    fn the_live_inspector_writes_what_this_table_has() {
+        const FIELDS: [&str; 5] = ["back_color", "fore_color", "border_color", "radius", "bold"];
+        // A timer or a context menu has no window to inspect.
+        for kind in Kind::ALL.into_iter().filter(|k| !k.is_component()) {
+            for look in phai_ui::inspect::LOOKS {
+                let css = CONTROL.iter().find(|s| matches!(s.how, How::Css(d) if d.starts_with(&format!("{look}:"))));
+                match (phai_ui::inspect::form_key(kind.name(), look), css) {
+                    (Some((key, _)), _) if FIELDS.contains(&key) => {}
+                    (Some((key, _)), Some(s)) => assert!(s.name == key && applies(s, kind), "{} {look}", kind.name()),
+                    (None, Some(s)) => assert!(!applies(s, kind), "{} {look} could be saved as {}", kind.name(), s.name),
+                    (got, None) => assert!(got.is_none(), "{look}"),
+                }
+            }
+        }
+        for (name, ty) in phai_ui::props::NAMES {
+            let s = CONTROL.iter().find(|s| s.name == *name).unwrap_or_else(|| panic!("{name}"));
+            let want = match s.ty {
+                Ty::Bool => 'b',
+                Ty::Int(..) => 'n',
+                _ => 't',
+            };
+            assert_eq!(*ty, want, "{name}");
+        }
+    }
+
     #[test]
     fn values_parse_check_and_print() {
         let ro = find(Kind::Edit, "read_only").unwrap();
