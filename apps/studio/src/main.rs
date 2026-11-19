@@ -6808,7 +6808,7 @@ fn main() {
         let props = Props::new(side, ID_PROPS, font);
         let servers = servers::Servers::new(side, font);
         let outline = outline::Outline::new(side, font);
-        explorer::set_side_parts(side, explorer.hwnd, explorer.tree, props.hwnd, servers.tree, outline.tree, font);
+        explorer::set_side_parts(side, explorer.hwnd, explorer.bar, explorer.search, explorer.tree, props.hwnd, servers.tree, outline.tree, font);
         s.outline = Some(outline);
         s.servers = Some(servers);
         let canvas = Canvas::new(hwnd, ID_CANVAS);
