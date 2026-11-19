@@ -854,6 +854,14 @@ pub static THAI: &[(&str, &str)] = &[
     ("A soft shadow: 0 2px 6px rgba(0, 0, 0, 0.25) - across, down, blur, colour - #id { box-shadow }.", "เงานุ่ม เช่น 0 2px 6px rgba(0, 0, 0, 0.25) - เลื่อนขวา เลื่อนลง ความฟุ้ง สี - #id { box-shadow }"),
     ("{0} was changed outside Phai Studio - by the Live Inspector, perhaps. Load it as the file has it now? Undo brings back the form as it is here.", "{0} ถูกแก้จากนอก Phai Studio - อาจเป็นตัวตรวจสด (Live Inspector) จะโหลดตามที่ไฟล์เป็นตอนนี้ไหม? กด Undo ได้ฟอร์มที่นี่คืน"),
     ("{0} changed outside Phai Studio and was loaded again", "{0} ถูกแก้จากนอก Phai Studio และโหลดใหม่แล้ว"),
+    ("Panel", "แผง"),
+    ("List box", "กล่องรายการ"),
+    ("Checked list box", "กล่องรายการติ๊ก"),
+    ("Link label", "ลิงก์"),
+    ("Masked text box", "ช่องกรอกตามแบบ"),
+    ("Month calendar", "ปฏิทินเดือน"),
+    ("One line chosen at a time, or several with Ctrl and Shift.", "เลือกได้ทีละบรรทัด หรือหลายบรรทัดด้วย Ctrl และ Shift"),
+    ("What it takes: 0 a digit, 9 a digit or none, L a letter, A a letter or digit, & anything; the rest stays as written - 000-000-0000.", "รับอะไรได้บ้าง: 0 ตัวเลข, 9 ตัวเลขหรือว่าง, L ตัวอักษร, A ตัวอักษรหรือตัวเลข, & อะไรก็ได้; ที่เหลือคงไว้ตามที่เขียน เช่น 000-000-0000"),
 ];
 
 #[cfg(test)]

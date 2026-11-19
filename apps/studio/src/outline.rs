@@ -92,7 +92,7 @@ impl Outline {
         }
         win::tree_expand(self.tree, self.root);
         for (i, p) in parents.iter().enumerate() {
-            if p.is_none() && matches!(form.control[i].kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table) {
+            if p.is_none() && matches!(form.control[i].kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel) {
                 win::tree_expand(self.tree, self.items[i]);
             }
         }

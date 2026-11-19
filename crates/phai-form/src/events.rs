@@ -59,8 +59,8 @@ const fn ev(name: &'static str, label: &'static str, args: Args, kinds: &'static
     EventSpec { name, label, args, kinds, source, help }
 }
 
-const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs];
-const CLICKABLE: &[Kind] = &[Kind::Label, Kind::Picture, Kind::Group, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::List, Kind::Grid, Kind::Tree, Kind::Progress, Kind::Statusbar, Kind::Flow, Kind::Table];
+const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
+const CLICKABLE: &[Kind] = &[Kind::Label, Kind::Picture, Kind::Group, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::List, Kind::Grid, Kind::Tree, Kind::Progress, Kind::Statusbar, Kind::Flow, Kind::Table, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Calendar];
 
 pub const CONTROL: &[EventSpec] = &[
     ev("click", "Click", Args::None, CLICKABLE, Source::Hook(phai_ui_codes::CLICK), "Clicked with the left button."),

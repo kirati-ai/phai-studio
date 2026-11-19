@@ -124,6 +124,18 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             let cols: Vec<(&str, i32)> = c.columns.iter().map(|(s, n)| (tr(s), *n)).collect();
             phai_ui::grid::grid(parent, id, font, &cols)
         }
+        Kind::Panel => win::panel(parent, id, c.word("border") != Some("fixed")),
+        Kind::ListBox => {
+            let items: Vec<&str> = c.items.iter().map(|s| tr(s)).collect();
+            phai_ui::extra::list_box(parent, id, font, &items, c.word("selection_mode") == Some("multi"), c.flag("sorted", false))
+        }
+        Kind::CheckedList => {
+            let items: Vec<&str> = c.items.iter().map(|s| tr(s)).collect();
+            phai_ui::extra::checked_list(parent, id, font, &items)
+        }
+        Kind::Link => phai_ui::extra::link_label(parent, tr(text), id, font),
+        Kind::Masked => phai_ui::extra::masked(parent, c.word("mask").unwrap_or(""), text, id, font),
+        Kind::Calendar => phai_ui::extra::calendar(parent, id, font),
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
         Kind::Timer | Kind::ContextMenu => {
             let h = win::label(parent, "", id, font);

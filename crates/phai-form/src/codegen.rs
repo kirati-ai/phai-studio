@@ -118,6 +118,12 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::Statusbar => "StatusBar",
         Kind::Timer => "Timer",
         Kind::ContextMenu => "ContextMenu",
+        Kind::Panel => "Panel",
+        Kind::ListBox => "ListBox",
+        Kind::CheckedList => "CheckedListBox",
+        Kind::Link => "LinkLabel",
+        Kind::Masked => "MaskedTextBox",
+        Kind::Calendar => "MonthCalendar",
     }
 }
 
@@ -446,6 +452,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
             // A context menu is the window's own too: made when a right-click asks for it.
             Kind::ContextMenu => "hwnd".to_string(),
+            Kind::Panel => format!("win::panel(hwnd, {id}, false)"),
+            Kind::ListBox => format!("phai_ui::extra::list_box(hwnd, {id}, {font}, &[{}], {}, {})", c.items.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", "), c.word("selection_mode") == Some("multi"), c.flag("sorted", false)),
+            Kind::CheckedList => format!("phai_ui::extra::checked_list(hwnd, {id}, {font}, &[{}])", c.items.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
+            Kind::Link => format!("phai_ui::extra::link_label(hwnd, {text}, {id}, {font})"),
+            Kind::Masked => format!("phai_ui::extra::masked(hwnd, {}, {}, {id}, {font})", lit(c.word("mask").unwrap_or("")), lit(&text_of(c))),
+            Kind::Calendar => format!("phai_ui::extra::calendar(hwnd, {id}, {font})"),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
             Kind::Timer => format!("phai_ui::ctl::Timer::new(hwnd, {id}, {}, {})", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
@@ -624,6 +636,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Label | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group => {
                 let _ = writeln!(w, "        win::set_text(self.{}, t({}));", c.id, lit(&text_of(c)));
             }
+            Kind::Link => {
+                let _ = writeln!(w, "        self.{}.set_link_text(t({}));", c.id, lit(&text_of(c)));
+            }
             Kind::Tabs => {
                 let _ = writeln!(w, "        controls::tabs_relabel(self.{}.hwnd(), &[{}]);", c.id, c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", "));
             }
@@ -765,6 +780,16 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                     let _ = writeln!(w, "                {id} if code == 0x0300 => {call}, // EN_CHANGE, win::VALUE_CHANGED");
                 }
             }
+            Kind::Masked => {
+                if let Some(call) = call {
+                    let _ = writeln!(w, "                {id} if code == 0x0300 => {call}, // EN_CHANGE");
+                }
+            }
+            Kind::ListBox => {
+                if let Some(call) = call {
+                    let _ = writeln!(w, "                {id} if code == phai_ui::extra::LBN_SELCHANGE => {call},");
+                }
+            }
             Kind::Combo => {
                 if let Some(call) = call {
                     let _ = writeln!(w, "                {id} if code == 1 => {call}, // CBN_SELCHANGE");
@@ -826,7 +851,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "        }}");
     }
     // WM_NOTIFY: a tree's item chosen, a list's row chosen, a heading clicked, a grid's row changed.
-    let notify: Vec<&Control> = f.control.iter().filter(|c| (matches!(c.kind, Kind::Tree | Kind::List) && c.on_select.is_some()) || c.events.contains_key("column_click") || c.events.contains_key("selection_changed")).collect();
+    let notify: Vec<&Control> = f.control.iter().filter(|c| (matches!(c.kind, Kind::Tree | Kind::List) && c.on_select.is_some()) || (matches!(c.kind, Kind::CheckedList | Kind::Link | Kind::Calendar) && c.handler().is_some()) || c.events.contains_key("column_click") || c.events.contains_key("selection_changed")).collect();
     if !notify.is_empty() {
         let _ = writeln!(w, "        wm::WM_NOTIFY => {{");
         let _ = writeln!(w, "            use windows::Win32::UI::Controls as cc;");
@@ -841,6 +866,25 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                     let _ = writeln!(w, "            }}");
                 }
                 continue;
+            }
+            match (c.kind, c.handler()) {
+                (Kind::CheckedList, Some(h)) => {
+                    // A tick put or taken away - WinForms' ItemCheck.
+                    let _ = writeln!(w, "            if hdr.idFrom == {idc} as usize && hdr.code == cc::LVN_ITEMCHANGED && unsafe {{ phai_ui::extra::is_check_change(l) }}.is_some() {{");
+                    let _ = writeln!(w, "                events.{h}(ui);");
+                    let _ = writeln!(w, "            }}");
+                }
+                (Kind::Link, Some(h)) => {
+                    let _ = writeln!(w, "            if hdr.idFrom == {idc} as usize && (hdr.code == cc::NM_CLICK || hdr.code == cc::NM_RETURN) {{");
+                    let _ = writeln!(w, "                events.{h}(ui);");
+                    let _ = writeln!(w, "            }}");
+                }
+                (Kind::Calendar, Some(h)) => {
+                    let _ = writeln!(w, "            if hdr.idFrom == {idc} as usize && hdr.code == cc::MCN_SELCHANGE {{");
+                    let _ = writeln!(w, "                events.{h}(ui);");
+                    let _ = writeln!(w, "            }}");
+                }
+                _ => {}
             }
             let row_chosen = |h: &str| {
                 format!("            if hdr.idFrom == {idc} as usize && hdr.code == cc::LVN_ITEMCHANGED {{\n                let it = unsafe {{ &*(l.0 as *const cc::NMLISTVIEW) }};\n                if it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0 {{\n                    events.{h}(ui);\n                }}\n            }}")

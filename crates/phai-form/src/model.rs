@@ -165,10 +165,24 @@ pub enum Kind {
     /// A component: the menu a right-click on a control opens - its items `id | label`.
     #[serde(rename = "contextmenu")]
     ContextMenu,
+    /// A panel that holds controls, a colour of its own or none, a line round it or none.
+    Panel,
+    /// Lines to choose one of, or several - WinForms' ListBox; its lines are `items`.
+    #[serde(rename = "listbox")]
+    ListBox,
+    /// Lines each with a tick box - WinForms' CheckedListBox.
+    #[serde(rename = "checkedlist")]
+    CheckedList,
+    /// Words that are a link - WinForms' LinkLabel.
+    Link,
+    /// A box that takes only what its `mask` allows - WinForms' MaskedTextBox.
+    Masked,
+    /// A month to choose a day in - WinForms' MonthCalendar.
+    Calendar,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 23] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu];
+    pub const ALL: [Kind; 29] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -205,6 +219,12 @@ impl Kind {
             Kind::Grid => "grid",
             Kind::ContextMenu => "contextmenu",
             Kind::Textarea => "textarea",
+            Kind::Panel => "panel",
+            Kind::ListBox => "listbox",
+            Kind::CheckedList => "checkedlist",
+            Kind::Link => "link",
+            Kind::Masked => "masked",
+            Kind::Calendar => "calendar",
         }
     }
 
@@ -233,22 +253,27 @@ impl Kind {
             Kind::Grid => (300, 150),
             Kind::ContextMenu => (32, 32),
             Kind::Textarea => (240, 90),
+            Kind::Panel => (200, 100),
+            Kind::ListBox | Kind::CheckedList => (120, 95),
+            Kind::Link => (80, 23),
+            Kind::Masked => (150, 23),
+            Kind::Calendar => (227, 162),
         }
     }
 
     /// The handler a control of this kind has, if any.
     pub fn event(self) -> Option<&'static str> {
         match self {
-            Kind::Button | Kind::Checkbox | Kind::Radio => Some("on_click"),
-            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid => Some("on_change"),
-            Kind::List | Kind::Tree => Some("on_select"),
+            Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Link => Some("on_click"),
+            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid | Kind::Masked | Kind::Calendar | Kind::CheckedList => Some("on_change"),
+            Kind::List | Kind::Tree | Kind::ListBox => Some("on_select"),
             Kind::Timer => Some("on_tick"),
             _ => None,
         }
     }
 
     pub fn has_text(self) -> bool {
-        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group)
+        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group | Kind::Link)
     }
 }
 
@@ -376,6 +401,7 @@ impl Control {
             Kind::Checkbox => Some("Check box".to_string()),
             Kind::Radio => Some("Option".to_string()),
             Kind::Group => Some("Group".to_string()),
+            Kind::Link => Some("Link".to_string()),
             _ => None,
         };
         let mut c = Control {
@@ -696,7 +722,7 @@ impl FormFile {
                 handlers.insert(h.clone());
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
-            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu)));
+            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu | Kind::ListBox | Kind::CheckedList)));
             for (st, decls) in &c.states {
                 if !STATES.contains(&st.as_str()) {
                     out.push((format!("{}: no state {st} - {}", c.id, STATES.join(", ")), at.clone()));
@@ -895,7 +921,7 @@ impl FormFile {
         self.control
             .iter()
             .enumerate()
-            .filter(|(j, p)| *j != i && matches!(p.kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table) && p.dock.as_deref().is_none_or(|d| d == "none"))
+            .filter(|(j, p)| *j != i && matches!(p.kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel) && p.dock.as_deref().is_none_or(|d| d == "none"))
             .filter(|(_, p)| {
                 let [px, py, pw, ph] = p.rect();
                 x >= px && y >= py && x + w <= px + pw && y + h <= py + ph && (pw, ph) != (w, h)

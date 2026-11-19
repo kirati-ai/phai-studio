@@ -7,6 +7,7 @@
 //! | module | what it is |
 //! | --- | --- |
 //! | [`win`] | windows, fonts, DPI, buttons, checkboxes, radios, edits, lists, toolbar, the frame |
+//! | [`extra`] | ListBox, CheckedListBox, LinkLabel, MaskedTextBox, MonthCalendar |
 //! | [`controls`] | group frame, tabs, status bar - drawn whole by the library |
 //! | [`theme`] | themes as CSS; the built-in light and dark ones |
 //! | [`layout`] | dock and anchor |
@@ -23,6 +24,7 @@ pub mod controls;
 pub mod ctl;
 pub mod dialogs;
 pub mod events;
+pub mod extra;
 pub mod form;
 pub mod grid;
 pub mod icon;

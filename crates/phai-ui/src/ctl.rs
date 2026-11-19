@@ -321,6 +321,129 @@ control!(
     /// WinForms' ContextMenuStrip: the window it belongs to; it opens on a right-click.
     ContextMenu
 );
+control!(
+    /// WinForms' Panel: holds controls, with a colour of its own or none.
+    Panel
+);
+control!(
+    /// WinForms' ListBox.
+    ListBox
+);
+control!(
+    /// WinForms' CheckedListBox: lines each with a tick box.
+    CheckedListBox
+);
+control!(
+    /// WinForms' LinkLabel.
+    LinkLabel
+);
+control!(
+    /// WinForms' MaskedTextBox.
+    MaskedTextBox
+);
+control!(
+    /// WinForms' MonthCalendar.
+    MonthCalendar
+);
+
+impl ListBox {
+    /// Adds a line at the end (in its place, when sorted); where it went.
+    pub fn items_add(self, s: &str) -> usize {
+        crate::extra::list_box_add(self.0, s)
+    }
+    pub fn items_insert(self, at: usize, s: &str) {
+        crate::extra::list_box_insert(self.0, at, s)
+    }
+    pub fn items_remove_at(self, i: usize) {
+        crate::extra::list_box_remove_at(self.0, i)
+    }
+    pub fn items_clear(self) {
+        crate::extra::list_box_clear(self.0)
+    }
+    pub fn items_count(self) -> usize {
+        crate::extra::list_box_count(self.0)
+    }
+    pub fn item(self, i: usize) -> String {
+        crate::extra::list_box_item(self.0, i)
+    }
+    pub fn selected_index(self) -> Option<usize> {
+        crate::extra::list_box_selected(self.0)
+    }
+    pub fn set_selected_index(self, i: Option<usize>) {
+        crate::extra::list_box_select(self.0, i)
+    }
+    /// Every chosen line - SelectedIndices.
+    pub fn selected_indices(self) -> Vec<usize> {
+        crate::extra::list_box_selected_all(self.0)
+    }
+    /// The chosen line's words - SelectedItem.
+    pub fn selected_item(self) -> Option<String> {
+        self.selected_index().map(|i| self.item(i))
+    }
+}
+
+impl CheckedListBox {
+    pub fn items_add(self, s: &str) {
+        ListView(self.0).items_add(&[s]);
+    }
+    pub fn items_clear(self) {
+        ListView(self.0).items_clear()
+    }
+    pub fn items_count(self) -> usize {
+        ListView(self.0).items_count()
+    }
+    pub fn item(self, i: usize) -> String {
+        ListView(self.0).cell(i, 0)
+    }
+    pub fn checked(self, i: usize) -> bool {
+        crate::extra::checked_list_checked(self.0, i)
+    }
+    pub fn set_checked(self, i: usize, on: bool) {
+        crate::extra::checked_list_set_checked(self.0, i, on)
+    }
+    /// Every ticked line - CheckedIndices.
+    pub fn checked_indices(self) -> Vec<usize> {
+        (0..self.items_count()).filter(|i| self.checked(*i)).collect()
+    }
+    pub fn selected_index(self) -> Option<usize> {
+        ListView(self.0).selected_index()
+    }
+}
+
+impl LinkLabel {
+    /// Its words, without the link's marks.
+    pub fn link_text(self) -> String {
+        crate::extra::link_words(self.0)
+    }
+    /// New words, all a link - or the part between `<a>` and `</a>`.
+    pub fn set_link_text(self, s: &str) {
+        crate::win::set_text(self.0, &crate::extra::link_markup(s))
+    }
+}
+
+impl MaskedTextBox {
+    /// What was typed, without the mask's literals and blanks.
+    pub fn value(self) -> String {
+        crate::extra::masked_value(self.0)
+    }
+    /// Every place that must be filled is - MaskCompleted.
+    pub fn mask_completed(self) -> bool {
+        crate::extra::mask_completed(self.0)
+    }
+    pub fn clear(self) {
+        crate::win::set_text(self.0, "")
+    }
+}
+
+impl MonthCalendar {
+    /// The chosen day: (year, month, day).
+    pub fn selection_start(self) -> (i32, i32, i32) {
+        crate::extra::calendar_date(self.0)
+    }
+    pub fn set_date(self, y: i32, m: i32, d: i32) {
+        crate::extra::calendar_set_date(self.0, y, m, d)
+    }
+}
 
 impl Button {
     /// Clicks it, as the mouse would - its Click method runs.
