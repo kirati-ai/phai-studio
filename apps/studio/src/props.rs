@@ -6,7 +6,8 @@
 //! for anchors, Windows' colour dialog for colours, "…" for lists and files. Below, what the chosen
 //! property is for.
 
-use phai_form::{anchor_text, parse_anchor, Anchors, Kind, DOCKS};
+use phai_form::props::{self as table, Spec, Ty};
+use phai_form::{anchor_text, parse_anchor, Anchors, HasProps, Kind, DOCKS};
 use phai_ui::text::t;
 use phai_ui::theme::{Color, State};
 use phai_ui::win;
@@ -65,6 +66,41 @@ pub enum Key {
     FormSize,
     /// "Segoe UI, 9pt, Bold" - folds open into Font size and Bold.
     FontAll,
+    /// A control's property from phai-form's table, by its name.
+    More(&'static str),
+    /// The form's, from the table.
+    FormMore(&'static str),
+}
+
+/// The editor a table property's kind wants.
+fn ed_of(s: &Spec, buttons: &[String]) -> Ed {
+    match s.ty {
+        Ty::Bool => Ed::Bool,
+        Ty::Int(..) => Ed::Number,
+        Ty::Choice(c) => Ed::Choice(c.iter().map(|x| x.to_string()).collect(), false),
+        Ty::Color => Ed::Color,
+        Ty::Button => {
+            let mut v = vec![String::new()];
+            v.extend(buttons.iter().cloned());
+            Ed::Choice(v, false)
+        }
+        _ => Ed::Text,
+    }
+}
+
+/// A table value as the grid shows it: True and False as Visual Studio writes them.
+fn shown(s: &Spec, v: Option<&phai_form::toml::Value>) -> String {
+    let text = v.map(table::text_of).unwrap_or_else(|| s.default.to_string());
+    match (s.ty, text.as_str()) {
+        (Ty::Bool, "true") => "True".into(),
+        (Ty::Bool, "false") => "False".into(),
+        _ => text,
+    }
+}
+
+/// `#rrggbb`.
+fn hex(c: Color) -> String {
+    format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
 }
 
 /// How a value is edited.
@@ -323,6 +359,11 @@ impl Props {
                 q.set = is_set(q.key, &q.value);
                 q
             })
+            .chain(table::FORM.iter().map(|sp| {
+                let buttons: Vec<String> = f.control.iter().filter(|c| c.kind == Kind::Button).map(|c| c.id.clone()).collect();
+                let v = f.form.prop(sp.name);
+                Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: ed_of(sp, &buttons), help: t(sp.help), parent: None, set: v.is_some() }
+            }))
             .collect();
         };
         // A context menu: its name and its items.
@@ -428,6 +469,38 @@ impl Props {
         }
         for q in v.iter_mut() {
             q.set = is_set(q.key, &q.value);
+        }
+        // What the theme gives it, where the control sets nothing of its own: plain, not bold.
+        let theme = sel.and_then(|i| s.canvas.as_ref().and_then(|cv| cv.control_window(i))).and_then(|h| win::kind_of(h).map(|k| win::style_of(h, k, State::default())));
+        if let Some(st) = &theme {
+            for q in v.iter_mut().filter(|q| !q.set) {
+                let from_theme = match q.key {
+                    Key::BackColor => st.background.map(hex),
+                    Key::ForeColor => st.color.map(hex),
+                    Key::BorderColor => st.border_color.map(hex),
+                    Key::Radius => st.border_radius.map(|n| n.to_string()),
+                    _ => None,
+                };
+                if let Some(x) = from_theme {
+                    q.value = x;
+                }
+            }
+        }
+        for sp in table::of_kind(c.kind) {
+            let val = c.prop(sp.name);
+            let mut value = shown(sp, val);
+            if val.is_none() {
+                let from_theme = theme.as_ref().and_then(|st| match sp.name {
+                    "border_width" => st.border_width.map(|n| n.to_string()),
+                    "accent_color" => st.accent_color.map(hex),
+                    "icon_color" => st.icon_color.map(hex),
+                    _ => None,
+                });
+                if let Some(x) = from_theme {
+                    value = x;
+                }
+            }
+            v.push(Prop { category: t(sp.category), key: Key::More(sp.name), name: sp.label, value, ed: ed_of(sp, &[]), help: t(sp.help), parent: None, set: val.is_some() });
         }
         v
     }

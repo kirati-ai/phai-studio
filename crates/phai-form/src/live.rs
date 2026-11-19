@@ -8,7 +8,8 @@ use phai_ui::win;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::HFONT;
 
-use crate::model::{parse_anchor, Control, FormFile, Kind};
+use crate::model::{parse_anchor, Control, FormFile, HasProps, Kind};
+use crate::props;
 
 /// The windows of a built form: one per control, in form order, and the toolbar if it has one.
 pub struct Live {
@@ -82,8 +83,9 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
         Kind::Checkbox => win::checkbox(parent, tr(text), id, font, c.checked.unwrap_or(false)),
         Kind::Radio => win::radio(parent, tr(text), id, font, c.group.unwrap_or(0), c.checked.unwrap_or(false)),
         Kind::Combo => {
-            let items: Vec<&str> = c.items.iter().map(|s| tr(s)).collect();
-            win::combo(parent, id, font, &items)
+            let sorted = crate::codegen::combo_items(c);
+            let items: Vec<&str> = sorted.iter().map(|s| tr(s)).collect();
+            win::combo_with(parent, id, font, &items, c.flag("editable", false))
         }
         Kind::List => {
             let cols: Vec<(&str, i32)> = c.columns.iter().map(|(s, n)| (tr(s), *n)).collect();
@@ -133,6 +135,14 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
     if let Some(own) = c.own_css() {
         let _ = win::set_own_style(h, &own);
     }
+    // The table's properties, as the generated code gives them - those the canvas shows.
+    for s in props::of_kind(c.kind).filter(|s| s.how == props::How::Call && s.canvas) {
+        if let Some(v) = c.prop(s.name) {
+            let text = props::text_of(v);
+            let text = if s.ty == props::Ty::Words { tr(&text).to_string() } else { text };
+            phai_ui::props::apply(h, s.name, &text);
+        }
+    }
     if c.enabled == Some(false) {
         win::enable(h, false);
     }
@@ -152,9 +162,9 @@ pub fn arrange(f: &FormFile, controls: &[HWND]) {
             let [_, _, w, h] = f.control[*k].rect();
             (phai_ui::layout::scale(w, dpi), phai_ui::layout::scale(h, dpi))
         }).collect();
-        let gap = phai_ui::layout::scale(6, dpi);
+        let gap = phai_ui::layout::scale(c.int("gap").unwrap_or(6), dpi);
         if c.kind == Kind::Flow {
-            for (k, (x, y)) in kids.iter().zip(phai_ui::layout::flow(area, &sizes, gap)) {
+            for (k, (x, y)) in kids.iter().zip(phai_ui::layout::flow_with(area, &sizes, gap, c.word("direction") == Some("top_down"), c.flag("wrap", true))) {
                 let (w, h) = sizes[kids.iter().position(|q| q == k).unwrap_or(0)];
                 if let Some(&kh) = controls.get(*k) {
                     win::move_to(kh, x, y, w, h);
@@ -195,6 +205,9 @@ pub fn build(parent: HWND, f: &FormFile, font: HFONT, page: usize) -> Live {
     for (i, c) in f.control.iter().enumerate() {
         let own = c.font_size.map(|pt| win::font(parent, pt, false)).unwrap_or(form_font);
         let h = make(parent, c, control_id(i), own);
+        if c.kind == Kind::Tabs && page > 0 {
+            controls::tabs_select(h, page);
+        }
         if c.visible == Some(false) || c.page.is_some_and(|p| p != page) || c.kind.is_component() {
             win::show(h, false);
         }

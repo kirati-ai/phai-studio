@@ -20,10 +20,12 @@
 
 pub mod controls;
 pub mod dialogs;
+pub mod form;
 pub mod grid;
 pub mod icon;
 pub mod layout;
 pub mod picture;
+pub mod props;
 #[cfg(feature = "shot")]
 pub mod shot;
 pub mod text;

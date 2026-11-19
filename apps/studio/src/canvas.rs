@@ -122,6 +122,11 @@ impl Canvas {
     }
 
     /// Builds the form again from the model: size, controls, handles.
+    /// The window the canvas built for control `i` - to ask the theme what it gives it.
+    pub fn control_window(&self, i: usize) -> Option<HWND> {
+        self.live.get(i).copied()
+    }
+
     pub fn rebuild(&mut self) {
         let Some(s) = studio() else { return };
         unsafe {

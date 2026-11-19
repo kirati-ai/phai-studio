@@ -1129,7 +1129,7 @@ impl Studio {
     /// controls chosen: each of them takes it.
     pub fn apply(&mut self, key: Key, text: &str) {
         let chosen = self.selection();
-        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme | Key::FormStart | Key::FormState);
+        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme | Key::FormStart | Key::FormState | Key::FormMore(_));
         if chosen.len() > 1 && !form_key && !matches!(key, Key::Id | Key::Event) {
             let primary = self.selected;
             for j in chosen {
@@ -1200,6 +1200,12 @@ impl Studio {
             }
             (Key::FormStart, _) => f.form.start = (text == t("Windows default")).then(|| "windows".to_string()),
             (Key::FormState, _) => f.form.maximized = (text == t("Maximized")).then_some(true),
+            (Key::FormMore(name), _) => {
+                let Some(sp) = phai_form::props::find_form(name) else { return };
+                let Ok(v) = phai_form::props::parse(sp, text) else { return };
+                use phai_form::HasProps;
+                f.form.set_prop(name, v);
+            }
             (Key::FormTheme, _) => {
                 f.form.theme = (!text.trim().is_empty()).then(|| text.trim().to_string());
                 self.changed();
@@ -1287,6 +1293,12 @@ impl Studio {
                         c.value = (v != 0).then_some(v);
                     }
                     Key::Image => c.image = (!text.trim().is_empty()).then(|| text.trim().replace('\\', "/")),
+                    Key::More(name) => {
+                        let Some(sp) = phai_form::props::find(c.kind, name) else { return };
+                        let Ok(v) = phai_form::props::parse(sp, text) else { return };
+                        use phai_form::HasProps;
+                        c.set_prop(name, v);
+                    }
                     Key::Items => match c.kind {
                         Kind::Combo => c.items = list(),
                         Kind::ContextMenu => c.items = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect(),
@@ -7608,6 +7620,78 @@ fn main()"), "{out}");
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-addform.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
         assert_eq!(code, Some(42), "the program ended when its second window closed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A real project whose form and controls use WinForms' properties from the table - built,
+    /// warning-free, and run: each property found in the window Windows made.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn winforms_properties_reach_the_running_program() {
+        let dir = std::env::temp_dir().join(format!("phai-props-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let v = |s: &str| phai_form::toml::Value::String(s.into());
+        let b = phai_form::toml::Value::Boolean;
+        let n = |x: i64| phai_form::toml::Value::Integer(x);
+        use phai_form::{Control, HasProps};
+        let mut name = Control::new(Kind::Edit, "name", [11, 40, 200, 23]);
+        name.set_prop("read_only", Some(b(true)));
+        name.set_prop("max_length", Some(n(12)));
+        name.set_prop("placeholder", Some(v("Your name")));
+        name.set_prop("text_align", Some(v("right")));
+        name.set_prop("tooltip", Some(v("Your name")));
+        name.set_prop("tab_index", Some(n(1)));
+        let mut pick = Control::new(Kind::Combo, "pick", [11, 70, 200, 23]);
+        pick.items = vec!["Pear".into(), "Apple".into(), "Fig".into()];
+        pick.set_prop("sorted", Some(b(true)));
+        pick.set_prop("selected_index", Some(n(2)));
+        pick.set_prop("editable", Some(b(true)));
+        pick.set_prop("tab_index", Some(n(0)));
+        let mut list = Control::new(Kind::List, "rows", [11, 100, 200, 80]);
+        list.set_prop("grid_lines", Some(b(true)));
+        list.set_prop("multi_select", Some(b(false)));
+        let mut tree = Control::new(Kind::Tree, "places", [220, 40, 150, 120]);
+        tree.set_prop("check_boxes", Some(b(true)));
+        tree.set_prop("show_lines", Some(b(true)));
+        tree.set_prop("expand_all", Some(b(true)));
+        let mut when = Control::new(Kind::Date, "when", [220, 170, 150, 23]);
+        when.set_prop("format", Some(v("custom")));
+        when.set_prop("custom_format", Some(v("yyyy/MM/dd")));
+        when.set_prop("date", Some(v("2026-11-19")));
+        let mut go = Control::new(Kind::Button, "go", [220, 200, 75, 23]);
+        go.text = Some("Go".into());
+        go.set_prop("dialog_result", Some(v("ok")));
+        go.set_prop("text_align", Some(v("left")));
+        f.control.extend([name, pick, list, tree, when, go]);
+        f.form.set_prop("accept_button", Some(v("go")));
+        f.form.set_prop("border", Some(v("fixed_single")));
+        f.form.set_prop("maximize_box", Some(b(false)));
+        f.form.set_prop("opacity", Some(n(95)));
+        f.form.set_size("max_size", Some([900, 700]));
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        let again = FormFile::parse(&f.to_toml()).unwrap();
+        assert_eq!(again, f, "the properties are kept in the file");
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Your name", "ชื่อของคุณ"), ("Go", "ไป"), ("Pear", "สาลี่"), ("Apple", "แอปเปิล"), ("Fig", "มะเดื่อ"), ("Name", "ชื่อ"), ("Value", "ค่า"), ("Root", "ราก"), ("  First", "  แรก"), ("  Second", "  สอง")]).unwrap();
+        let user = dir.join("src").join("main_window.rs");
+        let check = "impl MainWindowEvents for MainWindow {\n    fn loaded(&mut self, ui: &MainWindowUi) {\n        use windows::Win32::UI::WindowsAndMessaging as wm;\n        use windows::Win32::Foundation::{LPARAM, WPARAM};\n        let style = |h| unsafe { wm::GetWindowLongW(h, wm::GWL_STYLE) } as u32;\n        let send = |h, m, w: usize, l: isize| unsafe { wm::SendMessageW(h, m, Some(WPARAM(w)), Some(LPARAM(l))).0 };\n        let mut bad = 0;\n        if style(ui.name) & 0x0800 == 0 { bad |= 1 } // ES_READONLY\n        if send(ui.name, 0x00D5, 0, 0) != 12 { bad |= 2 } // EM_GETLIMITTEXT\n        if style(ui.name) & 0x3 != 2 { bad |= 4 } // ES_RIGHT\n        if send(ui.pick, 0x0147, 0, 0) != 2 { bad |= 8 } // CB_GETCURSEL\n        if style(ui.pick) & 0x3 != 2 { bad |= 16 } // CBS_DROPDOWN\n        if style(ui.rows) & 0x4 == 0 { bad |= 32 } // LVS_SINGLESEL\n        if send(ui.rows, 0x1037, 0, 0) & 1 == 0 { bad |= 64 } // LVS_EX_GRIDLINES\n        if style(ui.places) & 0x102 != 0x102 { bad |= 128 } // TVS_CHECKBOXES | TVS_HASLINES\n        if style(ui.hwnd) & wm::WS_MAXIMIZEBOX.0 != 0 || style(ui.hwnd) & wm::WS_THICKFRAME.0 != 0 { bad |= 256 }\n        if phai_ui::win::text_of(ui.pick) != \"Pear\" && phai_ui::win::text_of(ui.pick) != \"\u{e2a}\u{e32}\u{e25}\u{e35}\u{e48}\" { bad |= 512 } // sorted: Apple, Fig, Pear\n        if phai_ui::win::date_value(ui.when) != (2026, 11, 19) { bad |= 1024 }\n        std::process::exit(if bad == 0 { 42 } else { 100 + bad });\n    }\n";
+        let text = std::fs::read_to_string(&user).unwrap().replacen("impl MainWindowEvents for MainWindow {", check, 1);
+        std::fs::write(&user, text).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let run = |args: &[&str]| std::process::Command::new(&cargo).args(args).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        let out = run(&["build", "--quiet"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stderr).matches("warning").count(), 0, "{}", String::from_utf8_lossy(&out.stderr));
+        let tests = run(&["test", "--quiet"]);
+        assert!(tests.status.success(), "the project's own tests: {}{}", String::from_utf8_lossy(&tests.stdout), String::from_utf8_lossy(&tests.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-props.png")).status().unwrap().code();
+        assert_eq!(code, Some(42), "100 + the bits of what the window lacks");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

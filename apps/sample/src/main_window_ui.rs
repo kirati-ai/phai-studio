@@ -77,6 +77,8 @@ pub trait MainWindowEvents {
 struct Host<E> {
     ui: MainWindowUi,
     events: E,
+    /// The program's main window: the program ends with it.
+    main: bool,
 }
 
 impl MainWindowUi {
@@ -98,10 +100,12 @@ impl MainWindowUi {
     }
 
     /// Shows this window over `owner` and waits until it is closed, `owner` taking no input
-    /// meanwhile - as `ShowDialog()` in WinForms.
-    pub fn show_dialog<E: MainWindowEvents + 'static>(owner: HWND, events: E) {
+    /// meanwhile - as `ShowDialog()` in WinForms. What it answers: the DialogResult of the
+    /// button that closed it, or `Cancel`.
+    pub fn show_dialog<E: MainWindowEvents + 'static>(owner: HWND, events: E) -> phai_ui::form::DialogResult {
         let hwnd = Self::make(Some(owner), events);
         win::modal_loop(hwnd, owner);
+        phai_ui::form::take_result(hwnd)
     }
 
     fn make<E: MainWindowEvents + 'static>(owner: Option<HWND>, events: E) -> HWND {
@@ -111,18 +115,22 @@ impl MainWindowUi {
         }
         let class = win::register("Phai.MainWindow", Some(proc_::<E>), None);
         let title = wide(t("Customers"));
+        let (style, ex) = phai_ui::form::frame("sizable", true, true, true, false);
+        let main = owner.is_none();
+        let over = owner;
         unsafe {
-            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, Some(Self::menu()), Some(win::instance()), None).unwrap_or_default();
+            let hwnd = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, Some(Self::menu()), Some(win::instance()), None).unwrap_or_default();
             let ui = Self::build(hwnd);
-            let mut host = Box::new(Host { ui, events });
+            let mut host = Box::new(Host { ui, events, main });
             host.events.loaded(&host.ui);
             win::set_state(hwnd, host);
             win::theme_frame(hwnd);
             let style = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;
+            let ex = wm::GetWindowLongW(hwnd, wm::GWL_EXSTYLE) as u32;
             let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 480), bottom: win::px(hwnd, 360) };
-            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), true, Default::default(), win::dpi(hwnd) as u32);
+            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), true, wm::WINDOW_EX_STYLE(ex), win::dpi(hwnd) as u32);
             let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
-            if let Some(o) = owner {
+            if let Some(o) = over {
                 win::center_on(hwnd, o);
             } else {
                 win::center_on_screen(hwnd);
@@ -176,7 +184,7 @@ impl MainWindowUi {
         let active = win::checkbox(hwnd, t("Active"), CONTROL_ACTIVE, font, true);
         win::set_css(active, "", "active");
         layout.add(active, Item { bounds: Rect::new(95, 101, 110, 20), dock: Dock::None, anchor: Anchor { left: true, top: true, right: false, bottom: false } });
-        let kind = win::combo(hwnd, CONTROL_KIND, font, &[t("Shop"), t("Office")]);
+        let kind = win::combo_with(hwnd, CONTROL_KIND, font, &[t("Shop"), t("Office")], false);
         win::set_css(kind, "", "kind");
         layout.add(kind, Item { bounds: Rect::new(215, 99, 120, 23), dock: Dock::None, anchor: Anchor { left: true, top: true, right: false, bottom: false } });
         let customers = win::list(hwnd, CONTROL_CUSTOMERS, font, &[(t("Name"), 200), (t("Phone"), 120)]);
@@ -230,12 +238,7 @@ impl MainWindowUi {
 
 extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     if msg == wm::WM_GETMINMAXINFO {
-        let info = unsafe { &mut *(l.0 as *mut wm::MINMAXINFO) };
-        let style = unsafe { wm::GetWindowLongW(hwnd, wm::GWL_STYLE) } as u32;
-        let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 400), bottom: win::px(hwnd, 300) };
-        let _ = unsafe { windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), true, Default::default(), win::dpi(hwnd) as u32) };
-        info.ptMinTrackSize.x = r.right - r.left;
-        info.ptMinTrackSize.y = r.bottom - r.top;
+        phai_ui::form::min_max(hwnd, l, Some((400, 300)), None, true);
         return LRESULT(0);
     }
     let Some(host) = (unsafe { win::state::<Host<E>>(hwnd) }) else { return win::def(hwnd, msg, w, l) };
@@ -246,7 +249,7 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
         }
         wm::WM_COMMAND => {
             let (id, code) = (win::loword(w.0) as i32, win::hiword(w.0));
-            let Host { ui, events } = host;
+            let Host { ui, events, .. } = host;
             match id {
                 ID_NEW_CUSTOMER => events.new_customer(ui),
                 ID_EXIT => events.exit(ui),
@@ -264,7 +267,7 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
             if hdr.code == cc::LVN_ITEMCHANGED {
                 let it = unsafe { &*(l.0 as *const cc::NMLISTVIEW) };
                 let chosen = it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0;
-                let Host { ui, events } = host;
+                let Host { ui, events, .. } = host;
                 if chosen && hdr.idFrom == CONTROL_CUSTOMERS as usize {
                     events.customer_chosen(ui);
                 }
@@ -286,7 +289,7 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
         }
         wm::WM_DESTROY => {
             // The program ends with its main window; a window shown over another only closes.
-            if unsafe { wm::GetWindow(hwnd, wm::GW_OWNER) }.map_or(true, |o| o.is_invalid()) {
+            if host.main {
                 unsafe { wm::PostQuitMessage(0) };
             }
             LRESULT(0)

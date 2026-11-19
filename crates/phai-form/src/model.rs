@@ -20,13 +20,10 @@ pub struct FormFile {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Form {
     pub name: String,
     pub title: String,
     pub size: [i32; 2],
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min_size: Option<[i32; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
     /// Points for every control's words; none is Windows' own (9 pt). A control may set its own.
@@ -39,6 +36,65 @@ pub struct Form {
     /// Opens filling the screen, as WinForms' WindowState = Maximized.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximized: Option<bool>,
+    /// The rest of its properties, by the table's names (`props::FORM`): `border = "fixed_single"`,
+    /// `accept_button = "ok"`, `min_size = [300, 200]`.
+    #[serde(flatten)]
+    pub more: Props,
+}
+
+/// Properties from the table in `props.rs`, by name - kept in the file as `name = value`.
+pub type Props = std::collections::BTreeMap<String, toml::Value>;
+
+/// Reading the table's properties of a form or a control.
+pub trait HasProps {
+    fn more(&self) -> &Props;
+    fn more_mut(&mut self) -> &mut Props;
+
+    /// The value set, if any.
+    fn prop(&self, name: &str) -> Option<&toml::Value> {
+        self.more().get(name)
+    }
+    fn flag(&self, name: &str, default: bool) -> bool {
+        self.prop(name).and_then(|v| v.as_bool()).unwrap_or(default)
+    }
+    fn int(&self, name: &str) -> Option<i32> {
+        self.prop(name).and_then(|v| v.as_integer()).map(|n| n as i32)
+    }
+    fn word(&self, name: &str) -> Option<&str> {
+        self.prop(name).and_then(|v| v.as_str())
+    }
+    fn size_of(&self, name: &str) -> Option<[i32; 2]> {
+        let a = self.prop(name)?.as_array()?;
+        Some([a.first()?.as_integer()? as i32, a.get(1)?.as_integer()? as i32])
+    }
+    /// Sets a value, or takes it out with `None`.
+    fn set_prop(&mut self, name: &str, v: Option<toml::Value>) {
+        match v {
+            Some(v) => self.more_mut().insert(name.to_string(), v),
+            None => self.more_mut().remove(name),
+        };
+    }
+    fn set_size(&mut self, name: &str, s: Option<[i32; 2]>) {
+        self.set_prop(name, s.map(|[w, h]| toml::Value::Array(vec![toml::Value::Integer(w as i64), toml::Value::Integer(h as i64)])));
+    }
+}
+
+impl HasProps for Form {
+    fn more(&self) -> &Props {
+        &self.more
+    }
+    fn more_mut(&mut self) -> &mut Props {
+        &mut self.more
+    }
+}
+
+impl HasProps for Control {
+    fn more(&self) -> &Props {
+        &self.more
+    }
+    fn more_mut(&mut self) -> &mut Props {
+        &mut self.more
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -194,7 +250,6 @@ impl Kind {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Control {
     pub kind: Kind,
     pub id: String,
@@ -282,6 +337,9 @@ pub struct Control {
     /// A button that saves or reloads a bound grid: `"customers:save"`, `"customers:reload"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind_action: Option<String>,
+    /// The rest of its properties, by the table's names (`props::CONTROL`): `read_only = true`.
+    #[serde(flatten)]
+    pub more: Props,
 }
 
 /// Which table a grid shows: its database (`main` for SQLite), the table, the columns in the
@@ -346,6 +404,7 @@ impl Control {
             on_tick: None,
             cols: None,
             context_menu: None,
+            more: Props::new(),
         };
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
@@ -379,6 +438,11 @@ impl Control {
         }
         if self.bold == Some(true) {
             decls.push("font-weight: bold".into());
+        }
+        for s in crate::props::of_kind(self.kind) {
+            if let (crate::props::How::Css(d), Some(v)) = (s.how, self.prop(s.name)) {
+                decls.push(d.replace("{}", &crate::props::text_of(v)));
+            }
         }
         (!decls.is_empty()).then(|| decls.join("; "))
     }
@@ -507,7 +571,7 @@ const LAST: &str = "\u{1}";
 impl FormFile {
     /// A new empty form.
     pub fn new(name: &str) -> FormFile {
-        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], min_size: None, theme: None, font_size: None, start: None, maximized: None }, menu: vec![], toolbar: vec![], control: vec![] }
+        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], theme: None, font_size: None, start: None, maximized: None, more: Props::new() }, menu: vec![], toolbar: vec![], control: vec![] }
     }
 
     pub fn parse(src: &str) -> Result<FormFile, FormError> {
@@ -544,6 +608,22 @@ impl FormFile {
         if let Some(st) = &self.form.start {
             if !["center", "windows"].contains(&st.as_str()) {
                 out.push((format!("start {st:?}: center or windows"), Some("start".into())));
+            }
+        }
+        for (name, v) in &self.form.more {
+            match crate::props::find_form(name) {
+                None => out.push((format!("unknown field `{name}` - not a property of a form"), Some(format!("{name} =")))),
+                Some(s) => {
+                    if let Some(e) = crate::props::check(s, v) {
+                        out.push((e, Some(format!("{name} ="))));
+                    }
+                    if s.ty == crate::props::Ty::Button {
+                        let id = v.as_str().unwrap_or_default();
+                        if !self.control.iter().any(|c| c.kind == Kind::Button && c.id == id) {
+                            out.push((format!("{name}: no button {id}"), Some(format!("{name} ="))));
+                        }
+                    }
+                }
             }
         }
         if self.form.size[0] < 50 || self.form.size[1] < 30 {
@@ -584,6 +664,16 @@ impl FormFile {
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
             out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu)));
+            for (name, v) in &c.more {
+                match crate::props::find(c.kind, name) {
+                    None => out.push((format!("unknown field `{name}` - not a property of a {}", c.kind.name()), Some(format!("{LAST}{name} =")))),
+                    Some(s) => {
+                        if let Some(e) = crate::props::check(s, v) {
+                            out.push((format!("{}: {e}", c.id), at.clone()));
+                        }
+                    }
+                }
+            }
             if let Some(m) = &c.context_menu {
                 if !self.control.iter().any(|x| x.kind == Kind::ContextMenu && &x.id == m) {
                     out.push((format!("{}: no context menu {m}", c.id), at.clone()));
@@ -767,6 +857,11 @@ impl FormFile {
             // not translated; one renamed in the form is a sentence like any other.
             c.columns.iter().enumerate().filter(|(i, (s, _))| c.bind.as_ref().is_none_or(|b| b.columns.get(*i) != Some(s))).for_each(|(_, (s, _))| add(s));
             c.tabs.iter().for_each(|s| add(s));
+            for s in crate::props::of_kind(c.kind).filter(|s| s.ty == crate::props::Ty::Words) {
+                if let Some(w) = c.word(s.name) {
+                    add(w);
+                }
+            }
         }
         out
     }

@@ -232,6 +232,16 @@ struct Css {
     hot: bool,
     /// The control's own look, over the theme's: [`set_own_style`].
     own: Style,
+    /// Where an owner-drawn button's words sit: 0 its kind's own, 1 left, 2 centre, 3 right.
+    align: u8,
+}
+
+/// Where a button's words sit: `"left"`, `"center"` or `"right"`.
+pub fn set_align(h: HWND, align: &str) {
+    with_css(h, |c| c.align = match align { "left" => 1, "right" => 3, _ => 2 });
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
 }
 
 static CSS: Mutex<Option<HashMap<isize, Css>>> = Mutex::new(None);
@@ -243,7 +253,7 @@ fn with_css<R>(h: HWND, f: impl FnOnce(&mut Css) -> R) -> Option<R> {
 
 fn mark(h: HWND, kind: Kind) {
     let mut map = CSS.lock().unwrap_or_else(|e| e.into_inner());
-    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default() });
+    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), align: 0 });
 }
 
 fn forget(h: HWND) {
@@ -626,8 +636,14 @@ pub fn draw_item(l: LPARAM) -> bool {
         _ => {
             let radius = px(h, s.border_radius.unwrap_or(4) * 2);
             round_rect(dc, r, s.background_or(Color::rgb(255, 255, 255)), s.border_or(Color::rgb(212, 212, 212)), radius);
-            let mut tr = r;
-            draw_text_styled(dc, h, &text, &mut tr, fg, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
+            let pad = px(h, 8);
+            let mut tr = RECT { left: r.left + pad, right: r.right - pad, ..r };
+            let align = match with_css(h, |c| c.align).unwrap_or(0) {
+                1 => Gdi::DT_LEFT,
+                3 => Gdi::DT_RIGHT,
+                _ => Gdi::DT_CENTER,
+            };
+            draw_text_styled(dc, h, &text, &mut tr, fg, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
         }
     }
     true
@@ -731,10 +747,18 @@ unsafe extern "system" fn edit_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id
 
 /// A drop-down list to choose one of `items`.
 pub fn combo(parent: HWND, id: i32, f: HFONT, items: &[&str]) -> HWND {
+    combo_with(parent, id, f, items, false)
+}
+
+/// A drop-down list; `editable`, words can be typed in too - WinForms' DropDownStyle = DropDown.
+pub fn combo_with(parent: HWND, id: i32, f: HFONT, items: &[&str], editable: bool) -> HWND {
+    const CBS_DROPDOWN: u32 = 0x0002;
     const CBS_DROPDOWNLIST: u32 = 0x0003;
+    const CBS_AUTOHSCROLL: u32 = 0x0040;
     const CB_ADDSTRING: u32 = 0x0143;
     const CB_SETCURSEL: u32 = 0x014E;
-    let h = child(parent, "COMBOBOX", "", WINDOW_STYLE(CBS_DROPDOWNLIST) | wm::WS_TABSTOP | wm::WS_VSCROLL, WINDOW_EX_STYLE(0), id, f);
+    let style = if editable { CBS_DROPDOWN | CBS_AUTOHSCROLL } else { CBS_DROPDOWNLIST };
+    let h = child(parent, "COMBOBOX", "", WINDOW_STYLE(style) | wm::WS_TABSTOP | wm::WS_VSCROLL, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::Combo);
     unsafe {
         for it in items {
@@ -1272,11 +1296,31 @@ unsafe extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _
     r
 }
 
-struct Range {
-    min: i32,
-    max: i32,
-    value: i32,
+pub(crate) struct Range {
+    pub(crate) min: i32,
+    pub(crate) max: i32,
+    pub(crate) value: i32,
     drag: bool,
+    /// What an arrow key moves a slider by; Page Up and Down, 0 a tenth of the range.
+    pub(crate) small: i32,
+    pub(crate) large: i32,
+    /// A tick under a slider every so many; 0 none.
+    pub(crate) ticks: i32,
+    /// What a progress bar's perform_step adds.
+    pub(crate) step: i32,
+    /// A progress bar's running block, and where it is, in hundredths of the width.
+    pub(crate) marquee: bool,
+    pub(crate) phase: i32,
+}
+
+/// A slider's or progress bar's settings, changed by `f`, then shown.
+pub(crate) fn with_range(h: HWND, f: impl FnOnce(&mut Range)) {
+    if let Some(r) = unsafe { state::<Range>(h) } {
+        f(r);
+    }
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
 }
 
 fn range_class(name: &str, proc_: wm::WNDPROC) -> Vec<u16> {
@@ -1290,7 +1334,7 @@ fn make_range(parent: HWND, class: &str, proc_: wm::WNDPROC, id: i32, kind: Kind
         wm::CreateWindowExW(WINDOW_EX_STYLE(0), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPSIBLINGS | if tab { wm::WS_TABSTOP } else { WINDOW_STYLE(0) }, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(instance()), None).unwrap_or_default()
     };
     let (lo, hi) = (min.min(max), max.max(min));
-    set_state(h, Box::new(Range { min: lo, max: hi, value: value.clamp(lo, hi), drag: false }));
+    set_state(h, Box::new(Range { min: lo, max: hi, value: value.clamp(lo, hi), drag: false, small: 1, large: 0, ticks: 0, step: 10, marquee: false, phase: 0 }));
     mark(h, kind);
     h
 }
@@ -1330,7 +1374,7 @@ pub fn set_value(h: HWND, v: i32) {
 
 fn range_paint(h: HWND, slider: bool) {
     let Some(r) = (unsafe { state::<Range>(h) }) else { return };
-    let (min, max, value) = (r.min, r.max, r.value);
+    let (min, max, value, ticks, marquee, phase) = (r.min, r.max, r.value, r.ticks, r.marquee, r.phase);
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
         let dc = Gdi::BeginPaint(h, &mut ps);
@@ -1356,6 +1400,16 @@ fn range_paint(h: HWND, slider: bool) {
             let cy = rc.bottom / 2;
             let (x0, x1) = (thumb / 2, rc.right - thumb / 2);
             let at = x0 + frac(x1 - x0);
+            if ticks > 0 {
+                // Tick marks along the bottom, as a TrackBar's TickFrequency.
+                let tick = s.border_or(Color::rgb(0x8a, 0x8a, 0x8a));
+                let mut v = min;
+                while v <= max {
+                    let x = x0 + ((v - min) as i64 * (x1 - x0) as i64 / span) as i32;
+                    fill(mem, &RECT { left: x, top: rc.bottom - px(h, 5), right: x + 1, bottom: rc.bottom - 1 }, tick);
+                    v += ticks;
+                }
+            }
             round_rect(mem, RECT { left: x0, top: cy - th / 2, right: x1, bottom: cy - th / 2 + th }, track, track, th);
             round_rect(mem, RECT { left: x0, top: cy - th / 2, right: at.max(x0 + 1), bottom: cy - th / 2 + th }, accent, accent, th);
             // The thumb: a ring in the border colour around a dot in the accent, as Windows 11's.
@@ -1371,7 +1425,12 @@ fn range_paint(h: HWND, slider: bool) {
             let radius = px(h, s.border_radius.unwrap_or(3) * 2);
             round_rect(mem, rc, track, track, radius);
             let done = frac(rc.right);
-            if done > 0 {
+            if marquee {
+                // A block a quarter of the width, running from the left edge past the right.
+                let bw = (rc.right / 4).max(radius * 2);
+                let x = (rc.right + bw) * phase / 100 - bw;
+                round_rect(mem, RECT { left: x.max(0), right: (x + bw).min(rc.right), ..rc }, accent, accent, radius);
+            } else if done > 0 {
                 round_rect(mem, RECT { right: done.max(radius), ..rc }, accent, accent, radius);
             }
         }
@@ -1385,6 +1444,10 @@ fn range_paint(h: HWND, slider: bool) {
 
 extern "system" fn progress_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
+        wm::WM_TIMER => {
+            with_range(h, |r| r.phase = (r.phase + 2) % 100);
+            LRESULT(0)
+        }
         wm::WM_PAINT => {
             range_paint(h, false);
             LRESULT(0)
@@ -1483,11 +1546,11 @@ extern "system" fn slider_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         }
         wm::WM_KEYDOWN => {
             let Some(r) = (unsafe { state::<Range>(h) }) else { return LRESULT(0) };
-            let page = ((r.max - r.min) / 10).max(1);
-            let v = r.value;
+            let page = if r.large > 0 { r.large } else { ((r.max - r.min) / 10).max(1) };
+            let (v, small) = (r.value, r.small.max(1));
             let to = match w.0 as u16 {
-                0x25 | 0x28 => v - 1, // left, down
-                0x27 | 0x26 => v + 1, // right, up
+                0x25 | 0x28 => v - small, // left, down
+                0x27 | 0x26 => v + small, // right, up
                 0x21 => v + page,     // page up
                 0x22 => v - page,     // page down
                 0x24 => r.min,        // home

@@ -173,7 +173,26 @@ fn chosen_row(h: HWND) -> Option<usize> {
     (i >= 0).then_some(i as usize)
 }
 
+static READ_ONLY: std::sync::Mutex<Vec<isize>> = std::sync::Mutex::new(Vec::new());
+
+/// A grid whose cells are read, not changed: no editor opens, no row is added or taken out.
+pub fn set_read_only(h: HWND, on: bool) {
+    let mut v = READ_ONLY.lock().unwrap_or_else(|e| e.into_inner());
+    v.retain(|x| *x != h.0 as isize);
+    if on {
+        v.push(h.0 as isize);
+    }
+}
+
+fn is_read_only(h: HWND) -> bool {
+    READ_ONLY.lock().unwrap_or_else(|e| e.into_inner()).contains(&(h.0 as isize))
+}
+
 unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
+    if is_read_only(h) && (msg == wm::WM_LBUTTONDBLCLK || (msg == wm::WM_KEYDOWN && (w.0 == 0x71 || w.0 == 0x2E))) {
+        // Read only: a double-click, F2 or Delete do what a list's would.
+        return unsafe { DefSubclassProc(h, msg, w, l) };
+    }
     match msg {
         wm::WM_LBUTTONDBLCLK => {
             let (x, y) = win::point_of(l);
