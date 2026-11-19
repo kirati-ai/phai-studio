@@ -329,12 +329,30 @@ impl Button {
     }
 }
 
+/// A check box's three states - WinForms' CheckState.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckState {
+    Unchecked,
+    Checked,
+    Indeterminate,
+}
+
 impl CheckBox {
     pub fn checked(self) -> bool {
         win::is_checked(self.0)
     }
     pub fn set_checked(self, on: bool) {
         win::set_checked(self.0, on)
+    }
+    pub fn check_state(self) -> CheckState {
+        match win::check_state(self.0) {
+            0 => CheckState::Unchecked,
+            1 => CheckState::Checked,
+            _ => CheckState::Indeterminate,
+        }
+    }
+    pub fn set_check_state(self, s: CheckState) {
+        win::set_check_state(self.0, s as u8)
     }
 }
 
@@ -747,6 +765,10 @@ impl DateTimePicker {
     }
     pub fn set_value(self, year: i32, month: i32, day: i32) {
         win::set_date(self.0, year, month, day)
+    }
+    /// With ShowCheckBox: whether a date is given (its box ticked).
+    pub fn checked(self) -> bool {
+        win::date_checked(self.0)
     }
 }
 

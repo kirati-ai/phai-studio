@@ -134,6 +134,7 @@ fn event_const(code: u16) -> &'static str {
         e::MOUSE_MOVE => "MOUSE_MOVE",
         e::CLICK => "CLICK",
         e::DOUBLE_CLICK => "DOUBLE_CLICK",
+        e::DRAG_DROP => "DRAG_DROP",
         _ => "RESIZE",
     }
 }
@@ -268,11 +269,6 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            theme::set(sheet);");
         let _ = writeln!(w, "        }}");
     }
-    let (back, fore) = (f.form.word("back_color"), f.form.word("fore_color"));
-    if back.is_some() || fore.is_some() {
-        let opt = |v: Option<&str>| v.map(|s| format!("Some({})", lit(s))).unwrap_or_else(|| "None".into());
-        let _ = writeln!(w, "        theme::set_window_colors({}, {});", opt(back), opt(fore));
-    }
     if f.form.events.contains_key("double_click") {
         let _ = writeln!(w, "        let class = win::register_with(win::ClassStyle::DoubleClicks, {}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
     } else {
@@ -290,6 +286,20 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let _ = writeln!(w, "        unsafe {{");
     let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default();");
+    let (back, fore) = (fm.word("back_color"), fm.word("fore_color"));
+    if back.is_some() || fore.is_some() {
+        let opt = |v: Option<&str>| v.map(|s| format!("Some({})", lit(s))).unwrap_or_else(|| "None".into());
+        let _ = writeln!(w, "            phai_ui::form::set_colors(hwnd, {}, {});", opt(back), opt(fore));
+    }
+    if let Some(img) = fm.word("background_image") {
+        let _ = writeln!(w, "            phai_ui::form::set_background_image(hwnd, {}, {});", lit(img), lit(fm.word("background_image_layout").unwrap_or("tile")));
+    }
+    if fm.flag("auto_scroll", false) {
+        let _ = writeln!(w, "            phai_ui::form::set_auto_scroll(hwnd, true);");
+    }
+    if fm.flag("allow_drop", false) || fm.events.contains_key("drag_drop") {
+        let _ = writeln!(w, "            phai_ui::props::allow_drop(hwnd, true);");
+    }
     let _ = writeln!(w, "            let ui = Self::build(hwnd);");
     for c in f.control.iter().filter(|c| c.bind.is_some()) {
         let _ = writeln!(w, "            if let Err(e) = ui.reload_{}() {{", c.id);
@@ -378,6 +388,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     // A form with nothing laid out yet (a new one, or only timers) changes nothing in it.
     let _ = writeln!(w, "        #[allow(unused_mut)]");
     let _ = writeln!(w, "        let mut layout = Layout::new(({}, {}));", f.form.size[0], f.form.size[1]);
+    if let Some(p) = f.form.int("padding") {
+        let _ = writeln!(w, "        layout.padding = {p};");
+    }
     if !f.toolbar.is_empty() {
         let _ = writeln!(w, "        let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &Self::toolbar_items());");
         let _ = writeln!(w, "        layout.add(toolbar, Item {{ bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() }});");
@@ -404,8 +417,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Group => format!("controls::group(hwnd, {text}, {id}, {font})"),
             Kind::Tabs => format!("controls::tabs(hwnd, {id}, {font}, &[{}])", c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
             Kind::Statusbar => format!("controls::status_bar(hwnd, {id}, {font})"),
-            Kind::Textarea => format!("win::textarea(hwnd, {}, {id}, {font})", lit(&text_of(c))),
-            Kind::Date => format!("win::date(hwnd, {id}, {font})"),
+            Kind::Textarea => format!("win::textarea_with(hwnd, {}, {id}, {font}, {}, {})", lit(&text_of(c)), c.flag("word_wrap", true), lit(c.word("scroll_bars").unwrap_or("vertical"))),
+            Kind::Date => format!("win::date_with(hwnd, {id}, {font}, {}, {})", c.flag("show_check_box", false), c.flag("show_up_down", false)),
             Kind::Number => format!("win::number(hwnd, {id}, {font}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
             Kind::Progress => format!("win::progress(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
             Kind::Slider => format!("win::slider(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
@@ -930,6 +943,20 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     if let Some(h) = form_ev("mouse_move") {
         let _ = writeln!(w, "        wm::WM_MOUSEMOVE => {{");
         let _ = writeln!(w, "            host.events.{h}(&host.ui, &phai_ui::events::mouse_of(msg, l));");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    if f.form.flag("auto_scroll", false) {
+        let _ = writeln!(w, "        wm::WM_VSCROLL | wm::WM_HSCROLL | wm::WM_MOUSEWHEEL if phai_ui::form::scroll(hwnd, msg, w) => {{");
+        let _ = writeln!(w, "            // AutoScroll: the controls where the bars now say.");
+        let _ = writeln!(w, "            host.ui.layout.apply(hwnd);");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    if let Some(h) = form_ev("drag_drop") {
+        let _ = writeln!(w, "        0x0233 => {{");
+        let _ = writeln!(w, "            // WM_DROPFILES: files dropped on the window itself.");
+        let _ = writeln!(w, "            host.events.{h}(&host.ui, &phai_ui::events::files_of(w));");
         let _ = writeln!(w, "            LRESULT(0)");
         let _ = writeln!(w, "        }}");
     }

@@ -93,6 +93,13 @@ pub const CONTROL: &[Spec] = &[
     spec("char_casing", "CharacterCasing", "Behavior", Ty::Choice(&["normal", "upper", "lower"]), "normal", &[Kind::Edit, Kind::Textarea], How::Call, "What is typed in, made capitals or small letters."),
     spec("word_wrap", "WordWrap", "Behavior", Ty::Bool, "true", &[Kind::Rich], How::Call, "Long lines wrap at the edge; off, it scrolls sideways."),
     spec("detect_urls", "DetectUrls", "Behavior", Ty::Bool, "true", &[Kind::Rich], How::Call, "Web addresses show as links."),
+    spec("auto_size", "AutoSize", "Layout", Ty::Bool, "false", &[Kind::Label], How::Call, "As wide as its words, whatever they are."),
+    spec("three_state", "ThreeState", "Behavior", Ty::Bool, "false", &[Kind::Checkbox], How::Call, "A click goes unticked, ticked, then neither."),
+    spec("indeterminate", "CheckState = Indeterminate", "Behavior", Ty::Bool, "false", &[Kind::Checkbox], How::Call, "Neither ticked nor unticked when the window opens."),
+    spec("appearance", "Appearance", "Appearance", Ty::Choice(&["normal", "button"]), "normal", &[Kind::Checkbox, Kind::Radio], How::Call, "A box to tick, or a button that stays pressed while ticked."),
+    spec("word_wrap", "WordWrap", "Behavior", Ty::Bool, "true", &[Kind::Textarea], How::Code, "Long lines wrap at the edge; off, it scrolls sideways."),
+    spec("scroll_bars", "ScrollBars", "Appearance", Ty::Choice(&["none", "vertical", "horizontal", "both"]), "vertical", &[Kind::Textarea], How::Code, "Which scroll bars it has."),
+    runtime_only(spec("allow_drop", "AllowDrop", "Behavior", Ty::Bool, "false", &[], How::Call, "Files dragged from Explorer can be dropped on it - its DragDrop event.")),
     // Numbers and ranges.
     spec("increment", "Increment", "Behavior", Ty::Int(1, 1_000_000), "1", &[Kind::Number], How::Call, "How much an arrow adds or takes away."),
     spec("hexadecimal", "Hexadecimal", "Appearance", Ty::Bool, "false", &[Kind::Number], How::Call, "Shows the number in base 16."),
@@ -100,6 +107,7 @@ pub const CONTROL: &[Spec] = &[
     spec("small_change", "SmallChange", "Behavior", Ty::Int(1, 1_000_000), "1", &[Kind::Slider], How::Call, "How far an arrow key moves it."),
     spec("large_change", "LargeChange", "Behavior", Ty::Int(1, 1_000_000), "", &[Kind::Slider], How::Call, "How far Page Up and Page Down move it; unset, a tenth of the range."),
     spec("tick_frequency", "TickFrequency", "Appearance", Ty::Int(0, 1_000_000), "", &[Kind::Slider], How::Call, "A tick mark every so many; unset, none."),
+    spec("orientation", "Orientation", "Appearance", Ty::Choice(&["horizontal", "vertical"]), "horizontal", &[Kind::Slider], How::Call, "Lying down, or standing up with its least at the bottom."),
     spec("step", "Step", "Behavior", Ty::Int(1, 1_000_000), "10", &[Kind::Progress], How::Call, "How much perform_step adds."),
     spec("marquee", "Style = Marquee", "Appearance", Ty::Bool, "false", &[Kind::Progress], How::Call, "A block that runs along, for work of unknown length."),
     // Lists.
@@ -118,12 +126,15 @@ pub const CONTROL: &[Spec] = &[
     spec("show_lines", "ShowLines", "Appearance", Ty::Bool, "false", &[Kind::Tree], How::Call, "Dotted lines join items to their parents."),
     spec("show_plus_minus", "ShowPlusMinus", "Appearance", Ty::Bool, "true", &[Kind::Tree], How::Call, "A button to open and close items that hold others."),
     spec("show_root_lines", "ShowRootLines", "Appearance", Ty::Bool, "true", &[Kind::Tree], How::Call, "The top items have their buttons too."),
+    spec("label_edit", "LabelEdit", "Behavior", Ty::Bool, "false", &[Kind::Tree], How::Call, "Its items can be renamed in place: a second, slow click, or F2."),
     spec("expand_all", "ExpandAll", "Behavior", Ty::Bool, "false", &[Kind::Tree], How::Call, "Every item open when the window opens."),
     spec("selected_index", "SelectedIndex", "Behavior", Ty::Int(0, 999), "0", &[Kind::Tabs], How::Code, "The page shown when the window opens, from 0."),
     // Dates.
     spec("format", "Format", "Appearance", Ty::Choice(&["short", "long", "time", "custom"]), "short", &[Kind::Date], How::Call, "How the date shows: Windows' short or long date, the time, or CustomFormat."),
     spec("custom_format", "CustomFormat", "Appearance", Ty::Text, "", &[Kind::Date], How::Call, "With Format custom: dd MMM yyyy, HH:mm and the like."),
     spec("date", "Value", "Data", Ty::Date, "", &[Kind::Date], How::Call, "The date when the window opens, 2026-11-19; unset, today."),
+    spec("show_check_box", "ShowCheckBox", "Appearance", Ty::Bool, "false", &[Kind::Date], How::Code, "A tick before the date: unticked, no date is given."),
+    spec("show_up_down", "ShowUpDown", "Appearance", Ty::Bool, "false", &[Kind::Date], How::Code, "Arrows to change it, in place of the calendar."),
     spec("min_date", "MinDate", "Data", Ty::Date, "", &[Kind::Date], How::Call, "The earliest date it takes."),
     spec("max_date", "MaxDate", "Data", Ty::Date, "", &[Kind::Date], How::Call, "The latest date it takes."),
     // Pictures and panels.
@@ -150,8 +161,13 @@ pub const FORM: &[Spec] = &[
     spec("icon", "Icon", "Window Style", Ty::Text, "", &[], How::Code, "An .ico file of the project for its title bar and taskbar button."),
     spec("min_size", "MinimumSize", "Layout", Ty::Size, "", &[], How::Code, "The smallest its inside can be dragged, at 100% scale."),
     spec("max_size", "MaximumSize", "Layout", Ty::Size, "", &[], How::Code, "The largest its inside can be dragged, at 100% scale."),
-    spec("back_color", "BackColor", "Appearance", Ty::Color, "", &[], How::Code, "The window's background over the theme - CSS window { background }, for the whole program."),
-    spec("fore_color", "ForeColor", "Appearance", Ty::Color, "", &[], How::Code, "The window's words' colour over the theme - CSS window { color }, for the whole program."),
+    spec("back_color", "BackColor", "Appearance", Ty::Color, "", &[], How::Code, "This window's background over the theme's; its controls stand on it."),
+    spec("fore_color", "ForeColor", "Appearance", Ty::Color, "", &[], How::Code, "This window's words' colour over the theme's."),
+    spec("background_image", "BackgroundImage", "Appearance", Ty::Text, "", &[], How::Code, "A picture file of the project under the window's controls."),
+    spec("background_image_layout", "BackgroundImageLayout", "Appearance", Ty::Choice(&["tile", "none", "center", "stretch", "zoom"]), "tile", &[], How::Code, "Tile: repeated. None: its size, top left. Center. Stretch: filling the window. Zoom: as large as fits."),
+    spec("auto_scroll", "AutoScroll", "Layout", Ty::Bool, "false", &[], How::Code, "Smaller than designed, the window shows scroll bars and its controls scroll."),
+    spec("padding", "Padding", "Layout", Ty::Int(0, 100), "0", &[], How::Code, "Pixels kept clear round the window's edge for docked controls."),
+    spec("allow_drop", "AllowDrop", "Behavior", Ty::Bool, "false", &[], How::Code, "Files dragged from Explorer can be dropped on the window - its DragDrop event."),
 ];
 
 /// Whether controls of `kind` have `s`.

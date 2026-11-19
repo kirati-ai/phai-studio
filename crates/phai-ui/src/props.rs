@@ -425,6 +425,43 @@ pub fn max_date(h: HWND, s: &str) {
     date_range(h, s, true);
 }
 
+/// AutoSize: a label as wide as its words.
+pub fn auto_size(h: HWND, on: bool) {
+    win::set_auto_size(h, on)
+}
+
+/// ThreeState: a check box's click goes unticked, ticked, neither.
+pub fn three_state(h: HWND, on: bool) {
+    win::set_three_state(h, on)
+}
+
+/// CheckState = Indeterminate when the window opens.
+pub fn indeterminate(h: HWND, on: bool) {
+    if on {
+        win::set_check_state(h, 2)
+    }
+}
+
+/// Appearance: `normal`, or `button` - pressed while ticked.
+pub fn appearance(h: HWND, a: &str) {
+    win::set_push_like(h, a == "button")
+}
+
+/// Orientation of a slider: `horizontal` or `vertical`.
+pub fn orientation(h: HWND, o: &str) {
+    win::with_range(h, |r| r.vertical = o == "vertical");
+}
+
+/// LabelEdit: a tree's item renamed in place (a slow second click, or F2).
+pub fn label_edit(h: HWND, on: bool) {
+    style_bits(h, 0x0008 /* TVS_EDITLABELS */, on);
+}
+
+/// AllowDrop: files dragged from Explorer can be dropped on it - its DragDrop event.
+pub fn allow_drop(h: HWND, on: bool) {
+    unsafe { windows::Win32::UI::Shell::DragAcceptFiles(h, on) };
+}
+
 /// SizeMode of a picture: `zoom`, `normal`, `stretch` or `center`.
 pub fn size_mode(h: HWND, mode: &str) {
     crate::picture::set_size_mode(h, mode);
@@ -474,6 +511,13 @@ pub fn apply(h: HWND, name: &str, value: &str) {
         "min_date" => min_date(h, value),
         "max_date" => max_date(h, value),
         "size_mode" => size_mode(h, value),
+        "auto_size" => auto_size(h, yes),
+        "three_state" => three_state(h, yes),
+        "indeterminate" => indeterminate(h, yes),
+        "appearance" => appearance(h, value),
+        "orientation" => orientation(h, value),
+        "label_edit" => label_edit(h, yes),
+        "allow_drop" => allow_drop(h, yes),
         _ => {}
     }
 }

@@ -300,7 +300,7 @@ pub fn richtext(parent: HWND, id: i32, f: windows::Win32::Graphics::Gdi::HFONT, 
         wm::SendMessageW(h, EM_SETEVENTMASK, Some(WPARAM(0)), Some(LPARAM(ENM_CHANGE)));
         // The theme's window colour behind the words.
         const EM_SETBKGNDCOLOR: u32 = 0x0443;
-        wm::SendMessageW(h, EM_SETBKGNDCOLOR, Some(WPARAM(0)), Some(LPARAM(win::window_background().colorref() as isize)));
+        wm::SendMessageW(h, EM_SETBKGNDCOLOR, Some(WPARAM(0)), Some(LPARAM(win::window_background_for(h).colorref() as isize)));
     }
     win::register_kind(h, win::Kind::Edit);
     h

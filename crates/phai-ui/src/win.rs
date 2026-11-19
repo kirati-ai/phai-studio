@@ -234,6 +234,69 @@ struct Css {
     own: Style,
     /// Where an owner-drawn button's words sit: 0 its kind's own, 1 left, 2 centre, 3 right.
     align: u8,
+    /// A check box's third state (WinForms' Indeterminate), and whether a click reaches it.
+    mixed: bool,
+    three: bool,
+    /// A check box or radio drawn as a button that stays pressed - Appearance = Button.
+    push: bool,
+    /// A label as wide as its words - AutoSize.
+    auto: bool,
+}
+
+/// A check box's state: 0 unticked, 1 ticked, 2 neither (WinForms' Indeterminate).
+pub fn check_state(h: impl Into<HWND>) -> u8 {
+    let h: HWND = h.into();
+    with_css(h, |c| if c.mixed { 2 } else { c.checked as u8 }).unwrap_or(0)
+}
+
+pub fn set_check_state(h: impl Into<HWND>, state: u8) {
+    let h: HWND = h.into();
+    with_css(h, |c| {
+        c.mixed = state == 2;
+        c.checked = state != 0;
+    });
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// ThreeState: a click goes unticked, ticked, neither.
+pub fn set_three_state(h: HWND, on: bool) {
+    with_css(h, |c| c.three = on);
+}
+
+/// Appearance = Button: a check box or radio drawn as a button, pressed while ticked.
+pub fn set_push_like(h: HWND, on: bool) {
+    with_css(h, |c| c.push = on);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+}
+
+/// AutoSize: a label as wide as its words, now and whenever they change.
+pub fn set_auto_size(h: HWND, on: bool) {
+    with_css(h, |c| c.auto = on);
+    if on {
+        fit_label(h);
+    }
+}
+
+/// The width a label that sizes itself wants, in pixels; `None` for any other control.
+pub fn auto_width(h: HWND) -> Option<i32> {
+    if !with_css(h, |c| c.auto).unwrap_or(false) {
+        return None;
+    }
+    let font = unsafe { HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _) };
+    let text = text_of(h);
+    let (tw, _) = measure(h, font, if text.is_empty() { " " } else { &text });
+    Some(tw + px(h, 3))
+}
+
+fn fit_label(h: HWND) {
+    if let Some(w) = auto_width(h) {
+        let r = rect_in_parent(h);
+        move_to(h, r.left, r.top, w, r.bottom - r.top);
+    }
 }
 
 /// Where a button's words sit: `"left"`, `"center"` or `"right"`.
@@ -253,7 +316,7 @@ fn with_css<R>(h: HWND, f: impl FnOnce(&mut Css) -> R) -> Option<R> {
 
 fn mark(h: HWND, kind: Kind) {
     let mut map = CSS.lock().unwrap_or_else(|e| e.into_inner());
-    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), align: 0 });
+    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), align: 0, mixed: false, three: false, push: false, auto: false });
 }
 
 fn forget(h: HWND) {
@@ -302,6 +365,32 @@ pub fn style_of(h: HWND, kind: Kind, state: State) -> Style {
 
 fn window_style() -> Style {
     theme::style("window", State::default())
+}
+
+type RootColors = HashMap<isize, (Option<Color>, Option<Color>)>;
+static ROOT_COLORS: Mutex<Option<RootColors>> = Mutex::new(None);
+
+/// A window's own background and words over the theme's - a form's BackColor and ForeColor.
+/// Every control in it draws on that background.
+pub fn set_window_colors(hwnd: HWND, background: Option<Color>, color: Option<Color>) {
+    ROOT_COLORS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(hwnd.0 as isize, (background, color));
+}
+
+fn root_colors(h: HWND) -> (Option<Color>, Option<Color>) {
+    let map = ROOT_COLORS.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(m) = map.as_ref().filter(|m| !m.is_empty()) else { return (None, None) };
+    let root = unsafe { wm::GetAncestor(h, wm::GA_ROOT) };
+    m.get(&(root.0 as isize)).copied().unwrap_or((None, None))
+}
+
+/// The background of the window `h` is in: its own, or the theme's.
+pub fn window_background_for(h: HWND) -> Color {
+    root_colors(h).0.unwrap_or_else(window_background)
+}
+
+/// The words' colour of the window `h` is in.
+pub fn window_text_for(h: HWND) -> Color {
+    root_colors(h).1.unwrap_or_else(window_text)
 }
 
 pub fn window_background() -> Color {
@@ -525,9 +614,10 @@ unsafe extern "system" fn button_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _
             with_css(h, |c| c.hot = false);
             let _ = Gdi::InvalidateRect(Some(h), None, false);
         }
-        BM_GETCHECK => return LRESULT(with_css(h, |c| c.checked).unwrap_or(false) as isize),
+        BM_GETCHECK => return LRESULT(check_state(h) as isize),
         BM_SETCHECK => {
             let on = w.0 != 0;
+            with_css(h, |c| c.mixed = w.0 == 2);
             if on && kind_of(h) == Some(Kind::Radio) {
                 check_radio(h);
             } else {
@@ -543,7 +633,15 @@ unsafe extern "system" fn button_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _
             let pushed = wm::SendMessageW(h, BM_GETSTATE, None, None).0 & BST_PUSHED != 0;
             if (msg == wm::WM_LBUTTONUP || space) && pushed {
                 match kind_of(h) {
-                    Some(Kind::Checkbox) => set_checked(h, !is_checked(h)),
+                    Some(Kind::Checkbox) => {
+                        // Unticked, ticked, then - with ThreeState - neither.
+                        let three = with_css(h, |c| c.three).unwrap_or(false);
+                        set_check_state(h, match check_state(h) {
+                            0 => 1,
+                            1 if three => 2,
+                            _ => 0,
+                        });
+                    }
                     Some(Kind::Radio) => check_radio(h),
                     _ => {}
                 }
@@ -565,10 +663,13 @@ pub fn draw_item(l: LPARAM) -> bool {
     if d.CtlType != ODT_BUTTON {
         return false;
     }
-    let Some((kind, hot, checked)) = with_css(d.hwndItem, |c| (c.kind, c.hot, c.checked)) else { return false };
+    let Some((real_kind, hot, checked, mixed, push)) = with_css(d.hwndItem, |c| (c.kind, c.hot, c.checked, c.mixed, c.push)) else { return false };
+    // Appearance = Button: drawn as a button, pressed while ticked.
+    let push = push && matches!(real_kind, Kind::Checkbox | Kind::Radio);
+    let kind = if push { Kind::Button } else { real_kind };
     let state = State {
         hover: hot,
-        pressed: d.itemState.0 & ODS_SELECTED.0 != 0,
+        pressed: d.itemState.0 & ODS_SELECTED.0 != 0 || (push && checked),
         focus: d.itemState.0 & ODS_FOCUS.0 != 0,
         disabled: d.itemState.0 & ODS_DISABLED.0 != 0,
         checked,
@@ -579,9 +680,9 @@ pub fn draw_item(l: LPARAM) -> bool {
     let r = d.rcItem;
     let h = d.hwndItem;
     // The parent's colour behind the rounded corners and around the box.
-    fill(dc, &r, window_background());
+    fill(dc, &r, window_background_for(h));
     let text = text_of(h);
-    let fg = s.color_or(window_text());
+    let fg = s.color_or(window_text_for(h));
     match kind {
         Kind::Checkbox | Kind::Radio => {
             let size = px(h, 18);
@@ -607,7 +708,11 @@ pub fn draw_item(l: LPARAM) -> bool {
                     let _ = Gdi::DeleteObject(pen.into());
                 } else {
                     round_rect(dc, bx, bg, border, px(h, s.border_radius.unwrap_or(3) * 2));
-                    if checked {
+                    if mixed {
+                        // Neither: a square of the accent in the box.
+                        let inset = size * 3 / 10;
+                        round_rect(dc, RECT { left: bx.left + inset, top: bx.top + inset, right: bx.right - inset, bottom: bx.bottom - inset }, s.accent_or(Color::rgb(0x12, 0x85, 0x5f)), s.accent_or(Color::rgb(0x12, 0x85, 0x5f)), px(h, 2));
+                    } else if checked {
                         // The tick: two strokes, as Windows 11 draws it.
                         let pen = Gdi::CreatePen(Gdi::PS_SOLID, px(h, 2).max(1), cr(s.accent_or(Color::rgb(255, 255, 255))));
                         let op = Gdi::SelectObject(dc, pen.into());
@@ -622,7 +727,7 @@ pub fn draw_item(l: LPARAM) -> bool {
                     }
                 }
             }
-            let label_fg = if state.disabled { fg } else { style_of(h, kind, State::default()).color_or(window_text()) };
+            let label_fg = if state.disabled { fg } else { style_of(h, kind, State::default()).color_or(window_text_for(h)) };
             let mut tr = RECT { left: bx.right + px(h, 8), ..r };
             draw_text_styled(dc, h, &text, &mut tr, label_fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
             if state.focus {
@@ -786,7 +891,7 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
         wm::WM_CTLCOLORSTATIC => kind_of(h).unwrap_or(Kind::Label),
         wm::WM_CTLCOLOREDIT => kind_of(h).unwrap_or(Kind::Edit),
         wm::WM_CTLCOLORLISTBOX => Kind::Combo,
-        wm::WM_CTLCOLORBTN => return Some(LRESULT(brush(window_background()).0 as isize)),
+        wm::WM_CTLCOLORBTN => return Some(LRESULT(brush(window_background_for(h)).0 as isize)),
         _ => return None,
     };
     let disabled = !unsafe { windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h) }.as_bool();
@@ -795,11 +900,11 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
     // A label stands on the window, unless it was given a background of its own.
     let own_bg = with_css(h, |c| c.own.background).flatten();
     let bg = match kind {
-        Kind::Label => own_bg.unwrap_or(window_background()),
-        _ => s.background_or(window_background()),
+        Kind::Label => own_bg.unwrap_or(window_background_for(h)),
+        _ => s.background_or(window_background_for(h)),
     };
     unsafe {
-        Gdi::SetTextColor(dc, cr(s.color_or(window_text())));
+        Gdi::SetTextColor(dc, cr(s.color_or(window_text_for(h))));
         Gdi::SetBkColor(dc, cr(bg));
         Gdi::SetBkMode(dc, Gdi::OPAQUE);
     }
@@ -895,7 +1000,7 @@ pub fn list_custom_draw(l: LPARAM) -> LRESULT {
                     let s = style_of(cd.nmcd.hdr.hwndFrom, Kind::List, State { selected: true, ..Default::default() });
                     cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !(cc::CDIS_SELECTED.0 | cc::CDIS_FOCUS.0));
                     cd.clrTextBk = cr(s.background_or(Color::rgb(231, 243, 239)));
-                    cd.clrText = cr(s.color_or(window_text()));
+                    cd.clrText = cr(s.color_or(window_text_for(cd.nmcd.hdr.hwndFrom)));
                 }
                 LRESULT(cc::CDRF_DODEFAULT as isize)
             }
@@ -936,7 +1041,7 @@ pub fn tree_icons(h: HWND, glyphs: &[u16]) {
     TREE_ICONS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(h.0 as isize, glyphs.to_vec());
     unsafe {
         let size = px(h, 16);
-        let colour = style_of(h, Kind::Tree, State::default()).icon_color.unwrap_or(window_text());
+        let colour = style_of(h, Kind::Tree, State::default()).icon_color.unwrap_or(window_text_for(h));
         let list = cc::ImageList_Create(size, size, cc::ILC_COLOR32 | cc::ILC_MASK, glyphs.len() as i32, 0);
         for g in glyphs {
             if let Some(i) = crate::icon::glyph_icon(*g, size, colour) {
@@ -1008,7 +1113,7 @@ fn panel_paint(h: HWND, outline: bool) {
         let dc = Gdi::BeginPaint(h, &mut ps);
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
-        fill(dc, &r, window_background());
+        fill(dc, &r, window_background_for(h));
         if outline {
             let line = crate::theme::current().var_color("--border").unwrap_or(Color::rgb(0xb0, 0xb0, 0xb0));
             let mut x = r.left;
@@ -1132,8 +1237,8 @@ pub fn tree_custom_draw(l: LPARAM) -> LRESULT {
                 if selected || hot {
                     let s = style_of(cd.nmcd.hdr.hwndFrom, Kind::Tree, State { selected, hover: hot && !selected, ..Default::default() });
                     cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !(cc::CDIS_SELECTED.0 | cc::CDIS_FOCUS.0 | cc::CDIS_HOT.0));
-                    cd.clrTextBk = cr(s.background_or(window_background()));
-                    cd.clrText = cr(s.color_or(window_text()));
+                    cd.clrTextBk = cr(s.background_or(window_background_for(cd.nmcd.hdr.hwndFrom)));
+                    cd.clrText = cr(s.color_or(window_text_for(cd.nmcd.hdr.hwndFrom)));
                 }
                 LRESULT(cc::CDRF_DODEFAULT as isize)
             }
@@ -1151,10 +1256,10 @@ pub fn theme_native(h: HWND) {
         match kind_of(h) {
             Some(Kind::List) => {
                 let s = style_of(h, Kind::List, State::default());
-                let bg = s.background_or(window_background());
+                let bg = s.background_or(window_background_for(h));
                 wm::SendMessageW(h, cc::LVM_SETBKCOLOR, None, Some(LPARAM(bg.colorref() as isize)));
                 wm::SendMessageW(h, cc::LVM_SETTEXTBKCOLOR, None, Some(LPARAM(bg.colorref() as isize)));
-                wm::SendMessageW(h, cc::LVM_SETTEXTCOLOR, None, Some(LPARAM(s.color_or(window_text()).colorref() as isize)));
+                wm::SendMessageW(h, cc::LVM_SETTEXTCOLOR, None, Some(LPARAM(s.color_or(window_text_for(h)).colorref() as isize)));
                 // The body keeps the plain list look: the Explorer look draws its own selection and
                 // the theme's `list:selected` would never show.
                 let header = HWND(wm::SendMessageW(h, cc::LVM_GETHEADER, None, None).0 as *mut _);
@@ -1164,8 +1269,8 @@ pub fn theme_native(h: HWND) {
             }
             Some(Kind::Tree) => {
                 let s = style_of(h, Kind::Tree, State::default());
-                wm::SendMessageW(h, 0x111D /* TVM_SETBKCOLOR */, None, Some(LPARAM(s.background_or(window_background()).colorref() as isize)));
-                wm::SendMessageW(h, 0x111E /* TVM_SETTEXTCOLOR */, None, Some(LPARAM(s.color_or(window_text()).colorref() as isize)));
+                wm::SendMessageW(h, 0x111D /* TVM_SETBKCOLOR */, None, Some(LPARAM(s.background_or(window_background_for(h)).colorref() as isize)));
+                wm::SendMessageW(h, 0x111E /* TVM_SETTEXTCOLOR */, None, Some(LPARAM(s.color_or(window_text_for(h)).colorref() as isize)));
                 // Explorer's arrows instead of + and - boxes; dark ones in a dark theme.
                 let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
                 let glyphs = TREE_ICONS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).cloned());
@@ -1190,13 +1295,13 @@ pub fn theme_native(h: HWND) {
                 }
                 // The calendar that drops down: the theme's colours, its chosen day in the accent.
                 let s = style_of(h, Kind::Date, State::default());
-                let bg = s.background_or(window_background());
+                let bg = s.background_or(window_background_for(h));
                 let set = |part: usize, c: Color| {
                     wm::SendMessageW(h, 0x1006 /* DTM_SETMCCOLOR */, Some(WPARAM(part)), Some(LPARAM(c.colorref() as isize)));
                 };
                 set(0 /* MCSC_BACKGROUND */, bg);
                 set(4 /* MCSC_MONTHBK */, bg);
-                set(1 /* MCSC_TEXT */, s.color_or(window_text()));
+                set(1 /* MCSC_TEXT */, s.color_or(window_text_for(h)));
                 set(2 /* MCSC_TITLEBK */, s.accent_or(Color::rgb(0x12, 0x85, 0x5f)));
                 set(3 /* MCSC_TITLETEXT */, Color::rgb(255, 255, 255));
                 let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_CFD") } else { PCWSTR::null() }, PCWSTR::null());
@@ -1231,8 +1336,17 @@ pub const VALUE_CHANGED: u16 = 0x0300;
 
 /// A date, today unless set with [`set_date`]; the parent hears [`VALUE_CHANGED`].
 pub fn date(parent: HWND, id: i32, f: HFONT) -> HWND {
+    date_with(parent, id, f, false, false)
+}
+
+/// A date with WinForms' ShowCheckBox (a tick before it: no date when unticked) and ShowUpDown
+/// (arrows in place of the calendar) - styles Windows takes only when it is made.
+pub fn date_with(parent: HWND, id: i32, f: HFONT, show_check_box: bool, show_up_down: bool) -> HWND {
     const DTS_SHORTDATECENTURYFORMAT: u32 = 0x000C;
-    let h = child(parent, "SysDateTimePick32", "", WINDOW_STYLE(DTS_SHORTDATECENTURYFORMAT) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
+    const DTS_UPDOWN: u32 = 0x0001;
+    const DTS_SHOWNONE: u32 = 0x0002;
+    let style = DTS_SHORTDATECENTURYFORMAT | if show_up_down { DTS_UPDOWN } else { 0 } | if show_check_box { DTS_SHOWNONE } else { 0 };
+    let h = child(parent, "SysDateTimePick32", "", WINDOW_STYLE(style) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::Date);
     theme_native(h);
     h
@@ -1246,6 +1360,13 @@ pub fn date_value(h: impl Into<HWND>) -> (i32, i32, i32) {
         wm::SendMessageW(h, 0x1001 /* DTM_GETSYSTEMTIME */, None, Some(LPARAM(&mut st as *mut _ as isize)));
     }
     (st.wYear as i32, st.wMonth as i32, st.wDay as i32)
+}
+
+/// With ShowCheckBox: whether it is ticked - a date given.
+pub fn date_checked(h: impl Into<HWND>) -> bool {
+    let h: HWND = h.into();
+    let mut st = windows::Win32::Foundation::SYSTEMTIME::default();
+    unsafe { wm::SendMessageW(h, 0x1001 /* DTM_GETSYSTEMTIME */, None, Some(LPARAM(&mut st as *mut _ as isize))).0 == 0 }
 }
 
 pub fn set_date(h: impl Into<HWND>, year: i32, month: i32, day: i32) {
@@ -1323,6 +1444,8 @@ pub(crate) struct Range {
     /// A progress bar's running block, and where it is, in hundredths of the width.
     pub(crate) marquee: bool,
     pub(crate) phase: i32,
+    /// A slider standing up, its least at the bottom - Orientation = Vertical.
+    pub(crate) vertical: bool,
 }
 
 /// A slider's or progress bar's settings, changed by `f`, then shown.
@@ -1346,7 +1469,7 @@ fn make_range(parent: HWND, class: &str, proc_: wm::WNDPROC, id: i32, kind: Kind
         wm::CreateWindowExW(WINDOW_EX_STYLE(0), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPSIBLINGS | if tab { wm::WS_TABSTOP } else { WINDOW_STYLE(0) }, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(instance()), None).unwrap_or_default()
     };
     let (lo, hi) = (min.min(max), max.max(min));
-    set_state(h, Box::new(Range { min: lo, max: hi, value: value.clamp(lo, hi), drag: false, small: 1, large: 0, ticks: 0, step: 10, marquee: false, phase: 0 }));
+    set_state(h, Box::new(Range { min: lo, max: hi, value: value.clamp(lo, hi), drag: false, small: 1, large: 0, ticks: 0, step: 10, marquee: false, phase: 0, vertical: false }));
     mark(h, kind);
     h
 }
@@ -1388,7 +1511,7 @@ pub fn set_value(h: impl Into<HWND>, v: i32) {
 
 fn range_paint(h: HWND, slider: bool) {
     let Some(r) = (unsafe { state::<Range>(h) }) else { return };
-    let (min, max, value, ticks, marquee, phase) = (r.min, r.max, r.value, r.ticks, r.marquee, r.phase);
+    let (min, max, value, ticks, marquee, phase, vertical) = (r.min, r.max, r.value, r.ticks, r.marquee, r.phase, r.vertical);
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
         let dc = Gdi::BeginPaint(h, &mut ps);
@@ -1403,12 +1526,37 @@ fn range_paint(h: HWND, slider: bool) {
         let mem = Gdi::CreateCompatibleDC(Some(dc));
         let bmp = Gdi::CreateCompatibleBitmap(dc, rc.right.max(1), rc.bottom.max(1));
         let old = Gdi::SelectObject(mem, bmp.into());
-        fill(mem, &rc, window_background());
+        fill(mem, &rc, window_background_for(h));
         let accent = s.accent_or(theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f)));
         let track = s.background_or(Color::rgb(0xe5, 0xe5, 0xe5));
         let span = (max - min).max(1) as i64;
         let frac = |w: i32| ((value - min) as i64 * w as i64 / span) as i32;
-        if slider {
+        if slider && vertical {
+            // Standing up: the least at the bottom, as a vertical TrackBar.
+            let thumb = px(h, 18);
+            let th = px(h, 4);
+            let cx = rc.right / 2;
+            let (y0, y1) = (thumb / 2, rc.bottom - thumb / 2);
+            let at = y1 - frac(y1 - y0);
+            if ticks > 0 {
+                let tick = s.border_or(Color::rgb(0x8a, 0x8a, 0x8a));
+                let mut v = min;
+                while v <= max {
+                    let y = y1 - ((v - min) as i64 * (y1 - y0) as i64 / span) as i32;
+                    fill(mem, &RECT { left: rc.right - px(h, 5), top: y, right: rc.right - 1, bottom: y + 1 }, tick);
+                    v += ticks;
+                }
+            }
+            round_rect(mem, RECT { left: cx - th / 2, top: y0, right: cx - th / 2 + th, bottom: y1 }, track, track, th);
+            round_rect(mem, RECT { left: cx - th / 2, top: at.min(y1 - 1), right: cx - th / 2 + th, bottom: y1 }, accent, accent, th);
+            let ring = RECT { left: cx - thumb / 2, top: at - thumb / 2, right: cx - thumb / 2 + thumb, bottom: at - thumb / 2 + thumb };
+            round_rect(mem, ring, window_background_for(h), s.border_or(Color::rgb(0x8a, 0x8a, 0x8a)), thumb);
+            let dot = thumb * if hot || r.drag { 5 } else { 4 } / 10;
+            round_rect(mem, RECT { left: cx - dot / 2, top: at - dot / 2, right: cx - dot / 2 + dot, bottom: at - dot / 2 + dot }, accent, accent, dot);
+            if focus {
+                let _ = Gdi::DrawFocusRect(mem, &rc);
+            }
+        } else if slider {
             let thumb = px(h, 18);
             let th = px(h, 4);
             let cy = rc.bottom / 2;
@@ -1428,7 +1576,7 @@ fn range_paint(h: HWND, slider: bool) {
             round_rect(mem, RECT { left: x0, top: cy - th / 2, right: at.max(x0 + 1), bottom: cy - th / 2 + th }, accent, accent, th);
             // The thumb: a ring in the border colour around a dot in the accent, as Windows 11's.
             let ring = RECT { left: at - thumb / 2, top: cy - thumb / 2, right: at - thumb / 2 + thumb, bottom: cy - thumb / 2 + thumb };
-            round_rect(mem, ring, window_background(), s.border_or(Color::rgb(0x8a, 0x8a, 0x8a)), thumb);
+            round_rect(mem, ring, window_background_for(h), s.border_or(Color::rgb(0x8a, 0x8a, 0x8a)), thumb);
             let dot = thumb * if hot || r.drag { 5 } else { 4 } / 10;
             round_rect(mem, RECT { left: at - dot / 2, top: cy - dot / 2, right: at - dot / 2 + dot, bottom: cy - dot / 2 + dot }, accent, accent, dot);
             if focus {
@@ -1493,13 +1641,18 @@ fn slide_to(h: HWND, v: i32) {
     }
 }
 
-fn slider_value_at(h: HWND, x: i32) -> i32 {
+fn slider_value_at(h: HWND, (x, y): (i32, i32)) -> i32 {
     let Some(r) = (unsafe { state::<Range>(h) }) else { return 0 };
     let mut rc = RECT::default();
     unsafe {
         let _ = wm::GetClientRect(h, &mut rc);
     }
     let thumb = px(h, 18);
+    if r.vertical {
+        let (y0, y1) = (thumb / 2, rc.bottom - thumb / 2);
+        let span = (y1 - y0).max(1) as i64;
+        return r.min + (((y1 - y.clamp(y0, y1)) as i64 * (r.max - r.min) as i64 + span / 2) / span) as i32;
+    }
     let (x0, x1) = (thumb / 2, rc.right - thumb / 2);
     let span = (x1 - x0).max(1) as i64;
     r.min + (((x - x0).clamp(0, x1 - x0) as i64 * (r.max - r.min) as i64 + span / 2) / span) as i32
@@ -1529,7 +1682,7 @@ extern "system" fn slider_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             if let Some(r) = unsafe { state::<Range>(h) } {
                 r.drag = true;
             }
-            slide_to(h, slider_value_at(h, point_of(l).0));
+            slide_to(h, slider_value_at(h, point_of(l)));
             redraw();
             LRESULT(0)
         }
@@ -1540,7 +1693,7 @@ extern "system" fn slider_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
                 redraw();
             }
             if unsafe { state::<Range>(h) }.is_some_and(|r| r.drag) {
-                slide_to(h, slider_value_at(h, point_of(l).0));
+                slide_to(h, slider_value_at(h, point_of(l)));
             }
             LRESULT(0)
         }
@@ -1585,11 +1738,24 @@ extern "system" fn slider_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
 
 /// A box of several lines in the control font, wrapping words - a form's text area.
 pub fn textarea(parent: HWND, text: &str, id: i32, f: HFONT) -> HWND {
+    textarea_with(parent, text, id, f, true, "vertical")
+}
+
+/// A box of several lines with WinForms' WordWrap and ScrollBars (`none`, `vertical`,
+/// `horizontal`, `both`) - styles Windows takes only when the box is made.
+pub fn textarea_with(parent: HWND, text: &str, id: i32, f: HFONT, word_wrap: bool, scroll_bars: &str) -> HWND {
     const ES_MULTILINE: u32 = 0x0004;
     const ES_AUTOVSCROLL: u32 = 0x0040;
+    const ES_AUTOHSCROLL: u32 = 0x0080;
     const ES_WANTRETURN: u32 = 0x1000;
     const EM_SETMARGINS: u32 = 0x00D3;
-    let style = WINDOW_STYLE(ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN) | wm::WS_TABSTOP | wm::WS_BORDER | wm::WS_VSCROLL;
+    let mut style = WINDOW_STYLE(ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | if word_wrap { 0 } else { ES_AUTOHSCROLL }) | wm::WS_TABSTOP | wm::WS_BORDER;
+    if matches!(scroll_bars, "vertical" | "both") {
+        style |= wm::WS_VSCROLL;
+    }
+    if matches!(scroll_bars, "horizontal" | "both") {
+        style |= wm::WS_HSCROLL;
+    }
     let h = child(parent, "EDIT", text, style, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::Edit);
     unsafe {
@@ -1715,7 +1881,7 @@ fn rebar_custom_draw(l: LPARAM) -> LRESULT {
             let h = cd.hdr.hwndFrom;
             let r = cd.rc;
             let grip = RECT { left: r.left, top: r.top, right: r.left + px(h, 9), bottom: r.bottom };
-            fill(cd.hdc, &grip, window_background());
+            fill(cd.hdc, &grip, window_background_for(h));
             // Dots down the middle, as Visual Studio's grip.
             let dot = theme::current().var_color("--muted").unwrap_or(Color::rgb(0x80, 0x80, 0x80));
             let (x, s) = (grip.left + px(h, 3), px(h, 2).max(1));
@@ -1737,8 +1903,8 @@ pub fn rebar_colours(h: HWND) {
         // drawn plain, in the theme's colour.
         let dark = theme::current().is_dark();
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if dark { windows::core::w!(" ") } else { PCWSTR::null() }, if dark { windows::core::w!(" ") } else { PCWSTR::null() });
-        wm::SendMessageW(h, 0x0413 /* RB_SETBKCOLOR */, None, Some(LPARAM(window_background().colorref() as isize)));
-        wm::SendMessageW(h, 0x0415 /* RB_SETTEXTCOLOR */, None, Some(LPARAM(window_text().colorref() as isize)));
+        wm::SendMessageW(h, 0x0413 /* RB_SETBKCOLOR */, None, Some(LPARAM(window_background_for(h).colorref() as isize)));
+        wm::SendMessageW(h, 0x0415 /* RB_SETTEXTCOLOR */, None, Some(LPARAM(window_text_for(h).colorref() as isize)));
         // Drawn plain, the bands' borders and grippers are Windows' 3-D white and grey: a bright
         // line under each row on a dark tray. The theme's quiet border colour for both, then.
         #[repr(C)]
@@ -1881,7 +2047,7 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
     unsafe {
         let (icon_dp, button_dp) = tool_sizes(h);
         let icon = px(h, icon_dp);
-        let colour = theme::style("toolbar", State::default()).icon_color.unwrap_or(window_text());
+        let colour = theme::style("toolbar", State::default()).icon_color.unwrap_or(window_text_for(h));
         let list = cc::ImageList_Create(icon, icon, cc::ILC_COLOR32 | cc::ILC_MASK, items.len() as i32, 0);
         for (cmd, _, g) in items {
             if *cmd != 0 {
@@ -1898,7 +2064,7 @@ pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
         }
         // Greyed buttons get their icons in the muted colour, not Windows' dithering.
         let muted = theme::current().var_color("--muted").unwrap_or(Color::rgb(0xa0, 0xa0, 0xa0));
-        let grey = Color::rgb(((muted.r as u16 + 2 * window_background().r as u16) / 3) as u8, ((muted.g as u16 + 2 * window_background().g as u16) / 3) as u8, ((muted.b as u16 + 2 * window_background().b as u16) / 3) as u8);
+        let grey = Color::rgb(((muted.r as u16 + 2 * window_background_for(h).r as u16) / 3) as u8, ((muted.g as u16 + 2 * window_background_for(h).g as u16) / 3) as u8, ((muted.b as u16 + 2 * window_background_for(h).b as u16) / 3) as u8);
         let dim = cc::ImageList_Create(icon, icon, cc::ILC_COLOR32 | cc::ILC_MASK, items.len() as i32, 0);
         for (cmd, _, g) in items {
             if *cmd != 0 {
@@ -2079,9 +2245,9 @@ pub fn toolbar_custom_draw(l: LPARAM) -> LRESULT {
                 cd.clrHighlightHotTrack = cr(hover.background_or(Color::rgb(231, 243, 239)));
                 // A button's words (Start) in the theme's, not Windows' black on a dark bar: the
                 // visual style's own colour unless told to use these.
-                cd.clrText = cr(window_text());
-                cd.clrTextHighlight = cr(hover.color_or(window_text()));
-                cd.clrBtnFace = cr(window_background());
+                cd.clrText = cr(window_text_for(cd.nmcd.hdr.hwndFrom));
+                cd.clrTextHighlight = cr(hover.color_or(window_text_for(cd.nmcd.hdr.hwndFrom)));
+                cd.clrBtnFace = cr(window_background_for(cd.nmcd.hdr.hwndFrom));
                 let own_colours: isize = if theme::current().is_dark() { 0x0080_0000 /* TBCDRF_USECDCOLORS */ } else { 0 };
                 // A chosen button of a column: the theme's pressed colour behind it, no 3-D edge.
                 if cd.nmcd.uItemState.0 & cc::CDIS_CHECKED.0 != 0 {
@@ -2248,8 +2414,20 @@ pub fn text_of(h: impl Into<HWND>) -> String {
     }
 }
 
+/// Fits a label that sizes itself once its words are in.
+struct AutoFit(HWND);
+
+impl Drop for AutoFit {
+    fn drop(&mut self) {
+        if with_css(self.0, |c| c.auto).unwrap_or(false) {
+            fit_label(self.0);
+        }
+    }
+}
+
 pub fn set_text(h: impl Into<HWND>, s: &str) {
     let h: HWND = h.into();
+    let _fit = AutoFit(h);
     let w = wide(s);
     unsafe {
         let _ = wm::SetWindowTextW(h, PCWSTR(w.as_ptr()));
@@ -2418,7 +2596,7 @@ fn themed_menu(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
     let bar = theme::style("menubar", State::default());
     // A sheet that says nothing about the menu bar leaves it to Windows.
     bar.background?;
-    let bg = bar.background_or(window_background());
+    let bg = bar.background_or(window_background_for(hwnd));
     match msg {
         WM_UAHDRAWMENU => {
             let um = unsafe { &*(l.0 as *const UahMenu) };
@@ -2443,7 +2621,7 @@ fn themed_menu(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
             let item = theme::style("menubar", State { hover: hot, disabled: off, ..Default::default() });
             fill(it.um.hdc, &it.dis.rcItem, if hot { item.background_or(bg) } else { bg });
             Gdi::SetBkMode(it.um.hdc, Gdi::TRANSPARENT);
-            Gdi::SetTextColor(it.um.hdc, cr(item.color_or(window_text())));
+            Gdi::SetTextColor(it.um.hdc, cr(item.color_or(window_text_for(hwnd))));
             let mut r = it.dis.rcItem;
             let mut flags = Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE;
             if st & ODS_NOACCEL.0 != 0 {
@@ -2490,7 +2668,8 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             unsafe {
                 let _ = wm::GetClientRect(hwnd, &mut r);
             }
-            fill(dc, &r, window_background());
+            fill(dc, &r, window_background_for(hwnd));
+            crate::form::paint_background(hwnd, dc, &r);
             return LRESULT(1);
         }
         wm::WM_CTLCOLORSTATIC | wm::WM_CTLCOLOREDIT | wm::WM_CTLCOLORLISTBOX | wm::WM_CTLCOLORBTN => {
@@ -2511,6 +2690,11 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     wm::SendMessageW(hwnd, wm::WM_COMMAND, Some(WPARAM(hdr.idFrom | (VALUE_CHANGED as usize) << 16)), Some(LPARAM(hdr.hwndFrom.0 as isize)));
                 }
                 return LRESULT(0);
+            }
+            // LabelEdit: a name typed into a tree's item stands (Escape gives no words).
+            if hdr.code == (-459i32) as u32 /* TVN_ENDLABELEDITW */ {
+                let it = unsafe { &*(l.0 as *const cc::NMTVDISPINFOW) };
+                return LRESULT((!it.item.pszText.is_null()) as isize);
             }
             if hdr.code == cc::NM_CUSTOMDRAW {
                 match kind_of(hdr.hwndFrom) {

@@ -32,6 +32,7 @@ pub const MOUSE_MOVE: u16 = 10;
 pub const CLICK: u16 = 11;
 pub const DOUBLE_CLICK: u16 = 12;
 pub const RESIZE: u16 = 13;
+pub const DRAG_DROP: u16 = 14;
 
 /// The bit of `event` in a [`hook`]'s mask.
 pub const fn bit(event: u16) -> u32 {
@@ -115,6 +116,29 @@ impl ClosingEventArgs {
     }
 }
 
+/// Files dropped from Explorer - WinForms' DragDrop with `DataFormats.FileDrop`.
+#[derive(Debug, Default)]
+pub struct FileDropEventArgs {
+    pub files: Vec<std::path::PathBuf>,
+}
+
+/// The files of a `WM_DROPFILES`, the drop then let go.
+pub fn files_of(w: WPARAM) -> FileDropEventArgs {
+    use windows::Win32::UI::Shell::{DragFinish, DragQueryFileW, HDROP};
+    let drop = HDROP(w.0 as *mut _);
+    let n = unsafe { DragQueryFileW(drop, u32::MAX, None) };
+    let files = (0..n)
+        .map(|i| {
+            let len = unsafe { DragQueryFileW(drop, i, None) } as usize;
+            let mut buf = vec![0u16; len + 1];
+            unsafe { DragQueryFileW(drop, i, Some(&mut buf)) };
+            std::path::PathBuf::from(String::from_utf16_lossy(&buf[..len]))
+        })
+        .collect();
+    unsafe { DragFinish(drop) };
+    FileDropEventArgs { files }
+}
+
 /// An item of a list - a column clicked, a row chosen.
 #[derive(Debug, Default)]
 pub struct ItemEventArgs {
@@ -183,6 +207,10 @@ pub fn hook(h: HWND, form: HWND, id: i32, mask: u32, preview: bool) {
             wm::SetWindowLongW(h, wm::GWL_STYLE, (s | 0x0100) as i32);
         }
     }
+    // Files can be dropped on a control that hears its DragDrop.
+    if mask & bit(DRAG_DROP) != 0 {
+        unsafe { windows::Win32::UI::Shell::DragAcceptFiles(h, true) };
+    }
     unsafe {
         let _ = SetWindowSubclass(h, Some(proc_), 0x4556, 0);
     }
@@ -219,6 +247,10 @@ unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usiz
                 raise(form, k.id, e, a);
             }
         } else if let Some(a) = a.downcast_ref::<MouseEventArgs>() {
+            if wants(e) {
+                raise(form, k.id, e, a);
+            }
+        } else if let Some(a) = a.downcast_ref::<FileDropEventArgs>() {
             if wants(e) {
                 raise(form, k.id, e, a);
             }
@@ -300,6 +332,10 @@ unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usiz
             }
         }
         wm::WM_SIZE => send(RESIZE, &()),
+        0x0233 /* WM_DROPFILES */ if wants(DRAG_DROP) => {
+            send(DRAG_DROP, &files_of(w));
+            return LRESULT(0);
+        }
         wm::WM_NCDESTROY => {
             if let Some(m) = HOOKS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
                 m.remove(&(h.0 as isize));

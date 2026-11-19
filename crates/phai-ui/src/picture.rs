@@ -35,10 +35,10 @@ pub fn resolve(path: &str) -> Option<PathBuf> {
 }
 
 /// A picture read into a 32-bit bitmap with its alpha premultiplied, and its size.
-struct Image {
-    bmp: Gdi::HBITMAP,
-    w: i32,
-    h: i32,
+pub(crate) struct Image {
+    pub(crate) bmp: Gdi::HBITMAP,
+    pub(crate) w: i32,
+    pub(crate) h: i32,
 }
 
 impl Drop for Image {
@@ -49,7 +49,7 @@ impl Drop for Image {
     }
 }
 
-fn load(path: &Path) -> Option<Image> {
+pub(crate) fn load(path: &Path) -> Option<Image> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let factory: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).ok()?;
@@ -143,7 +143,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let dc = Gdi::BeginPaint(h, &mut ps);
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
-            let bg = win::window_background();
+            let bg = win::window_background_for(h);
             win::fill(dc, &r, bg);
             let mode = win::state::<Picture>(h).map(|p| p.mode).unwrap_or(0);
             match win::state::<Picture>(h).and_then(|p| p.image.as_ref()) {
