@@ -205,6 +205,23 @@ fn draw_page(&mut self, ui: &MainWindowUi, e: &phai_ui::print::PrintPageEventArg
 // ที่ไหนก็ได้: ui.report.print_preview();  ui.report.print_dialog();  ui.report.page_setup();
 ```
 
+## ผูกข้อมูล — component `bindingsource` และ `data_binding`
+
+```toml
+[[control]]
+kind = "bindingsource"
+id = "people"
+bind = { database = "main", table = "customers", columns = ["id", "name", "vip"], keys = ["id"] }  # หรือ fields = "name, vip"
+events = { position_changed = "moved" }
+
+[[control]]
+kind = "edit"
+id = "name_box"
+data_binding = "people.name"
+```
+
+`ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง
+
 ## โค้ดที่สร้าง
 
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:

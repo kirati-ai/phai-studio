@@ -19,6 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 
 use crate::win;
 
+pub use crate::binding::{BindingSource, Bound};
 pub use crate::print::PrintDocument;
 pub use crate::components::{ColorDialog, ErrorProvider, FolderBrowserDialog, FontDialog, NotifyIcon, OpenFileDialog, SaveFileDialog};
 

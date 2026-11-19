@@ -730,6 +730,7 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::ColorDialog => t("Colour dialog"),
         Kind::FontDialog => t("Font dialog"),
         Kind::PrintDocument => t("Print document"),
+        Kind::BindingSource => t("Binding source"),
         Kind::ErrorProvider => t("Error provider"),
         Kind::NotifyIcon => t("Notify icon"),
         Kind::Split => t("Split container"),
@@ -776,6 +777,7 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::ColorDialog => glyph::PALETTE,
             Kind::FontDialog => glyph::FONT_PICK,
             Kind::PrintDocument => glyph::PRINT,
+            Kind::BindingSource => glyph::BINDING,
             Kind::ErrorProvider => glyph::ERROR_MARK,
             Kind::NotifyIcon => glyph::TRAY,
             Kind::Split => glyph::SPLIT,
@@ -8920,6 +8922,103 @@ impl MainWindowEvents for MainWindow {
             let _ = std::fs::copy(&shot, &keep);
             let _ = std::fs::copy(&pdf, std::path::Path::new(&keep).with_extension("pdf"));
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DataBindings in a real project: a binding source on a SQLite table, a text box, a tick
+    /// box, a date picker and a number box showing the current row; moving keeps what was typed,
+    /// a new row and the changes saved to the file, a row taken out.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn controls_bound_to_a_binding_source_show_and_save_its_rows() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-databind-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let db = dir.join("shop.db");
+        let conn = phai_data::Connection { kind: phai_data::Kind::Sqlite, host: db.to_string_lossy().to_string(), ..Default::default() };
+        conn.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, vip INTEGER NOT NULL DEFAULT 0, born TEXT, visits INTEGER); INSERT INTO customers (name, vip, born, visits) VALUES ('Somchai', 1, '1990-05-01', 3), ('Malee', 0, '1985-12-24', 7);").unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut people = Control::new(Kind::BindingSource, "people", [0, 0, 0, 0]);
+        people.bind = Some(phai_form::Bind { database: "main".into(), table: "customers".into(), columns: ["id", "name", "vip", "born", "visits"].map(String::from).to_vec(), keys: vec!["id".into()] });
+        people.events.insert("position_changed".into(), "moved".into());
+        let s = |v: &str| Some(phai_form::toml::Value::String(v.into()));
+        let mut name = Control::new(Kind::Edit, "name_box", [11, 40, 200, 23]);
+        name.set_prop("data_binding", s("people.name"));
+        let mut vip = Control::new(Kind::Checkbox, "vip_box", [11, 70, 120, 20]);
+        vip.text = Some("VIP".into());
+        vip.set_prop("data_binding", s("people.vip"));
+        let mut born = Control::new(Kind::Date, "born_box", [11, 100, 150, 23]);
+        born.set_prop("data_binding", s("people.born"));
+        let mut visits = Control::new(Kind::Number, "visits_box", [11, 130, 80, 23]);
+        visits.set_prop("data_binding", s("people.visits"));
+        f.control.extend([people, name, vip, born, visits]);
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        let mut wrong = f.clone();
+        wrong.control[1].set_prop("data_binding", s("people.phone"));
+        assert!(wrong.check().iter().any(|(m, _)| m.contains("people has no column \"phone\"")), "{:?}", wrong.check());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("people.bind(vip_box, phai_ui::binding::Bound::Checked, \"vip\");"), "{generated}");
+        assert!(generated.contains("self.people.set_rows(rows);") && generated.contains("self.people_data.save(&self.people.tagged_rows())"), "{generated}");
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
+        bind_project_files(&dir, &conn).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("VIP", "ลูกค้าพิเศษ")]).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+
+#[derive(Default)]
+pub struct MainWindow {
+    moves: usize,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn moved(&mut self, _ui: &MainWindowUi) {
+        self.moves += 1;
+    }
+
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let mut bits = 0;
+        let p = &ui.people;
+        if p.count() == 2 && ui.name_box.text() == "Somchai" && ui.vip_box.checked() && ui.born_box.value() == (1990, 5, 1) && ui.visits_box.value() == 3 { bits |= 1 }
+        p.move_next();
+        if p.position() == 1 && ui.name_box.text() == "Malee" && !ui.vip_box.checked() && ui.born_box.value() == (1985, 12, 24) && ui.visits_box.value() == 7 { bits |= 2 }
+        // Typed into the controls, kept when moving away and back.
+        ui.name_box.set_text("มาลี ใจดี");
+        ui.vip_box.set_checked(true);
+        p.move_previous();
+        let first = ui.name_box.text();
+        p.move_next();
+        if first == "Somchai" && ui.name_box.text() == "มาลี ใจดี" && ui.vip_box.checked() && p.value("vip") == "1" { bits |= 4 }
+        // A new row, then everything saved.
+        p.add_new();
+        ui.name_box.set_text("New one");
+        ui.visits_box.set_value(1);
+        let n = ui.save_people().unwrap_or(99);
+        let rows = crate::data_sources::connection().query(None, "SELECT name, vip, visits FROM customers ORDER BY id").unwrap().rows;
+        let want: Vec<Vec<String>> = vec![vec!["Somchai".into(), "1".into(), "3".into()], vec!["มาลี ใจดี".into(), "1".into(), "7".into()], vec!["New one".into(), "0".into(), "1".into()]];
+        if n == 3 && rows == want && p.count() == 3 && p.position() == 0 { bits |= 8 }
+        else { eprintln!("n {n} rows {rows:?} count {} pos {}", p.count(), p.position()); }
+        p.move_last();
+        p.remove_current();
+        let n = ui.save_people().unwrap_or(99);
+        let left = crate::data_sources::connection().query(None, "SELECT COUNT(*) FROM customers").unwrap().rows;
+        if n == 1 && left[0][0] == "2" { bits |= 16 }
+        if self.moves >= 5 { bits |= 32 }
+        std::process::exit(if bits == 63 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-bind-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let run = std::process::Command::new(&exe).output().unwrap();
+        assert_eq!(run.status.code(), Some(42), "1000 + the bits of what worked: {}", String::from_utf8_lossy(&run.stderr));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -83,6 +83,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("text_changed", "TextChanged", Args::None, &[Kind::Combo], Source::Command(5), "Words typed into a drop-down that takes them."),
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
     ev("double_click", "MouseDoubleClick", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0203), "The icon in the corner clicked twice - as often, to show the window again."),
+    ev("position_changed", "PositionChanged", Args::None, &[Kind::BindingSource], Source::Hook(phai_ui_codes::POSITION_CHANGED), "Another row became the current one - moved to, added, taken out, or new rows given."),
     ev("print_page", "PrintPage", Args::Print, &[Kind::PrintDocument], Source::Hook(phai_ui_codes::PRINT_PAGE), "A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows."),
     ev("selection_changed", "SelectionChanged", Args::None, &[Kind::Grid], Source::Notify(-101), "Another row chosen."),
 ];
@@ -123,6 +124,7 @@ pub mod phai_ui_codes {
     pub const RESIZE: u16 = phai_ui::events::RESIZE;
     pub const DRAG_DROP: u16 = phai_ui::events::DRAG_DROP;
     pub const PRINT_PAGE: u16 = phai_ui::events::PRINT_PAGE;
+    pub const POSITION_CHANGED: u16 = phai_ui::events::POSITION_CHANGED;
 }
 
 /// Whether controls of `kind` raise `e`: an empty list is every control on the form.

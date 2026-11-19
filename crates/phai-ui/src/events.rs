@@ -35,6 +35,8 @@ pub const RESIZE: u16 = 13;
 pub const DRAG_DROP: u16 = 14;
 /// A PrintDocument's page to draw (`crate::print`).
 pub const PRINT_PAGE: u16 = 15;
+/// A BindingSource's current row changed (`crate::binding`).
+pub const POSITION_CHANGED: u16 = 16;
 
 /// The bit of `event` in a [`hook`]'s mask.
 pub const fn bit(event: u16) -> u32 {
