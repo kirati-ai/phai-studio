@@ -407,3 +407,33 @@ fn the_function_stopped_in_is_disassembled() {
     s.send(Command::Stop);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// What a program prints comes to the debugger as Output - no console window of its own.
+#[test]
+fn what_the_program_prints_comes_back_as_output() {
+    let dir = std::env::temp_dir().join(format!("phai-debug-print-{}", std::process::id()));
+    let Some(exe) = build_text(&dir, "fn main() {\n    println!(\"สวัสดี from stdout\");\n    eprintln!(\"and from stderr\");\n}\n") else {
+        eprintln!("no rustc to build the test program with; skipped");
+        return;
+    };
+    let (tx, rx) = channel();
+    let _s = Session::launch(&exe, &dir, vec![], move |e| {
+        let _ = tx.send(e);
+    });
+    let mut printed = String::new();
+    loop {
+        match rx.recv_timeout(Duration::from_secs(20)).expect("the debugger went quiet") {
+            Event::Output(t) => printed.push_str(&t),
+            Event::Exited(_) => break,
+            _ => {}
+        }
+    }
+    // Lines read after the exit still arrive: give them a moment.
+    while let Ok(e) = rx.recv_timeout(Duration::from_millis(500)) {
+        if let Event::Output(t) = e {
+            printed.push_str(&t);
+        }
+    }
+    assert!(printed.contains("สวัสดี from stdout"), "{printed:?}");
+    assert!(printed.contains("and from stderr"), "{printed:?}");
+}
