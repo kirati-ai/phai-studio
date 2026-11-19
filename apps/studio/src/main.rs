@@ -32,6 +32,7 @@ mod attach;
 mod githistory;
 mod merge;
 mod coverage;
+mod themeedit;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -183,6 +184,7 @@ const ID_ABOUT: i32 = 290;
 const ID_THEME_FILE: i32 = 760;
 const THEME_FILES_MAX: usize = 20;
 const ID_THEME_EDIT: i32 = 790;
+const ID_THEME_EDITOR: i32 = 791;
 /// Project > Add Form: a second window for the project.
 const ID_ADD_FORM: i32 = 291;
 /// The Memory window's request.
@@ -1075,6 +1077,7 @@ fn build_menu() -> HMENU {
             }
         }
         if current.is_some() {
+            add(th, ID_THEME_EDITOR, t("Theme Editor..."), "");
             add(th, ID_THEME_EDIT, &tf("Edit {0}", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
         }
         if !sheets.is_empty() || current.is_some() {
@@ -3597,6 +3600,25 @@ impl Studio {
         }
     }
 
+    /// The Theme Editor on the form's theme file - one made from the standard first if it has none.
+    fn theme_editor(&mut self) {
+        let file = match (&self.doc.path, &self.doc.form.form.theme) {
+            (Some(p), Some(th)) => Some(p.with_file_name("").join(th)),
+            _ => None,
+        };
+        match file.filter(|f| f.is_file()) {
+            Some(f) => themeedit::open(self.hwnd, &f),
+            None => {
+                controls::status_text(self.status, 0, t("The form has no theme - choose or make one in the Theme menu first."));
+            }
+        }
+    }
+
+    /// Everything drawn again in the theme now set - for the Theme Editor.
+    pub fn after_theme_pub(&mut self) {
+        self.after_theme();
+    }
+
     fn after_theme(&mut self) {
         unsafe {
             let old = wm::GetMenu(self.hwnd);
@@ -6088,6 +6110,7 @@ impl Studio {
                     }
                 }
             }
+            ID_THEME_EDITOR => self.theme_editor(),
             ID_THEME_NEW => self.theme_from_standard(),
             ID_THEME_IMPORT => self.theme_import(),
             ID_NEW_PROJECT => self.new_project(),
@@ -7134,6 +7157,43 @@ fn main() {
                 [n] => s.select(Some(*n)),
                 [] => {}
                 _ => s.select_many(&many),
+            }
+        }
+        // `--theme-editor`: the Theme Editor opened; with PHAI_THEME_SHOT a picture of it taken and
+        // the program ended (PHAI_THEME_PAGE: 1 the Controls tab; PHAI_THEME_SET: `--name=#hex`
+        // set first, as typing it would).
+        if args.iter().any(|a| a == "--theme-editor") {
+            if let Ok(out) = std::env::var("PHAI_THEME_SHOT") {
+                std::env::set_var("PHAI_SHOT", &out);
+                s.theme_editor();
+                let editor = wm::FindWindowW(PCWSTR(wide("PhaiThemeEditor").as_ptr()), PCWSTR::null()).unwrap_or_default();
+                if let Ok(set) = std::env::var("PHAI_THEME_SET") {
+                    if let Some((name, v)) = set.split_once('=') {
+                        if let Some(i) = themeedit::VARS.iter().position(|(n, _)| *n == name) {
+                            let edit = wm::GetDlgItem(Some(editor), 200 + i as i32).unwrap_or_default();
+                            win::set_text(edit, v);
+                        }
+                    }
+                }
+                // PHAI_THEME_PROP: `button:hover|background=#ff0000`, set on the Controls tab and saved.
+                if let Ok(set) = std::env::var("PHAI_THEME_PROP") {
+                    if let Some((sel, rest)) = set.split_once('|') {
+                        let (kind, state) = sel.split_once(':').unwrap_or((sel, ""));
+                        if let Some((p, v)) = rest.split_once('=') {
+                            themeedit::test_set(editor, kind, state, p, v, true);
+                        }
+                    }
+                }
+                let mut msg = wm::MSG::default();
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&msg);
+                    wm::DispatchMessageW(&msg);
+                }
+                let _ = phai_ui::shot::save(editor, std::path::Path::new(&out));
+                let _ = phai_ui::shot::save(hwnd, &std::path::Path::new(&out).with_extension("studio.png"));
+                std::process::exit(0);
+            } else {
+                s.theme_editor();
             }
         }
         // `--style N`: the Style tab, on state N - for checking by picture.

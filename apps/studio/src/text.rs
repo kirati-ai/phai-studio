@@ -821,6 +821,35 @@ pub static THAI: &[(&str, &str)] = &[
     ("Set on this control: {0}", "ตั้งไว้ที่ control นี้: {0}"),
     ("From {0} in the theme, line {1}", "มาจาก {0} ในธีม บรรทัด {1}"),
     ("From {0} in {1}, line {2}", "มาจาก {0} ใน {1} บรรทัด {2}"),
+    ("Theme Editor...", "ตัวแก้ธีม..."),
+    ("A label", "ป้ายข้อความ"),
+    ("Quiet words", "ข้อความรอง"),
+    ("Disabled", "ใช้ไม่ได้"),
+    ("Other", "อื่น"),
+    ("Words typed in", "ข้อความที่พิมพ์"),
+    ("General", "ทั่วไป"),
+    ("Advanced", "ขั้นสูง"),
+    ("Colours", "สี"),
+    ("Controls", "คอนโทรล"),
+    ("Starts from", "เริ่มจากธีม"),
+    ("Control", "คอนโทรล"),
+    ("normal", "ปกติ"),
+    ("Bold: set in this file. Empty: the theme it starts from.", "ตัวหนา: ตั้งไว้ในไฟล์นี้ ช่องว่าง: ใช้ค่าของธีมที่เริ่มจาก"),
+    ("Theme Editor - {0}", "ตัวแก้ธีม - {0}"),
+    ("Accent: what is chosen, the default button, ticks", "สีเน้น: สิ่งที่เลือก ปุ่มหลัก เครื่องหมายติ๊ก"),
+    ("Accent under the pointer", "สีเน้นเมื่อเมาส์ชี้"),
+    ("Accent while pressed", "สีเน้นขณะกด"),
+    ("Light accent behind a hovered or chosen row", "สีเน้นอ่อนหลังแถวที่ชี้หรือเลือก"),
+    ("Light accent while pressed", "สีเน้นอ่อนขณะกด"),
+    ("The window's background", "พื้นหลังหน้าต่าง"),
+    ("Words", "ตัวอักษร"),
+    ("Quiet words: group titles, the status bar", "ตัวอักษรรอง: หัวกลุ่ม แถบสถานะ"),
+    ("Borders of buttons and boxes", "ขอบของปุ่มและช่องกรอก"),
+    ("Thin lines that divide", "เส้นบางที่ใช้แบ่ง"),
+    ("Background of what cannot be used", "พื้นหลังของสิ่งที่ใช้ไม่ได้"),
+    ("Border of what cannot be used", "ขอบของสิ่งที่ใช้ไม่ได้"),
+    ("Words of what cannot be used", "ตัวอักษรของสิ่งที่ใช้ไม่ได้"),
+    ("Toolbar icons", "ไอคอนบนแถบเครื่องมือ"),
 ];
 
 #[cfg(test)]
@@ -838,6 +867,7 @@ mod tests {
         phai_ui::text::add(super::THAI);
         let mut words: Vec<String> = phai_form::props::CONTROL.iter().chain(phai_form::props::FORM).flat_map(|s| [s.help.to_string(), s.category.to_string()]).collect();
         words.extend(phai_form::events::CONTROL.iter().chain(phai_form::events::FORM).map(|e| e.help.to_string()));
+        words.extend(crate::themeedit::VARS.iter().map(|(_, what)| what.to_string()));
         assert_eq!(phai_ui::text::problems(&words), Vec::<String>::new());
     }
 }
