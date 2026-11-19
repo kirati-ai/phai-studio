@@ -77,9 +77,15 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 
 ## งานถัดไป (เรียงตามความสำคัญ)
 
-### 0. Properties ของฟอร์มให้ใกล้ WinForms (เจ้านายชี้ 2026-11-19: "ทำไมฉันไม่มีเหมือน c#")
-ตอนนี้ฟอร์มมีแค่ Name, Title, Font size, Theme, Size, Start position, Window state (`min_size` มีในไฟล์แต่ไม่ขึ้นใน Properties)
-เพิ่มใน `Form` (`crates/phai-form/src/model.rs`) + Properties (`apps/studio/src/props.rs`, `Key::Form*`) + codegen:
+### 0. Properties ของ **ทุก control และฟอร์ม** ให้ครบแบบ WinForms (เจ้านายชี้ 2026-11-19: "ทำไมฉันไม่มีเหมือน c#",
+"ไม่ใช่แค่ form แต่เป็น properties ของ control ทั้งหมด")
+ทำทีละชนิดตามตารางอ้างอิงในหัวข้อ "บันทึกจากการคุย" (Button, Label, TextBox, CheckBox/Radio, ComboBox, ListView,
+DataGridView, DateTimePicker, NumericUpDown, TrackBar/ProgressBar, PictureBox, TreeView, TabControl, RichTextBox, Timer,
+ContextMenu, Menu/Tool/Status bar, Group/Flow/Table) + ส่วนร่วมของทุกตัว (Name, Location, Size, Anchor, Dock, Enabled,
+Visible, TabIndex, Cursor, BackColor, ForeColor, Font) — ติ๊กใน `docs/winforms-parity.md`
+เพิ่มใน `Control` / `Form` (`crates/phai-form/src/model.rs`) + Properties (`apps/studio/src/props.rs`) + codegen + phai-ui
+
+**ฟอร์ม** ตอนนี้มีแค่ Name, Title, Font size, Theme, Size, Start position, Window state (`min_size` มีในไฟล์แต่ไม่ขึ้นใน Properties):
 - **สูง:** AcceptButton / CancelButton (Enter/Esc กด control ปุ่มนั้น), FormBorderStyle (sizable / fixed / dialog / none →
   WS_THICKFRAME, WS_DLGFRAME), MaximizeBox / MinimizeBox (WS_MAXIMIZEBOX / WS_MINIMIZEBOX), Minimum/Maximum size
   (WM_GETMINMAXINFO), Icon (.ico ในโปรเจกต์ → WM_SETICON), BackColor / ForeColor (เขียนเป็น CSS `window { }` แบบ control)
