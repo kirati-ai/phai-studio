@@ -10,7 +10,7 @@
   โปรเจกต์ใหม่เต็มจอ (`start`, `maximized`), เมนู Theme แสดงไฟล์ CSS ที่ใช้, โหมดมืด (แถบเครื่องมือ + scrollbar),
   ไอคอนในเมนู Format, ปุ่มปิดหน้าต่างล่าง, หน้าต่าง Project แบบ Solution Explorer (แถบปุ่ม, ค้นหา, Dependencies,
   ไฟล์ .rs ซ้อนใต้ฟอร์ม), แท็บเอกสารมีปุ่ม ✕ + คลิกกลางปิด, ดับเบิลคลิกฟอร์ม/control ไปที่โค้ด
-- **ออกรุ่นใหม่** (เมื่อเจ้านายสั่ง): แก้ `version` ใน `Cargo.toml` (workspace) → commit → `git tag vX.Y.Z` → push tag
+- **ออกรุ่นใหม่** (เมื่อเจ้านายสั่ง — main มี Properties/Events/Methods แบบ WinForms แล้ว ควรเป็น 0.2.0): แก้ `version` ใน `Cargo.toml` (workspace) → commit → `git tag vX.Y.Z` → push tag
   GitHub Actions build ตัวติดตั้งให้เอง → แล้ว `bash site/deploy.sh` ให้เว็บชี้รุ่นใหม่
 - การเซ็นโค้ด: SignPath **ไม่อนุมัติ** (ยังไม่มีคนรู้จักพอ) — สมัครใหม่ได้ภายหลัง ดู `docs/signpath-application.md`
   ทางฟรีอีกทาง: Microsoft Store (บัญชีนักพัฒนาฟรี, Microsoft เซ็นให้เฉพาะแพ็กเกจ **MSIX**) — ยังไม่ได้ทำ
@@ -75,69 +75,51 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   ภาพเคลื่อนไหวใน CSS เรียก `transition`, `@keyframes` + `animation`, `transform`, `opacity`, easing (เป็น property / at-rule ไม่ใช่ tag)
 - ข้อมูลไลบรารี/ราคาเป็นความรู้ที่มี ไม่ได้ค้นเว็บ — ตรวจใหม่ก่อนใช้อ้างอิงสาธารณะ
 
+## ทำเสร็จแล้ว 2026-11-19 (งานข้อ 0-3 เดิม) — checklist: `docs/winforms-parity.md`
+
+- **0. Properties แบบ WinForms** ตารางเดียว `crates/phai-form/src/props.rs` (ชื่อ, ชนิดค่า, ค่าเริ่มต้น, control ที่มี, หมวด,
+  คำอธิบาย) → หน้า Properties, ตัวตรวจไฟล์, codegen, canvas อ่านจากตารางนี้หมด; ในไฟล์เป็น `ชื่อ = ค่า` ธรรมดา
+  (`Control.more` / `Form.more`, serde flatten) ไม่ใส่บรรทัดค่าเริ่มต้น; control เรียก `phai_ui::props::<ชื่อ>(h, ค่า)`
+  ฟอร์ม: AcceptButton/CancelButton, FormBorderStyle, Maximize/Minimize/ControlBox, TopMost, ShowInTaskbar, Opacity, Icon,
+  Min/MaxSize, Back/ForeColor (ทั้งโปรแกรม), KeyPreview — ฟังก์ชันใน `phai_ui::form`; `show_dialog` คืน `DialogResult`
+  control: ReadOnly, MaxLength, PlaceholderText, TextAlign, CharacterCasing, ToolTip, Cursor, TabIndex/TabStop, DialogResult,
+  View/GridLines/CheckBoxes/MultiSelect/HeaderStyle, เส้นของ tree, Format/CustomFormat/Value/Min/MaxDate, tick ของ slider,
+  progress แบบ marquee, SizeMode, FlowDirection/WrapContents/Padding ... ค่าสีที่ไม่ได้ตั้งแสดงค่าจริงจากธีม (ตัวธรรมดา)
+- **1. Events** ตาราง `crates/phai-form/src/events.rs`; ในไฟล์ `events = { key_down = "name_key_down" }`;
+  `phai_ui::events::hook` subclass control แล้วส่ง `WM_EVENT` ไปที่ฟอร์ม; args: KeyEventArgs (`set_handled`),
+  KeyPressEventArgs, MouseEventArgs, ClosingEventArgs (`cancel`), ItemEventArgs; ฟอร์ม: Shown, FormClosing, FormClosed,
+  Resize, Activated, Deactivate, เมาส์, คีย์ (KeyPreview); หน้า Events จัดหมวดแบบ VS ดับเบิลคลิกชื่อ = เขียนเมธอดพร้อม args
+- **2. Methods แบบ object** `phai_ui::ctl`: ชนิดต่อ control (TextBox, ComboBox, ListView, Grid, TreeView, Timer ...)
+  field ใน `<Form>Ui` เป็นชนิดเหล่านี้, `ui.x.hwnd()` / `*ui.x` คือ HWND; ฟังก์ชัน phai-ui ที่โค้ดผู้ใช้เคยเรียกด้วย `ui.x`
+  รับได้ทั้งสองแบบ (`impl Into<HWND>`) โค้ดเก่าไม่พัง ยกเว้นที่ส่ง `ui.x` ให้ Win32 ตรง ๆ (ใส่ `.hwnd()`)
+  ฟอร์ม: `close`, `hide`, `show_window`, `activate`, `center_to_screen`, `set_title`, `invoker()`/`begin_invoke`/`invoke`
+  (`phai_ui::invoke`: งานจาก thread อื่นไปทำบน thread ของหน้าต่าง พร้อม state ของโปรแกรม)
+  ช่องเลือก object ใน Properties แสดง `name  phai_ui::ctl::TextBox` แบบ VS
+- **3. เล็กน้อย** โหมดมืด: เส้นใต้แถบเครื่องมือ (RB_SETCOLORSCHEME) + gripper วาดใหม่ + ข้อความปุ่ม "Start" อ่านออก
+  (TBCDRF_USECDCOLORS); ตรวจด้วย `--menu-test`: เมนู Format มีไอคอน, เมนู Theme แสดงไฟล์ CSS, ดับเบิลคลิกฟอร์มไปที่โค้ด;
+  Store (MSIX): ติดตั้งใน `WindowsApps` หรือ setting `library_from_git = 1` → โปรเจกต์ใหม่อ้าง phai-ui/phai-data
+  จาก git `tag = "v<รุ่น Studio>"` (ยังไม่ได้ทำแพ็กเกจ MSIX เอง)
+- เทสต์โปรเจกต์จริง (ignored, รันด้วย `cargo test -p phai-studio add_form_tests -- --include-ignored`):
+  `winforms_properties_reach_the_running_program`, `events_reach_the_programmers_methods`, `control_methods_and_invoke_work`
+
 ## งานถัดไป (เรียงตามความสำคัญ)
 
-### 0. Properties ของ **ทุก control และฟอร์ม** ให้ครบแบบ WinForms (เจ้านายชี้ 2026-11-19: "ทำไมฉันไม่มีเหมือน c#",
-"ไม่ใช่แค่ form แต่เป็น properties ของ control ทั้งหมด")
-ทำทีละชนิดตามตารางอ้างอิงในหัวข้อ "บันทึกจากการคุย" (Button, Label, TextBox, CheckBox/Radio, ComboBox, ListView,
-DataGridView, DateTimePicker, NumericUpDown, TrackBar/ProgressBar, PictureBox, TreeView, TabControl, RichTextBox, Timer,
-ContextMenu, Menu/Tool/Status bar, Group/Flow/Table) + ส่วนร่วมของทุกตัว (Name, Location, Size, Anchor, Dock, Enabled,
-Visible, TabIndex, Cursor, BackColor, ForeColor, Font) — ติ๊กใน `docs/winforms-parity.md`
-เพิ่มใน `Control` / `Form` (`crates/phai-form/src/model.rs`) + Properties (`apps/studio/src/props.rs`) + codegen + phai-ui
+### 1. ที่ยังเป็น ⬜/🟡 ใน `docs/winforms-parity.md`
+- ฟอร์ม BackColor/ForeColor รายหน้าต่าง (ตอนนี้ทั้งโปรแกรม: `theme::set_window_colors`) — ต้องให้ `window_background()`
+  ดูหน้าต่างราก ~16 จุดใน win.rs + controls.rs
+- Label AutoSize, CheckBox ThreeState, TextBox ScrollBars/WordWrap ของ textarea, Date ShowCheckBox/ShowUpDown,
+  TrackBar แนวตั้ง, TreeView LabelEdit (style ตอนสร้าง: ต้องสร้าง control ใหม่หรือส่งผ่าน constructor แบบ `combo_with`)
+- ฟอร์ม BackgroundImage, AutoScroll, AllowDrop (+ DragDrop events)
 
-**ฟอร์ม** ตอนนี้มีแค่ Name, Title, Font size, Theme, Size, Start position, Window state (`min_size` มีในไฟล์แต่ไม่ขึ้นใน Properties):
-- **สูง:** AcceptButton / CancelButton (Enter/Esc กด control ปุ่มนั้น), FormBorderStyle (sizable / fixed / dialog / none →
-  WS_THICKFRAME, WS_DLGFRAME), MaximizeBox / MinimizeBox (WS_MAXIMIZEBOX / WS_MINIMIZEBOX), Minimum/Maximum size
-  (WM_GETMINMAXINFO), Icon (.ico ในโปรเจกต์ → WM_SETICON), BackColor / ForeColor (เขียนเป็น CSS `window { }` แบบ control)
-- **กลาง:** TopMost (WS_EX_TOPMOST), ShowInTaskbar (WS_EX_TOOLWINDOW / owner), ControlBox (WS_SYSMENU), KeyPreview
-- **ต่ำ:** Opacity (WS_EX_LAYERED), BackgroundImage, AutoScroll, Padding, Cursor, AllowDrop
-- event ของฟอร์ม: Shown, FormClosing (ถามก่อนปิดได้), FormClosed, Resize, Activated/Deactivate (ทำพร้อมงานข้อ 1)
-- **หลัก (เจ้านายยืนยัน):** ทุกอย่างที่ CSS ของธีมตั้งได้ ต้องแก้รายตัวได้ใน Properties - theme.css คือค่าเริ่มต้น,
-  ค่าที่ตั้งรายตัวเก็บใน `.phaiform` แล้ว codegen เขียนเป็น CSS `#id { }` ทับธีม (แบบ `back_color` ที่มีแล้ว)
-  ยังขาด: ฟอร์ม (background, color, font-weight), control: `border-width`, `accent-color`, `icon-color`
-  ช่องที่ยังไม่ตั้งควรแสดงค่าจริงจากธีม (ตัวธรรมดา) และค่าที่ตั้งเองเป็นตัวหนา แบบ VS
-  สีตามสถานะ (`:hover`, `:pressed`) ไม่ใส่ใน Properties: ใช้ class + CSS แทน
-- ไล่เทียบ property ของ control แต่ละชนิดกับ WinForms แบบเดียวกันด้วย (ตารางในบทสนทนา 2026-11-19: Button, TextBox,
-  CheckBox, ComboBox, ListView, DataGridView, DateTimePicker, NumericUpDown, TrackBar, PictureBox, TreeView, TabControl, Timer)
+### 2. แท็บ Style 🖌, CSS transition / animation, Theme Editor (ดูหัวข้อ "หลักของ control" ด้านบน)
 
-### 1. Events ให้ครบแบบ Visual Studio (สำคัญที่สุด)
-ตอนนี้ control มี event เดียว (`Control::handler()` / `Kind::event()` ใน `crates/phai-form/src/model.rs`):
-ปุ่ม Click, ช่องกรอก Change, list/combo Select, timer Tick. หน้า Events (⚡) ใน `apps/studio/src/props.rs`
-- เพิ่มในฟอร์ม: ตาราง `events = { key_down = "name_key_down", mouse_enter = "...", ... }` ต่อ control
-  (เก็บของเดิม `on_click` ฯลฯ ไว้ให้ไฟล์เก่าอ่านได้)
-- ชุดแรกที่ควรมี: ทุกตัว Enter/Leave (โฟกัส), KeyDown/KeyUp/KeyPress, MouseEnter/MouseLeave, MouseDown/MouseUp, DoubleClick;
-  check box CheckedChanged; ช่องกรอก TextChanged; list/grid SelectedIndexChanged, CellChanged; ฟอร์ม Load/Closing/Resize
-- Win32: สิ่งที่ไม่มาเป็น WM_COMMAND/WM_NOTIFY (คีย์, เมาส์, โฟกัส) ต้อง subclass control (`SetWindowSubclass`)
-  ใน code ที่ `crates/phai-form/src/codegen.rs` สร้าง แล้วเรียก `events.<handler>(ui, args)`; args เช่น key code, ตำแหน่งเมาส์
-- trait `<Form>Events` ได้เมธอดใหม่พร้อมค่าเริ่มต้นว่าง; หน้า Events แสดงรายการทั้งหมดของชนิด control นั้น
-  ดับเบิลคลิกชื่อ event = สร้างเมธอด (ใช้ `codegen::add_handler` + `open_code_at` ใน main.rs)
-- ทดสอบ: แบบเดียวกับ `add_form_tests` ใน `apps/studio/src/main.rs` (สร้างโปรเจกต์จริง build รัน ส่งข้อความ Win32 แล้วตรวจ)
+### 3. ทิศทาง DevExpress: grid ก่อน (จัดกลุ่ม, กรองแบบ Excel, ผลรวม, master-detail, ตัวแก้ในช่อง, ส่งออก Excel/PDF)
 
-### 2. Methods แบบ object
-ตอนนี้สั่ง control ด้วยฟังก์ชัน (`win::set_text(ui.name, ..)`, `controls::status_text(..)`). ทำชนิดห่อใน phai-ui:
-`TextBox`, `Button`, `CheckBox`, `ListView`, `Grid`, `StatusBar`... (newtype รอบ HWND) มี `text()`, `set_text()`,
-`set_enabled()`, `checked()`, `rows()`... แล้ว codegen ให้ field ใน `<Form>Ui` เป็นชนิดเหล่านี้แทน `HWND`
-(ระวังโค้ดผู้ใช้เดิมที่ใช้ `ui.x` เป็น HWND: ให้ชนิดห่อมี `.hwnd()` และ `Deref`/`From` ไป HWND)
-- C# มี method หลายร้อย (Control ~100 public + Form + แต่ละชนิด) - ไม่เอาหมด (ของภายใน .NET, accessibility, design-time)
-  เอาชุดที่คนใช้จริง ~40-60 ตัว: ทุกตัว Focus/Show/Hide/BringToFront/SendToBack/Refresh/Invalidate/PointToScreen/
-  PointToClient/SuspendLayout/ResumeLayout/FindForm · ฟอร์ม Show/ShowDialog/Close/Hide/Activate/CenterToScreen ·
-  TextBox Clear/SelectAll/AppendText/Copy/Cut/Paste/Undo/ScrollToCaret · Combo/List Items.Add/Remove/Clear, FindString,
-  BeginUpdate/EndUpdate · ListView Items.Add/Clear, EnsureVisible · Grid Rows.Add/Clear, ClearSelection · Tree Nodes.Add,
-  ExpandAll/CollapseAll · Timer Start/Stop · ProgressBar PerformStep/Increment · RichText LoadFile/SaveFile/Find
-  **สำคัญ:** แบบ Invoke/BeginInvoke - อัปเดตหน้าจอจาก thread อื่นอย่างปลอดภัย (มือใหม่จะติดเรื่องนี้)
-  ที่เหลือ: ทุกชนิดมี `.hwnd()` (แบบ `Handle` ของ C#) เรียก phai-ui / Win32 เองได้
-  **ไม่ต้องรอใครขอ** (เจ้านาย: "ใช้กันอยู่สองคน"): ทำ `docs/winforms-parity.md` แบบ `docs/vs-features.md` -
-  ทุก control แจง properties / methods / events จากเอกสาร Microsoft แล้วติ๊กจนครบ (ตัวที่ไม่มีความหมายใน Rust เขียนเหตุผล)
-  และ dogfooding: ทำโปรแกรมจริงของ Monrak ด้วย Phai Studio (เช่นหน้าจอ Desktop Server / Desktop Access ที่เป็น C#)
-  ขาดอะไรระหว่างทำ เพิ่มทันที - checklist บอกว่าขาดอะไร, การใช้จริงบอกว่าควรทำอะไรก่อน
-- แบบ C#: `struct` + `impl` = class, `trait Control` = ส่วนที่ทุก control มีร่วม (Enabled, Visible, Focus, Show/Hide)
-- เสร็จแล้ว dropdown ของ Properties แสดงชื่อชนิดเต็มแบบ VS (`ok  phai_ui::Button`) และ rust-analyzer เติม methods ให้แบบ IntelliSense
+### 4. คู่มือไทย (`docs/help-src`) ยังไม่มีหน้าของ Properties ใหม่ / Events / `phai_ui::ctl` / invoke
 
-### 3. เล็กน้อย
-- โหมดมืด: เส้นสว่างบางใต้แถบเครื่องมือแถวแรก (rebar band border, `win::rebar_colours`)
-- ยังไม่ได้ลองในหน้าจอจริง: ไอคอนในเมนู Format, รายการไฟล์ในเมนู Theme, ดับเบิลคลิกฟอร์มไปที่โค้ด
-- หัวคอลัมน์ของตารางที่ผูกฐานข้อมูลยังไม่แปลไทย (ตั้งใจ: ใช้ชื่อคอลัมน์จริง)
-- Microsoft Store (MSIX): ต้องให้โปรเจกต์อ้าง phai-ui/phai-data จาก git แทนโฟลเดอร์ติดตั้ง
+### 5. dogfooding: ทำโปรแกรมจริงของ Monrak ด้วย Phai Studio (Desktop Server / Desktop Access) ขาดอะไรเพิ่มทันที
+
+### 6. ออกรุ่น 0.2.0 เมื่อเจ้านายสั่ง (main เปลี่ยน API ของโค้ดที่สร้าง: field เป็น `phai_ui::ctl::*`)
 
 ## วิธีทำงาน (สำคัญ)
 - เครื่องมือ: cargo อยู่ที่ `/d/Tools/Rust/cargo/bin`; ตรวจก่อน commit: `cargo test -q --workspace` + `cargo clippy -q --workspace --all-targets`

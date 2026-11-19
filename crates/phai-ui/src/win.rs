@@ -1700,6 +1700,36 @@ pub fn rebar(parent: HWND, id: i32) -> HWND {
     h
 }
 
+/// A rebar's bands drawn: on a dark tray, each band's gripper again in the theme's colours -
+/// Windows draws it in its 3-D white.
+fn rebar_custom_draw(l: LPARAM) -> LRESULT {
+    use windows::Win32::UI::Controls as cc;
+    let cd = unsafe { &mut *(l.0 as *mut cc::NMCUSTOMDRAW) };
+    if !theme::current().is_dark() {
+        return LRESULT(cc::CDRF_DODEFAULT as isize);
+    }
+    match cd.dwDrawStage {
+        cc::CDDS_PREPAINT => LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize),
+        cc::CDDS_ITEMPREPAINT => LRESULT(cc::CDRF_NOTIFYPOSTPAINT as isize),
+        cc::CDDS_ITEMPOSTPAINT => {
+            let h = cd.hdr.hwndFrom;
+            let r = cd.rc;
+            let grip = RECT { left: r.left, top: r.top, right: r.left + px(h, 9), bottom: r.bottom };
+            fill(cd.hdc, &grip, window_background());
+            // Dots down the middle, as Visual Studio's grip.
+            let dot = theme::current().var_color("--muted").unwrap_or(Color::rgb(0x80, 0x80, 0x80));
+            let (x, s) = (grip.left + px(h, 3), px(h, 2).max(1));
+            let mut y = grip.top + px(h, 6);
+            while y + s <= grip.bottom - px(h, 5) {
+                fill(cd.hdc, &RECT { left: x, top: y, right: x + s, bottom: y + s }, dot);
+                y += s * 2;
+            }
+            LRESULT(cc::CDRF_DODEFAULT as isize)
+        }
+        _ => LRESULT(cc::CDRF_DODEFAULT as isize),
+    }
+}
+
 /// The tray in the theme's colours.
 pub fn rebar_colours(h: HWND) {
     unsafe {
@@ -1709,6 +1739,18 @@ pub fn rebar_colours(h: HWND) {
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if dark { windows::core::w!(" ") } else { PCWSTR::null() }, if dark { windows::core::w!(" ") } else { PCWSTR::null() });
         wm::SendMessageW(h, 0x0413 /* RB_SETBKCOLOR */, None, Some(LPARAM(window_background().colorref() as isize)));
         wm::SendMessageW(h, 0x0415 /* RB_SETTEXTCOLOR */, None, Some(LPARAM(window_text().colorref() as isize)));
+        // Drawn plain, the bands' borders and grippers are Windows' 3-D white and grey: a bright
+        // line under each row on a dark tray. The theme's quiet border colour for both, then.
+        #[repr(C)]
+        struct ColorScheme {
+            size: u32,
+            highlight: u32,
+            shadow: u32,
+        }
+        const CLR_DEFAULT: u32 = 0xFF00_0000;
+        let line = theme::style("group", State::default()).border_or(Color::rgb(0x3a, 0x3a, 0x3a)).colorref();
+        let scheme = if dark { ColorScheme { size: 12, highlight: line, shadow: line } } else { ColorScheme { size: 12, highlight: CLR_DEFAULT, shadow: CLR_DEFAULT } };
+        wm::SendMessageW(h, 0x2002 /* RB_SETCOLORSCHEME */, None, Some(LPARAM(&scheme as *const _ as isize)));
         let _ = Gdi::InvalidateRect(Some(h), None, true);
     }
 }
@@ -2035,15 +2077,21 @@ pub fn toolbar_custom_draw(l: LPARAM) -> LRESULT {
             cc::CDDS_ITEMPREPAINT => {
                 let hover = theme::style("button", State { hover: true, ..Default::default() });
                 cd.clrHighlightHotTrack = cr(hover.background_or(Color::rgb(231, 243, 239)));
+                // A button's words (Start) in the theme's, not Windows' black on a dark bar: the
+                // visual style's own colour unless told to use these.
+                cd.clrText = cr(window_text());
+                cd.clrTextHighlight = cr(hover.color_or(window_text()));
+                cd.clrBtnFace = cr(window_background());
+                let own_colours: isize = if theme::current().is_dark() { 0x0080_0000 /* TBCDRF_USECDCOLORS */ } else { 0 };
                 // A chosen button of a column: the theme's pressed colour behind it, no 3-D edge.
                 if cd.nmcd.uItemState.0 & cc::CDIS_CHECKED.0 != 0 {
                     let chosen = theme::style("button", State { pressed: true, ..Default::default() });
                     let r = cd.nmcd.rc;
                     round_rect(cd.nmcd.hdc, r, chosen.background_or(Color::rgb(208, 231, 223)), chosen.border_or(Color::rgb(18, 133, 95)), px(cd.nmcd.hdr.hwndFrom, 8));
                     cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !cc::CDIS_CHECKED.0);
-                    return LRESULT(cc::CDRF_DODEFAULT as isize | TBCDRF_NOEDGES | 0x0040_0000 /* TBCDRF_NOBACKGROUND */);
+                    return LRESULT(cc::CDRF_DODEFAULT as isize | TBCDRF_NOEDGES | 0x0040_0000 /* TBCDRF_NOBACKGROUND */ | own_colours);
                 }
-                LRESULT(cc::CDRF_DODEFAULT as isize | TBCDRF_HILITEHOTTRACK | TBCDRF_NOEDGES)
+                LRESULT(cc::CDRF_DODEFAULT as isize | TBCDRF_HILITEHOTTRACK | TBCDRF_NOEDGES | own_colours)
             }
             _ => LRESULT(cc::CDRF_DODEFAULT as isize),
         }
@@ -2469,7 +2517,13 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     Some(Kind::List) => return list_custom_draw(l),
                     Some(Kind::Toolbar) => return toolbar_custom_draw(l),
                     Some(Kind::Tree) => return tree_custom_draw(l),
-                    _ => {}
+                    _ => {
+                        let mut buf = [0u16; 16];
+                        let n = unsafe { wm::GetClassNameW(hdr.hwndFrom, &mut buf) } as usize;
+                        if String::from_utf16_lossy(&buf[..n]) == "ReBarWindow32" {
+                            return rebar_custom_draw(l);
+                        }
+                    }
                 }
             }
         }
