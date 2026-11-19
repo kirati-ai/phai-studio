@@ -225,6 +225,6 @@
 | F | PrintDocument / PrintPreviewDialog | | ⬜ |
 | F | DataBindings (ผูก property ของ control กับข้อมูล) | | ⬜ |
 | F | DoDragDrop ระหว่าง control | `ui.x.do_drag_drop("ข้อความ")` จาก MouseDown (ป้ายข้อความตามเมาส์, Esc ยกเลิก); control ที่มี event `drag_drop` รับได้: `e.text`, `e.source` (ไฟล์จาก Explorer ยังเป็น `e.files`); ข้อความเท่านั้น ภายในโปรแกรมเดียวกัน | ✅ |
-| F | MenuStrip / ToolStrip แบบละเอียด (ไอคอน, ปุ่มกดค้าง, รายการย่อยซ้อน) | | ⬜ |
+| F | MenuStrip / ToolStrip แบบละเอียด (ไอคอน, ปุ่มกดค้าง, รายการย่อยซ้อน) | เมนูย่อยซ้อนได้หลายชั้น, `checked`, `check_on_click`, `disabled`, ไอคอน (`GLYPH`); ปุ่ม toolbar `toggle` ติ๊กพร้อมเมนู id เดียวกัน; `ui.item_checked("x")`, `set_item_checked`, `set_item_enabled` | ✅ |
 
 C = control/component, F = ความสามารถ

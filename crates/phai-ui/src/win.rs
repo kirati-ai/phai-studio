@@ -2318,7 +2318,47 @@ pub fn toolbar_compact(h: HWND, icon: i32, button: i32, items: &[(i32, &str, u16
 
 /// Replaces every button - for a language switch, a theme switch or a DPI change. The icons are
 /// drawn again in the theme's colour at the toolbar's scale.
+/// Toolbar buttons that stay down until clicked again (CheckOnClick), by toolbar.
+static TOGGLES: Mutex<Option<HashMap<isize, Vec<i32>>>> = Mutex::new(None);
+
+/// Toolbar `h`'s button `id` stays down when clicked, until clicked again.
+pub fn toolbar_toggle_style(h: HWND, id: i32) {
+    {
+        let mut t = TOGGLES.lock().unwrap_or_else(|e| e.into_inner());
+        let v = t.get_or_insert_with(HashMap::new).entry(h.0 as isize).or_default();
+        if !v.contains(&id) {
+            v.push(id);
+        }
+    }
+    check_style(h, id);
+}
+
+fn check_style(h: HWND, id: i32) {
+    use windows::Win32::UI::Controls as cc;
+    let mut info = cc::TBBUTTONINFOW { cbSize: std::mem::size_of::<cc::TBBUTTONINFOW>() as u32, dwMask: cc::TBIF_STYLE, ..Default::default() };
+    unsafe {
+        wm::SendMessageW(h, 0x043F /* TB_GETBUTTONINFOW */, Some(WPARAM(id as usize)), Some(LPARAM(&mut info as *mut _ as isize)));
+        info.fsStyle |= 0x02; /* BTNS_CHECK */
+        wm::SendMessageW(h, 0x0440 /* TB_SETBUTTONINFOW */, Some(WPARAM(id as usize)), Some(LPARAM(&info as *const _ as isize)));
+    }
+}
+
 pub fn set_toolbar(h: HWND, items: &[(i32, &str, u16)]) {
+    // Made again (a new theme, the other language): its buttons that stay down keep being so.
+    let toggles = TOGGLES.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).cloned()).unwrap_or_default();
+    let down: Vec<i32> = toggles.iter().copied().filter(|id| unsafe { wm::SendMessageW(h, 0x040A /* TB_ISBUTTONCHECKED */, Some(WPARAM(*id as usize)), None).0 } != 0).collect();
+    set_toolbar_buttons(h, items);
+    for id in &toggles {
+        check_style(h, *id);
+    }
+    for id in down {
+        unsafe {
+            wm::SendMessageW(h, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(id as usize)), Some(LPARAM(1)));
+        }
+    }
+}
+
+fn set_toolbar_buttons(h: HWND, items: &[(i32, &str, u16)]) {
     use windows::Win32::UI::Controls::{self as cc, TBBUTTON};
     TOOLBARS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(h.0 as isize, items.iter().map(|(c, l, g)| (*c, l.to_string(), *g)).collect());
     unsafe {

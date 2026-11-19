@@ -132,6 +132,38 @@ pub fn split_panes(f: &FormFile) -> Vec<(usize, Panes)> {
     out
 }
 
+/// A menu of `items` called `label`, put into `parent`: its items' ticks, greyed ones, pictures,
+/// and its menus within it the same way.
+fn menu_items(w: &mut String, items: &[crate::model::MenuItem], label: &str, parent: &str, n: &mut usize) {
+    *n += 1;
+    let me = format!("m{n}");
+    let _ = writeln!(w, "            let {me} = wm::CreatePopupMenu().unwrap_or_default();");
+    for it in items {
+        if it.separator {
+            let _ = writeln!(w, "            let _ = wm::AppendMenuW({me}, wm::MF_SEPARATOR, 0, None);");
+        } else if !it.items.is_empty() {
+            menu_items(w, &it.items, it.label.as_deref().unwrap_or(""), &me, n);
+        } else if let (Some(id), Some(label)) = (&it.id, &it.label) {
+            let key = it.key.as_deref().map(|k| format!(", {}", lit(&format!("\t{k}")))).unwrap_or_default();
+            let text = if key.is_empty() { format!("t({})", lit(label)) } else { format!("&format!(\"{{}}{{}}\", t({}){key})", lit(label)) };
+            let mut flags = vec!["wm::MF_STRING"];
+            if it.checked {
+                flags.push("wm::MF_CHECKED");
+            }
+            if it.disabled {
+                flags.push("wm::MF_GRAYED");
+            }
+            let _ = writeln!(w, "            let s = wide({text});");
+            let _ = writeln!(w, "            let _ = wm::AppendMenuW({me}, {}, {} as usize, PCWSTR(s.as_ptr()));", flags.join(" | "), const_name(id));
+            if let Some(g) = &it.glyph {
+                let _ = writeln!(w, "            phai_ui::icon::set_menu_glyph({me}, {} as u32, phai_ui::icon::glyph::{g});", const_name(id));
+            }
+        }
+    }
+    let _ = writeln!(w, "            let s = wide(t({}));", lit(label));
+    let _ = writeln!(w, "            let _ = wm::AppendMenuW({parent}, wm::MF_POPUP, {me}.0 as usize, PCWSTR(s.as_ptr()));");
+}
+
 /// The `phai_ui::ctl` type of a control of `kind` - its field's type in the generated struct.
 pub fn ctl_type(kind: Kind) -> &'static str {
     match kind {
@@ -434,20 +466,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    fn menu() -> wm::HMENU {{");
         let _ = writeln!(w, "        unsafe {{");
         let _ = writeln!(w, "            let bar = wm::CreateMenu().unwrap_or_default();");
+        let mut n = 0;
         for m in &f.menu {
-            let _ = writeln!(w, "            let m = wm::CreatePopupMenu().unwrap_or_default();");
-            for it in &m.items {
-                if it.separator {
-                    let _ = writeln!(w, "            let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);");
-                } else if let (Some(id), Some(label)) = (&it.id, &it.label) {
-                    let key = it.key.as_deref().map(|k| format!(", {}", lit(&format!("\t{k}")))).unwrap_or_default();
-                    let text = if key.is_empty() { format!("t({})", lit(label)) } else { format!("&format!(\"{{}}{{}}\", t({}){key})", lit(label)) };
-                    let _ = writeln!(w, "            let s = wide({text});");
-                    let _ = writeln!(w, "            let _ = wm::AppendMenuW(m, wm::MF_STRING, {} as usize, PCWSTR(s.as_ptr()));", const_name(id));
-                }
-            }
-            let _ = writeln!(w, "            let s = wide(t({}));", lit(&m.label));
-            let _ = writeln!(w, "            let _ = wm::AppendMenuW(bar, wm::MF_POPUP, m.0 as usize, PCWSTR(s.as_ptr()));");
+            menu_items(w, &m.items, &m.label, "bar", &mut n);
         }
         let _ = writeln!(w, "            bar");
         let _ = writeln!(w, "        }}");
@@ -478,6 +499,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     if !f.toolbar.is_empty() {
         let _ = writeln!(w, "        let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &Self::toolbar_items());");
         let _ = writeln!(w, "        layout.add(toolbar, Item {{ bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() }});");
+        for t in f.toolbar.iter().filter(|t| t.toggle) {
+            let _ = writeln!(w, "        win::toolbar_toggle_style(toolbar, {});", const_name(&t.id));
+            if f.menu.iter().flat_map(|m| m.all_items()).any(|it| it.id.as_deref() == Some(&t.id) && it.checked) {
+                let _ = writeln!(w, "        phai_ui::form::set_item_checked(hwnd, Some(toolbar), {}, true);", const_name(&t.id));
+            }
+        }
     }
     for c in &f.control {
         let id = format!("CONTROL_{}", c.id.to_ascii_uppercase());
@@ -672,6 +699,42 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    }}");
         let _ = writeln!(w);
     }
+    let item_ids: Vec<String> = {
+        let mut v: Vec<String> = f.menu.iter().flat_map(|m| m.all_items()).filter_map(|it| it.id.clone()).collect();
+        for t in &f.toolbar {
+            if !v.contains(&t.id) {
+                v.push(t.id.clone());
+            }
+        }
+        v
+    };
+    if !item_ids.is_empty() {
+        let bar = if f.toolbar.is_empty() { "None" } else { "Some(self.toolbar)" };
+        let arms = item_ids.iter().map(|id| format!("{:?} => {}", id, const_name(id))).collect::<Vec<_>>().join(", ");
+        let _ = writeln!(w, "    fn item_id(item: &str) -> i32 {{");
+        let _ = writeln!(w, "        match item {{ {arms}, _ => 0 }}");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Whether menu item (or toolbar button) `item` is ticked - its id in the form.");
+        let _ = writeln!(w, "    pub fn item_checked(&self, item: &str) -> bool {{");
+        let _ = writeln!(w, "        phai_ui::form::item_checked(self.hwnd, {bar}, Self::item_id(item))");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Ticks menu item (and toolbar button) `item`, or takes the tick away - Checked.");
+        let _ = writeln!(w, "    pub fn set_item_checked(&self, item: &str, on: bool) {{");
+        let _ = writeln!(w, "        phai_ui::form::set_item_checked(self.hwnd, {bar}, Self::item_id(item), on)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Menu item (and toolbar button) `item` usable or greyed - Enabled.");
+        let _ = writeln!(w, "    pub fn set_item_enabled(&self, item: &str, on: bool) {{");
+        let _ = writeln!(w, "        phai_ui::form::set_item_enabled(self.hwnd, {bar}, Self::item_id(item), on)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    fn toolbar_handle(&self) -> isize {{");
+        let _ = writeln!(w, "        {}", if f.toolbar.is_empty() { "0" } else { "self.toolbar.0 as isize" });
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "    /// Out of sight, still running; [`Self::show_window`] brings it back.");
     let _ = writeln!(w, "    pub fn hide(&self) {{");
     let _ = writeln!(w, "        win::show(self.hwnd, false);");
@@ -848,8 +911,16 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         }
     }
     let in_context = |h: &str| f.control.iter().filter(|c| c.kind == Kind::ContextMenu).any(|c| c.menu_items().iter().any(|(id, _)| id == h));
-    for h in handlers.iter().filter(|h| f.menu.iter().flat_map(|m| &m.items).any(|it| it.id.as_deref() == Some(h.as_str())) || f.toolbar.iter().any(|t| &t.id == *h) || in_context(h)) {
-        let _ = writeln!(w, "                {} => events.{h}(ui),", const_name(h));
+    let menu_item = |h: &str| f.menu.iter().flat_map(|m| m.all_items()).find(|it| it.id.as_deref() == Some(h)).cloned();
+    let toggles = |h: &str| menu_item(h).is_some_and(|it| it.check_on_click) || f.toolbar.iter().any(|t| t.id == h && t.toggle);
+    for h in handlers.iter().filter(|h| menu_item(h).is_some() || f.toolbar.iter().any(|t| &t.id == *h) || in_context(h)) {
+        if toggles(h) {
+            // CheckOnClick: the tick turns over, in the menu and on the toolbar, then its method.
+            let bar = if f.toolbar.is_empty() { "None".to_string() } else { "Some(ui.toolbar)".to_string() };
+            let _ = writeln!(w, "                {} => {{ phai_ui::form::toggle_item(hwnd, {bar}, {}, l.0 != 0 && l.0 == ui.toolbar_handle()); events.{h}(ui) }}", const_name(h), const_name(h));
+        } else {
+            let _ = writeln!(w, "                {} => events.{h}(ui),", const_name(h));
+        }
     }
     for c in &f.control {
         let id = format!("CONTROL_{}", c.id.to_ascii_uppercase());

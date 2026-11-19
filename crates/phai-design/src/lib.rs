@@ -116,15 +116,15 @@ pub mod templates {
         f.form.title = "My program".into();
         f.form.size = [640, 420];
         f.form.set_size("min_size", Some([400, 260]));
-        let item = |id: &str, label: &str, key: Option<&str>| MenuItem { id: Some(id.into()), label: Some(label.into()), key: key.map(str::to_string), separator: false };
+        let item = |id: &str, label: &str, key: Option<&str>| MenuItem { id: Some(id.into()), label: Some(label.into()), key: key.map(str::to_string), ..Default::default() };
         f.menu = vec![
             Menu { label: "&File".into(), items: vec![item("new_item", "New", Some("Ctrl+N")), item("open_item", "Open...", Some("Ctrl+O")), item("save_item", "Save", Some("Ctrl+S")), MenuItem { separator: true, ..Default::default() }, item("exit", "Exit", None)] },
             Menu { label: "&Help".into(), items: vec![item("about", "About", None)] },
         ];
         f.toolbar = vec![
-            Tool { id: "new_item".into(), label: "New".into(), glyph: "NEW".into() },
-            Tool { id: "open_item".into(), label: "Open".into(), glyph: "OPEN".into() },
-            Tool { id: "save_item".into(), label: "Save".into(), glyph: "SAVE".into() },
+            Tool { id: "new_item".into(), label: "New".into(), glyph: "NEW".into(), toggle: false },
+            Tool { id: "open_item".into(), label: "Open".into(), glyph: "OPEN".into(), toggle: false },
+            Tool { id: "save_item".into(), label: "Save".into(), glyph: "SAVE".into(), toggle: false },
         ];
         let top = TOOLBAR;
         let mut list = Control::new(Kind::List, "items", [MARGIN, top + MARGIN, 640 - 2 * MARGIN, 420 - top - 2 * MARGIN - STATUS]);

@@ -167,14 +167,14 @@ impl MainWindowUi {
     fn menu() -> wm::HMENU {
         unsafe {
             let bar = wm::CreateMenu().unwrap_or_default();
-            let m = wm::CreatePopupMenu().unwrap_or_default();
+            let m1 = wm::CreatePopupMenu().unwrap_or_default();
             let s = wide(t("New customer"));
-            let _ = wm::AppendMenuW(m, wm::MF_STRING, ID_NEW_CUSTOMER as usize, PCWSTR(s.as_ptr()));
-            let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);
+            let _ = wm::AppendMenuW(m1, wm::MF_STRING, ID_NEW_CUSTOMER as usize, PCWSTR(s.as_ptr()));
+            let _ = wm::AppendMenuW(m1, wm::MF_SEPARATOR, 0, None);
             let s = wide(t("Exit"));
-            let _ = wm::AppendMenuW(m, wm::MF_STRING, ID_EXIT as usize, PCWSTR(s.as_ptr()));
+            let _ = wm::AppendMenuW(m1, wm::MF_STRING, ID_EXIT as usize, PCWSTR(s.as_ptr()));
             let s = wide(t("&File"));
-            let _ = wm::AppendMenuW(bar, wm::MF_POPUP, m.0 as usize, PCWSTR(s.as_ptr()));
+            let _ = wm::AppendMenuW(bar, wm::MF_POPUP, m1.0 as usize, PCWSTR(s.as_ptr()));
             bar
         }
     }
@@ -244,6 +244,29 @@ impl MainWindowUi {
         unsafe {
             let _ = wm::PostMessageW(Some(self.hwnd), wm::WM_CLOSE, WPARAM(0), LPARAM(0));
         }
+    }
+
+    fn item_id(item: &str) -> i32 {
+        match item { "new_customer" => ID_NEW_CUSTOMER, "exit" => ID_EXIT, "save" => ID_SAVE, _ => 0 }
+    }
+
+    /// Whether menu item (or toolbar button) `item` is ticked - its id in the form.
+    pub fn item_checked(&self, item: &str) -> bool {
+        phai_ui::form::item_checked(self.hwnd, Some(self.toolbar), Self::item_id(item))
+    }
+
+    /// Ticks menu item (and toolbar button) `item`, or takes the tick away - Checked.
+    pub fn set_item_checked(&self, item: &str, on: bool) {
+        phai_ui::form::set_item_checked(self.hwnd, Some(self.toolbar), Self::item_id(item), on)
+    }
+
+    /// Menu item (and toolbar button) `item` usable or greyed - Enabled.
+    pub fn set_item_enabled(&self, item: &str, on: bool) {
+        phai_ui::form::set_item_enabled(self.hwnd, Some(self.toolbar), Self::item_id(item), on)
+    }
+
+    fn toolbar_handle(&self) -> isize {
+        self.toolbar.0 as isize
     }
 
     /// Out of sight, still running; [`Self::show_window`] brings it back.

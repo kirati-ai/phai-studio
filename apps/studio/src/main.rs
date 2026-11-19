@@ -2139,7 +2139,7 @@ impl Studio {
             text = "&File\n  exit | Exit\n".into();
         }
         loop {
-            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Menus"), t("A menu at the left; its items indented: id | label | key. A line of - separates."), &text) else { return };
+            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Menus"), t("A menu at the left; its items indented: id | label, then any of: a key (Ctrl+N), a GLYPH, checked, check_on_click, disabled. Words alone with items indented under them: a menu within. A line of - separates."), &text) else { return };
             match phai_form::bars::menus_from_text(&answer) {
                 Ok(menus) => {
                     self.edit(|f| f.menu = menus);
@@ -2161,7 +2161,7 @@ impl Studio {
             text = "save | Save | SAVE\n".into();
         }
         loop {
-            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Toolbar"), t("One button a line: id | label | GLYPH. The label is the tooltip."), &text) else { return };
+            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Toolbar"), t("One button a line: id | label | GLYPH, and | toggle for one that stays down. The label is the tooltip."), &text) else { return };
             match phai_form::bars::toolbar_from_text(&answer) {
                 Ok(tools) => {
                     self.edit(|f| f.toolbar = tools);
@@ -8992,6 +8992,74 @@ impl MainWindowEvents for MainWindow {
         if let Some(t) = &e.text {
             ui.to_list.items_add(t);
         }
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// MenuStrip's details in a real project: a menu within a menu, an item ticked that a click
+    /// turns over, a greyed one, a picture, and a toolbar button that stays down - its tick the
+    /// menu's too.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn menus_have_ticks_submenus_pictures_and_toggles() {
+        let dir = std::env::temp_dir().join(format!("phai-menus-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        f.menu = phai_form::bars::menus_from_text("&View\n  word_wrap | Word wrap | checked | check_on_click\n  Zoom\n    zoom_in | Zoom in | Ctrl+= | SEARCH\n    zoom_max | Most | disabled\n  bold | Bold | FONT | check_on_click\n").unwrap();
+        f.toolbar = phai_form::bars::toolbar_from_text("bold | Bold | FONT | toggle\n").unwrap();
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("&View", "&มุมมอง"), ("Word wrap", "ตัดบรรทัด"), ("Zoom", "ขยาย"), ("Zoom in", "ขยายเข้า"), ("Most", "มากสุด"), ("Bold", "ตัวหนา")]).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging as wm;
+
+#[derive(Default)]
+pub struct MainWindow {
+    wraps: usize,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let mut bits = 0;
+        unsafe {
+            let view = wm::GetSubMenu(wm::GetMenu(ui.hwnd), 0);
+            let wrap = wm::GetMenuItemID(view, 0);
+            if ui.item_checked("word_wrap") { bits |= 1 }
+            wm::SendMessageW(ui.hwnd, wm::WM_COMMAND, Some(WPARAM(wrap as usize)), Some(LPARAM(0)));
+            if !ui.item_checked("word_wrap") && self.wraps == 1 { bits |= 2 }
+            let zoom = wm::GetSubMenu(view, 1);
+            if !zoom.is_invalid() && wm::GetMenuItemCount(Some(zoom)) == 2 && wm::GetMenuState(zoom, 1, wm::MF_BYPOSITION) & wm::MF_GRAYED.0 != 0 { bits |= 4 }
+            let mut info = wm::MENUITEMINFOW { cbSize: std::mem::size_of::<wm::MENUITEMINFOW>() as u32, fMask: wm::MIIM_BITMAP, ..Default::default() };
+            if wm::GetMenuItemInfoW(zoom, 0, true, &mut info).is_ok() && !info.hbmpItem.is_invalid() { bits |= 8 }
+            // The toolbar's button pressed: it went down itself, then told the window.
+            let bold = wm::GetMenuItemID(view, 2) as usize;
+            wm::SendMessageW(ui.toolbar, 0x0402, Some(WPARAM(bold)), Some(LPARAM(1)));
+            wm::SendMessageW(ui.hwnd, wm::WM_COMMAND, Some(WPARAM(bold)), Some(LPARAM(ui.toolbar.0 as isize)));
+            if ui.item_checked("bold") && wm::GetMenuState(view, 2, wm::MF_BYPOSITION) & wm::MF_CHECKED.0 != 0 { bits |= 16 }
+            ui.set_item_enabled("zoom_in", false);
+            if wm::GetMenuState(zoom, 0, wm::MF_BYPOSITION) & wm::MF_GRAYED.0 != 0 { bits |= 32 }
+        }
+        std::process::exit(if bits == 63 { 42 } else { 1000 + bits });
+    }
+
+    fn word_wrap(&mut self, _ui: &MainWindowUi) {
+        self.wraps += 1;
     }
 }
 "##;
