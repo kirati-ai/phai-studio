@@ -112,7 +112,7 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - 🟡 BackgroundImage: label/checkbox วาดพื้นทึบทับรูป (ต้องให้ ctl_color คืน NULL_BRUSH เมื่อหน้าต่างมีรูป + invalidate
   พื้นใต้ label ตอนเปลี่ยนข้อความ)
 
-### 2. แท็บ Style 🖌 — เสร็จ (2026-11-19) เหลือ animation และ Theme Editor
+### 2. แท็บ Style 🖌 และ Theme Editor — เสร็จ (2026-11-19) เหลือ animation
 - ทำแล้ว: แท็บที่สามใน Properties (`apps/studio/src/props.rs` `gather_style`): เลือกสถานะ → ค่าจริงทุก property +
   ที่มา (`Theme::explain`, `win::explain_of`) → แก้ได้ (normal = ค่าใน Properties เดิม, สถานะอื่น = `Control.states`),
   canvas แสดง control ในสถานะนั้น (`win::set_preview_state`), Transition (ms + easing → prop `transition`),
@@ -122,7 +122,13 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - ต่อไป: animation สำเร็จรูป (`animation: blink 1s infinite`, fade-in = ไล่สีจากพื้นหลัง, pulse) — Win32 child
   window หมุน/โปร่งใสไม่ได้ (layered child ต้องมี manifest Windows 8+) จึงทำแบบไล่สี; transition ของแท็บและ list
   ยังไม่ทำ (วาดคนละทาง: controls.rs `tabs`, list custom draw)
-- Theme Editor แบบ Skin Editor: หน้าต่างแสดง control ทุกชนิด + ตัวเลือกสี `--accent` ฯลฯ เปลี่ยนทันที บันทึกเป็น theme.css
+- **Theme Editor เสร็จ (2026-11-19)** Theme > Theme Editor... (`apps/studio/src/themeedit.rs`): แท็บ "สี" (ตัวแปร
+  `:root` 14 ตัว + เริ่มจากธีมสว่าง/มืด) และแท็บ "คอนโทรล" (ทุกชนิด 17 ตัว × 7 สถานะ × 8 property) ข้างตัวอย่าง control
+  ทุกชนิดของจริง เปลี่ยนทันที (ฟอร์มที่ออกแบบก็เปลี่ยน) Save เขียนเฉพาะที่เปลี่ยน (`phai_ui::theme_edit`: set_var,
+  set_base, set_prop, remove_prop - คอมเมนต์และลำดับเดิมอยู่ครบ) Cancel คืนธีมเดิม
+  ตรวจ: `--theme-editor` + `PHAI_THEME_SHOT`, `PHAI_THEME_PAGE`, `PHAI_THEME_SET`, `PHAI_THEME_PROP`
+- เจ้านายถามถึง HomeSite และ Adobe ImageStyler (2026-11-19) - ยังไม่ได้สั่งงาน; ที่เข้ากับ Phai: เงา/ไล่สี
+  (`box-shadow`, `linear-gradient`) ใน CSS ของ phai-ui แบบ style ของ ImageStyler, ตัวแก้ HTML/CSS แบบ HomeSite
 
 ### 3. ทิศทาง DevExpress: grid ก่อน (จัดกลุ่ม, กรองแบบ Excel, ผลรวม, master-detail, ตัวแก้ในช่อง, ส่งออก Excel/PDF)
 

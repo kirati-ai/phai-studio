@@ -428,6 +428,12 @@ impl Theme {
         Ok(Theme { rules, vars })
     }
 
+    /// A `:root` variable's value, its own `var()`s read - what the theme says `--accent` is.
+    pub fn var(&self, name: &str) -> Option<String> {
+        let raw = self.vars.get(name)?;
+        resolve_vars(raw, &self.vars, 0, 0).ok()
+    }
+
     /// A `:root` variable as a colour - for drawing that is not one control's, like a rule line.
     pub fn var_color(&self, name: &str) -> Option<Color> {
         let raw = self.vars.get(name)?;
@@ -615,6 +621,13 @@ pub fn load(path: &std::path::Path) -> Result<Theme, ThemeError> {
     let dir = path.parent().map(|d| d.to_path_buf()).unwrap_or_default();
     let files = move |name: &str| std::fs::read_to_string(dir.join(name)).map_err(|e| format!("@import {name:?}: {e}"));
     Theme::parse_with(&css, &files).map_err(|e| ThemeError { line: e.line, message: format!("{}: {}", path.display(), e.message) })
+}
+
+/// Reads a sheet's words as [`load`] reads its file: an `@import` of a file found in `dir`.
+pub fn parse_in(css: &str, dir: &std::path::Path) -> Result<Theme, ThemeError> {
+    let dir = dir.to_path_buf();
+    let files = move |name: &str| std::fs::read_to_string(dir.join(name)).map_err(|e| format!("@import {name:?}: {e}"));
+    Theme::parse_with(css, &files)
 }
 
 /// The standard sheet to start a theme from: every control, every state, every property, said

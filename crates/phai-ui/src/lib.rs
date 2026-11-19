@@ -33,6 +33,7 @@ pub mod props;
 pub mod shot;
 pub mod text;
 pub mod theme;
+pub mod theme_edit;
 pub mod win;
 
 pub use text::{t, tf};
