@@ -2417,6 +2417,32 @@ pub fn center_on(h: HWND, owner: HWND) {
     }
 }
 
+/// Puts a window in the middle of the screen it is on (its work area, the taskbar left out) - as
+/// WinForms' StartPosition = CenterScreen.
+pub fn center_on_screen(h: HWND) {
+    unsafe {
+        let mon = Gdi::MonitorFromWindow(h, Gdi::MONITOR_DEFAULTTONEAREST);
+        let mut mi = Gdi::MONITORINFO { cbSize: std::mem::size_of::<Gdi::MONITORINFO>() as u32, ..Default::default() };
+        let mut r = RECT::default();
+        if Gdi::GetMonitorInfoW(mon, &mut mi).as_bool() && wm::GetWindowRect(h, &mut r).is_ok() {
+            let a = mi.rcWork;
+            let (w, ht) = (r.right - r.left, r.bottom - r.top);
+            let x = a.left + ((a.right - a.left) - w).max(0) / 2;
+            let y = a.top + ((a.bottom - a.top) - ht).max(0) / 2;
+            let _ = wm::SetWindowPos(h, None, x, y, 0, 0, wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
+        }
+    }
+}
+
+/// Shows a window filling the screen - WindowState = Maximized. Restored, it is its designed size,
+/// where it was put. (Photographed for a test, it is shown as designed and not made active.)
+pub fn show_maximized(h: HWND) {
+    let quiet = std::env::var_os("PHAI_SHOT").is_some();
+    unsafe {
+        let _ = wm::ShowWindow(h, if quiet { wm::SW_SHOWNOACTIVATE } else { wm::SW_SHOWMAXIMIZED });
+    }
+}
+
 /// Runs a modal window: `owner` takes no input until `dialog` is closed, then has it back and is
 /// in front again - as `ShowDialog` does in WinForms. Returns when `dialog` is gone.
 pub fn modal_loop(dialog: HWND, owner: HWND) {

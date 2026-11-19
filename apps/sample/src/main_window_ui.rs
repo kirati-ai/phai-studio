@@ -124,6 +124,8 @@ impl MainWindowUi {
             let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
             if let Some(o) = owner {
                 win::center_on(hwnd, o);
+            } else {
+                win::center_on_screen(hwnd);
             }
             win::show_top(hwnd);
             // A debug build follows the theme file as it is saved.

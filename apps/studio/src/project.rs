@@ -117,6 +117,8 @@ pub fn first_form() -> FormFile {
     f.form.title = "My program".into();
     f.form.size = [480, 320];
     f.form.theme = Some("../theme.css".into());
+    // A new program opens filling the screen; restored, it sits in the middle of it.
+    f.form.maximized = Some(true);
     let mut hello = Control::new(Kind::Label, "hello", [11, 11, 300, 23]);
     hello.text = Some("Hello".into());
     let mut ok = Control::new(Kind::Button, "ok", [394, 260, 75, 23]);

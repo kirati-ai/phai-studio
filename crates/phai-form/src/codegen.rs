@@ -189,8 +189,16 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);");
     let _ = writeln!(w, "            if let Some(o) = owner {{");
     let _ = writeln!(w, "                win::center_on(hwnd, o);");
+    if f.form.start.as_deref() != Some("windows") {
+        let _ = writeln!(w, "            }} else {{");
+        let _ = writeln!(w, "                win::center_on_screen(hwnd);");
+    }
     let _ = writeln!(w, "            }}");
-    let _ = writeln!(w, "            win::show_top(hwnd);");
+    if f.form.maximized == Some(true) {
+        let _ = writeln!(w, "            win::show_maximized(hwnd);");
+    } else {
+        let _ = writeln!(w, "            win::show_top(hwnd);");
+    }
     if let Some(watch) = &opts.theme_watch {
         let _ = writeln!(w, "            // A debug build follows the theme file as it is saved.");
         let _ = writeln!(w, "            #[cfg(debug_assertions)]");
