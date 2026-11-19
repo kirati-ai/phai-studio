@@ -51,15 +51,15 @@ pub struct MainWindowUi {
     pub hwnd: HWND,
     pub font: HFONT,
     pub toolbar: HWND,
-    pub details: HWND,
-    pub name_label: HWND,
-    pub name: HWND,
-    pub active: HWND,
-    pub kind: HWND,
-    pub customers: HWND,
-    pub save_button: HWND,
-    pub close: HWND,
-    pub status: HWND,
+    pub details: phai_ui::ctl::GroupBox,
+    pub name_label: phai_ui::ctl::Label,
+    pub name: phai_ui::ctl::TextBox,
+    pub active: phai_ui::ctl::CheckBox,
+    pub kind: phai_ui::ctl::ComboBox,
+    pub customers: phai_ui::ctl::ListView,
+    pub save_button: phai_ui::ctl::Button,
+    pub close: phai_ui::ctl::Button,
+    pub status: phai_ui::ctl::StatusBar,
     layout: Layout,
 }
 
@@ -205,17 +205,77 @@ impl MainWindowUi {
             hwnd,
             font,
             toolbar,
-            details,
-            name_label,
-            name,
-            active,
-            kind,
-            customers,
-            save_button,
-            close,
-            status,
+            details: phai_ui::ctl::GroupBox(details),
+            name_label: phai_ui::ctl::Label(name_label),
+            name: phai_ui::ctl::TextBox(name),
+            active: phai_ui::ctl::CheckBox(active),
+            kind: phai_ui::ctl::ComboBox(kind),
+            customers: phai_ui::ctl::ListView(customers),
+            save_button: phai_ui::ctl::Button(save_button),
+            close: phai_ui::ctl::Button(close),
+            status: phai_ui::ctl::StatusBar(status),
             layout,
         }
+    }
+
+    /// Closes the window, as the close box would - its FormClosing first.
+    pub fn close(&self) {
+        unsafe {
+            let _ = wm::PostMessageW(Some(self.hwnd), wm::WM_CLOSE, WPARAM(0), LPARAM(0));
+        }
+    }
+
+    /// Out of sight, still running; [`Self::show_window`] brings it back.
+    pub fn hide(&self) {
+        win::show(self.hwnd, false);
+    }
+
+    pub fn show_window(&self) {
+        win::show(self.hwnd, true);
+    }
+
+    /// In front, taking the keys.
+    pub fn activate(&self) {
+        unsafe {
+            let _ = wm::SetForegroundWindow(self.hwnd);
+        }
+    }
+
+    pub fn center_to_screen(&self) {
+        win::center_on_screen(self.hwnd);
+    }
+
+    /// The words in its title bar.
+    pub fn title(&self) -> String {
+        win::text_of(self.hwnd)
+    }
+
+    pub fn set_title(&self, s: &str) {
+        win::set_text(self.hwnd, s);
+    }
+
+    /// A handle other threads use to run work on this window's thread - [`Self::begin_invoke`].
+    pub fn invoker(&self) -> phai_ui::invoke::Invoker {
+        phai_ui::invoke::Invoker::new(self.hwnd)
+    }
+
+    /// From any thread: `f` runs on the window's thread with the program's MainWindow and the
+    /// controls, soon; returns at once - WinForms' BeginInvoke. `false` when the window is gone.
+    pub fn begin_invoke<E: MainWindowEvents + 'static>(inv: phai_ui::invoke::Invoker, f: impl FnOnce(&mut E, &MainWindowUi) + Send + 'static) -> bool {
+        inv.post(Box::new(move |e, ui| {
+            if let (Some(e), Some(ui)) = (e.downcast_mut::<E>(), ui.downcast_ref::<MainWindowUi>()) {
+                f(e, ui);
+            }
+        }))
+    }
+
+    /// As [`Self::begin_invoke`], waiting until `f` has run - WinForms' Invoke.
+    pub fn invoke<E: MainWindowEvents + 'static>(inv: phai_ui::invoke::Invoker, f: impl FnOnce(&mut E, &MainWindowUi) + Send + 'static) {
+        inv.send(Box::new(move |e, ui| {
+            if let (Some(e), Some(ui)) = (e.downcast_mut::<E>(), ui.downcast_ref::<MainWindowUi>()) {
+                f(e, ui);
+            }
+        }))
     }
 
     /// Every word again in the language now chosen - after `phai_ui::text::set_thai`.
@@ -272,6 +332,10 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
                 }
             }
             win::def(hwnd, msg, w, l)
+        }
+        phai_ui::invoke::WM_INVOKE => {
+            // Work handed over from another thread (begin_invoke, invoke).
+            LRESULT(unsafe { phai_ui::invoke::run(l, &mut host.events, &host.ui) })
         }
         0x02E0 => {
             // WM_DPICHANGED: the window, its font and its icons at the new scale.

@@ -30,7 +30,8 @@ pub fn grid(parent: HWND, id: i32, f: windows::Win32::Graphics::Gdi::HFONT, colu
 }
 
 /// The grid's cells, row by row.
-pub fn grid_rows(h: HWND) -> Vec<Vec<String>> {
+pub fn grid_rows(h: impl Into<HWND>) -> Vec<Vec<String>> {
+    let h: HWND = h.into();
     unsafe {
         let rows = wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 as usize;
         let header = wm::SendMessageW(h, cc::LVM_GETHEADER, None, None).0;
@@ -40,12 +41,14 @@ pub fn grid_rows(h: HWND) -> Vec<Vec<String>> {
 }
 
 /// Adds a row at the end.
-pub fn grid_add(h: HWND, cells: &[&str]) {
+pub fn grid_add(h: impl Into<HWND>, cells: &[&str]) {
+    let h: HWND = h.into();
     win::list_add(h, cells);
 }
 
 /// Empties the grid.
-pub fn grid_clear(h: HWND) {
+pub fn grid_clear(h: impl Into<HWND>) {
+    let h: HWND = h.into();
     unsafe {
         wm::SendMessageW(h, cc::LVM_DELETEALLITEMS, None, None);
     }
@@ -71,7 +74,8 @@ fn set_tag(h: HWND, row: usize, value: usize) {
 /// The grid emptied and filled with `rows` as a table gave them: each row tagged with its place
 /// (1, 2, ...), so that after the person changes, adds and deletes rows, [`grid_tagged_rows`] still
 /// says which row each one was - what a data binding needs to save.
-pub fn grid_fill(h: HWND, rows: &[Vec<String>]) {
+pub fn grid_fill(h: impl Into<HWND>, rows: &[Vec<String>]) {
+    let h: HWND = h.into();
     grid_clear(h);
     for (i, r) in rows.iter().enumerate() {
         let cells: Vec<&str> = r.iter().map(String::as_str).collect();
@@ -82,12 +86,14 @@ pub fn grid_fill(h: HWND, rows: &[Vec<String>]) {
 
 /// The grid's rows with their tags: the place each had when [`grid_fill`] put it there, 0 for a row
 /// added since.
-pub fn grid_tagged_rows(h: HWND) -> Vec<(usize, Vec<String>)> {
+pub fn grid_tagged_rows(h: impl Into<HWND>) -> Vec<(usize, Vec<String>)> {
+    let h: HWND = h.into();
     grid_rows(h).into_iter().enumerate().map(|(i, r)| (tag(h, i), r)).collect()
 }
 
 /// One cell's text.
-pub fn cell(h: HWND, row: usize, col: usize) -> String {
+pub fn cell(h: impl Into<HWND>, row: usize, col: usize) -> String {
+    let h: HWND = h.into();
     let mut buf = vec![0u16; 1024];
     let mut item = cc::LVITEMW { iSubItem: col as i32, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 1024, ..Default::default() };
     let n = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMTEXTW, Some(WPARAM(row)), Some(LPARAM(&mut item as *mut _ as isize))).0 } as usize;
@@ -95,7 +101,8 @@ pub fn cell(h: HWND, row: usize, col: usize) -> String {
 }
 
 /// Sets one cell's text.
-pub fn set_cell(h: HWND, row: usize, col: usize, text: &str) {
+pub fn set_cell(h: impl Into<HWND>, row: usize, col: usize, text: &str) {
+    let h: HWND = h.into();
     let mut t = win::wide(text);
     let item = cc::LVITEMW { iSubItem: col as i32, pszText: windows::core::PWSTR(t.as_mut_ptr()), ..Default::default() };
     unsafe {

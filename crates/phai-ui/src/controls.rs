@@ -158,11 +158,13 @@ pub fn tabs_closable(h: HWND) {
     }
 }
 
-pub fn tabs_selected(h: HWND) -> usize {
+pub fn tabs_selected(h: impl Into<HWND>) -> usize {
+    let h: HWND = h.into();
     unsafe { win::state::<Tabs>(h).map(|t| t.selected).unwrap_or(0) }
 }
 
-pub fn tabs_select(h: HWND, i: usize) {
+pub fn tabs_select(h: impl Into<HWND>, i: usize) {
+    let h: HWND = h.into();
     unsafe {
         if let Some(t) = win::state::<Tabs>(h) {
             t.selected = i.min(t.labels.len().saturating_sub(1));
@@ -340,7 +342,8 @@ pub fn status_height(h: HWND) -> i32 {
 }
 
 /// The parts after the first, at the right, `widths` design pixels each.
-pub fn status_parts(h: HWND, widths: &[i32]) {
+pub fn status_parts(h: impl Into<HWND>, widths: &[i32]) {
+    let h: HWND = h.into();
     unsafe {
         if let Some(s) = win::state::<Status>(h) {
             s.widths = std::iter::once(0).chain(widths.iter().copied()).collect();
@@ -350,7 +353,8 @@ pub fn status_parts(h: HWND, widths: &[i32]) {
     }
 }
 
-pub fn status_text(h: HWND, part: usize, text: &str) {
+pub fn status_text(h: impl Into<HWND>, part: usize, text: &str) {
+    let h: HWND = h.into();
     unsafe {
         if let Some(s) = win::state::<Status>(h) {
             if part >= s.texts.len() {

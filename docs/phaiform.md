@@ -157,13 +157,15 @@ dialog_result = "ok"         # คลิกแล้วปิดหน้าต�
 use phai_ui::{t, win, controls, layout::*};
 use windows::Win32::Foundation::HWND;
 
+/// control เป็น object แบบ WinForms (`phai_ui::ctl`): ui.name.text(), ui.customers.items_add(..)
+/// handle ของ Windows: ui.name.hwnd() หรือ *ui.name
 pub struct MainWindowUi {
     pub hwnd: HWND,
-    pub name_label: HWND,
-    pub name: HWND,
-    pub customers: HWND,
-    pub ok: HWND,
-    pub status: HWND,
+    pub name_label: phai_ui::ctl::Label,
+    pub name: phai_ui::ctl::TextBox,
+    pub customers: phai_ui::ctl::ListView,
+    pub ok: phai_ui::ctl::Button,
+    pub status: phai_ui::ctl::StatusBar,
     layout: Layout,
 }
 
@@ -197,8 +199,9 @@ pub struct MainWindow {
 
 impl MainWindowEvents for MainWindow {
     fn ok_clicked(&mut self, ui: &MainWindowUi) {
-        let name = phai_ui::win::text_of(ui.name);
-        // ...
+        let name = ui.name.text();
+        ui.customers.items_add(&[&name, ""]);
+        ui.name.clear();
     }
 }
 ```

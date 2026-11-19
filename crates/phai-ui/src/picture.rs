@@ -107,7 +107,8 @@ pub fn picture(parent: HWND, id: i32, path: &str) -> HWND {
 }
 
 /// Shows another file in a picture control; an empty path shows none.
-pub fn set_picture(h: HWND, path: &str) {
+pub fn set_picture(h: impl Into<HWND>, path: &str) {
+    let h: HWND = h.into();
     if let Some(p) = unsafe { win::state::<Picture>(h) } {
         p.image = (!path.trim().is_empty()).then(|| resolve(path.trim())).flatten().and_then(|f| load(&f));
         unsafe {

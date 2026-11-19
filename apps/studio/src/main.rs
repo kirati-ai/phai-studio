@@ -7755,7 +7755,7 @@ fn main()"), "{out}");
         std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
         crate::project::add_thai(&dir.join("src"), &[("Your name", "ชื่อของคุณ"), ("Go", "ไป"), ("Pear", "สาลี่"), ("Apple", "แอปเปิล"), ("Fig", "มะเดื่อ"), ("Name", "ชื่อ"), ("Value", "ค่า"), ("Root", "ราก"), ("  First", "  แรก"), ("  Second", "  สอง")]).unwrap();
         let user = dir.join("src").join("main_window.rs");
-        let check = "impl MainWindowEvents for MainWindow {\n    fn loaded(&mut self, ui: &MainWindowUi) {\n        use windows::Win32::UI::WindowsAndMessaging as wm;\n        use windows::Win32::Foundation::{LPARAM, WPARAM};\n        let style = |h| unsafe { wm::GetWindowLongW(h, wm::GWL_STYLE) } as u32;\n        let send = |h, m, w: usize, l: isize| unsafe { wm::SendMessageW(h, m, Some(WPARAM(w)), Some(LPARAM(l))).0 };\n        let mut bad = 0;\n        if style(ui.name) & 0x0800 == 0 { bad |= 1 } // ES_READONLY\n        if send(ui.name, 0x00D5, 0, 0) != 12 { bad |= 2 } // EM_GETLIMITTEXT\n        if style(ui.name) & 0x3 != 2 { bad |= 4 } // ES_RIGHT\n        if send(ui.pick, 0x0147, 0, 0) != 2 { bad |= 8 } // CB_GETCURSEL\n        if style(ui.pick) & 0x3 != 2 { bad |= 16 } // CBS_DROPDOWN\n        if style(ui.rows) & 0x4 == 0 { bad |= 32 } // LVS_SINGLESEL\n        if send(ui.rows, 0x1037, 0, 0) & 1 == 0 { bad |= 64 } // LVS_EX_GRIDLINES\n        if style(ui.places) & 0x102 != 0x102 { bad |= 128 } // TVS_CHECKBOXES | TVS_HASLINES\n        if style(ui.hwnd) & wm::WS_MAXIMIZEBOX.0 != 0 || style(ui.hwnd) & wm::WS_THICKFRAME.0 != 0 { bad |= 256 }\n        if phai_ui::win::text_of(ui.pick) != \"Pear\" && phai_ui::win::text_of(ui.pick) != \"\u{e2a}\u{e32}\u{e25}\u{e35}\u{e48}\" { bad |= 512 } // sorted: Apple, Fig, Pear\n        if phai_ui::win::date_value(ui.when) != (2026, 11, 19) { bad |= 1024 }\n        std::process::exit(if bad == 0 { 42 } else { 100 + bad });\n    }\n";
+        let check = "impl MainWindowEvents for MainWindow {\n    fn loaded(&mut self, ui: &MainWindowUi) {\n        use windows::Win32::UI::WindowsAndMessaging as wm;\n        use windows::Win32::Foundation::{LPARAM, WPARAM};\n        let style = |h| unsafe { wm::GetWindowLongW(h, wm::GWL_STYLE) } as u32;\n        let send = |h, m, w: usize, l: isize| unsafe { wm::SendMessageW(h, m, Some(WPARAM(w)), Some(LPARAM(l))).0 };\n        let mut bad = 0;\n        if style(ui.name.hwnd()) & 0x0800 == 0 { bad |= 1 } // ES_READONLY\n        if send(ui.name.hwnd(), 0x00D5, 0, 0) != 12 { bad |= 2 } // EM_GETLIMITTEXT\n        if style(ui.name.hwnd()) & 0x3 != 2 { bad |= 4 } // ES_RIGHT\n        if send(ui.pick.hwnd(), 0x0147, 0, 0) != 2 { bad |= 8 } // CB_GETCURSEL\n        if style(ui.pick.hwnd()) & 0x3 != 2 { bad |= 16 } // CBS_DROPDOWN\n        if style(ui.rows.hwnd()) & 0x4 == 0 { bad |= 32 } // LVS_SINGLESEL\n        if send(ui.rows.hwnd(), 0x1037, 0, 0) & 1 == 0 { bad |= 64 } // LVS_EX_GRIDLINES\n        if style(ui.places.hwnd()) & 0x102 != 0x102 { bad |= 128 } // TVS_CHECKBOXES | TVS_HASLINES\n        if style(ui.hwnd) & wm::WS_MAXIMIZEBOX.0 != 0 || style(ui.hwnd) & wm::WS_THICKFRAME.0 != 0 { bad |= 256 }\n        if phai_ui::win::text_of(ui.pick) != \"Pear\" && phai_ui::win::text_of(ui.pick) != \"\u{e2a}\u{e32}\u{e25}\u{e35}\u{e48}\" { bad |= 512 } // sorted: Apple, Fig, Pear\n        if phai_ui::win::date_value(ui.when) != (2026, 11, 19) { bad |= 1024 }\n        std::process::exit(if bad == 0 { 42 } else { 100 + bad });\n    }\n";
         let text = std::fs::read_to_string(&user).unwrap().replacen("impl MainWindowEvents for MainWindow {", check, 1);
         std::fs::write(&user, text).unwrap();
         let target = std::env::temp_dir().join("phai-props-target");
@@ -7840,9 +7840,9 @@ unsafe extern "system" fn poke(_: windows::Win32::Foundation::HWND, _: u32, id: 
 impl MainWindowEvents for MainWindow {
     fn loaded(&mut self, ui: &MainWindowUi) {
         WIN.store(ui.hwnd.0 as isize, SeqCst);
-        NAME.store(ui.name.0 as isize, SeqCst);
-        HINT.store(ui.hint.0 as isize, SeqCst);
-        AGREE.store(ui.agree.0 as isize, SeqCst);
+        NAME.store(ui.name.hwnd().0 as isize, SeqCst);
+        HINT.store(ui.hint.hwnd().0 as isize, SeqCst);
+        AGREE.store(ui.agree.hwnd().0 as isize, SeqCst);
     }
     fn window_shown(&mut self, _ui: &MainWindowUi) {
         hit(0);
@@ -7879,6 +7879,123 @@ impl MainWindowEvents for MainWindow {
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-events.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of the methods that ran");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A real project using its controls as objects - text boxes, drop-downs, lists, trees,
+    /// progress bars, buttons, timers - and handing work to its window from another thread.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn control_methods_and_invoke_work() {
+        use phai_form::Control;
+        let dir = std::env::temp_dir().join(format!("phai-methods-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut go = Control::new(Kind::Button, "go", [220, 40, 75, 23]);
+        go.text = Some("Go".into());
+        go.on_click = Some("go_clicked".into());
+        let mut clock = Control::new(Kind::Timer, "clock", [0, 0, 0, 0]);
+        clock.bounds = None;
+        clock.value = Some(50);
+        clock.enabled = Some(false);
+        clock.on_tick = Some("clock_ticked".into());
+        let mut pick = Control::new(Kind::Combo, "pick", [11, 70, 200, 23]);
+        pick.items = vec![];
+        let mut places = Control::new(Kind::Tree, "places", [220, 70, 150, 100]);
+        places.items = vec![];
+        f.control.extend([Control::new(Kind::Edit, "name", [11, 40, 200, 23]), pick, Control::new(Kind::List, "rows", [11, 100, 200, 80]), places, Control::new(Kind::Progress, "bar", [11, 190, 200, 20]), go, clock]);
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Go", "ไป"), ("Name", "ชื่อ"), ("Value", "ค่า")]).unwrap();
+        let user = dir.join("src").join("main_window.rs");
+        let code = r#"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+use std::sync::OnceLock;
+use phai_ui::ctl::*;
+static HIT: AtomicU32 = AtomicU32::new(0);
+fn hit(bit: u32) { HIT.fetch_or(1 << bit, SeqCst); }
+struct Parts { name: TextBox, pick: ComboBox, rows: ListView, places: TreeView, bar: ProgressBar, go: Button, clock: Timer, inv: phai_ui::invoke::Invoker }
+static UI: OnceLock<Parts> = OnceLock::new();
+fn ok(b: bool, bit: u32) { if b { hit(bit) } }
+unsafe extern "system" fn poke(_: windows::Win32::Foundation::HWND, _: u32, id: usize, _: u32) {
+    unsafe { let _ = windows::Win32::UI::WindowsAndMessaging::KillTimer(None, id); }
+    let u = UI.get().unwrap();
+    u.name.set_text("abc");
+    u.name.append_text("de");
+    u.name.select(1, 2);
+    let picked = u.name.selected_text();
+    u.name.hide();
+    let hidden = !u.name.visible();
+    u.name.show();
+    ok(u.name.text() == "abcde" && picked == "bc" && hidden && u.name.visible(), 0);
+    u.pick.items_add("Apple");
+    u.pick.items_add("Banana");
+    u.pick.set_selected_index(Some(1));
+    ok(u.pick.selected_item().as_deref() == Some("Banana") && u.pick.find_string("app") == Some(0) && u.pick.items_count() == 2, 1);
+    let r = u.rows.items_add(&["x", "y"]);
+    u.rows.set_cell(r, 1, "z");
+    u.rows.select(r);
+    ok(u.rows.cell(0, 1) == "z" && u.rows.selected_index() == Some(0) && u.rows.items_count() == 1, 2);
+    let root = u.places.nodes_add("Root");
+    let kid = u.places.nodes_add_under(root, "Kid");
+    u.places.expand_all();
+    u.places.select(kid);
+    ok(u.places.selected_text().as_deref() == Some("Kid"), 3);
+    u.bar.set_value(10);
+    u.bar.perform_step();
+    u.bar.increment(5);
+    ok(u.bar.value() == 25, 4);
+    u.go.perform_click();
+    u.clock.start();
+    ok(u.clock.enabled() && u.clock.interval() == 50, 5);
+    let inv = u.inv;
+    std::thread::spawn(move || {
+        MainWindowUi::begin_invoke(inv, |me: &mut MainWindow, ui: &MainWindowUi| {
+            me.from_thread += 1;
+            ui.name.set_text("from a thread");
+            hit(7);
+        });
+    });
+    unsafe { windows::Win32::UI::WindowsAndMessaging::SetTimer(None, 0, 1500, Some(judge)); }
+}
+unsafe extern "system" fn judge(_: windows::Win32::Foundation::HWND, _: u32, _: usize, _: u32) {
+    let u = UI.get().unwrap();
+    let bits = HIT.load(SeqCst);
+    std::process::exit(if bits == 0x3FF && u.name.text() == "from a thread" { 42 } else { 1000 + bits as i32 });
+}
+
+#[derive(Default)]
+pub struct MainWindow {
+    from_thread: u32,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        let _ = UI.set(Parts { name: ui.name, pick: ui.pick, rows: ui.rows, places: ui.places, bar: ui.bar, go: ui.go, clock: ui.clock, inv: ui.invoker() });
+        unsafe { windows::Win32::UI::WindowsAndMessaging::SetTimer(None, 0, 300, Some(poke)); }
+    }
+    fn go_clicked(&mut self, _ui: &MainWindowUi) { hit(6) }
+    fn clock_ticked(&mut self, ui: &MainWindowUi) {
+        ui.clock.stop();
+        ok(!ui.clock.enabled() && self.from_thread <= 1, 8);
+        ui.status.set_part_text(0, "tick");
+        hit(9);
+    }
+}
+"#;
+        std::fs::write(&user, code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let run = |args: &[&str]| std::process::Command::new(&cargo).args(args).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        let out = run(&["build", "--quiet"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stderr).matches("warning").count(), 0, "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-methods.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
