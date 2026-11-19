@@ -60,6 +60,14 @@
 `TextBox`, `Button`, `CheckBox`, `ListView`, `Grid`, `StatusBar`... (newtype รอบ HWND) มี `text()`, `set_text()`,
 `set_enabled()`, `checked()`, `rows()`... แล้ว codegen ให้ field ใน `<Form>Ui` เป็นชนิดเหล่านี้แทน `HWND`
 (ระวังโค้ดผู้ใช้เดิมที่ใช้ `ui.x` เป็น HWND: ให้ชนิดห่อมี `.hwnd()` และ `Deref`/`From` ไป HWND)
+- C# มี method หลายร้อย (Control ~100 public + Form + แต่ละชนิด) - ไม่เอาหมด (ของภายใน .NET, accessibility, design-time)
+  เอาชุดที่คนใช้จริง ~40-60 ตัว: ทุกตัว Focus/Show/Hide/BringToFront/SendToBack/Refresh/Invalidate/PointToScreen/
+  PointToClient/SuspendLayout/ResumeLayout/FindForm · ฟอร์ม Show/ShowDialog/Close/Hide/Activate/CenterToScreen ·
+  TextBox Clear/SelectAll/AppendText/Copy/Cut/Paste/Undo/ScrollToCaret · Combo/List Items.Add/Remove/Clear, FindString,
+  BeginUpdate/EndUpdate · ListView Items.Add/Clear, EnsureVisible · Grid Rows.Add/Clear, ClearSelection · Tree Nodes.Add,
+  ExpandAll/CollapseAll · Timer Start/Stop · ProgressBar PerformStep/Increment · RichText LoadFile/SaveFile/Find
+  **สำคัญ:** แบบ Invoke/BeginInvoke - อัปเดตหน้าจอจาก thread อื่นอย่างปลอดภัย (มือใหม่จะติดเรื่องนี้)
+  ที่เหลือ: ทุกชนิดมี `.hwnd()` (แบบ `Handle` ของ C#) เรียก phai-ui / Win32 เองได้
 - แบบ C#: `struct` + `impl` = class, `trait Control` = ส่วนที่ทุก control มีร่วม (Enabled, Visible, Focus, Show/Hide)
 - เสร็จแล้ว dropdown ของ Properties แสดงชื่อชนิดเต็มแบบ VS (`ok  phai_ui::Button`) และ rust-analyzer เติม methods ให้แบบ IntelliSense
 
