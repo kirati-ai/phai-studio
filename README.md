@@ -103,7 +103,7 @@ Every window is checked by its picture: `PHAI_SHOT=out.png` photographs any phai
 
 ## Code signing policy
 
-Phai Studio has applied for free code signing from SignPath Foundation. What is signed, who
+The installer is not code-signed yet (free code signing for open source asks for wider adoption first). What would be signed, who
 approves it, and what the program sends over the network:
 [docs/code-signing-policy.md](docs/code-signing-policy.md).
 
