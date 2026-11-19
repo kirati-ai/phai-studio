@@ -796,7 +796,6 @@ pub static THAI: &[(&str, &str)] = &[
     ("Smaller than designed, the window shows scroll bars and its controls scroll.", "เมื่อหน้าต่างเล็กกว่าที่ออกแบบ จะมีแถบเลื่อนและ control เลื่อนตาม"),
     ("Pixels kept clear round the window's edge for docked controls.", "ระยะว่างรอบขอบหน้าต่าง (พิกเซล) สำหรับ control ที่ dock"),
     ("Files dragged from Explorer can be dropped on the window - its DragDrop event.", "ลากไฟล์จาก Explorer มาวางบนหน้าต่างได้ - ใช้ event DragDrop"),
-    ("Files dropped on it from Explorer - e.files.", "มีไฟล์ถูกลากจาก Explorer มาวาง - e.files"),
     ("Files dropped on the window from Explorer - e.files.", "มีไฟล์ถูกลากจาก Explorer มาวางบนหน้าต่าง - e.files"),
     ("Its colours change over time when its state does: 150ms, 0.3s ease-out - #id { transition }.", "สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน เช่น 150ms, 0.3s ease-out - #id { transition }"),
     ("A class's name: letters, digits and -, not starting with a digit.", "ชื่อ class: ตัวอักษร ตัวเลข และ - ห้ามขึ้นต้นด้วยตัวเลข"),
@@ -879,6 +878,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Vertical: the panes side by side, the bar standing up. Horizontal: one over the other.", "แนวตั้ง: สองช่องซ้ายขวา เส้นแบ่งตั้ง; แนวนอน: ช่องบนกับช่องล่าง"),
     ("The first pane's width (or height); 0 is half.", "ความกว้าง (หรือความสูง) ของช่องแรก; 0 คือครึ่งหนึ่ง"),
     ("Other forms open inside it (show_mdi_child), cascaded or tiled.", "ฟอร์มอื่นเปิดข้างในได้ (show_mdi_child) เรียงซ้อนหรือเรียงต่อกัน"),
+    ("Dropped on it: files from Explorer (e.files) or words dragged from another control (e.text, e.source).", "มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)"),
 ];
 
 #[cfg(test)]

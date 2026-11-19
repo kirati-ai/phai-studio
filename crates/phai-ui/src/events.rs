@@ -116,10 +116,14 @@ impl ClosingEventArgs {
     }
 }
 
-/// Files dropped from Explorer - WinForms' DragDrop with `DataFormats.FileDrop`.
+/// What was dropped: files from Explorer (WinForms' `DataFormats.FileDrop`), or words dragged
+/// from another control of the program (`DataFormats.Text`, [`crate::drag::do_drag_drop`]) and
+/// the control they came from.
 #[derive(Debug, Default)]
 pub struct FileDropEventArgs {
     pub files: Vec<std::path::PathBuf>,
+    pub text: Option<String>,
+    pub source: Option<HWND>,
 }
 
 /// The files of a `WM_DROPFILES`, the drop then let go.
@@ -136,7 +140,7 @@ pub fn files_of(w: WPARAM) -> FileDropEventArgs {
         })
         .collect();
     unsafe { DragFinish(drop) };
-    FileDropEventArgs { files }
+    FileDropEventArgs { files, ..Default::default() }
 }
 
 /// An item of a list - a column clicked, a row chosen.
@@ -181,6 +185,11 @@ static HOOKS: Mutex<Option<HashMap<isize, Hook>>> = Mutex::new(None);
 
 fn hook_of(h: HWND) -> Option<Hook> {
     HOOKS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).copied())
+}
+
+/// The form and id a drop on control `h` goes to, when it hears its DragDrop event.
+pub fn drop_target(h: HWND) -> Option<(HWND, i32)> {
+    hook_of(h).filter(|k| k.mask & bit(DRAG_DROP) != 0).map(|k| (HWND(k.form as *mut _), k.id))
 }
 
 fn update(h: HWND, f: impl FnOnce(&mut Hook)) {

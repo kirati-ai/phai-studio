@@ -76,7 +76,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("mouse_up", "MouseUp", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_UP), "A mouse button let go over it."),
     ev("mouse_move", "MouseMove", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_MOVE), "The mouse moves over it."),
     ev("resize", "Resize", Args::None, &[], Source::Hook(phai_ui_codes::RESIZE), "Its size changed - the window was sized, and it is anchored or docked."),
-    ev("drag_drop", "DragDrop", Args::Files, &[], Source::Hook(phai_ui_codes::DRAG_DROP), "Files dropped on it from Explorer - e.files."),
+    ev("drag_drop", "DragDrop", Args::Files, &[], Source::Hook(phai_ui_codes::DRAG_DROP), "Dropped on it: files from Explorer (e.files) or words dragged from another control (e.text, e.source)."),
     ev("checked_changed", "CheckedChanged", Args::None, &[Kind::Checkbox, Kind::Radio], Source::Command(0), "Ticked or unticked."),
     ev("text_changed", "TextChanged", Args::None, &[Kind::Combo], Source::Command(5), "Words typed into a drop-down that takes them."),
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
