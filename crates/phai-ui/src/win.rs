@@ -232,6 +232,8 @@ struct Css {
     hot: bool,
     /// The control's own look, over the theme's: [`set_own_style`].
     own: Style,
+    /// The same as it was written, for the Live Inspector.
+    own_text: String,
     /// Where an owner-drawn button's words sit: 0 its kind's own, 1 left, 2 centre, 3 right.
     align: u8,
     /// A check box's third state (WinForms' Indeterminate), and whether a click reaches it.
@@ -350,7 +352,7 @@ fn with_css<R>(h: HWND, f: impl FnOnce(&mut Css) -> R) -> Option<R> {
 
 fn mark(h: HWND, kind: Kind) {
     let mut map = CSS.lock().unwrap_or_else(|e| e.into_inner());
-    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), align: 0, mixed: false, three: false, push: false, auto: false, preview: None });
+    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), own_text: String::new(), align: 0, mixed: false, three: false, push: false, auto: false, preview: None });
 }
 
 fn forget(h: HWND) {
@@ -368,6 +370,16 @@ pub fn register_kind(h: HWND, kind: Kind) {
 
 pub fn forget_kind(h: HWND) {
     forget(h);
+}
+
+/// Control `h`'s own look as it was given to [`set_own_style`]; empty when it has none.
+pub fn own_style_text(h: HWND) -> String {
+    with_css(h, |c| c.own_text.clone()).unwrap_or_default()
+}
+
+/// Control `h`'s kind, CSS classes and id, if the library made it.
+pub fn css_names(h: HWND) -> Option<(Kind, Vec<String>, Option<String>)> {
+    with_css(h, |c| (c.kind, c.classes.clone(), c.id.clone()))
 }
 
 /// The control's kind, if the library made it.
@@ -2021,7 +2033,10 @@ pub fn textarea_with(parent: HWND, text: &str, id: i32, f: HFONT, word_wrap: boo
 /// rule would say. Phai Studio writes it from a control's colour properties.
 pub fn set_own_style(h: HWND, decls: &str) -> Result<(), theme::ThemeError> {
     let own = theme::declarations_style(decls)?;
-    with_css(h, |c| c.own = own);
+    with_css(h, |c| {
+        c.own = own;
+        c.own_text = decls.trim().to_string();
+    });
     theme_native(h);
     unsafe {
         let _ = Gdi::InvalidateRect(Some(h), None, true);

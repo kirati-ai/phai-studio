@@ -13,6 +13,7 @@
 //! | [`text`] | `t()` / `tf()`: Thai and English, English as the key |
 //! | [`icon`] | icons from pixels and from Windows' icon font |
 //! | [`dialogs`] | ask for a line of text; "waiting" with Cancel |
+//! | [`inspect`] | the Live Inspector: F12 in a debug build, a control's look and properties changed live |
 //! | [`shot`] | photograph a window to PNG |
 //!
 //! A program needs Common Controls 6 in its manifest, or Windows hands it the old controls:
@@ -25,6 +26,7 @@ pub mod events;
 pub mod form;
 pub mod grid;
 pub mod icon;
+pub mod inspect;
 pub mod invoke;
 pub mod layout;
 pub mod picture;

@@ -16,7 +16,35 @@ static THAI: AtomicBool = AtomicBool::new(false);
 static TABLES: RwLock<Vec<&'static [(&'static str, &'static str)]>> = RwLock::new(Vec::new());
 
 /// The library's own words.
-pub const LIBRARY: &[(&str, &str)] = &[("OK", "ตกลง"), ("Cancel", "ยกเลิก"), ("Yes", "ใช่"), ("No", "ไม่")];
+pub const LIBRARY: &[(&str, &str)] = &[
+    ("OK", "ตกลง"),
+    ("Cancel", "ยกเลิก"),
+    ("Yes", "ใช่"),
+    ("No", "ไม่"),
+    // The Live Inspector (`inspect`).
+    ("Live Inspector - {0}", "ตัวตรวจสด - {0}"),
+    ("Pick", "ชี้เลือก"),
+    ("Picking...", "กำลังชี้..."),
+    ("Point at a control in the window and click it. Esc stops.", "ชี้ control ในหน้าต่างแล้วคลิก - Esc เลิก"),
+    ("State", "สถานะ"),
+    ("normal", "ปกติ"),
+    ("own", "ของตัวเอง"),
+    ("Text", "ข้อความ"),
+    ("Enabled", "ใช้งานได้"),
+    ("Visible", "มองเห็น"),
+    ("Property", "คุณสมบัติ"),
+    ("Set", "ตั้ง"),
+    ("Undo all", "ย้อนทั้งหมด"),
+    ("Save to form", "เก็บลงฟอร์ม"),
+    ("Changes show in the program at once. Save writes them into the form.", "สิ่งที่แก้เห็นในโปรแกรมทันที กดเก็บเพื่อเขียนลงฟอร์ม"),
+    ("{0} changed, not saved yet", "แก้แล้ว {0} อย่าง ยังไม่ได้เก็บ"),
+    ("Nothing to save in {0}.", "ไม่มีอะไรต้องเก็บใน {0}"),
+    ("Saved {0} lines into {1}.", "เก็บ {0} บรรทัดลงใน {1} แล้ว"),
+    ("The form has no control {0}.", "ฟอร์มไม่มี control ชื่อ {0}"),
+    ("{0} is not a property the inspector knows.", "{0} ไม่ใช่คุณสมบัติที่ตัวตรวจรู้จัก"),
+    ("{0}: not a value yet", "{0}: ยังไม่ใช่ค่าที่ใช้ได้"),
+    ("a whole number", "จำนวนเต็ม"),
+];
 
 pub fn is_thai() -> bool {
     THAI.load(Ordering::SeqCst)
