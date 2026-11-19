@@ -17,7 +17,7 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE, NTSTATUS};
 use windows::Win32::System::Diagnostics::Debug::*;
 use windows::Win32::System::Memory::{VirtualAllocEx, MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 use windows::Win32::System::Threading::{
-    CreateProcessW, GetProcessId, OpenProcess, QueryFullProcessImageNameW, TerminateProcess, CREATE_NEW_CONSOLE, DEBUG_ONLY_THIS_PROCESS, PROCESS_ALL_ACCESS, PROCESS_INFORMATION, PROCESS_NAME_WIN32, STARTUPINFOW,
+    CreateProcessW, GetProcessId, OpenProcess, QueryFullProcessImageNameW, TerminateProcess, CREATE_NO_WINDOW, DEBUG_ONLY_THIS_PROCESS, STARTF_USESTDHANDLES, PROCESS_ALL_ACCESS, PROCESS_INFORMATION, PROCESS_NAME_WIN32, STARTUPINFOW,
 };
 
 /// What the debugger is asked to do.
@@ -253,6 +253,8 @@ struct Engine {
     loaded: bool,
     rx: Receiver<Command>,
     say: Say,
+    /// What the program prints (stdout and stderr), line by line, for the Output pane.
+    printed: Option<Receiver<String>>,
     /// Break All asked for: the next breakpoint Windows reports is ours.
     pausing: bool,
     /// Conditions by file and line, and by the address their breakpoint landed at.
@@ -381,26 +383,81 @@ fn from_wide(p: PWSTR) -> String {
     unsafe { p.to_string().unwrap_or_default() }
 }
 
+/// A pipe for a program's stdout and stderr: Phai's end to read, and the program's end - which it
+/// inherits - to write.
+fn printing_pipe() -> (Option<HANDLE>, Option<HANDLE>) {
+    let sa = windows::Win32::Security::SECURITY_ATTRIBUTES { nLength: std::mem::size_of::<windows::Win32::Security::SECURITY_ATTRIBUTES>() as u32, lpSecurityDescriptor: std::ptr::null_mut(), bInheritHandle: true.into() };
+    let (mut read, mut write) = (HANDLE::default(), HANDLE::default());
+    if unsafe { windows::Win32::System::Pipes::CreatePipe(&mut read, &mut write, Some(&sa), 0) }.is_err() {
+        return (None, None);
+    }
+    // Only the program's end is inherited.
+    unsafe {
+        let _ = windows::Win32::Foundation::SetHandleInformation(read, 1 /* HANDLE_FLAG_INHERIT */, windows::Win32::Foundation::HANDLE_FLAGS(0));
+    }
+    (Some(read), Some(write))
+}
+
+/// The pipe read on a thread of its own, each line (UTF-8, as Rust prints) handed on.
+fn read_lines(read: HANDLE) -> Receiver<String> {
+    use std::io::BufRead;
+    use std::os::windows::io::FromRawHandle;
+    let (tx, rx) = channel();
+    let raw = read.0 as isize;
+    std::thread::spawn(move || {
+        let file = unsafe { std::fs::File::from_raw_handle(raw as *mut std::ffi::c_void) };
+        let mut reader = std::io::BufReader::new(file);
+        let mut buf = Vec::new();
+        while reader.read_until(10u8, &mut buf).map(|n| n > 0).unwrap_or(false) {
+            let line = String::from_utf8_lossy(&buf).trim_end_matches([char::from(13), char::from(10)]).to_string();
+            buf.clear();
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
 impl Engine {
     fn start(exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say) -> Result<Engine, (String, Say)> {
+        // No console window: what the program prints comes through a pipe to the Output pane,
+        // as Visual Studio shows a program's output in its own window.
+        let (read, write) = printing_pipe();
         let mut si = STARTUPINFOW { cb: std::mem::size_of::<STARTUPINFOW>() as u32, ..Default::default() };
-        si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        if let Some(w) = write {
+            si.dwFlags = STARTF_USESTDHANDLES;
+            si.hStdOutput = w;
+            si.hStdError = w;
+        }
         let mut pi = PROCESS_INFORMATION::default();
         let app = wide(&exe.to_string_lossy());
         let mut cmd = wide(&format!("\"{}\"", exe.display()));
         let dir = wide(&cwd.to_string_lossy());
-        let ok = unsafe { CreateProcessW(PCWSTR(app.as_ptr()), Some(PWSTR(cmd.as_mut_ptr())), None, None, false, DEBUG_ONLY_THIS_PROCESS | CREATE_NEW_CONSOLE, None, PCWSTR(dir.as_ptr()), &si, &mut pi) };
+        let ok = unsafe { CreateProcessW(PCWSTR(app.as_ptr()), Some(PWSTR(cmd.as_mut_ptr())), None, None, write.is_some(), DEBUG_ONLY_THIS_PROCESS | CREATE_NO_WINDOW, None, PCWSTR(dir.as_ptr()), &si, &mut pi) };
+        if let Some(w) = write {
+            unsafe {
+                let _ = CloseHandle(w);
+            }
+        }
         if let Err(e) = ok {
+            if let Some(r) = read {
+                unsafe {
+                    let _ = CloseHandle(r);
+                }
+            }
             return Err((format!("{}: {e}", exe.display()), say));
         }
         unsafe {
             let _ = CloseHandle(pi.hThread);
         }
-        Ok(Engine::new(pi.hProcess, exe, cwd, wanted, rx, say, false))
+        let mut engine = Engine::new(pi.hProcess, exe, cwd, wanted, rx, say, false);
+        engine.printed = read.map(read_lines);
+        Ok(engine)
     }
 
     fn new(process: HANDLE, exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say, attached: bool) -> Engine {
-        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![], watched: vec![] }
+        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![], watched: vec![], printed: None }
     }
 
     /// Attach to Process: the debugger joins a program already running. Windows then tells of its
@@ -451,9 +508,14 @@ impl Engine {
 
     fn run(&mut self) {
         loop {
-            let mut ev = DEBUG_EVENT::default();
-            if unsafe { WaitForDebugEvent(&mut ev, 50) }.is_err() {
-                // Nothing from the program: what the person asks while it runs.
+            if let Some(lines) = &self.printed {
+                while let Ok(line) = lines.try_recv() {
+                    (self.say)(Event::Output(format!("{line}{}", char::from(10))));
+                }
+            }
+            // What the person asks - every waiting command, before the program's next event: a
+            // condition or exception setting sent as it starts must be in place before it runs.
+            loop {
                 match self.rx.try_recv() {
                     Ok(Command::Detach) => return self.detach(),
                     Ok(Command::Stop) if self.attached => return self.detach(),
@@ -480,11 +542,17 @@ impl Engine {
                     }
                     Ok(_) => {}
                     Err(TryRecvError::Disconnected) if self.attached => return self.detach(),
-                    Err(TryRecvError::Disconnected) => unsafe {
-                        let _ = TerminateProcess(self.process, 1);
-                    },
-                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {
+                        unsafe {
+                            let _ = TerminateProcess(self.process, 1);
+                        }
+                        break;
+                    }
+                    Err(TryRecvError::Empty) => break,
                 }
+            }
+            let mut ev = DEBUG_EVENT::default();
+            if unsafe { WaitForDebugEvent(&mut ev, 50) }.is_err() {
                 continue;
             }
             let tid = ev.dwThreadId;
@@ -546,6 +614,13 @@ impl Engine {
                         let _ = ContinueDebugEvent(ev.dwProcessId, tid, DBG_CONTINUE);
                         let _ = SymCleanup(self.process);
                         let _ = CloseHandle(self.process);
+                        // The last lines it printed, read after it ended: the pipe closes when it is gone.
+                        if let Some(lines) = self.printed.take() {
+                            let until = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                            while let Ok(line) = lines.recv_timeout(until.saturating_duration_since(std::time::Instant::now())) {
+                                (self.say)(Event::Output(format!("{line}{}", char::from(10))));
+                            }
+                        }
                         (self.say)(Event::Exited(code));
                         return;
                     }

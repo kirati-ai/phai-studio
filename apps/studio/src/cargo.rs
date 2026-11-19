@@ -559,12 +559,21 @@ fn step(target: isize, project: &Path, args: &[String], out: &mut Outcome) {
 }
 
 /// Starts the built program, its folder as the working one.
-pub fn run(exe: &Path) -> std::io::Result<Child> {
+pub fn run(exe: &Path, target: HWND) -> std::io::Result<Child> {
     let mut c = Command::new(exe);
     if let Some(dir) = exe.parent() {
         c.current_dir(dir);
     }
-    c.spawn()
+    // No console window: what the program prints goes to the Output pane, as in Visual Studio.
+    let mut child = c.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null()).creation_flags(CREATE_NO_WINDOW).spawn()?;
+    let target = target.0 as isize;
+    if let Some(out) = child.stdout.take() {
+        std::thread::spawn(move || BufReader::new(out).lines().map_while(Result::ok).for_each(|l| post_line(target, l)));
+    }
+    if let Some(err) = child.stderr.take() {
+        std::thread::spawn(move || BufReader::new(err).lines().map_while(Result::ok).for_each(|l| post_line(target, l)));
+    }
+    Ok(child)
 }
 
 #[cfg(test)]

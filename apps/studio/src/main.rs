@@ -5366,7 +5366,7 @@ impl Studio {
         } else if out.ok {
             controls::status_text(self.status, 0, &tf("Built in {0} s - {1} warnings", &[&format!("{:.1}", out.seconds), &warnings]));
             if out.then_run {
-                match out.executable.as_deref().map(cargo::run) {
+                match out.executable.as_deref().map(|e| cargo::run(e, self.hwnd)) {
                     Some(Ok(child)) => {
                         self.watch_process(child.id());
                         self.running = Some(child);
