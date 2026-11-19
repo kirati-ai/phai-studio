@@ -81,6 +81,10 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   ต้องมี backend ที่สอง; Android build บน Windows ได้ (NDK ฟรี), iOS ต้องมี Mac + Xcode เพื่อ build/เซ็น
   **เริ่มแล้วและพักไว้** (เจ้านาย: "เขียน android เป็น handoff ทำ winform ให้จบ") — branch `android-prototype`,
   แผนและสถานะใน `docs/android-handoff.md` (อยู่บน branch นั้น); เครื่องมือติดตั้งแล้วที่ `D:\Android`
+  **เจ้านายเสนอ 2026-11-19 (ทางหลักใหม่): "ถ้า ios และ android รัน webform ได้ก็คงจะดีกว่า"** — เป้า: `.phaiform` → HTML +
+  `theme.css` เดิม (เป็น CSS อยู่แล้ว) + logic Rust → WebAssembly (wasm-bindgen ฟรี) → ติดตั้งเป็น PWA ได้ทั้ง iOS และ Android
+  ไม่ต้องใช้ Mac หรือบัญชี Apple; ชื่อ event ใช้ชื่อเดียวกับ Windows; ทำได้: control ทั่วไป, ธีม, ลุคตามสถานะ (CSS :hover จริง)
+  ทำไม่ได้บนเว็บ: NotifyIcon, ไฟล์ตรง ๆ (ใช้ File API แทน) — งาน native Android บน branch เป็นทางสำรอง
 - **WinForms ให้จบ (เจ้านายสั่ง 2026-11-19)** — ที่ยังขาดนอก checklist เดิม: Panel, SplitContainer, ListBox, CheckedListBox,
   LinkLabel, MaskedTextBox, MonthCalendar, NotifyIcon, dialog แบบ component (Open/Save/Color/Font), ErrorProvider,
   UserControl, MDI, การพิมพ์ (PrintDocument/Preview), data binding กับ control ทั่วไป, ลากวางระหว่าง control

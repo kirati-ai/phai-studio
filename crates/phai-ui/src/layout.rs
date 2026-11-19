@@ -148,11 +148,43 @@ pub struct Layout {
     pub design: (i32, i32),
     pub padding: i32,
     pub items: Vec<(HWND, Item)>,
+    /// Split containers: the split, its bar's design distance, the controls in each pane.
+    pub splits: Vec<(HWND, i32, Vec<HWND>, Vec<HWND>)>,
 }
 
 impl Layout {
     pub fn new(design: (i32, i32)) -> Layout {
-        Layout { design, padding: 0, items: Vec::new() }
+        Layout { design, padding: 0, items: Vec::new(), splits: Vec::new() }
+    }
+
+    /// `split` (a [`crate::split::split`] already added) holds `first` in its first pane and
+    /// `second` in its other: they keep their anchors to their pane as the bar moves.
+    pub fn add_split(&mut self, split: HWND, first: &[HWND], second: &[HWND]) -> &mut Self {
+        let d = crate::split::distance(split);
+        self.splits.push((split, d, first.to_vec(), second.to_vec()));
+        self
+    }
+
+    /// The rectangles `arrange` gave, with the controls in split panes placed in their panes.
+    fn in_panes(&self, mut rects: Vec<Rect>) -> Vec<Rect> {
+        let index = |h: HWND| self.items.iter().position(|(x, _)| *x == h);
+        for (split, d0, first, second) in &self.splits {
+            let Some(si) = index(*split) else { continue };
+            let (b, r) = (self.items[si].1.bounds, rects[si]);
+            let vertical = crate::split::is_vertical(*split);
+            let (d1, d2) = crate::split::panes(vertical, *d0, b.w, b.h);
+            let (a1, a2) = crate::split::panes(vertical, crate::split::distance(*split), r.w, r.h);
+            for (members, dp, ap) in [(first, d1, a1), (second, d2, a2)] {
+                for h in members {
+                    let Some(i) = index(*h) else { continue };
+                    let it = self.items[i].1;
+                    let rel = Item { bounds: Rect::new(it.bounds.x - b.x - dp.0, it.bounds.y - b.y - dp.1, it.bounds.w, it.bounds.h), dock: Dock::None, anchor: it.anchor };
+                    let p = arrange((dp.2, dp.3), (ap.2, ap.3), 0, &[rel])[0];
+                    rects[i] = Rect::new(p.x + r.x + ap.0, p.y + r.y + ap.1, p.w, p.h);
+                }
+            }
+        }
+        rects
     }
 
     pub fn add(&mut self, h: HWND, item: Item) -> &mut Self {
@@ -177,7 +209,7 @@ impl Layout {
         }
         let (ox, oy) = if scrolls { crate::form::update_scrollbars(parent, (scale(size.0, dpi), scale(size.1, dpi))) } else { (0, 0) };
         let items: Vec<Item> = self.items.iter().map(|(_, i)| *i).collect();
-        let rects = arrange(self.design, size, self.padding, &items);
+        let rects = self.in_panes(arrange(self.design, size, self.padding, &items));
         unsafe {
             let Ok(mut batch) = wm::BeginDeferWindowPos(rects.len() as i32) else { return };
             for ((h, _), r) in self.items.iter().zip(&rects) {

@@ -110,6 +110,8 @@ pub const CONTROL: &[Spec] = &[
     spec("small_change", "SmallChange", "Behavior", Ty::Int(1, 1_000_000), "1", &[Kind::Slider], How::Call, "How far an arrow key moves it."),
     spec("large_change", "LargeChange", "Behavior", Ty::Int(1, 1_000_000), "", &[Kind::Slider], How::Call, "How far Page Up and Page Down move it; unset, a tenth of the range."),
     spec("tick_frequency", "TickFrequency", "Appearance", Ty::Int(0, 1_000_000), "", &[Kind::Slider], How::Call, "A tick mark every so many; unset, none."),
+    spec("orientation", "Orientation", "Layout", Ty::Choice(&["vertical", "horizontal"]), "vertical", &[Kind::Split], How::Code, "Vertical: the panes side by side, the bar standing up. Horizontal: one over the other."),
+    spec("splitter_distance", "SplitterDistance", "Layout", Ty::Int(0, 10_000), "0", &[Kind::Split], How::Code, "The first pane's width (or height); 0 is half."),
     spec("orientation", "Orientation", "Appearance", Ty::Choice(&["horizontal", "vertical"]), "horizontal", &[Kind::Slider], How::Call, "Lying down, or standing up with its least at the bottom."),
     spec("step", "Step", "Behavior", Ty::Int(1, 1_000_000), "10", &[Kind::Progress], How::Call, "How much perform_step adds."),
     spec("marquee", "Style = Marquee", "Appearance", Ty::Bool, "false", &[Kind::Progress], How::Call, "A block that runs along, for work of unknown length."),

@@ -136,6 +136,10 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
         Kind::Link => phai_ui::extra::link_label(parent, tr(text), id, font),
         Kind::Masked => phai_ui::extra::masked(parent, c.word("mask").unwrap_or(""), text, id, font),
         Kind::Calendar => phai_ui::extra::calendar(parent, id, font),
+        Kind::Split => {
+            let (vertical, d) = c.split_bar();
+            phai_ui::split::split(parent, id, vertical, d)
+        }
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
         _ => {
             let h = win::label(parent, "", id, font);

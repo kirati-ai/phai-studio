@@ -8,6 +8,7 @@
 //! | --- | --- |
 //! | [`win`] | windows, fonts, DPI, buttons, checkboxes, radios, edits, lists, toolbar, the frame |
 //! | [`components`] | file, folder, colour and font dialogs; ErrorProvider; NotifyIcon |
+//! | [`split`] | SplitContainer: two panes and the bar between them |
 //! | [`extra`] | ListBox, CheckedListBox, LinkLabel, MaskedTextBox, MonthCalendar |
 //! | [`controls`] | group frame, tabs, status bar - drawn whole by the library |
 //! | [`theme`] | themes as CSS; the built-in light and dark ones |
@@ -37,6 +38,7 @@ pub mod picture;
 pub mod props;
 #[cfg(feature = "shot")]
 pub mod shot;
+pub mod split;
 pub mod text;
 pub mod theme;
 pub mod theme_edit;

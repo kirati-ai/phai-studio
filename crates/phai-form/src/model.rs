@@ -196,10 +196,12 @@ pub enum Kind {
     /// A component: the program's icon in the corner of the taskbar - WinForms' NotifyIcon.
     #[serde(rename = "notifyicon")]
     NotifyIcon,
+    /// Two panes and a bar between them the mouse drags - WinForms' SplitContainer.
+    Split,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 36] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon];
+    pub const ALL: [Kind; 37] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -249,6 +251,7 @@ impl Kind {
             Kind::FontDialog => "fontdialog",
             Kind::ErrorProvider => "errorprovider",
             Kind::NotifyIcon => "notifyicon",
+            Kind::Split => "split",
         }
     }
 
@@ -283,6 +286,7 @@ impl Kind {
             Kind::Masked => (150, 23),
             Kind::Calendar => (227, 162),
             Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon => (32, 32),
+            Kind::Split => (300, 150),
         }
     }
 
@@ -290,7 +294,7 @@ impl Kind {
     pub fn event(self) -> Option<&'static str> {
         match self {
             Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Link | Kind::NotifyIcon => Some("on_click"),
-            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid | Kind::Masked | Kind::Calendar | Kind::CheckedList => Some("on_change"),
+            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid | Kind::Masked | Kind::Calendar | Kind::CheckedList | Kind::Split => Some("on_change"),
             Kind::List | Kind::Tree | Kind::ListBox => Some("on_select"),
             Kind::Timer => Some("on_tick"),
             _ => None,
@@ -509,6 +513,14 @@ impl Control {
             }
         }
         (!decls.is_empty()).then(|| decls.join("; "))
+    }
+
+    /// A split container's bar: whether its panes are side by side, and the first pane's size.
+    pub fn split_bar(&self) -> (bool, i32) {
+        let vertical = self.word("orientation") != Some("horizontal");
+        let [_, _, w, h] = self.rect();
+        let d = self.int("splitter_distance").filter(|d| *d > 0).unwrap_or(if vertical { w / 2 } else { h / 2 } - 2);
+        (vertical, d)
     }
 
     pub fn rect(&self) -> [i32; 4] {
@@ -946,7 +958,7 @@ impl FormFile {
         self.control
             .iter()
             .enumerate()
-            .filter(|(j, p)| *j != i && matches!(p.kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel) && p.dock.as_deref().is_none_or(|d| d == "none"))
+            .filter(|(j, p)| *j != i && matches!(p.kind, Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel | Kind::Split) && p.dock.as_deref().is_none_or(|d| d == "none"))
             .filter(|(_, p)| {
                 let [px, py, pw, ph] = p.rect();
                 x >= px && y >= py && x + w <= px + pw && y + h <= py + ph && (pw, ph) != (w, h)

@@ -875,6 +875,9 @@ pub static THAI: &[(&str, &str)] = &[
     ("Added to a name typed without one: txt.", "นามสกุลที่เติมให้เมื่อพิมพ์ชื่อไม่มีนามสกุล เช่น txt"),
     ("Several files can be chosen: show_dialog_multi().", "เลือกได้หลายไฟล์: show_dialog_multi()"),
     ("The icon in the corner clicked twice - as often, to show the window again.", "ไอคอนมุมจอถูกดับเบิลคลิก - มักใช้เพื่อแสดงหน้าต่างอีกครั้ง"),
+    ("Split container", "แบ่งสองช่อง"),
+    ("Vertical: the panes side by side, the bar standing up. Horizontal: one over the other.", "แนวตั้ง: สองช่องซ้ายขวา เส้นแบ่งตั้ง; แนวนอน: ช่องบนกับช่องล่าง"),
+    ("The first pane's width (or height); 0 is half.", "ความกว้าง (หรือความสูง) ของช่องแรก; 0 คือครึ่งหนึ่ง"),
 ];
 
 #[cfg(test)]

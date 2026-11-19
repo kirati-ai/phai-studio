@@ -215,7 +215,7 @@
 | C | LinkLabel | `link`: `text` (ทั้งข้อความ หรือส่วนใน `<a>`); `link_text`, `set_link_text`; `on_click` = LinkClicked | ✅ |
 | C | MaskedTextBox | `masked`: `mask` (`0 9 # L ? A a & C`, `\` literal); `value()` (ไม่รวมตัวคั่น), `mask_completed()`; `on_change` | ✅ |
 | C | MonthCalendar | `calendar`: `selection_start()`, `set_date()`; `on_change` = DateChanged; สีจาก `calendar { }` ในธีม | ✅ |
-| C | SplitContainer | | ⬜ |
+| C | SplitContainer | `split`: `orientation` (`vertical`/`horizontal`), `splitter_distance`; control ข้างในยึด anchor กับช่องของตัวเอง; ลากเส้นแบ่งได้; `splitter_distance()`, `set_splitter_distance()`; `on_change` = SplitterMoved | ✅ |
 | C | NotifyIcon | `notifyicon`: `text`, `visible`, `context_menu`, `on_click`, `double_click`; `set_text`, `set_visible`, `show_balloon_tip`, `remove` (ทำเองตอนปิดหน้าต่าง) | ✅ |
 | C | OpenFileDialog / SaveFileDialog / FolderBrowserDialog / ColorDialog / FontDialog (component) | `openfiledialog` (`title`, `filter`, `initial_directory`, `default_ext`, `multiselect`) `show_dialog()` / `show_dialog_multi()`; `savefiledialog` `show_dialog_named()`; `folderbrowserdialog`; `colordialog` `show_dialog("#hex")`; `fontdialog` → `ChosenFont` | ✅ |
 | C | ErrorProvider | `errorprovider`: `set_error(control, "...")` (เครื่องหมายแดงข้าง control พร้อม tooltip ตามไปเมื่อ control ขยับ), `error()`, `clear()` | ✅ |
