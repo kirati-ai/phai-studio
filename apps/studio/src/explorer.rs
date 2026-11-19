@@ -24,13 +24,24 @@ const CMD_REFRESH: u32 = 3;
 /// New form from a template: `CMD_TEMPLATE + n` in `Template::ALL` order.
 const CMD_TEMPLATE: u32 = 10;
 
-/// Icons, by index: folder, file, form, Rust source, the project, the theme.
-const ICONS: [u16; 6] = [glyph::FOLDER, glyph::DOCUMENT, glyph::FORM, glyph::CODE, glyph::LIBRARY, glyph::BRIGHTNESS];
+/// Icons, by index: folder, file, form, Rust source, the project, the theme, dependencies, a crate.
+const ICONS: [u16; 8] = [glyph::FOLDER, glyph::DOCUMENT, glyph::FORM, glyph::CODE, glyph::LIBRARY, glyph::BRIGHTNESS, 0xE71D, 0xE7B8];
+/// The explorer's bar, as Solution Explorer's: its buttons, and the search box under them.
+const ID_EXPLORER_BAR: i32 = 420;
+const ID_EXPLORER_SEARCH: i32 = 421;
+const BAR_NEW_FORM: i32 = 422;
+const BAR_REFRESH: i32 = 423;
+const BAR_COLLAPSE: i32 = 424;
+const BAR_FOLDER: i32 = 425;
 
 pub struct Explorer {
     pub hwnd: HWND,
     pub tree: HWND,
+    pub bar: HWND,
+    pub search: HWND,
     root: Option<PathBuf>,
+    /// The search box's words: only files whose names have them show.
+    filter: String,
     /// The path behind each item, by the number kept with it.
     entries: Vec<PathBuf>,
 }
@@ -63,6 +74,8 @@ struct Side {
 #[derive(Clone, Copy)]
 struct SideParts {
     explorer_caption: HWND,
+    explorer_bar: HWND,
+    explorer_search: HWND,
     tree: HWND,
     split: HWND,
     props_caption: HWND,
@@ -95,6 +108,8 @@ impl Side {
             win::show(*c, *on);
             win::show(*b, *on);
         }
+        win::show(p.explorer_bar, self.explorer_on);
+        win::show(p.explorer_search, self.explorer_on);
         let splits = [p.split, p.split2, p.split3];
         for s in splits {
             win::show(s, false);
@@ -103,7 +118,12 @@ impl Side {
             let (c, b, _, h) = panes[*k];
             let last = n + 1 == shown.len();
             l.add(c, item(28, Dock::Top));
-            l.add(b, if last { item(0, Dock::Fill) } else { item(h, Dock::Top) });
+            if *k == 0 {
+                // Project: its bar of buttons and its search box, as Solution Explorer has them.
+                l.add(p.explorer_bar, item(28, Dock::Top));
+                l.add(p.explorer_search, item(24, Dock::Top));
+            }
+            l.add(b, if last { item(0, Dock::Fill) } else { item((h - 52).max(40), Dock::Top) });
             if !last {
                 // The splitter under a pane sizes that pane: the first under Project, the
                 // second under Server Explorer, the third under Document Outline.
@@ -137,14 +157,14 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 180, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200 }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 260, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200 }));
         h
     }
 }
 
 /// Makes the panes of the side: the explorer's caption and tree, a splitter, the properties'
 /// caption and the properties.
-pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, servers: HWND, outline: HWND, font: HFONT) {
+pub fn set_side_parts(side: HWND, heading: HWND, bar: HWND, search: HWND, tree: HWND, props: HWND, servers: HWND, outline: HWND, font: HFONT) {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
         let split = phai_ui::controls::splitter(side, ID_SIDE_SPLIT, false);
         let split2 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT2, false);
@@ -152,7 +172,7 @@ pub fn set_side_parts(side: HWND, heading: HWND, tree: HWND, props: HWND, server
         let servers_caption = phai_ui::controls::caption(side, t("Server Explorer"), ID_SERVERS_CAPTION, font);
         let outline_caption = phai_ui::controls::caption(side, t("Document Outline"), ID_OUTLINE_CAPTION, font);
         let split3 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT3, false);
-        s.parts = Some(SideParts { explorer_caption: heading, tree, split, props_caption, props, servers_caption, servers, split2, outline_caption, outline, split3 });
+        s.parts = Some(SideParts { explorer_caption: heading, explorer_bar: bar, explorer_search: search, tree, split, props_caption, props, servers_caption, servers, split2, outline_caption, outline, split3 });
         s.arrange(side);
     }
 }
@@ -206,6 +226,20 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             LRESULT(0)
         }
         // A pane's caption buttons - ▾, the pin, × - are the studio's to answer.
+        wm::WM_COMMAND if matches!(win::loword(w.0) as i32, BAR_NEW_FORM | BAR_REFRESH | BAR_COLLAPSE | BAR_FOLDER) => {
+            if let Some(e) = studio().and_then(|s| s.explorer.as_mut()) {
+                e.bar_command(win::loword(w.0) as i32);
+            }
+            LRESULT(0)
+        }
+        wm::WM_COMMAND if win::loword(w.0) as i32 == ID_EXPLORER_SEARCH && win::hiword(w.0) == 0x0300 /* EN_CHANGE */ => {
+            if let Some(e) = studio().and_then(|s| s.explorer.as_mut()) {
+                e.filter = win::text_of(e.search).trim().to_lowercase();
+                let root = e.root.clone();
+                e.fill(root);
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if win::loword(w.0) as i32 == ID_OUTLINE_CAPTION => {
             if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE {
                 show_outline(h, false);
@@ -322,14 +356,55 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
 impl Explorer {
     pub fn new(side: HWND, font: HFONT) -> Explorer {
         let hwnd = phai_ui::controls::caption(side, t("Project"), ID_EXPLORER_CAPTION, font);
+        let bar = win::toolbar(side, ID_EXPLORER_BAR, &bar_items());
+        let search = win::edit(side, "", ID_EXPLORER_SEARCH, font, false);
         let tree = win::tree(side, ID_TREE, font);
         win::tree_icons(tree, &ICONS);
-        Explorer { hwnd, tree, root: None, entries: vec![] }
+        let e = Explorer { hwnd, tree, bar, search, root: None, filter: String::new(), entries: vec![] };
+        e.cue();
+        e
     }
 
     pub fn relabel(&mut self) {
+        win::set_toolbar(self.bar, &bar_items());
+        self.cue();
         let root = self.root.clone();
         self.fill(root);
+    }
+
+    fn cue(&self) {
+        let cue = win::wide(t("Search Project"));
+        unsafe {
+            wm::SendMessageW(self.search, 0x1501 /* EM_SETCUEBANNER */, Some(WPARAM(1)), Some(LPARAM(cue.as_ptr() as isize)));
+        }
+    }
+
+    /// A button of the bar: a new form, the tree read again, every folder closed, the folder opened.
+    fn bar_command(&mut self, id: i32) {
+        match id {
+            BAR_NEW_FORM => {
+                if let (Some(root), Some(s)) = (self.root.clone(), studio()) {
+                    s.new_form(&root, None);
+                }
+            }
+            BAR_REFRESH => {
+                let root = self.root.clone();
+                self.fill(root);
+            }
+            BAR_COLLAPSE => {
+                // Everything closed but the project itself, as Solution Explorer's Collapse All.
+                let root = self.root.clone();
+                self.fill(root);
+                collapse_below_top(self.tree);
+            }
+            BAR_FOLDER => {
+                if let Some(p) = self.selected_path().or_else(|| self.root.clone()) {
+                    let dir = if p.is_dir() { p } else { p.parent().map(Path::to_path_buf).unwrap_or(p) };
+                    crate::open_with_windows(&dir.to_string_lossy());
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Shows the project that holds `form` - or the form's folder, or nothing.
@@ -353,6 +428,17 @@ impl Explorer {
         win::set_text(self.hwnd, &format!("{} · {name}", t("Project")));
         self.entries.push(root.clone());
         let top = win::tree_add(self.tree, 0, &name, 4, 0);
+        // Dependencies: the crates Cargo.toml names, as Solution Explorer lists a project's packages.
+        let cargo = root.join("Cargo.toml");
+        let deps = std::fs::read_to_string(&cargo).map(|t| dependencies_of(&t)).unwrap_or_default();
+        if !deps.is_empty() && self.filter.is_empty() {
+            self.entries.push(cargo.clone());
+            let node = win::tree_add(self.tree, top, t("Dependencies"), 6, self.entries.len() as isize - 1);
+            for d in deps {
+                self.entries.push(cargo.clone());
+                win::tree_add(self.tree, node, &d, 7, self.entries.len() as isize - 1);
+            }
+        }
         self.add_folder(top, &root, 0);
         win::tree_expand(self.tree, top);
     }
@@ -375,7 +461,21 @@ impl Explorer {
             .collect();
         // Folders first, then files, each by name.
         items.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.to_lowercase().cmp(&b.1.to_lowercase())));
+        // A form's two Rust files go under it, as a WinForms form's code and designer files do.
+        let forms: Vec<String> = items.iter().filter_map(|(_, n, _)| n.strip_suffix(".phaiform").map(str::to_string)).collect();
+        let under_form = |n: &str| forms.iter().any(|f| n == format!("{f}.rs") || n == format!("{f}_ui.rs"));
+        let filter = self.filter.clone();
+        let matches = |n: &str| filter.is_empty() || n.to_lowercase().contains(&filter);
         for (is_dir, name, path) in items {
+            if !is_dir && under_form(&name) && filter.is_empty() {
+                continue;
+            }
+            if !is_dir && !matches(&name) {
+                continue;
+            }
+            if is_dir && !filter.is_empty() && !has_match(&path, &filter, depth + 1) {
+                continue;
+            }
             let icon = if is_dir {
                 0
             } else if name.ends_with(".phaiform") {
@@ -391,8 +491,16 @@ impl Explorer {
             let item = win::tree_add(self.tree, parent, &name, icon, self.entries.len() as isize - 1);
             if is_dir {
                 self.add_folder(item, &path, depth + 1);
-                if name == "src" {
+                if name == "src" || !filter.is_empty() {
                     win::tree_expand(self.tree, item);
+                }
+            } else if let Some(stem) = name.strip_suffix(".phaiform").filter(|_| filter.is_empty()) {
+                for child in [format!("{stem}.rs"), format!("{stem}_ui.rs")] {
+                    let p = dir.join(&child);
+                    if p.is_file() {
+                        self.entries.push(p);
+                        win::tree_add(self.tree, item, &child, 3, self.entries.len() as isize - 1);
+                    }
                 }
             }
         }
@@ -451,6 +559,59 @@ impl Explorer {
 }
 
 /// `MainWindow`-style names only: they become a struct and two file names.
+fn bar_items() -> Vec<(i32, &'static str, u16)> {
+    vec![(BAR_NEW_FORM, t("New form..."), glyph::NEW), (BAR_REFRESH, t("Refresh"), glyph::REFRESH), (BAR_COLLAPSE, t("Collapse All"), 0xF165), (BAR_FOLDER, t("Show in Explorer"), glyph::FOLDER)]
+}
+
+/// The crates a Cargo.toml's `[dependencies]` names.
+pub fn dependencies_of(cargo_toml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for line in cargo_toml.lines() {
+        let l = line.trim();
+        if l.starts_with('[') {
+            inside = l == "[dependencies]";
+            continue;
+        }
+        if inside {
+            if let Some((name, _)) = l.split_once('=') {
+                let name = name.trim();
+                if !name.is_empty() && !name.starts_with('#') {
+                    out.push(name.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Whether a folder holds, at some depth, a file whose name has these words.
+fn has_match(dir: &Path, words: &str, depth: usize) -> bool {
+    if depth > 6 {
+        return false;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else { return false };
+    read.flatten().any(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name == "target" {
+            return false;
+        }
+        if e.path().is_dir() { has_match(&e.path(), words, depth + 1) } else { name.to_lowercase().contains(words) }
+    })
+}
+
+/// Closes every item under the tree's top one.
+fn collapse_below_top(tree: HWND) {
+    unsafe {
+        let top = wm::SendMessageW(tree, 0x110A /* TVM_GETNEXTITEM */, Some(WPARAM(0 /* TVGN_ROOT */)), None).0;
+        let mut child = wm::SendMessageW(tree, 0x110A, Some(WPARAM(4 /* TVGN_CHILD */)), Some(LPARAM(top))).0;
+        while child != 0 {
+            wm::SendMessageW(tree, 0x1102 /* TVM_EXPAND */, Some(WPARAM(1 /* TVE_COLLAPSE */)), Some(LPARAM(child)));
+            child = wm::SendMessageW(tree, 0x110A, Some(WPARAM(1 /* TVGN_NEXT */)), Some(LPARAM(child))).0;
+        }
+    }
+}
+
 pub fn is_form_name(s: &str) -> bool {
     s.starts_with(|c: char| c.is_ascii_uppercase()) && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
@@ -526,6 +687,12 @@ mod tests {
         assert!(more.contains("mod text;\nmod customer_window;\nmod customer_window_ui;\n\nfn main"), "{more}");
         assert!(add_mods(&more, "customer_window").is_none());
         assert_eq!(add_mods("fn main() {}\n", "a").unwrap(), "mod a;\nmod a_ui;\nfn main() {}\n");
+    }
+
+    #[test]
+    fn dependencies_are_read_from_cargo_toml() {
+        let toml = "[package]\nname = \"a\"\n\n[dependencies]\nphai-ui = { path = \"x\" }\nwindows = \"0.62\"\n\n[profile.release]\nlto = true\n";
+        assert_eq!(dependencies_of(toml), ["phai-ui", "windows"]);
     }
 
     #[test]
