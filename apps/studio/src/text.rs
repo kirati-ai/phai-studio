@@ -306,6 +306,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Could not connect", "เชื่อมต่อไม่ได้"),
     ("Add Connection...", "เพิ่มการเชื่อมต่อ..."),
     ("Add Form...", "เพิ่มฟอร์ม..."),
+    ("Edit {0}", "แก้ไข {0}"),
     ("Start position", "ตำแหน่งเริ่มต้น"),
     ("Windows default", "ตามที่ Windows วาง"),
     ("Center screen", "กลางจอ"),

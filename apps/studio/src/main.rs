@@ -177,6 +177,10 @@ const ID_HELP_STUDIO: i32 = 287;
 const ID_HELP_RUST: i32 = 288;
 const ID_HELP_ERRORS: i32 = 289;
 const ID_ABOUT: i32 = 290;
+/// Theme > the project's style sheets, one item each; Theme > Edit the one in use.
+const ID_THEME_FILE: i32 = 760;
+const THEME_FILES_MAX: usize = 20;
+const ID_THEME_EDIT: i32 = 790;
 /// Project > Add Form: a second window for the project.
 const ID_ADD_FORM: i32 = 291;
 /// The Memory window's request.
@@ -1053,10 +1057,27 @@ fn build_menu() -> HMENU {
         add(data, ID_EXECUTE, t("Execute Query"), "Ctrl+Shift+E");
         sub(t("D&ata"), data);
         let th = wm::CreatePopupMenu().unwrap_or_default();
+        // The project's style sheets, the form's own ticked - choose one to use it.
+        let (sheets, current) = studio().map(|s| (s.theme_files(), s.doc.form.form.theme.clone())).unwrap_or_default();
+        for (i, name) in sheets.iter().enumerate().take(THEME_FILES_MAX) {
+            add(th, ID_THEME_FILE + i as i32, &name.replace('&', "&&"), "");
+            if current.as_deref() == Some(name.as_str()) {
+                wm::CheckMenuItem(th, (ID_THEME_FILE + i as i32) as u32, wm::MF_CHECKED.0);
+            }
+        }
+        if current.is_some() {
+            add(th, ID_THEME_EDIT, &tf("Edit {0}", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
+        }
+        if !sheets.is_empty() || current.is_some() {
+            sep(th);
+        }
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
         add(th, ID_THEME_IMPORT, t("Import CSS..."), "");
         sep(th);
         add(th, ID_THEME_NONE, t("No theme"), "");
+        if current.is_none() {
+            wm::CheckMenuItem(th, ID_THEME_NONE as u32, wm::MF_CHECKED.0);
+        }
         sub(t("&Theme"), th);
         let help = wm::CreatePopupMenu().unwrap_or_default();
         add(help, ID_HELP_STUDIO, t("Phai Studio Guide"), "F1");
@@ -1176,6 +1197,7 @@ impl Studio {
                 f.form.theme = (!text.trim().is_empty()).then(|| text.trim().to_string());
                 self.changed();
                 self.load_theme();
+                self.rebuild_menu();
                 return;
             }
             (_, None) => return,
@@ -3410,6 +3432,27 @@ impl Studio {
         self.say_status(&if keyless { tf("{0} is on the form - it has no primary key, so rows can only be added", &[&table]) } else { tf("{0} is on the form: its rows load when the window opens, Save writes changes back", &[&table]) });
     }
 
+    /// The project's style sheets (`.css` in the project folder and under `src`), each as the form
+    /// names its theme: relative to the form's folder, `/` between parts (`../theme.css`).
+    pub fn theme_files(&self) -> Vec<String> {
+        let Some(form_dir) = self.doc.path.as_deref().and_then(Path::parent).map(Path::to_path_buf) else { return vec![] };
+        let Some(root) = self.doc.path.as_deref().and_then(cargo::project_of) else { return vec![] };
+        let mut out = Vec::new();
+        for dir in [root.clone(), root.join("src")] {
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            let mut names: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("css"))).collect();
+            names.sort();
+            for p in names {
+                if let Some(rel) = relative_to(&form_dir, &p) {
+                    if !out.contains(&rel) {
+                        out.push(rel);
+                    }
+                }
+            }
+        }
+        out
+    }
+
     fn theme_from_standard(&mut self) {
         let Some(path) = self.doc.path.clone() else {
             win::message(Some(self.hwnd), t("Save the form first, so its theme can sit beside it."), "Phai Studio", wm::MB_ICONINFORMATION);
@@ -3422,6 +3465,7 @@ impl Studio {
         self.edit(|f| f.form.theme = Some("theme.css".into()));
         self.load_theme();
         self.refresh_props();
+        self.rebuild_menu();
     }
 
     fn theme_import(&mut self) {
@@ -3439,6 +3483,7 @@ impl Studio {
         self.edit(|f| f.form.theme = Some(name));
         self.load_theme();
         self.refresh_props();
+        self.rebuild_menu();
     }
 
     // --- projects, building and running --------------------------------------------------------
@@ -5780,6 +5825,22 @@ impl Studio {
                 words::set_thai(if id == ID_LANG { !words::is_thai() } else { id == ID_THAI });
                 self.relabel();
             }
+            id if (ID_THEME_FILE..ID_THEME_FILE + THEME_FILES_MAX as i32).contains(&id) => {
+                if let Some(name) = self.theme_files().get((id - ID_THEME_FILE) as usize).cloned() {
+                    self.edit(|f| f.form.theme = Some(name));
+                    self.load_theme();
+                    self.refresh_props();
+                    self.rebuild_menu();
+                }
+            }
+            ID_THEME_EDIT => {
+                if let (Some(p), Some(th)) = (self.doc.path.clone(), self.doc.form.form.theme.clone()) {
+                    let file = p.with_file_name("").join(&th);
+                    if file.is_file() {
+                        self.open_path(&file);
+                    }
+                }
+            }
             ID_THEME_NEW => self.theme_from_standard(),
             ID_THEME_IMPORT => self.theme_import(),
             ID_NEW_PROJECT => self.new_project(),
@@ -5920,6 +5981,7 @@ impl Studio {
                 self.edit(|f| f.form.theme = None);
                 self.load_theme();
                 self.refresh_props();
+                self.rebuild_menu();
             }
             _ => {}
         }
@@ -7320,6 +7382,20 @@ fn bind_project_files(dir: &Path, conn: &phai_data::Connection) -> std::io::Resu
         }
     }
     project::add_thai(&src, &[("Reload", "โหลดใหม่"), ("Save", "บันทึก")])
+}
+
+/// `file` as seen from `dir`: `theme.css`, or `../theme.css` one folder up. Both must be in the
+/// same tree (a project).
+fn relative_to(dir: &Path, file: &Path) -> Option<String> {
+    let d: Vec<_> = dir.components().collect();
+    let f: Vec<_> = file.components().collect();
+    let same = d.iter().zip(&f).take_while(|(a, b)| a == b).count();
+    if same == 0 {
+        return None;
+    }
+    let mut parts: Vec<String> = vec!["..".to_string(); d.len() - same];
+    parts.extend(f[same..].iter().map(|c| c.as_os_str().to_string_lossy().to_string()));
+    Some(parts.join("/"))
 }
 
 /// A table's name as a control's id: `Order Items` is `order_items`.
