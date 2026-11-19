@@ -17,6 +17,18 @@
 
 ## งานถัดไป (เรียงตามความสำคัญ)
 
+### 0. Properties ของฟอร์มให้ใกล้ WinForms (เจ้านายชี้ 2026-11-19: "ทำไมฉันไม่มีเหมือน c#")
+ตอนนี้ฟอร์มมีแค่ Name, Title, Font size, Theme, Size, Start position, Window state (`min_size` มีในไฟล์แต่ไม่ขึ้นใน Properties)
+เพิ่มใน `Form` (`crates/phai-form/src/model.rs`) + Properties (`apps/studio/src/props.rs`, `Key::Form*`) + codegen:
+- **สูง:** AcceptButton / CancelButton (Enter/Esc กด control ปุ่มนั้น), FormBorderStyle (sizable / fixed / dialog / none →
+  WS_THICKFRAME, WS_DLGFRAME), MaximizeBox / MinimizeBox (WS_MAXIMIZEBOX / WS_MINIMIZEBOX), Minimum/Maximum size
+  (WM_GETMINMAXINFO), Icon (.ico ในโปรเจกต์ → WM_SETICON), BackColor / ForeColor (เขียนเป็น CSS `window { }` แบบ control)
+- **กลาง:** TopMost (WS_EX_TOPMOST), ShowInTaskbar (WS_EX_TOOLWINDOW / owner), ControlBox (WS_SYSMENU), KeyPreview
+- **ต่ำ:** Opacity (WS_EX_LAYERED), BackgroundImage, AutoScroll, Padding, Cursor, AllowDrop
+- event ของฟอร์ม: Shown, FormClosing (ถามก่อนปิดได้), FormClosed, Resize, Activated/Deactivate (ทำพร้อมงานข้อ 1)
+- ไล่เทียบ property ของ control แต่ละชนิดกับ WinForms แบบเดียวกันด้วย (ตารางในบทสนทนา 2026-11-19: Button, TextBox,
+  CheckBox, ComboBox, ListView, DataGridView, DateTimePicker, NumericUpDown, TrackBar, PictureBox, TreeView, TabControl, Timer)
+
 ### 1. Events ให้ครบแบบ Visual Studio (สำคัญที่สุด)
 ตอนนี้ control มี event เดียว (`Control::handler()` / `Kind::event()` ใน `crates/phai-form/src/model.rs`):
 ปุ่ม Click, ช่องกรอก Change, list/combo Select, timer Tick. หน้า Events (⚡) ใน `apps/studio/src/props.rs`
