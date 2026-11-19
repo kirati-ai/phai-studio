@@ -366,6 +366,53 @@ pub fn glyph_icon(glyph: u16, size: i32, colour: Color) -> Option<HICON> {
     from_bgra(&glyph_pixels(glyph, size, colour)?, size, size, 0, 0, true)
 }
 
+/// A glyph as a menu item's picture (`MENUITEMINFOW::hbmpItem`): the size of a menu's check mark,
+/// in Windows' icon grey. Made once per glyph and kept - menus are built again often.
+pub fn menu_bitmap(glyph: u16) -> Option<Gdi::HBITMAP> {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static MADE: Mutex<Option<HashMap<u16, isize>>> = Mutex::new(None);
+    let mut made = MADE.lock().unwrap_or_else(|e| e.into_inner());
+    let map = made.get_or_insert_with(HashMap::new);
+    if let Some(h) = map.get(&glyph) {
+        return Some(Gdi::HBITMAP(*h as *mut _));
+    }
+    let size = unsafe { wm::GetSystemMetrics(wm::SM_CXMENUCHECK) }.max(16);
+    let pixels = glyph_pixels(glyph, size, Color::rgb(0x3c, 0x3c, 0x3c))?;
+    unsafe {
+        let info = Gdi::BITMAPINFO {
+            bmiHeader: Gdi::BITMAPINFOHEADER { biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32, biWidth: size, biHeight: -size, biPlanes: 1, biBitCount: 32, biCompression: 0, ..Default::default() },
+            ..Default::default()
+        };
+        let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+        let bmp = Gdi::CreateDIBSection(None, &info, Gdi::DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+        if bits.is_null() {
+            return None;
+        }
+        // Windows draws a menu's 32-bit picture with premultiplied alpha.
+        let out = std::slice::from_raw_parts_mut(bits as *mut u8, pixels.len());
+        for (o, p) in out.chunks_exact_mut(4).zip(pixels.chunks_exact(4)) {
+            let a = p[3] as u32;
+            o[0] = (p[0] as u32 * a / 255) as u8;
+            o[1] = (p[1] as u32 * a / 255) as u8;
+            o[2] = (p[2] as u32 * a / 255) as u8;
+            o[3] = p[3];
+        }
+        map.insert(glyph, bmp.0 as isize);
+        Some(bmp)
+    }
+}
+
+/// Puts a glyph beside a menu item, found by its command id.
+pub fn set_menu_glyph(menu: wm::HMENU, id: u32, glyph: u16) {
+    if let Some(bmp) = menu_bitmap(glyph) {
+        let info = wm::MENUITEMINFOW { cbSize: std::mem::size_of::<wm::MENUITEMINFOW>() as u32, fMask: wm::MIIM_BITMAP, hbmpItem: bmp, ..Default::default() };
+        unsafe {
+            let _ = wm::SetMenuItemInfoW(menu, id, false, &info);
+        }
+    }
+}
+
 /// The program's own icon, from its resources (the `.ico` its `build.rs` embeds as icon 1), at
 /// `size` pixels - Windows picks the best of the sizes inside. None when the program has none.
 pub fn app_icon(size: i32) -> Option<HICON> {
