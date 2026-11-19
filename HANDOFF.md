@@ -68,6 +68,10 @@
   ExpandAll/CollapseAll · Timer Start/Stop · ProgressBar PerformStep/Increment · RichText LoadFile/SaveFile/Find
   **สำคัญ:** แบบ Invoke/BeginInvoke - อัปเดตหน้าจอจาก thread อื่นอย่างปลอดภัย (มือใหม่จะติดเรื่องนี้)
   ที่เหลือ: ทุกชนิดมี `.hwnd()` (แบบ `Handle` ของ C#) เรียก phai-ui / Win32 เองได้
+  **ไม่ต้องรอใครขอ** (เจ้านาย: "ใช้กันอยู่สองคน"): ทำ `docs/winforms-parity.md` แบบ `docs/vs-features.md` -
+  ทุก control แจง properties / methods / events จากเอกสาร Microsoft แล้วติ๊กจนครบ (ตัวที่ไม่มีความหมายใน Rust เขียนเหตุผล)
+  และ dogfooding: ทำโปรแกรมจริงของ Monrak ด้วย Phai Studio (เช่นหน้าจอ Desktop Server / Desktop Access ที่เป็น C#)
+  ขาดอะไรระหว่างทำ เพิ่มทันที - checklist บอกว่าขาดอะไร, การใช้จริงบอกว่าควรทำอะไรก่อน
 - แบบ C#: `struct` + `impl` = class, `trait Control` = ส่วนที่ทุก control มีร่วม (Enabled, Visible, Focus, Show/Hide)
 - เสร็จแล้ว dropdown ของ Properties แสดงชื่อชนิดเต็มแบบ VS (`ok  phai_ui::Button`) และ rust-analyzer เติม methods ให้แบบ IntelliSense
 
