@@ -8879,6 +8879,70 @@ impl MainWindowEvents for MainWindow {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// MDI in a real project: the main form an MDI container, two child forms opened inside it,
+    /// tiled side by side, one closed - the program and the other going on.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn mdi_child_forms_open_inside_their_container() {
+        use phai_form::HasProps;
+        let dir = std::env::temp_dir().join(format!("phai-mdi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        f.form.set_prop("is_mdi_container", Some(phai_form::toml::Value::Boolean(true)));
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("phai_ui::mdi::client(hwnd)") && generated.contains("pub fn layout_mdi"));
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
+        let (_, declared) = write_new_form(&dir, &form_type_name("Document Window")).unwrap();
+        assert!(declared);
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use crate::document_window::DocumentWindow;
+use crate::document_window_ui::DocumentWindowUi;
+use phai_ui::mdi;
+
+#[derive(Default)]
+pub struct MainWindow {}
+
+impl MainWindowEvents for MainWindow {
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let a = DocumentWindowUi::show_mdi_child(ui.hwnd, DocumentWindow::default());
+        let b = DocumentWindowUi::show_mdi_child(ui.hwnd, DocumentWindow::default());
+        let mut bits = 0;
+        if ui.mdi_children().len() == 2 && mdi::is_child(a) && mdi::parent_of(b) == Some(ui.hwnd) { bits |= 1 }
+        if ui.active_mdi_child() == Some(b) { bits |= 2 }
+        ui.layout_mdi("tile_vertical");
+        let (ra, rb) = (phai_ui::win::rect_in_parent(a), phai_ui::win::rect_in_parent(b));
+        if ra.top == rb.top && (ra.right <= rb.left || rb.right <= ra.left) { bits |= 4 }
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::SendMessageW(a, windows::Win32::UI::WindowsAndMessaging::WM_CLOSE, None, None);
+        }
+        if ui.mdi_children() == vec![b] && unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(ui.hwnd)) }.as_bool() { bits |= 8 }
+        if std::env::var_os("PHAI_SHOT").is_none() {
+            std::process::exit(if bits == 15 { 42 } else { 1000 + bits });
+        }
+        let _ = DocumentWindowUi::show_mdi_child(ui.hwnd, DocumentWindow::default());
+        ui.layout_mdi("cascade");
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        if let Some(png) = std::env::var_os("PHAI_SHOT_KEEP") {
+            let _ = std::process::Command::new(&exe).env("PHAI_SHOT", png).status();
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A real project with a SQLite table on its form: built, its Thai test passing, and run -
     /// the grid filled when the window opens, a cell changed and saved, the file holding it.
     #[test]

@@ -2823,6 +2823,10 @@ pub fn run_loop(dialog: Option<HWND>) {
                     continue;
                 }
             }
+            // Ctrl+F4, Ctrl+Tab among MDI child forms.
+            if crate::mdi::translate(&msg) {
+                continue;
+            }
             let _ = wm::TranslateMessage(&msg);
             wm::DispatchMessageW(&msg);
         }
@@ -3006,6 +3010,10 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             }
         }
         _ => {}
+    }
+    // An MDI frame or child form: the handling Windows asks of those.
+    if let Some(r) = crate::mdi::def(hwnd, msg, w, l) {
+        return r;
     }
     unsafe { wm::DefWindowProcW(hwnd, msg, w, l) }
 }

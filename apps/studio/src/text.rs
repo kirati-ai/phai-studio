@@ -878,6 +878,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Split container", "แบ่งสองช่อง"),
     ("Vertical: the panes side by side, the bar standing up. Horizontal: one over the other.", "แนวตั้ง: สองช่องซ้ายขวา เส้นแบ่งตั้ง; แนวนอน: ช่องบนกับช่องล่าง"),
     ("The first pane's width (or height); 0 is half.", "ความกว้าง (หรือความสูง) ของช่องแรก; 0 คือครึ่งหนึ่ง"),
+    ("Other forms open inside it (show_mdi_child), cascaded or tiled.", "ฟอร์มอื่นเปิดข้างในได้ (show_mdi_child) เรียงซ้อนหรือเรียงต่อกัน"),
 ];
 
 #[cfg(test)]

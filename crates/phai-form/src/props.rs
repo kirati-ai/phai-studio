@@ -167,6 +167,7 @@ pub const FORM: &[Spec] = &[
     spec("maximize_box", "MaximizeBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's Maximize button."),
     spec("minimize_box", "MinimizeBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's Minimize button."),
     spec("control_box", "ControlBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's buttons and its menu; off, none of them."),
+    spec("is_mdi_container", "IsMdiContainer", "Window Style", Ty::Bool, "false", &[], How::Code, "Other forms open inside it (show_mdi_child), cascaded or tiled."),
     spec("top_most", "TopMost", "Window Style", Ty::Bool, "false", &[], How::Code, "It stays over every other window."),
     spec("show_in_taskbar", "ShowInTaskbar", "Window Style", Ty::Bool, "true", &[], How::Code, "It has a button on the taskbar."),
     spec("opacity", "Opacity", "Window Style", Ty::Int(10, 100), "100", &[], How::Code, "How solid it is, percent; less shows what is behind."),
