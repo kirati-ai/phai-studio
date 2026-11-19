@@ -862,6 +862,19 @@ pub static THAI: &[(&str, &str)] = &[
     ("Month calendar", "ปฏิทินเดือน"),
     ("One line chosen at a time, or several with Ctrl and Shift.", "เลือกได้ทีละบรรทัด หรือหลายบรรทัดด้วย Ctrl และ Shift"),
     ("What it takes: 0 a digit, 9 a digit or none, L a letter, A a letter or digit, & anything; the rest stays as written - 000-000-0000.", "รับอะไรได้บ้าง: 0 ตัวเลข, 9 ตัวเลขหรือว่าง, L ตัวอักษร, A ตัวอักษรหรือตัวเลข, & อะไรก็ได้; ที่เหลือคงไว้ตามที่เขียน เช่น 000-000-0000"),
+    ("Open file dialog", "หน้าต่างเปิดไฟล์"),
+    ("Save file dialog", "หน้าต่างบันทึกไฟล์"),
+    ("Folder dialog", "หน้าต่างเลือกโฟลเดอร์"),
+    ("Colour dialog", "หน้าต่างเลือกสี"),
+    ("Font dialog", "หน้าต่างเลือกฟอนต์"),
+    ("Error provider", "ตัวบอกข้อผิดพลาด"),
+    ("Notify icon", "ไอคอนมุมจอ"),
+    ("The words in the dialog's title bar.", "ข้อความบนแถบชื่อของหน้าต่าง"),
+    ("The kinds of file it shows: Text files|*.txt|All files|*.*", "ชนิดไฟล์ที่แสดง เช่น Text files|*.txt|All files|*.*"),
+    ("The folder it opens in; empty: the one used last.", "โฟลเดอร์ที่เปิดขึ้นมา; ว่าง = ที่ใช้ครั้งล่าสุด"),
+    ("Added to a name typed without one: txt.", "นามสกุลที่เติมให้เมื่อพิมพ์ชื่อไม่มีนามสกุล เช่น txt"),
+    ("Several files can be chosen: show_dialog_multi().", "เลือกได้หลายไฟล์: show_dialog_multi()"),
+    ("The icon in the corner clicked twice - as often, to show the window again.", "ไอคอนมุมจอถูกดับเบิลคลิก - มักใช้เพื่อแสดงหน้าต่างอีกครั้ง"),
 ];
 
 #[cfg(test)]

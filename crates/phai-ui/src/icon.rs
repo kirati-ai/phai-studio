@@ -103,6 +103,13 @@ pub mod glyph {
     pub const PANEL: u16 = 0xE7C3; // Page
     pub const MASKED: u16 = 0xE8C1; // Characters
     pub const MONTH: u16 = 0xE8BF; // CalendarDay
+    pub const OPEN_FILE: u16 = 0xE8E5; // OpenFile
+    pub const SAVE_FILE: u16 = 0xE792; // SaveAs
+    pub const FOLDER_PICK: u16 = 0xE8B7; // Folder
+    pub const PALETTE: u16 = 0xE790; // Color
+    pub const FONT_PICK: u16 = 0xE8D2; // Font
+    pub const ERROR_MARK: u16 = 0xE783; // Error
+    pub const TRAY: u16 = 0xE7E7; // Taskbar
     pub const PAUSE: u16 = 0xE769;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).

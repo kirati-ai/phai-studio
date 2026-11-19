@@ -137,7 +137,7 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
         Kind::Masked => phai_ui::extra::masked(parent, c.word("mask").unwrap_or(""), text, id, font),
         Kind::Calendar => phai_ui::extra::calendar(parent, id, font),
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
-        Kind::Timer | Kind::ContextMenu => {
+        _ => {
             let h = win::label(parent, "", id, font);
             win::show(h, false);
             h

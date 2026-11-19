@@ -7,6 +7,7 @@
 //! | module | what it is |
 //! | --- | --- |
 //! | [`win`] | windows, fonts, DPI, buttons, checkboxes, radios, edits, lists, toolbar, the frame |
+//! | [`components`] | file, folder, colour and font dialogs; ErrorProvider; NotifyIcon |
 //! | [`extra`] | ListBox, CheckedListBox, LinkLabel, MaskedTextBox, MonthCalendar |
 //! | [`controls`] | group frame, tabs, status bar - drawn whole by the library |
 //! | [`theme`] | themes as CSS; the built-in light and dark ones |
@@ -20,6 +21,7 @@
 //! A program needs Common Controls 6 in its manifest, or Windows hands it the old controls:
 //! see `apps/gallery/build.rs`.
 
+pub mod components;
 pub mod controls;
 pub mod ctl;
 pub mod dialogs;

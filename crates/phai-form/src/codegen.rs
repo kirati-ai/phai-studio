@@ -54,6 +54,14 @@ fn dock_code(c: &Control) -> &'static str {
     }
 }
 
+/// A property of words as the generated code has it: `t("...")`, or `""` for none.
+fn words(c: &Control, name: &str) -> String {
+    match c.word(name).filter(|s| !s.is_empty()) {
+        Some(s) => format!("t({})", lit(s)),
+        None => "\"\"".to_string(),
+    }
+}
+
 fn text_of(c: &Control) -> String {
     c.text.clone().unwrap_or_default()
 }
@@ -124,6 +132,13 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::Link => "LinkLabel",
         Kind::Masked => "MaskedTextBox",
         Kind::Calendar => "MonthCalendar",
+        Kind::OpenFile => "OpenFileDialog",
+        Kind::SaveFile => "SaveFileDialog",
+        Kind::FolderDialog => "FolderBrowserDialog",
+        Kind::ColorDialog => "ColorDialog",
+        Kind::FontDialog => "FontDialog",
+        Kind::ErrorProvider => "ErrorProvider",
+        Kind::NotifyIcon => "NotifyIcon",
     }
 }
 
@@ -458,6 +473,13 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Link => format!("phai_ui::extra::link_label(hwnd, {text}, {id}, {font})"),
             Kind::Masked => format!("phai_ui::extra::masked(hwnd, {}, {}, {id}, {font})", lit(c.word("mask").unwrap_or("")), lit(&text_of(c))),
             Kind::Calendar => format!("phai_ui::extra::calendar(hwnd, {id}, {font})"),
+            Kind::OpenFile => format!("phai_ui::ctl::OpenFileDialog::new(hwnd, {}, {}, {}, {}, {})", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or("")), c.flag("multiselect", false)),
+            Kind::SaveFile => format!("phai_ui::ctl::SaveFileDialog::new(hwnd, {}, {}, {}, {})", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or(""))),
+            Kind::FolderDialog => format!("phai_ui::ctl::FolderBrowserDialog::new(hwnd, {}, {})", words(c, "title"), lit(c.word("initial_directory").unwrap_or(""))),
+            Kind::ColorDialog => "phai_ui::ctl::ColorDialog::new(hwnd)".to_string(),
+            Kind::FontDialog => "phai_ui::ctl::FontDialog::new(hwnd)".to_string(),
+            Kind::ErrorProvider => "phai_ui::ctl::ErrorProvider::new(hwnd)".to_string(),
+            Kind::NotifyIcon => format!("phai_ui::ctl::NotifyIcon::new(hwnd, {id} as u32, {}, {})", if text_of(c).is_empty() { "\"\"".to_string() } else { text.clone() }, c.visible != Some(false)),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
             Kind::Timer => format!("phai_ui::ctl::Timer::new(hwnd, {id}, {}, {})", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
@@ -521,7 +543,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            toolbar,");
     }
     for c in &f.control {
-        if c.kind == Kind::Timer {
+        if c.kind == Kind::Timer || (c.kind.is_component() && c.kind != Kind::ContextMenu) {
             let _ = writeln!(w, "            {},", c.id);
         } else {
             let _ = writeln!(w, "            {}: phai_ui::ctl::{}({}),", c.id, ctl_type(c.kind), c.id);
@@ -810,27 +832,59 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     // A right-click on a control with a context menu: the menu, its choice coming as WM_COMMAND.
-    let with_menu: Vec<&Control> = f.control.iter().filter(|c| c.context_menu.is_some()).collect();
+    let menu_of = |c: &Control| f.control.iter().find(|m| m.kind == Kind::ContextMenu && Some(&m.id) == c.context_menu.as_ref());
+    // A context menu at (x, y), its choices coming as WM_COMMAND.
+    let popup = |w: &mut String, menu: &Control, pad: &str| {
+        let _ = writeln!(w, "{pad}unsafe {{");
+        let _ = writeln!(w, "{pad}    let m = wm::CreatePopupMenu().unwrap_or_default();");
+        for (id, label) in menu.menu_items() {
+            if id.is_empty() {
+                let _ = writeln!(w, "{pad}    let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);");
+            } else {
+                let _ = writeln!(w, "{pad}    let s = wide(t({}));", lit(&label));
+                let _ = writeln!(w, "{pad}    let _ = wm::AppendMenuW(m, wm::MF_STRING, {} as usize, PCWSTR(s.as_ptr()));", const_name(&id));
+            }
+        }
+        let _ = writeln!(w, "{pad}    let _ = wm::TrackPopupMenu(m, wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, hwnd, None);");
+        let _ = writeln!(w, "{pad}    let _ = wm::DestroyMenu(m);");
+        let _ = writeln!(w, "{pad}}}");
+    };
+    // The icon in the corner: a click, a double-click, its menu on a right-click.
+    let trays: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::NotifyIcon).collect();
+    if !trays.is_empty() {
+        let _ = writeln!(w, "        phai_ui::components::WM_TRAY => {{");
+        let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
+        let _ = writeln!(w, "            let what = (l.0 & 0xFFFF) as u32;");
+        for c in &trays {
+            let _ = writeln!(w, "            if w.0 == CONTROL_{} as usize {{", c.id.to_ascii_uppercase());
+            if let Some(h) = &c.on_click {
+                let _ = writeln!(w, "                if what == wm::WM_LBUTTONUP {{ events.{h}(ui); }}");
+            }
+            if let Some(h) = c.events.get("double_click") {
+                let _ = writeln!(w, "                if what == wm::WM_LBUTTONDBLCLK {{ events.{h}(ui); }}");
+            }
+            if let Some(menu) = menu_of(c) {
+                let _ = writeln!(w, "                if what == wm::WM_RBUTTONUP {{");
+                let _ = writeln!(w, "                    let mut p = windows::Win32::Foundation::POINT::default();");
+                let _ = writeln!(w, "                    unsafe {{ let _ = wm::GetCursorPos(&mut p); let _ = wm::SetForegroundWindow(hwnd); }}");
+                let _ = writeln!(w, "                    let (x, y) = (p.x, p.y);");
+                popup(w, menu, "                    ");
+                let _ = writeln!(w, "                }}");
+            }
+            let _ = writeln!(w, "            }}");
+        }
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    let with_menu: Vec<&Control> = f.control.iter().filter(|c| c.context_menu.is_some() && c.kind != Kind::NotifyIcon).collect();
     if !with_menu.is_empty() {
         let _ = writeln!(w, "        wm::WM_CONTEXTMENU => {{");
         let _ = writeln!(w, "            let from = w.0 as isize;");
         let _ = writeln!(w, "            let (x, y) = (win::loword(l.0 as usize) as i16 as i32, win::hiword(l.0 as usize) as i16 as i32);");
         for c in with_menu {
-            let Some(menu) = f.control.iter().find(|m| m.kind == Kind::ContextMenu && Some(&m.id) == c.context_menu.as_ref()) else { continue };
+            let Some(menu) = menu_of(c) else { continue };
             let _ = writeln!(w, "            if from == host.ui.{}.hwnd().0 as isize {{", c.id);
-            let _ = writeln!(w, "                unsafe {{");
-            let _ = writeln!(w, "                    let m = wm::CreatePopupMenu().unwrap_or_default();");
-            for (id, label) in menu.menu_items() {
-                if id.is_empty() {
-                    let _ = writeln!(w, "                    let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);");
-                } else {
-                    let _ = writeln!(w, "                    let s = wide(t({}));", lit(&label));
-                    let _ = writeln!(w, "                    let _ = wm::AppendMenuW(m, wm::MF_STRING, {} as usize, PCWSTR(s.as_ptr()));", const_name(&id));
-                }
-            }
-            let _ = writeln!(w, "                    let _ = wm::TrackPopupMenu(m, wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, hwnd, None);");
-            let _ = writeln!(w, "                    let _ = wm::DestroyMenu(m);");
-            let _ = writeln!(w, "                }}");
+            popup(w, menu, "                ");
             let _ = writeln!(w, "                return LRESULT(0);");
             let _ = writeln!(w, "            }}");
         }
@@ -1044,6 +1098,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_DESTROY => {{");
+    for c in f.control.iter().filter(|c| c.kind == Kind::NotifyIcon) {
+        let _ = writeln!(w, "            host.ui.{}.remove();", c.id);
+    }
     if let Some(h) = form_ev("closed") {
         let _ = writeln!(w, "            host.events.{h}(&host.ui);");
     }
