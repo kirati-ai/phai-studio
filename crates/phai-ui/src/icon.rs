@@ -391,7 +391,7 @@ pub fn menu_bitmap(glyph: u16) -> Option<Gdi::HBITMAP> {
         }
         // Windows draws a menu's 32-bit picture with premultiplied alpha.
         let out = std::slice::from_raw_parts_mut(bits as *mut u8, pixels.len());
-        for (o, p) in out.chunks_exact_mut(4).zip(pixels.chunks_exact(4)) {
+        for (o, p) in out.as_chunks_mut::<4>().0.iter_mut().zip(pixels.as_chunks::<4>().0) {
             let a = p[3] as u32;
             o[0] = (p[0] as u32 * a / 255) as u8;
             o[1] = (p[1] as u32 * a / 255) as u8;
