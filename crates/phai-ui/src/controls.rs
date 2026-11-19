@@ -94,7 +94,7 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                 let st = win::style_of(h, Kind::Group, State::default());
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
-                win::fill(dc, &r, win::window_background_for(h));
+                win::paint_behind(h, dc, &r);
                 let text = win::text_of(h);
                 let (tw, th) = win::measure(h, win::css_font(h, &st).unwrap_or(s.font), &text);
                 let top = th / 2;
@@ -104,7 +104,7 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                     let x = px(h, 10);
                     let gap = px(h, 4);
                     let back = RECT { left: x - gap, top: r.top, right: x + tw + gap, bottom: r.top + th };
-                    win::fill(dc, &back, win::window_background_for(h));
+                    win::paint_behind(h, dc, &back);
                     let mut tr = RECT { left: x, top: r.top, right: x + tw, bottom: r.top + th };
                     win::draw_text_styled(dc, h, &text, &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
                 }
@@ -381,7 +381,7 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 let st = win::style_of(h, Kind::StatusBar, State::default());
-                win::fill(dc, &r, st.background_or(win::window_background_for(h)));
+                win::fill_style(dc, &r, &st, win::window_background_for(h));
                 let rule = RECT { bottom: r.top + 1, ..r };
                 win::fill(dc, &rule, st.border_or(Color::rgb(229, 229, 229)));
                 let fg = st.color_or(win::window_text_for(h));
@@ -603,7 +603,7 @@ extern "system" fn splitter_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRE
                 let dc = Gdi::HDC(w.0 as *mut _);
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
-                win::fill(dc, &r, win::window_background_for(h));
+                win::paint_behind(h, dc, &r);
                 // A hairline in the middle, as a divider.
                 let rule = if across { RECT { left: r.right / 2, right: r.right / 2 + 1, ..r } } else { RECT { top: r.bottom / 2, bottom: r.bottom / 2 + 1, ..r } };
                 win::fill(dc, &rule, win::style_of(h, Kind::Tabs, State::default()).border_or(Color::rgb(229, 229, 229)));

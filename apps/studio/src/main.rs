@@ -1219,6 +1219,8 @@ impl Studio {
                         "border-radius" => (Key::Radius, v.trim_end_matches("px").to_string()),
                         "font-weight" => (Key::Bold, if v == "bold" || v.parse::<i32>().is_ok_and(|n| n >= 600) { "True" } else { "False" }.to_string()),
                         "border-width" => (Key::More("border_width"), v.trim_end_matches("px").to_string()),
+                        "background-image" => (Key::More("gradient"), v.to_string()),
+                        "box-shadow" => (Key::More("shadow"), v.to_string()),
                         "accent-color" => (Key::More("accent_color"), v.to_string()),
                         _ => (Key::More("icon_color"), v.to_string()),
                     };
@@ -8410,6 +8412,8 @@ impl MainWindowEvents for MainWindow {
         go.back_color = Some("#ffffff".into());
         go.states.insert("hover".into(), "background: #000000".into());
         go.set_prop("transition", Some(phai_form::toml::Value::String("300ms linear".into())));
+        go.set_prop("gradient", Some(phai_form::toml::Value::String("linear-gradient(to bottom, #ffffff, #dde3ea)".into())));
+        go.set_prop("shadow", Some(phai_form::toml::Value::String("0 2px 6px rgba(0, 0, 0, 0.25)".into())));
         f.control.push(go);
         assert!(f.check().is_empty(), "{:?}", f.check());
         assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
@@ -8440,7 +8444,11 @@ impl MainWindowEvents for MainWindow {
         std::thread::sleep(std::time::Duration::from_millis(250));
         if bg(win::style_animated(h, Kind::Button, hover)) == Color::rgb(0, 0, 0) { bits |= 16 }
         if win::explain_of(h, Kind::Button, hover).iter().any(|o| o.property == "background" && o.source == "own" && o.selector == "#go:hover") { bits |= 32 }
-        std::process::exit(if bits == 63 { 42 } else { 1000 + bits });
+        // Its own gradient and shadow when nothing covers them; a state's plain colour over the gradient.
+        let normal = win::style_of(h, Kind::Button, State::default());
+        if normal.gradient.as_ref().is_some_and(|g| g.stops.len() == 2) && normal.shadow.flatten().is_some_and(|s| s.blur == 6) { bits |= 64 }
+        if win::style_of(h, Kind::Button, hover).gradient.is_none() { bits |= 128 }
+        std::process::exit(if bits == 255 { 42 } else { 1000 + bits });
     }
 }
 "##;

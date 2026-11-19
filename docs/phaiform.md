@@ -158,6 +158,13 @@ transition = "200ms ease-out"                                  # สีค่อ
 states = { hover = "background: #0b5d43", pressed = "color: #ffcc00" }   # = CSS #save:hover { } ...
 ```
 
+เงาและไล่สี (แบบ style ของ ImageStyler) ใช้ได้ทั้งใน theme.css, แท็บ Style และ Theme Editor:
+
+```css
+button.glass { background: linear-gradient(to bottom, #34c08f, #0e5c41); box-shadow: 0 3px 6px rgba(0,0,0,.35); }
+window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* label, group โปร่งใสให้เห็นพื้น */
+```
+
 สถานะ: `hover` `pressed` `focus` `disabled` `checked` — ลำดับชั้น: ธีม → `theme.css` → class → ค่าของ control
 (Properties) → ค่าตามสถานะของ control; codegen ส่ง `#id:state { }` ทั้งหมดให้ `phai_ui::theme::set_state_rules`
 แท็บ Style แสดงค่าจริงของแต่ละ property ในสถานะที่เลือก (ตั้งเองเป็นตัวหนา) พร้อมที่มา เช่น

@@ -95,6 +95,68 @@ pub struct Style {
     pub icon_color: Option<Color>,
     /// CSS `transition`: colours change over this many milliseconds, along this curve.
     pub transition: Option<(i32, Easing)>,
+    /// `background-image: linear-gradient(...)` (or `background:` one): `background` is then its
+    /// first colour, for what Windows draws itself.
+    pub gradient: Option<Gradient>,
+    /// `box-shadow`; `Some(None)` is `box-shadow: none`, over a shadow a rule below gave.
+    pub shadow: Option<Option<Shadow>>,
+}
+
+/// CSS's `linear-gradient(angle, colour [stop%], ...)`: `angle` in degrees as CSS has them - 0 up,
+/// 90 right, 180 (the default) down.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Gradient {
+    pub angle: f32,
+    pub stops: Vec<(Color, f32)>,
+}
+
+impl Gradient {
+    /// The colour at `t`, 0 to 1 along it.
+    pub fn at(&self, t: f32) -> Color {
+        let t = t.clamp(0.0, 1.0);
+        let s = &self.stops;
+        if t <= s[0].1 {
+            return s[0].0;
+        }
+        for w in s.windows(2) {
+            if t <= w[1].1 {
+                let span = (w[1].1 - w[0].1).max(1e-6);
+                return w[0].0.mix(w[1].0, (t - w[0].1) / span);
+            }
+        }
+        s[s.len() - 1].0
+    }
+
+    /// As CSS writes it.
+    pub fn css(&self) -> String {
+        let stops: Vec<String> = self.stops.iter().map(|(c, p)| format!("{} {}%", color_css(*c), (p * 100.0).round())).collect();
+        format!("linear-gradient({}deg, {})", self.angle.round(), stops.join(", "))
+    }
+}
+
+/// CSS's `box-shadow: x y blur spread colour` - design pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    pub x: i32,
+    pub y: i32,
+    pub blur: i32,
+    pub spread: i32,
+    pub color: Color,
+}
+
+impl Shadow {
+    pub fn css(&self) -> String {
+        format!("{}px {}px {}px {}px {}", self.x, self.y, self.blur, self.spread, color_css(self.color))
+    }
+}
+
+/// A colour as CSS writes it: `#rrggbb`, or `rgba(...)` when it shows through.
+pub fn color_css(c: Color) -> String {
+    if c.a == 255 {
+        format!("#{:02x}{:02x}{:02x}", c.r, c.g, c.b)
+    } else {
+        format!("rgba({}, {}, {}, {:.2})", c.r, c.g, c.b, c.a as f32 / 255.0)
+    }
 }
 
 /// How a transition moves from the old colour to the new - CSS's timing functions.
@@ -184,9 +246,13 @@ impl Style {
     /// This style with what `top` says laid over it - a control's own properties over the theme.
     pub fn under(mut self, top: &Style) -> Style {
         macro_rules! over {
-            ($($f:ident),*) => { $( if top.$f.is_some() { self.$f = top.$f; } )* };
+            ($($f:ident),*) => { $( if top.$f.is_some() { self.$f = top.$f.clone(); } )* };
         }
-        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color, transition);
+        // A colour of its own over a gradient below: the colour, as CSS's `background` shorthand.
+        if top.background.is_some() && top.gradient.is_none() {
+            self.gradient = None;
+        }
+        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color, transition, gradient, shadow);
         self
     }
 
@@ -248,6 +314,8 @@ enum Value {
     Color(Color),
     Number(i32),
     Transition(i32, Easing),
+    Gradient(Gradient),
+    Shadow(Option<Shadow>),
 }
 
 #[derive(Clone, Debug)]
@@ -310,6 +378,8 @@ enum Prop {
     AccentColor,
     IconColor,
     Transition,
+    BackgroundImage,
+    BoxShadow,
 }
 
 impl Prop {
@@ -325,6 +395,8 @@ impl Prop {
             "accent-color" => Prop::AccentColor,
             "icon-color" => Prop::IconColor,
             "transition" => Prop::Transition,
+            "background-image" => Prop::BackgroundImage,
+            "box-shadow" => Prop::BoxShadow,
             _ => return None,
         })
     }
@@ -341,6 +413,8 @@ impl Prop {
             Prop::AccentColor => "accent-color",
             Prop::IconColor => "icon-color",
             Prop::Transition => "transition",
+            Prop::BackgroundImage => "background-image",
+            Prop::BoxShadow => "box-shadow",
         }
     }
 
@@ -417,7 +491,10 @@ impl Theme {
             for (name, value, line) in decls {
                 lines.push(line);
                 let err = |message: String| ThemeError { line, message: if source.is_empty() { message } else { format!("{source}: {message}") } };
-                let prop = Prop::parse(&name).ok_or_else(|| err(format!("unknown property {name}")))?;
+                let mut prop = Prop::parse(&name).ok_or_else(|| err(format!("unknown property {name}")))?;
+                if prop == Prop::Background && value.trim_start().starts_with("linear-gradient(") {
+                    prop = Prop::BackgroundImage;
+                }
                 let text = resolve_vars(&value, &vars, line, 0).map_err(|e| err(e.message))?;
                 let value = parse_value(prop, &text).ok_or_else(|| err(format!("{name}: cannot read {text:?}")))?;
                 out.push((prop, value));
@@ -489,7 +566,15 @@ impl Theme {
         for (_, _, r) in hits {
             for (p, v) in &r.decls {
                 match (p, v) {
-                    (Prop::Background, Value::Color(c)) => s.background = Some(*c),
+                    (Prop::Background, Value::Color(c)) => {
+                        s.background = Some(*c);
+                        s.gradient = None;
+                    }
+                    (Prop::BackgroundImage, Value::Gradient(g)) => {
+                        s.background = Some(g.stops[0].0);
+                        s.gradient = Some(g.clone());
+                    }
+                    (Prop::BoxShadow, Value::Shadow(sh)) => s.shadow = Some(*sh),
                     (Prop::Color, Value::Color(c)) => s.color = Some(*c),
                     (Prop::BorderColor, Value::Color(c)) => s.border_color = Some(*c),
                     (Prop::AccentColor, Value::Color(c)) => s.accent_color = Some(*c),
@@ -810,8 +895,97 @@ fn resolve_vars(raw: &str, vars: &HashMap<String, String>, line: usize, depth: u
     resolve_vars(&joined, vars, line, depth + 1)
 }
 
+/// `text` cut at `sep` outside brackets: the parts of `rgb(1, 2, 3), red`.
+fn split_top(text: &str, sep: char) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0i32, 0);
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            c if c == sep && depth == 0 => {
+                out.push(&text[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(&text[start..]);
+    out.into_iter().map(str::trim).filter(|s| !s.is_empty()).collect()
+}
+
+/// `linear-gradient(to bottom, #fff, #ddd 80%)`.
+pub fn parse_gradient(t: &str) -> Option<Gradient> {
+    let inner = t.trim().strip_prefix("linear-gradient(")?.strip_suffix(')')?;
+    let parts = split_top(inner, ',');
+    let mut angle = 180.0;
+    let mut first = 0;
+    if let Some(p) = parts.first() {
+        if let Some(dir) = p.strip_prefix("to ") {
+            let mut words: Vec<&str> = dir.split_whitespace().collect();
+            words.sort();
+            angle = match words.as_slice() {
+                ["top"] => 0.0,
+                ["right"] => 90.0,
+                ["bottom"] => 180.0,
+                ["left"] => 270.0,
+                ["right", "top"] => 45.0,
+                ["bottom", "right"] => 135.0,
+                ["bottom", "left"] => 225.0,
+                ["left", "top"] => 315.0,
+                _ => return None,
+            };
+            first = 1;
+        } else if let Some(d) = p.strip_suffix("deg") {
+            angle = d.trim().parse().ok()?;
+            first = 1;
+        }
+    }
+    let mut stops: Vec<(Color, Option<f32>)> = Vec::new();
+    for p in &parts[first..] {
+        let words = split_top(p, ' ');
+        let (col, at) = match words.last().and_then(|w| w.strip_suffix('%')).and_then(|n| n.parse::<f32>().ok()) {
+            Some(pct) if words.len() > 1 => (words[..words.len() - 1].join(" "), Some(pct / 100.0)),
+            _ => (p.to_string(), None),
+        };
+        stops.push((parse_color(&col)?, at));
+    }
+    if stops.len() < 2 {
+        return None;
+    }
+    let n = stops.len();
+    let stops = stops.into_iter().enumerate().map(|(i, (c, at))| (c, at.unwrap_or(i as f32 / (n - 1) as f32))).collect();
+    Some(Gradient { angle, stops })
+}
+
+/// `0 2px 6px rgba(0, 0, 0, 0.25)`, `none`.
+pub fn parse_shadow(t: &str) -> Option<Option<Shadow>> {
+    let t = t.trim();
+    if t == "none" {
+        return Some(None);
+    }
+    let mut nums = Vec::new();
+    let mut color = None;
+    for w in split_top(t, ' ') {
+        match w.strip_suffix("px").unwrap_or(w).parse::<i32>() {
+            Ok(n) if color.is_none() || nums.len() < 4 => nums.push(n),
+            _ => color = Some(parse_color(w)?),
+        }
+    }
+    if !(2..=4).contains(&nums.len()) {
+        return None;
+    }
+    Some(Some(Shadow { x: nums[0], y: nums[1], blur: nums.get(2).copied().unwrap_or(0).max(0), spread: nums.get(3).copied().unwrap_or(0), color: color.unwrap_or(Color { r: 0, g: 0, b: 0, a: 90 }) }))
+}
+
 fn parse_value(prop: Prop, text: &str) -> Option<Value> {
     let t = text.trim();
+    if prop == Prop::BackgroundImage {
+        return if t == "none" { None } else { parse_gradient(t).map(Value::Gradient) };
+    }
+    if prop == Prop::BoxShadow {
+        return parse_shadow(t).map(Value::Shadow);
+    }
     if prop == Prop::Transition {
         // `150ms`, `0.2s ease-out`, `background 200ms linear` - every colour, whatever is named.
         let mut ms = None;
@@ -885,10 +1059,19 @@ pub fn parse_color(t: &str) -> Option<Color> {
             _ => None,
         };
     }
-    if let Some(inner) = t.strip_prefix("rgb(").and_then(|r| r.strip_suffix(')')) {
-        let v: Vec<u8> = inner.split(',').map(|p| p.trim().parse::<u8>().ok()).collect::<Option<_>>()?;
-        if v.len() == 3 {
-            return Some(Color::rgb(v[0], v[1], v[2]));
+    if let Some(inner) = t.strip_prefix("rgb(").and_then(|r| r.strip_suffix(')')).or_else(|| t.strip_prefix("rgba(").and_then(|r| r.strip_suffix(')'))) {
+        let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
+        if parts.len() == 3 || parts.len() == 4 {
+            let v: Vec<u8> = parts[..3].iter().map(|p| p.parse::<u8>().ok()).collect::<Option<_>>()?;
+            // The alpha: 0 to 1, or a percentage.
+            let a = match parts.get(3) {
+                None => 255,
+                Some(p) => match p.strip_suffix('%') {
+                    Some(pct) => (pct.parse::<f32>().ok()? * 2.55).round().clamp(0.0, 255.0) as u8,
+                    None => (p.parse::<f32>().ok()? * 255.0).round().clamp(0.0, 255.0) as u8,
+                },
+            };
+            return Some(Color { r: v[0], g: v[1], b: v[2], a });
         }
     }
     None
@@ -905,6 +1088,22 @@ mod tests {
     #[test]
     fn colours_read_every_way_the_sheet_may_write_them() {
         assert_eq!(parse_color("#12855f"), Some(Color::rgb(0x12, 0x85, 0x5f)));
+        assert_eq!(parse_color("rgba(0, 0, 0, 0.5)"), Some(Color { r: 0, g: 0, b: 0, a: 128 }));
+        let g = parse_gradient("linear-gradient(to bottom, #ffffff, rgb(0, 0, 0) 80%)").unwrap();
+        assert_eq!((g.angle, g.stops.len(), g.stops[1].1), (180.0, 2, 0.8));
+        assert_eq!(g.at(0.4), Color::rgb(128, 128, 128));
+        assert_eq!(parse_gradient("linear-gradient(45deg, red, white, blue)").unwrap().stops[1].1, 0.5);
+        assert!(parse_gradient("linear-gradient(to nowhere, red, blue)").is_none());
+        let s = parse_shadow("0 2px 6px rgba(0, 0, 0, 0.25)").unwrap().unwrap();
+        assert_eq!((s.x, s.y, s.blur, s.spread, s.color.a), (0, 2, 6, 0, 64));
+        assert_eq!(parse_shadow("none"), Some(None));
+        let t = Theme::parse("button { background: #fff; }\nbutton.glass { background: linear-gradient(#ffffff, #dde3ea); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }").unwrap();
+        let q = Query { kind: "button", classes: &["glass"], id: None, state: State::default() };
+        let st = t.style(&q);
+        assert!(st.gradient.is_some() && st.shadow.flatten().is_some(), "{st:?}");
+        assert_eq!(st.background, Some(Color::rgb(255, 255, 255)), "the first colour, for what Windows draws");
+        let own = Style { background: Some(Color::rgb(1, 2, 3)), ..Default::default() };
+        assert!(st.under(&own).gradient.is_none(), "a colour of its own is plain");
         assert_eq!(parse_color("#fff"), Some(Color::rgb(255, 255, 255)));
         assert_eq!(parse_color("rgb(1, 2, 3)"), Some(Color::rgb(1, 2, 3)));
         assert_eq!(parse_color("#00000080").map(|c| c.a), Some(0x80));

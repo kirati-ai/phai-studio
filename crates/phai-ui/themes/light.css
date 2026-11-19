@@ -24,6 +24,12 @@
        accent-color                      the tick, the radio dot, the chosen tab's line
        icon-color                        toolbar icons
        font-size  font-weight            points (9pt) and 400 / 600 / 700, normal or bold
+       background-image                  linear-gradient(to bottom, #fff, #dde3ea 80%) - or in
+                                         background:; angles as 45deg; buttons, check boxes,
+                                         the status bar and the window draw it
+       box-shadow                        0 2px 6px rgba(0, 0, 0, 0.25) - across, down, blur,
+                                         spread, colour; or none; buttons and check boxes
+       transition                        150ms ease-out - colours move to a new state's
 
    A mistake is shown with its line; the window keeps the theme it had.
    ==================================================================================== */

@@ -266,7 +266,7 @@ pub fn explain_of(h: HWND, kind: Kind, state: State) -> Vec<theme::Origin> {
         None => out.push(o),
     };
     let me = format!("#{}", id.clone().unwrap_or_default());
-    for (p, set) in [("background", own.background.is_some()), ("color", own.color.is_some()), ("border-color", own.border_color.is_some()), ("border-width", own.border_width.is_some()), ("border-radius", own.border_radius.is_some()), ("font-weight", own.font_weight.is_some()), ("accent-color", own.accent_color.is_some()), ("icon-color", own.icon_color.is_some()), ("transition", own.transition.is_some())] {
+    for (p, set) in [("background", own.background.is_some()), ("color", own.color.is_some()), ("border-color", own.border_color.is_some()), ("border-width", own.border_width.is_some()), ("border-radius", own.border_radius.is_some()), ("font-weight", own.font_weight.is_some()), ("accent-color", own.accent_color.is_some()), ("icon-color", own.icon_color.is_some()), ("transition", own.transition.is_some()), ("background-image", own.gradient.is_some()), ("box-shadow", own.shadow.is_some())] {
         if set {
             put(theme::Origin { property: p, selector: me.clone(), source: "own".into(), line: 0 });
         }
@@ -476,6 +476,25 @@ fn root_colors(h: HWND) -> (Option<Color>, Option<Color>) {
     m.get(&(root.0 as isize)).copied().unwrap_or((None, None))
 }
 
+/// What is behind control `h` in `r` of its `dc`: the window's gradient or picture where it has
+/// one (Windows asks the parent to paint into the control's place), its colour else.
+pub fn paint_behind(h: HWND, dc: HDC, r: &RECT) {
+    if window_patterned(h) {
+        unsafe {
+            let _ = windows::Win32::UI::Controls::DrawThemeParentBackground(h, dc, Some(r));
+        }
+    } else {
+        fill(dc, r, window_background_for(h));
+    }
+}
+
+/// Whether the window `h` is in shows more than one colour behind its controls: a gradient, or
+/// a picture.
+pub fn window_patterned(h: HWND) -> bool {
+    let root = unsafe { wm::GetAncestor(h, wm::GA_ROOT) };
+    crate::form::has_background_image(root) || (root_colors(h).0.is_none() && window_style().gradient.is_some())
+}
+
 /// The background of the window `h` is in: its own, or the theme's.
 pub fn window_background_for(h: HWND) -> Color {
     root_colors(h).0.unwrap_or_else(window_background)
@@ -517,6 +536,123 @@ pub fn round_rect(dc: HDC, r: RECT, fill: Color, border: Color, radius: i32) {
         Gdi::SelectObject(dc, old_brush);
         Gdi::SelectObject(dc, old_pen);
         let _ = Gdi::DeleteObject(pen.into());
+    }
+}
+
+/// How far into `r` a box with shadow `sh` (pixels) must stand for its shadow to show: left, top,
+/// right, bottom - CSS draws a shadow outside the box; a window cannot draw outside itself.
+pub fn shadow_room(sh: Option<theme::Shadow>) -> (i32, i32, i32, i32) {
+    let Some(s) = sh else { return (0, 0, 0, 0) };
+    // Half the blur: its faint outer half may fall outside, as it fades to nothing.
+    let reach = s.blur / 2 + s.spread.max(0);
+    ((reach - s.x).max(0), (reach - s.y).max(0), (reach + s.x).max(0), (reach + s.y).max(0))
+}
+
+/// A box with what CSS can give it - a gradient, a soft shadow, a border, round corners drawn
+/// smooth - into `r` of `dc`. `radius` and the shadow are in pixels already. The box stands inside
+/// `r` far enough for its shadow ([`shadow_room`]); where it stands is returned, for its words.
+#[allow(clippy::too_many_arguments)]
+pub fn paint_box(dc: HDC, r: RECT, fill: Color, gradient: Option<&theme::Gradient>, shadow: Option<theme::Shadow>, border: Color, border_width: i32, radius: i32) -> RECT {
+    let (w, h) = (r.right - r.left, r.bottom - r.top);
+    if w <= 0 || h <= 0 {
+        return r;
+    }
+    let (rl, rt, rr, rb) = shadow_room(shadow);
+    let body = RECT { left: r.left + rl, top: r.top + rt, right: r.right - rr, bottom: r.bottom - rb };
+    // The signed distance from a point to a rounded box: below 0 inside.
+    let sdf = |px: f32, py: f32, b: (f32, f32, f32, f32), rad: f32| {
+        let (cx, cy) = ((b.0 + b.2) / 2.0, (b.1 + b.3) / 2.0);
+        let (hx, hy) = (((b.2 - b.0) / 2.0).max(0.0), ((b.3 - b.1) / 2.0).max(0.0));
+        let rad = rad.min(hx).min(hy).max(0.0);
+        let qx = (px - cx).abs() - hx + rad;
+        let qy = (py - cy).abs() - hy + rad;
+        (qx.max(0.0).hypot(qy.max(0.0))) + qx.max(qy).min(0.0) - rad
+    };
+    let local = |b: RECT| ((b.left - r.left) as f32, (b.top - r.top) as f32, (b.right - r.left) as f32, (b.bottom - r.top) as f32);
+    let bb = local(body);
+    let rad = radius as f32 / 2.0;
+    let sh = shadow.map(|s| {
+        let b = RECT { left: body.left + s.x - s.spread, top: body.top + s.y - s.spread, right: body.right + s.x + s.spread, bottom: body.bottom + s.y + s.spread };
+        (local(b), (rad + s.spread as f32).max(0.0), (s.blur as f32).max(0.5), s.color)
+    });
+    // The gradient's line through the box's middle, CSS's way: 0 degrees up, clockwise.
+    let (dx, dy, len) = gradient.map(|g| {
+        let a = g.angle.to_radians();
+        let (dx, dy) = (a.sin(), -a.cos());
+        let (bw, bh) = (bb.2 - bb.0, bb.3 - bb.1);
+        (dx, dy, (bw * dx.abs() + bh * dy.abs()).max(1.0))
+    }).unwrap_or((0.0, 1.0, 1.0));
+    let bw_px = border_width.max(0) as f32;
+    let mut pixels = vec![0u8; (w * h * 4) as usize];
+    for y in 0..h {
+        for x in 0..w {
+            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+            // Premultiplied BGRA, painted bottom up: shadow, then the box over it.
+            let mut out = [0.0f32; 4];
+            let over = |out: &mut [f32; 4], c: Color, cover: f32| {
+                let a = c.a as f32 / 255.0 * cover;
+                for (k, ch) in [c.b, c.g, c.r].iter().enumerate() {
+                    out[k] = *ch as f32 / 255.0 * a + out[k] * (1.0 - a);
+                }
+                out[3] = a + out[3] * (1.0 - a);
+            };
+            if let Some((b, srad, blur, col)) = sh {
+                let d = sdf(px, py, b, srad);
+                let t = (0.5 - d / (blur * 2.0)).clamp(0.0, 1.0);
+                over(&mut out, col, t * t * (3.0 - 2.0 * t));
+            }
+            let d = sdf(px, py, bb, rad);
+            let cover = (0.5 - d).clamp(0.0, 1.0);
+            if cover > 0.0 {
+                let c = match gradient {
+                    Some(g) => {
+                        let t = ((px - (bb.0 + bb.2) / 2.0) * dx + (py - (bb.1 + bb.3) / 2.0) * dy) / len + 0.5;
+                        g.at(t)
+                    }
+                    None => fill,
+                };
+                over(&mut out, c, cover);
+                // The border: the box's last pixels inward.
+                if bw_px > 0.0 && border.a > 0 {
+                    let ring = (d + bw_px + 0.5).clamp(0.0, 1.0);
+                    over(&mut out, border, ring * cover);
+                }
+            }
+            let i = ((y * w + x) * 4) as usize;
+            for k in 0..4 {
+                pixels[i + k] = (out[k] * 255.0).round() as u8;
+            }
+        }
+    }
+    unsafe {
+        let bi = Gdi::BITMAPINFO { bmiHeader: Gdi::BITMAPINFOHEADER { biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32, biWidth: w, biHeight: -h, biPlanes: 1, biBitCount: 32, biCompression: 0, ..Default::default() }, ..Default::default() };
+        let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+        let Ok(bmp) = Gdi::CreateDIBSection(Some(dc), &bi, Gdi::DIB_RGB_COLORS, &mut bits, None, 0) else { return body };
+        std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits as *mut u8, pixels.len());
+        let mem = Gdi::CreateCompatibleDC(Some(dc));
+        let old = Gdi::SelectObject(mem, bmp.into());
+        let blend = Gdi::BLENDFUNCTION { BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1 };
+        let _ = Gdi::AlphaBlend(dc, r.left, r.top, w, h, mem, 0, 0, w, h, blend);
+        Gdi::SelectObject(mem, old);
+        let _ = Gdi::DeleteDC(mem);
+        let _ = Gdi::DeleteObject(bmp.into());
+    }
+    body
+}
+
+/// A style's shadow at `h`'s scale.
+pub fn shadow_px(h: HWND, s: &Style) -> Option<theme::Shadow> {
+    s.shadow.flatten().map(|sh| theme::Shadow { x: px(h, sh.x), y: px(h, sh.y), blur: px(h, sh.blur), spread: px(h, sh.spread), color: sh.color })
+}
+
+/// A plain area in a style's background: its gradient, or its colour.
+pub fn fill_style(dc: HDC, r: &RECT, s: &Style, fallback: Color) {
+    match &s.gradient {
+        Some(g) => {
+            fill(dc, r, s.background_or(fallback));
+            paint_box(dc, *r, s.background_or(fallback), Some(g), None, Color::TRANSPARENT, 0, 0);
+        }
+        None => fill(dc, r, s.background_or(fallback)),
     }
 }
 
@@ -773,7 +909,7 @@ pub fn draw_item(l: LPARAM) -> bool {
     let r = d.rcItem;
     let h = d.hwndItem;
     // The parent's colour behind the rounded corners and around the box.
-    fill(dc, &r, window_background_for(h));
+    paint_behind(h, dc, &r);
     let text = text_of(h);
     let fg = s.color_or(window_text_for(h));
     match kind {
@@ -800,7 +936,11 @@ pub fn draw_item(l: LPARAM) -> bool {
                     Gdi::SelectObject(dc, op);
                     let _ = Gdi::DeleteObject(pen.into());
                 } else {
-                    round_rect(dc, bx, bg, border, px(h, s.border_radius.unwrap_or(3) * 2));
+                    if s.gradient.is_some() || s.shadow.flatten().is_some() {
+                        paint_box(dc, bx, bg, s.gradient.as_ref(), shadow_px(h, &s), border, px(h, 1), px(h, s.border_radius.unwrap_or(3) * 2));
+                    } else {
+                        round_rect(dc, bx, bg, border, px(h, s.border_radius.unwrap_or(3) * 2));
+                    }
                     if mixed {
                         // Neither: a square of the accent in the box.
                         let inset = size * 3 / 10;
@@ -835,9 +975,15 @@ pub fn draw_item(l: LPARAM) -> bool {
         }
         _ => {
             let radius = px(h, s.border_radius.unwrap_or(4) * 2);
-            round_rect(dc, r, s.background_or(Color::rgb(255, 255, 255)), s.border_or(Color::rgb(212, 212, 212)), radius);
+            // A gradient or a shadow: drawn as CSS draws them, the corners smooth; else plainly.
+            let body = if s.gradient.is_some() || s.shadow.flatten().is_some() {
+                paint_box(dc, r, s.background_or(Color::rgb(255, 255, 255)), s.gradient.as_ref(), shadow_px(h, &s), s.border_or(Color::rgb(212, 212, 212)), px(h, s.border_width.unwrap_or(1)), radius)
+            } else {
+                round_rect(dc, r, s.background_or(Color::rgb(255, 255, 255)), s.border_or(Color::rgb(212, 212, 212)), radius);
+                r
+            };
             let pad = px(h, 8);
-            let mut tr = RECT { left: r.left + pad, right: r.right - pad, ..r };
+            let mut tr = RECT { left: body.left + pad, right: body.right - pad, top: body.top, bottom: body.bottom };
             let align = match with_css(h, |c| c.align).unwrap_or(0) {
                 1 => Gdi::DT_LEFT,
                 3 => Gdi::DT_RIGHT,
@@ -992,6 +1138,17 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
     // A read-only or disabled edit comes as STATIC; it is still an edit.
     // A label stands on the window, unless it was given a background of its own.
     let own_bg = with_css(h, |c| c.own.background).flatten();
+    // A label on a window with a gradient or a picture behind it: the window shows through.
+    if kind == Kind::Label && own_bg.is_none() && window_patterned(h) {
+        unsafe {
+            let mut lr = RECT::default();
+            let _ = wm::GetClientRect(h, &mut lr);
+            paint_behind(h, dc, &lr);
+            Gdi::SetTextColor(dc, cr(s.color_or(window_text_for(h))));
+            Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+            return Some(LRESULT(Gdi::GetStockObject(Gdi::NULL_BRUSH).0 as isize));
+        }
+    }
     let bg = match kind {
         Kind::Label => own_bg.unwrap_or(window_background_for(h)),
         _ => s.background_or(window_background_for(h)),
@@ -1619,7 +1776,7 @@ fn range_paint(h: HWND, slider: bool) {
         let mem = Gdi::CreateCompatibleDC(Some(dc));
         let bmp = Gdi::CreateCompatibleBitmap(dc, rc.right.max(1), rc.bottom.max(1));
         let old = Gdi::SelectObject(mem, bmp.into());
-        fill(mem, &rc, window_background_for(h));
+        paint_behind(h, mem, &rc);
         let accent = s.accent_or(theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f)));
         let track = s.background_or(Color::rgb(0xe5, 0xe5, 0xe5));
         let span = (max - min).max(1) as i64;
@@ -2512,6 +2669,16 @@ struct AutoFit(HWND);
 
 impl Drop for AutoFit {
     fn drop(&mut self) {
+        // A label the window shows through: the window under it painted again, or the old
+        // words stay.
+        if kind_of(self.0) == Some(Kind::Label) && window_patterned(self.0) {
+            unsafe {
+                if let Ok(parent) = wm::GetParent(self.0) {
+                    let r = rect_in_parent(self.0);
+                    let _ = Gdi::InvalidateRect(Some(parent), Some(&r), true);
+                }
+            }
+        }
         if with_css(self.0, |c| c.auto).unwrap_or(false) {
             fit_label(self.0);
         }
@@ -2762,6 +2929,12 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let _ = wm::GetClientRect(hwnd, &mut r);
             }
             fill(dc, &r, window_background_for(hwnd));
+            // A gradient for the window, where its own colour does not stand over it.
+            if root_colors(hwnd).0.is_none() {
+                if let Some(g) = window_style().gradient {
+                    paint_box(dc, r, window_background(), Some(&g), None, Color::TRANSPARENT, 0, 0);
+                }
+            }
             crate::form::paint_background(hwnd, dc, &r);
             return LRESULT(1);
         }

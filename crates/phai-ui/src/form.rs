@@ -198,6 +198,11 @@ pub fn set_background_image(hwnd: HWND, path: &str, layout: &str) {
     }
 }
 
+/// Whether the window has a background picture.
+pub fn has_background_image(hwnd: HWND) -> bool {
+    BACKGROUNDS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|m| m.contains_key(&(hwnd.0 as isize)))
+}
+
 /// Draws the window's background picture, if it has one, over its colour - from `WM_ERASEBKGND`.
 pub fn paint_background(hwnd: HWND, dc: windows::Win32::Graphics::Gdi::HDC, r: &RECT) {
     use windows::Win32::Graphics::Gdi;

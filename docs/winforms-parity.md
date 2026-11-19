@@ -42,7 +42,7 @@
 | P | BackColor, ForeColor | `back_color`, `fore_color` (ของหน้าต่างนี้, control วางบนสีนี้) | ✅ |
 | P | Font | `font_size` | ✅ |
 | P | KeyPreview | `key_preview` | ✅ |
-| P | BackgroundImage, BackgroundImageLayout | `background_image`, `background_image_layout` (label วาดพื้นทึบทับรูป) | 🟡 |
+| P | BackgroundImage, BackgroundImageLayout | `background_image`, `background_image_layout` (label, group, ปุ่มโปร่งใสให้เห็นรูป) | ✅ |
 | P | AutoScroll, Padding, AllowDrop | `auto_scroll`, `padding`, `allow_drop` | ✅ |
 | E | DragDrop | `events = { drag_drop = "..." }` | ✅ |
 | M | Show, ShowDialog (คืน DialogResult), Close, Hide, Activate, CenterToScreen | `show`, `show_dialog`, `close`, `hide`, `show_window`, `activate`, `center_to_screen` | ✅ |
