@@ -40,6 +40,41 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - **Theme Editor** แบบ Skin Editor ของ DevExpress: หน้าต่างเลือกสี/ขอบ/มุมมน เห็น control ทุกชนิดเปลี่ยนทันที
   ไม่ต้องเขียน CSS เอง แล้วบันทึกเป็น theme.css
 
+## บันทึกจากการคุยกับเจ้านาย (2026-11-19) — อย่าลืม
+
+- **คำแนะนำตัว:** "เครื่องมือ RAD สำหรับ Rust: ลากวางออกแบบหน้าจอ (visual designer) แล้วเขียนโค้ดแบบ event-driven"
+  (RAD = Rapid Application Development แนว Visual Basic / Delphi / WinForms)
+- **control = object** มี Properties (ลักษณะ) + Methods (สั่งให้ทำ) + Events (บอกเมื่อเกิดขึ้น); ทุกตัวมีส่วนร่วมจาก `Control`
+- **ตารางอ้างอิง WinForms → Phai** (ใช้เริ่ม `docs/winforms-parity.md`):
+
+  | Control | Properties หลัก | Methods หลัก | Events หลัก |
+  |---|---|---|---|
+  | Button | Text, Enabled, Visible, BackColor, Font | PerformClick, Focus | Click, Enter, Leave, KeyDown, MouseEnter |
+  | Label | Text, AutoSize, TextAlign | — | Click |
+  | TextBox | Text, ReadOnly, MaxLength, PasswordChar, Multiline | Clear, SelectAll, AppendText, Focus | TextChanged, KeyDown, KeyPress, Enter, Leave |
+  | CheckBox / RadioButton | Checked, Text | — | CheckedChanged, Click |
+  | ComboBox | Items, SelectedIndex, SelectedItem, DropDownStyle | Items.Add, Items.Clear | SelectedIndexChanged, TextChanged |
+  | ListView | Columns, Items, SelectedItems, FullRowSelect | Items.Add, Items.Clear, EnsureVisible | SelectedIndexChanged, DoubleClick, ColumnClick |
+  | DataGridView | Columns, Rows, DataSource, ReadOnly | Rows.Add, Refresh | CellValueChanged, SelectionChanged, CellDoubleClick |
+  | DateTimePicker | Value, Format, MinDate, MaxDate | — | ValueChanged |
+  | NumericUpDown | Value, Minimum, Maximum, Increment | UpButton, DownButton | ValueChanged |
+  | TrackBar / ProgressBar | Value, Minimum, Maximum | PerformStep | ValueChanged / Scroll |
+  | PictureBox | Image, SizeMode | Load | Click |
+  | TreeView | Nodes, SelectedNode | ExpandAll, CollapseAll | AfterSelect, NodeMouseDoubleClick |
+  | TabControl | TabPages, SelectedIndex | SelectTab | SelectedIndexChanged |
+  | RichTextBox | Text, Rtf, SelectionFont | LoadFile, SaveFile, Find | TextChanged |
+  | Timer | Interval, Enabled | Start, Stop | Tick |
+  | ContextMenu | Items | Show | Opening, ItemClicked |
+  | ทุกตัว (Control) | Name, Location, Size, Anchor, Dock, Enabled, Visible, TabIndex | Focus, Show, Hide, Refresh | Enter, Leave, KeyDown/Up, MouseDown/Up/Enter/Leave, Resize |
+
+- **ไลบรารี control ของ C#** (บทเรียน): เสียเงิน — DevExpress (เด่นสุด), Telerik, Syncfusion (มี community license ฟรี),
+  Infragistics, ComponentOne, Guna UI2 / Bunifu (หน้าตาโมเดิร์น); ฟรี — Krypton Toolkit, ReaLTaiizor, ObjectListView,
+  ScintillaNET, ScottPlot / OxyPlot / LiveCharts (กราฟ), FastReport Open Source (รายงาน)
+  สิ่งที่คนยอมจ่าย = grid เก่ง, กราฟ, รายงานพิมพ์, Ribbon/docking, ธีมสวย → Phai ให้ฟรีในตัว = จุดขาย
+- **CSS** = Cascading Style Sheets (cascading = ไหลลงเป็นชั้น); แนวเดียวกับ Skin (DevExpress), Style (WPF), QSS (Qt)
+  ภาพเคลื่อนไหวใน CSS เรียก `transition`, `@keyframes` + `animation`, `transform`, `opacity`, easing (เป็น property / at-rule ไม่ใช่ tag)
+- ข้อมูลไลบรารี/ราคาเป็นความรู้ที่มี ไม่ได้ค้นเว็บ — ตรวจใหม่ก่อนใช้อ้างอิงสาธารณะ
+
 ## งานถัดไป (เรียงตามความสำคัญ)
 
 ### 0. Properties ของฟอร์มให้ใกล้ WinForms (เจ้านายชี้ 2026-11-19: "ทำไมฉันไม่มีเหมือน c#")
