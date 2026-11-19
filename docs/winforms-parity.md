@@ -224,7 +224,7 @@
 | F | MDI (IsMdiContainer, MdiParent) | ฟอร์ม `is_mdi_container = true`; `XxxUi::show_mdi_child(parent, events)`; `layout_mdi("cascade" / "tile_horizontal" / "tile_vertical" / "arrange_icons")`, `active_mdi_child()`, `mdi_children()`; Ctrl+F4, Ctrl+Tab; ฟอร์มลูกไม่มีเมนูของตัวเอง (Windows ไม่ให้) | ✅ |
 | F | PrintDocument / PrintPreviewDialog | | ⬜ |
 | F | DataBindings (ผูก property ของ control กับข้อมูล) | | ⬜ |
-| F | DoDragDrop ระหว่าง control | | ⬜ |
+| F | DoDragDrop ระหว่าง control | `ui.x.do_drag_drop("ข้อความ")` จาก MouseDown (ป้ายข้อความตามเมาส์, Esc ยกเลิก); control ที่มี event `drag_drop` รับได้: `e.text`, `e.source` (ไฟล์จาก Explorer ยังเป็น `e.files`); ข้อความเท่านั้น ภายในโปรแกรมเดียวกัน | ✅ |
 | F | MenuStrip / ToolStrip แบบละเอียด (ไอคอน, ปุ่มกดค้าง, รายการย่อยซ้อน) | | ⬜ |
 
 C = control/component, F = ความสามารถ

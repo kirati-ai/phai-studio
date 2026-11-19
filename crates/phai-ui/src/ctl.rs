@@ -123,6 +123,11 @@ pub trait Control: Copy {
         send(self.hwnd(), wm::WM_SETREDRAW, 1, 0);
         self.refresh();
     }
+    /// Drags `text` from it until the mouse is let go - from its MouseDown; true when a control
+    /// with a DragDrop event took it (WinForms' DoDragDrop).
+    fn do_drag_drop(self, text: &str) -> bool {
+        crate::drag::do_drag_drop(self.hwnd(), text)
+    }
     fn set_tooltip(self, text: &str) {
         crate::props::tooltip(self.hwnd(), text)
     }
@@ -231,6 +236,9 @@ macro_rules! control {
             }
             pub fn set_tooltip(self, text: &str) {
                 Control::set_tooltip(self, text)
+            }
+            pub fn do_drag_drop(self, text: &str) -> bool {
+                Control::do_drag_drop(self, text)
             }
             pub fn set_cursor(self, name: &str) {
                 Control::set_cursor(self, name)

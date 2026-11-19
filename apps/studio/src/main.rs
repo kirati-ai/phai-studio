@@ -8943,6 +8943,69 @@ impl MainWindowEvents for MainWindow {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Words dragged between controls in a real project: dropped on a list that hears DragDrop,
+    /// they reach its method with the source; on a control that does not, nothing takes them.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn words_dragged_from_one_control_drop_on_another() {
+        use phai_form::Control;
+        let dir = std::env::temp_dir().join(format!("phai-drag-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut from = Control::new(Kind::ListBox, "from_list", [11, 40, 120, 100]);
+        from.items = vec!["Mango".into()];
+        let mut to = Control::new(Kind::ListBox, "to_list", [151, 40, 120, 100]);
+        to.events.insert("drag_drop".into(), "dropped".into());
+        f.control.extend([from, to]);
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Mango", "มะม่วง")]).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use phai_ui::events::FileDropEventArgs;
+use windows::Win32::Foundation::POINT;
+
+#[derive(Default)]
+pub struct MainWindow {
+    from_ok: bool,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let middle = |c: windows::Win32::Foundation::HWND| {
+            let (x, y) = phai_ui::ctl::ListBox(c).point_to_screen(20, 20);
+            POINT { x, y }
+        };
+        let mut bits = 0;
+        if phai_ui::drag::drop_at(ui.from_list.hwnd(), "Mango", middle(ui.to_list.hwnd())) { bits |= 1 }
+        if ui.to_list.items_count() == 1 && ui.to_list.item(0) == "Mango" && self.from_ok { bits |= 2 }
+        // The list it came from hears no DragDrop: nothing takes them there.
+        if !phai_ui::drag::drop_at(ui.to_list.hwnd(), "Mango", middle(ui.from_list.hwnd())) { bits |= 4 }
+        std::process::exit(if bits == 7 { 42 } else { 1000 + bits });
+    }
+
+    fn dropped(&mut self, ui: &MainWindowUi, e: &FileDropEventArgs) {
+        self.from_ok = e.source == Some(ui.from_list.hwnd()) && e.files.is_empty();
+        if let Some(t) = &e.text {
+            ui.to_list.items_add(t);
+        }
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A real project with a SQLite table on its form: built, its Thai test passing, and run -
     /// the grid filled when the window opens, a cell changed and saved, the file holding it.
     #[test]

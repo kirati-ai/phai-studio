@@ -10,6 +10,7 @@
 //! | [`components`] | file, folder, colour and font dialogs; ErrorProvider; NotifyIcon |
 //! | [`split`] | SplitContainer: two panes and the bar between them |
 //! | [`mdi`] | MDI: forms inside a form, cascaded or tiled |
+//! | [`drag`] | words dragged from one control to another (DoDragDrop) |
 //! | [`extra`] | ListBox, CheckedListBox, LinkLabel, MaskedTextBox, MonthCalendar |
 //! | [`controls`] | group frame, tabs, status bar - drawn whole by the library |
 //! | [`theme`] | themes as CSS; the built-in light and dark ones |
@@ -27,6 +28,7 @@ pub mod components;
 pub mod controls;
 pub mod ctl;
 pub mod dialogs;
+pub mod drag;
 pub mod events;
 pub mod extra;
 pub mod form;
