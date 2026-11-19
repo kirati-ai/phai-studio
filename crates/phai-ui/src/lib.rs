@@ -39,6 +39,7 @@ pub mod invoke;
 pub mod layout;
 pub mod mdi;
 pub mod picture;
+pub mod print;
 pub mod props;
 #[cfg(feature = "shot")]
 pub mod shot;

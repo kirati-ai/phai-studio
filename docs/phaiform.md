@@ -185,6 +185,26 @@ window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* lab
 - Phai Studio ที่เปิดฟอร์มนั้นอยู่ โหลดฟอร์มใหม่เมื่อสลับกลับมา (Undo ได้) และเขียน `_ui.rs` ใหม่ให้รอบต่อไป
 - โค้ด `.rs` ของโปรแกรมไม่ถูกแตะ; build แบบ release ไม่มีตัวตรวจ (codegen ใส่ `#[cfg(debug_assertions)] phai_ui::inspect::attach(...)`)
 
+## การพิมพ์ — component `printdocument`
+
+```toml
+[[control]]
+kind = "printdocument"
+id = "report"
+document_name = "Price list"
+events = { print_page = "draw_page" }
+```
+
+```rust
+fn draw_page(&mut self, ui: &MainWindowUi, e: &phai_ui::print::PrintPageEventArgs) {
+    let m = e.margin_bounds;                 // ร้อยส่วนของนิ้ว จากมุมกระดาษ
+    e.set_font("Segoe UI", 16, true, false);
+    e.draw_text(&format!("หน้า {}", e.page), m.x, m.y);
+    e.set_has_more_pages(e.page < 3);        // มีหน้าต่อไปไหม
+}
+// ที่ไหนก็ได้: ui.report.print_preview();  ui.report.print_dialog();  ui.report.page_setup();
+```
+
 ## โค้ดที่สร้าง
 
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:

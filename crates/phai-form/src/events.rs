@@ -15,6 +15,7 @@ pub enum Args {
     Closing,
     Item,
     Files,
+    Print,
 }
 
 impl Args {
@@ -28,6 +29,7 @@ impl Args {
             Args::Closing => Some("phai_ui::events::ClosingEventArgs"),
             Args::Item => Some("phai_ui::events::ItemEventArgs"),
             Args::Files => Some("phai_ui::events::FileDropEventArgs"),
+            Args::Print => Some("phai_ui::print::PrintPageEventArgs"),
         }
     }
 }
@@ -81,6 +83,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("text_changed", "TextChanged", Args::None, &[Kind::Combo], Source::Command(5), "Words typed into a drop-down that takes them."),
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
     ev("double_click", "MouseDoubleClick", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0203), "The icon in the corner clicked twice - as often, to show the window again."),
+    ev("print_page", "PrintPage", Args::Print, &[Kind::PrintDocument], Source::Hook(phai_ui_codes::PRINT_PAGE), "A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows."),
     ev("selection_changed", "SelectionChanged", Args::None, &[Kind::Grid], Source::Notify(-101), "Another row chosen."),
 ];
 
@@ -119,6 +122,7 @@ pub mod phai_ui_codes {
     pub const DOUBLE_CLICK: u16 = phai_ui::events::DOUBLE_CLICK;
     pub const RESIZE: u16 = phai_ui::events::RESIZE;
     pub const DRAG_DROP: u16 = phai_ui::events::DRAG_DROP;
+    pub const PRINT_PAGE: u16 = phai_ui::events::PRINT_PAGE;
 }
 
 /// Whether controls of `kind` raise `e`: an empty list is every control on the form.

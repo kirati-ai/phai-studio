@@ -111,6 +111,7 @@ pub mod glyph {
     pub const ERROR_MARK: u16 = 0xE783; // Error
     pub const TRAY: u16 = 0xE7E7; // Taskbar
     pub const SPLIT: u16 = 0xE89F; // DockLeft
+    pub const PRINT: u16 = 0xE749; // Print
     pub const PAUSE: u16 = 0xE769;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).

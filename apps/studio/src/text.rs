@@ -879,6 +879,10 @@ pub static THAI: &[(&str, &str)] = &[
     ("The first pane's width (or height); 0 is half.", "ความกว้าง (หรือความสูง) ของช่องแรก; 0 คือครึ่งหนึ่ง"),
     ("Other forms open inside it (show_mdi_child), cascaded or tiled.", "ฟอร์มอื่นเปิดข้างในได้ (show_mdi_child) เรียงซ้อนหรือเรียงต่อกัน"),
     ("Dropped on it: files from Explorer (e.files) or words dragged from another control (e.text, e.source).", "มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)"),
+    ("Print document", "เอกสารสำหรับพิมพ์"),
+    ("The name in the printer's queue and on the preview's title bar.", "ชื่อที่เห็นในคิวเครื่องพิมพ์และบนหัวหน้าต่างดูตัวอย่าง"),
+    ("The paper turned sideways - DefaultPageSettings.Landscape.", "หมุนกระดาษเป็นแนวนอน - DefaultPageSettings.Landscape"),
+    ("A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows.", "หน้าที่ต้องวาด - e.draw_text, e.draw_line, e.margin_bounds หน่วยเป็นร้อยส่วนของนิ้ว; เรียก e.set_has_more_pages(true) เมื่อยังมีหน้าต่อไป"),
 ];
 
 #[cfg(test)]

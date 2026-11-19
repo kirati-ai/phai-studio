@@ -729,6 +729,7 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::FolderDialog => t("Folder dialog"),
         Kind::ColorDialog => t("Colour dialog"),
         Kind::FontDialog => t("Font dialog"),
+        Kind::PrintDocument => t("Print document"),
         Kind::ErrorProvider => t("Error provider"),
         Kind::NotifyIcon => t("Notify icon"),
         Kind::Split => t("Split container"),
@@ -774,6 +775,7 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::FolderDialog => glyph::FOLDER_PICK,
             Kind::ColorDialog => glyph::PALETTE,
             Kind::FontDialog => glyph::FONT_PICK,
+            Kind::PrintDocument => glyph::PRINT,
             Kind::ErrorProvider => glyph::ERROR_MARK,
             Kind::NotifyIcon => glyph::TRAY,
             Kind::Split => glyph::SPLIT,
@@ -8815,6 +8817,109 @@ impl MainWindowEvents for MainWindow {
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(&exe).status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Printing in a real project: three pages drawn in PrintPage, printed through "Microsoft
+    /// Print to PDF" into a file, counted without printing, turned sideways, and shown in the
+    /// preview window, photographed.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn a_print_document_prints_and_previews_its_pages() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-print-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut doc = Control::new(Kind::PrintDocument, "report", [0, 0, 0, 0]);
+        doc.set_prop("document_name", Some(phai_form::toml::Value::String("Price list".into())));
+        doc.events.insert("print_page".into(), "draw_page".into());
+        f.control.push(doc);
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("phai_ui::ctl::PrintDocument::new(hwnd, CONTROL_REPORT, t(\"Price list\"), false)"), "{generated}");
+        assert!(generated.contains("(CONTROL_REPORT, phai_ui::events::PRINT_PAGE) => events.draw_page(ui"), "{generated}");
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Price list", "รายการราคา")]).unwrap();
+        let pdf = dir.join("prices.pdf");
+        let shot = dir.join("preview.png");
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use phai_ui::print::{Align, Bounds, PrintPageEventArgs};
+
+#[derive(Default)]
+pub struct MainWindow {
+    seen: Vec<(usize, bool, bool)>,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn draw_page(&mut self, _ui: &MainWindowUi, e: &PrintPageEventArgs) {
+        self.seen.push((e.page, e.preview, e.page_bounds.width > e.page_bounds.height));
+        let m = e.margin_bounds;
+        e.fill_rect(Bounds { x: m.x, y: m.y, width: m.width, height: 8 }, "#12855f");
+        e.set_font("Segoe UI", 16, true, false);
+        e.draw_text(&format!("Price list - page {}", e.page), m.x, m.y + 20);
+        e.set_font("Leelawadee UI", 11, false, false);
+        let lh = e.line_height();
+        let top = m.y + 20 + lh * 3;
+        for i in 0..12 {
+            let y = top + i * lh;
+            e.draw_text(&format!("สินค้า {}", (e.page - 1) * 12 + i as usize + 1), m.x, y);
+            e.draw_text_in(&format!("{} บาท", (i + 1) * 25), Bounds { x: m.x, y, width: m.width, height: lh }, Align::Right);
+        }
+        e.set_color("#888888");
+        e.draw_line(m.x, top - lh / 2, m.right(), top - lh / 2);
+        e.draw_rect(Bounds { x: m.x, y: top + 13 * lh, width: m.width, height: lh * 3 });
+        e.set_color("black");
+        let used = e.draw_text_in("Prices include tax. This paragraph is long enough that it has to wrap onto a second line inside the box it is given on the page, even when the paper is turned sideways and the line is long.", Bounds { x: m.x + 10, y: top + 13 * lh + 10, width: m.width - 20, height: lh * 3 }, Align::Left);
+        let (w, _) = e.measure_text("Price", 0);
+        if used <= lh || w <= 0 { eprintln!("used {used} lh {lh} w {w} page {} preview {} mw {} one {:?} pw {}", e.page, e.preview, m.width, e.measure_text("Prices include tax. This paragraph is long enough that it has to wrap onto a second line inside the box it is given on the page.", 0), e.page_bounds.width); std::process::exit(900) }
+        e.set_has_more_pages(e.page < 3);
+    }
+
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let mut bits = 0;
+        let pdf = std::path::PathBuf::from(std::env::var("PHAI_TEST_PDF").unwrap());
+        let n = ui.report.print_to_file("Microsoft Print to PDF", &pdf);
+        let mut ok = false;
+        for _ in 0..100 {
+            if std::fs::read(&pdf).is_ok_and(|b| b.len() > 1000 && b.starts_with(b"%PDF")) { ok = true; break }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if n == 3 && ok { bits |= 1 }
+        if self.seen == vec![(1, false, false), (2, false, false), (3, false, false)] { bits |= 2 }
+        self.seen.clear();
+        if ui.report.page_count() == 3 && self.seen.iter().all(|s| s.1) { bits |= 4 }
+        self.seen.clear();
+        ui.report.set_landscape(true);
+        if ui.report.page_count() == 3 && self.seen.iter().all(|s| s.2) && ui.report.landscape() { bits |= 8 }
+        ui.report.set_landscape(false);
+        ui.report.set_margins(50, 50, 50, 50);
+        self.seen.clear();
+        ui.report.print_preview();
+        if self.seen.len() == 3 && ui.report.margins() == [50; 4] { bits |= 16 }
+        std::process::exit(if bits == 31 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let run = std::process::Command::new(&exe).env("PHAI_TEST_PDF", &pdf).env("PHAI_PREVIEW_SHOT", &shot).output().unwrap();
+        eprintln!("{}", String::from_utf8_lossy(&run.stderr));
+        let code = run.status.code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        assert!(shot.is_file() && dir.join("preview-2.png").is_file());
+        if let Ok(keep) = std::env::var("PHAI_KEEP_SHOT") {
+            let _ = std::fs::copy(&shot, &keep);
+            let _ = std::fs::copy(&pdf, std::path::Path::new(&keep).with_extension("pdf"));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

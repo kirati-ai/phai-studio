@@ -234,10 +234,14 @@ pub enum Kind {
     NotifyIcon,
     /// Two panes and a bar between them the mouse drags - WinForms' SplitContainer.
     Split,
+    /// A component: pages the program draws in its PrintPage event, printed or shown first -
+    /// WinForms' PrintDocument with its PrintDialog, PageSetupDialog and PrintPreviewDialog.
+    #[serde(rename = "printdocument")]
+    PrintDocument,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 37] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split];
+    pub const ALL: [Kind; 38] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -246,7 +250,7 @@ impl Kind {
 
     /// A component: nothing on the form itself - Visual Studio puts it in the tray below.
     pub fn is_component(self) -> bool {
-        matches!(self, Kind::Timer | Kind::ContextMenu | Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon)
+        matches!(self, Kind::Timer | Kind::ContextMenu | Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument)
     }
 
     pub fn name(self) -> &'static str {
@@ -288,6 +292,7 @@ impl Kind {
             Kind::ErrorProvider => "errorprovider",
             Kind::NotifyIcon => "notifyicon",
             Kind::Split => "split",
+            Kind::PrintDocument => "printdocument",
         }
     }
 
@@ -321,7 +326,7 @@ impl Kind {
             Kind::Link => (80, 23),
             Kind::Masked => (150, 23),
             Kind::Calendar => (227, 162),
-            Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon => (32, 32),
+            Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument => (32, 32),
             Kind::Split => (300, 150),
         }
     }

@@ -203,6 +203,7 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::ErrorProvider => "ErrorProvider",
         Kind::NotifyIcon => "NotifyIcon",
         Kind::Split => "SplitContainer",
+        Kind::PrintDocument => "PrintDocument",
     }
 }
 
@@ -223,6 +224,7 @@ fn event_const(code: u16) -> &'static str {
         e::CLICK => "CLICK",
         e::DOUBLE_CLICK => "DOUBLE_CLICK",
         e::DRAG_DROP => "DRAG_DROP",
+        e::PRINT_PAGE => "PRINT_PAGE",
         _ => "RESIZE",
     }
 }
@@ -559,6 +561,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
             Kind::ColorDialog => "phai_ui::ctl::ColorDialog::new(hwnd)".to_string(),
             Kind::FontDialog => "phai_ui::ctl::FontDialog::new(hwnd)".to_string(),
+            Kind::PrintDocument => format!("phai_ui::ctl::PrintDocument::new(hwnd, {id}, {}, {})", words(c, "document_name"), c.flag("landscape", false)),
             Kind::ErrorProvider => "phai_ui::ctl::ErrorProvider::new(hwnd)".to_string(),
             Kind::NotifyIcon => format!("phai_ui::ctl::NotifyIcon::new(hwnd, {id} as u32, {}, {})", if text_of(c).is_empty() { "\"\"".to_string() } else { text.clone() }, c.visible != Some(false)),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
@@ -607,7 +610,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for (i, c) in f.control.iter().enumerate() {
         let hooked: Vec<&str> = c.events.keys().filter_map(|e| ev::find(c.kind, e)).filter_map(|s| if let Source::Hook(code) = s.source { Some(event_const(code)) } else { None }).collect();
         let keys = preview && props::find(c.kind, "tab_index").is_some();
-        if hooked.is_empty() && !keys {
+        // A component has no window to listen to: it raises its events itself.
+        if (hooked.is_empty() && !keys) || c.kind.is_component() {
             continue;
         }
         let mask = if hooked.is_empty() { "0".to_string() } else { hooked.iter().map(|k| format!("phai_ui::events::bit(phai_ui::events::{k})")).collect::<Vec<_>>().join(" | ") };

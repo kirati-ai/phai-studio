@@ -119,6 +119,8 @@ pub const CONTROL: &[Spec] = &[
     spec("editable", "DropDownStyle = DropDown", "Behavior", Ty::Bool, "false", &[Kind::Combo], How::Code, "Words can be typed in as well as chosen."),
     spec("sorted", "Sorted", "Behavior", Ty::Bool, "false", &[Kind::Combo, Kind::ListBox], How::Code, "Its items in alphabetical order."),
     spec("selection_mode", "SelectionMode", "Behavior", Ty::Choice(&["one", "multi"]), "one", &[Kind::ListBox], How::Code, "One line chosen at a time, or several with Ctrl and Shift."),
+    spec("document_name", "DocumentName", "Behavior", Ty::Words, "document", &[Kind::PrintDocument], How::Code, "The name in the printer's queue and on the preview's title bar."),
+    spec("landscape", "Landscape", "Behavior", Ty::Bool, "false", &[Kind::PrintDocument], How::Code, "The paper turned sideways - DefaultPageSettings.Landscape."),
     spec("title", "Title", "Appearance", Ty::Words, "", &[Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog], How::Code, "The words in the dialog's title bar."),
     spec("filter", "Filter", "Behavior", Ty::Words, "", &[Kind::OpenFile, Kind::SaveFile], How::Code, "The kinds of file it shows: Text files|*.txt|All files|*.*"),
     spec("initial_directory", "InitialDirectory", "Behavior", Ty::Text, "", &[Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog], How::Code, "The folder it opens in; empty: the one used last."),
