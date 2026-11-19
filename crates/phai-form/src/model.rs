@@ -238,10 +238,14 @@ pub enum Kind {
     /// WinForms' PrintDocument with its PrintDialog, PageSetupDialog and PrintPreviewDialog.
     #[serde(rename = "printdocument")]
     PrintDocument,
+    /// A component: rows and the current one, shown in the controls whose `data_binding` names
+    /// it - WinForms' BindingSource; `bind` to a table fills it from the database.
+    #[serde(rename = "bindingsource")]
+    BindingSource,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 38] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument];
+    pub const ALL: [Kind; 39] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -250,7 +254,7 @@ impl Kind {
 
     /// A component: nothing on the form itself - Visual Studio puts it in the tray below.
     pub fn is_component(self) -> bool {
-        matches!(self, Kind::Timer | Kind::ContextMenu | Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument)
+        matches!(self, Kind::Timer | Kind::ContextMenu | Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument | Kind::BindingSource)
     }
 
     pub fn name(self) -> &'static str {
@@ -293,6 +297,7 @@ impl Kind {
             Kind::NotifyIcon => "notifyicon",
             Kind::Split => "split",
             Kind::PrintDocument => "printdocument",
+            Kind::BindingSource => "bindingsource",
         }
     }
 
@@ -326,7 +331,7 @@ impl Kind {
             Kind::Link => (80, 23),
             Kind::Masked => (150, 23),
             Kind::Calendar => (227, 162),
-            Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument => (32, 32),
+            Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument | Kind::BindingSource => (32, 32),
             Kind::Split => (300, 150),
         }
     }
@@ -463,6 +468,14 @@ pub struct Bind {
 }
 
 impl Control {
+    /// A binding source's columns: its table's when it is bound to one, its `fields` otherwise.
+    pub fn data_columns(&self) -> Vec<String> {
+        match &self.bind {
+            Some(b) => b.columns.clone(),
+            None => self.word("fields").unwrap_or("").split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+        }
+    }
+
     /// A new control of `kind` at `bounds`, with nothing else set.
     pub fn new(kind: Kind, id: &str, bounds: [i32; 4]) -> Control {
         let text = match kind {
@@ -835,17 +848,30 @@ impl FormFile {
             out.extend(wrong("cols", c.cols.is_none() || c.kind == Kind::Table));
             out.extend(wrong("columns", c.columns.is_empty() || matches!(c.kind, Kind::List | Kind::Grid)));
             out.extend(wrong("tabs", c.tabs.is_empty() || c.kind == Kind::Tabs));
-            out.extend(wrong("bind", c.bind.is_none() || c.kind == Kind::Grid));
+            out.extend(wrong("bind", c.bind.is_none() || matches!(c.kind, Kind::Grid | Kind::BindingSource)));
             out.extend(wrong("bind_action", c.bind_action.is_none() || c.kind == Kind::Button));
             if let Some(b) = &c.bind {
                 if b.table.is_empty() || b.columns.is_empty() {
                     out.push((format!("{}: bind needs a table and its columns", c.id), at.clone()));
                 }
-                if b.columns.len() != c.columns.len() {
+                if c.kind == Kind::Grid && b.columns.len() != c.columns.len() {
                     out.push((format!("{}: bind has {} columns, the grid {}", c.id, b.columns.len(), c.columns.len()), at.clone()));
                 }
                 if let Some(k) = b.keys.iter().find(|k| !b.columns.contains(k)) {
                     out.push((format!("{}: the key {k} is not among the bound columns", c.id), at.clone()));
+                }
+            }
+            if let Some(d) = c.word("data_binding") {
+                // `source.column`: a binding source on this form, a column it has.
+                let source = d.split_once('.').and_then(|(s, col)| self.control.iter().find(|x| x.id == s && x.kind == Kind::BindingSource).map(|x| (x, col)));
+                match source {
+                    None => out.push((format!("{}: data_binding {d:?} - a binding source's id, a dot, then a column", c.id), at.clone())),
+                    Some((s, col)) => {
+                        let cols = s.data_columns();
+                        if col.is_empty() || (s.bind.is_some() && !cols.iter().any(|x| x == col)) {
+                            out.push((format!("{}: {} has no column {col:?}", c.id, s.id), at.clone()));
+                        }
+                    }
                 }
             }
             if let Some(a) = &c.bind_action {

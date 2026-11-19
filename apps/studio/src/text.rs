@@ -883,6 +883,10 @@ pub static THAI: &[(&str, &str)] = &[
     ("The name in the printer's queue and on the preview's title bar.", "ชื่อที่เห็นในคิวเครื่องพิมพ์และบนหัวหน้าต่างดูตัวอย่าง"),
     ("The paper turned sideways - DefaultPageSettings.Landscape.", "หมุนกระดาษเป็นแนวนอน - DefaultPageSettings.Landscape"),
     ("A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows.", "หน้าที่ต้องวาด - e.draw_text, e.draw_line, e.margin_bounds หน่วยเป็นร้อยส่วนของนิ้ว; เรียก e.set_has_more_pages(true) เมื่อยังมีหน้าต่อไป"),
+    ("Binding source", "แหล่งข้อมูลผูก"),
+    ("Its rows' columns, with commas: name, phone - its table's when it is bound to one.", "คอลัมน์ของแถว คั่นด้วยจุลภาค: name, phone - ถ้าผูกกับตารางจะใช้คอลัมน์ของตาราง"),
+    ("A binding source's id and a column - people.name: the control shows that column of the current row, and what is changed goes back.", "id ของแหล่งข้อมูลผูกกับคอลัมน์ - people.name: control แสดงคอลัมน์นั้นของแถวปัจจุบัน และสิ่งที่แก้จะเขียนกลับ"),
+    ("Another row became the current one - moved to, added, taken out, or new rows given.", "แถวปัจจุบันเปลี่ยน - เลื่อนไป เพิ่ม ลบ หรือได้แถวชุดใหม่"),
 ];
 
 #[cfg(test)]

@@ -204,7 +204,23 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::NotifyIcon => "NotifyIcon",
         Kind::Split => "SplitContainer",
         Kind::PrintDocument => "PrintDocument",
+        Kind::BindingSource => "BindingSource",
     }
+}
+
+/// Which of a control's values `data_binding` binds - `phai_ui::binding::Bound`'s name.
+pub fn bound_as(kind: Kind) -> Option<&'static str> {
+    Some(match kind {
+        Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Label | Kind::Button | Kind::Masked | Kind::Link | Kind::Group => "Text",
+        Kind::Checkbox | Kind::Radio => "Checked",
+        Kind::Number => "Number",
+        Kind::Slider | Kind::Progress => "Value",
+        Kind::Date => "Date",
+        Kind::Calendar => "Calendar",
+        Kind::Combo => "Combo",
+        Kind::ListBox => "ListBox",
+        _ => return None,
+    })
 }
 
 /// `phai_ui::events`' name for an event code.
@@ -225,6 +241,7 @@ fn event_const(code: u16) -> &'static str {
         e::DOUBLE_CLICK => "DOUBLE_CLICK",
         e::DRAG_DROP => "DRAG_DROP",
         e::PRINT_PAGE => "PRINT_PAGE",
+        e::POSITION_CHANGED => "POSITION_CHANGED",
         _ => "RESIZE",
     }
 }
@@ -561,6 +578,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
             Kind::ColorDialog => "phai_ui::ctl::ColorDialog::new(hwnd)".to_string(),
             Kind::FontDialog => "phai_ui::ctl::FontDialog::new(hwnd)".to_string(),
+            Kind::BindingSource => format!("phai_ui::ctl::BindingSource::new(hwnd, {id}, &[{}])", c.data_columns().iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
             Kind::PrintDocument => format!("phai_ui::ctl::PrintDocument::new(hwnd, {id}, {}, {})", words(c, "document_name"), c.flag("landscape", false)),
             Kind::ErrorProvider => "phai_ui::ctl::ErrorProvider::new(hwnd)".to_string(),
             Kind::NotifyIcon => format!("phai_ui::ctl::NotifyIcon::new(hwnd, {id} as u32, {}, {})", if text_of(c).is_empty() { "\"\"".to_string() } else { text.clone() }, c.visible != Some(false)),
@@ -617,6 +635,14 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let mask = if hooked.is_empty() { "0".to_string() } else { hooked.iter().map(|k| format!("phai_ui::events::bit(phai_ui::events::{k})")).collect::<Vec<_>>().join(" | ") };
         let _ = writeln!(w, "        phai_ui::events::hook({}, hwnd, {}, {mask}, {keys});", c.id, control_id(i));
     }
+    // DataBindings: each control showing a column of its binding source's current row.
+    for c in &f.control {
+        if let Some((s, col)) = c.word("data_binding").and_then(|d| d.split_once('.')) {
+            if let Some(how) = bound_as(c.kind) {
+                let _ = writeln!(w, "        {s}.bind({}, phai_ui::binding::Bound::{how}, {});", c.id, lit(col));
+            }
+        }
+    }
     if f.form.flag("is_mdi_container", false) {
         let _ = writeln!(w, "        // IsMdiContainer: the area child forms open in, what docking leaves.");
         let _ = writeln!(w, "        let mdi_client = phai_ui::mdi::client(hwnd);");
@@ -659,14 +685,22 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    /// {id}'s rows read again from {table}.");
         let _ = writeln!(w, "    pub fn reload_{id}(&self) -> Result<(), String> {{");
         let _ = writeln!(w, "        let rows = self.{id}_data.load()?;");
-        let _ = writeln!(w, "        phai_ui::grid::grid_fill(self.{id}, &rows);");
+        if c.kind == Kind::BindingSource {
+            let _ = writeln!(w, "        self.{id}.set_rows(rows);");
+        } else {
+            let _ = writeln!(w, "        phai_ui::grid::grid_fill(self.{id}, &rows);");
+        }
         let _ = writeln!(w, "        Ok(())");
         let _ = writeln!(w, "    }}");
         let _ = writeln!(w);
         let _ = writeln!(w, "    /// What {id} holds written back to {table} - changed cells, new rows, rows taken out -");
         let _ = writeln!(w, "    /// then read again. How many changes were made.");
         let _ = writeln!(w, "    pub fn save_{id}(&self) -> Result<usize, String> {{");
-        let _ = writeln!(w, "        let n = self.{id}_data.save(&phai_ui::grid::grid_tagged_rows(self.{id}))?;");
+        if c.kind == Kind::BindingSource {
+            let _ = writeln!(w, "        let n = self.{id}_data.save(&self.{id}.tagged_rows())?;");
+        } else {
+            let _ = writeln!(w, "        let n = self.{id}_data.save(&phai_ui::grid::grid_tagged_rows(self.{id}))?;");
+        }
         let _ = writeln!(w, "        self.reload_{id}()?;");
         let _ = writeln!(w, "        Ok(n)");
         let _ = writeln!(w, "    }}");

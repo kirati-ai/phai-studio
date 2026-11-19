@@ -58,6 +58,9 @@ pub struct Spec {
     pub canvas: bool,
 }
 
+/// The controls `data_binding` can bind (`codegen::bound_as`).
+const BINDABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Label, Kind::Button, Kind::Masked, Kind::Link, Kind::Group, Kind::Checkbox, Kind::Radio, Kind::Number, Kind::Slider, Kind::Progress, Kind::Date, Kind::Calendar, Kind::Combo, Kind::ListBox];
+
 #[allow(clippy::too_many_arguments)]
 const fn spec(name: &'static str, label: &'static str, category: &'static str, ty: Ty, default: &'static str, kinds: &'static [Kind], how: How, help: &'static str) -> Spec {
     Spec { name, label, category, ty, default, help, kinds, how, canvas: true }
@@ -119,6 +122,8 @@ pub const CONTROL: &[Spec] = &[
     spec("editable", "DropDownStyle = DropDown", "Behavior", Ty::Bool, "false", &[Kind::Combo], How::Code, "Words can be typed in as well as chosen."),
     spec("sorted", "Sorted", "Behavior", Ty::Bool, "false", &[Kind::Combo, Kind::ListBox], How::Code, "Its items in alphabetical order."),
     spec("selection_mode", "SelectionMode", "Behavior", Ty::Choice(&["one", "multi"]), "one", &[Kind::ListBox], How::Code, "One line chosen at a time, or several with Ctrl and Shift."),
+    spec("fields", "DataMember", "Data", Ty::Text, "", &[Kind::BindingSource], How::Code, "Its rows' columns, with commas: name, phone - its table's when it is bound to one."),
+    spec("data_binding", "DataBindings", "Data", Ty::Text, "", BINDABLE, How::Code, "A binding source's id and a column - people.name: the control shows that column of the current row, and what is changed goes back."),
     spec("document_name", "DocumentName", "Behavior", Ty::Words, "document", &[Kind::PrintDocument], How::Code, "The name in the printer's queue and on the preview's title bar."),
     spec("landscape", "Landscape", "Behavior", Ty::Bool, "false", &[Kind::PrintDocument], How::Code, "The paper turned sideways - DefaultPageSettings.Landscape."),
     spec("title", "Title", "Appearance", Ty::Words, "", &[Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog], How::Code, "The words in the dialog's title bar."),
