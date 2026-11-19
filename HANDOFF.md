@@ -31,6 +31,15 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   (ค่าเริ่มต้นของทุกตัว) → class (`button.primary`) → ค่าที่ตั้งรายตัวใน Properties (เก็บใน `.phaiform`, codegen เป็น `#id { }`)
 - ต่างจาก C# ที่รวมทุกอย่างใน Designer.cs: Phai แยกหน้าตาไป CSS แบบเว็บ เปลี่ยนธีมทั้งโปรแกรมได้ในไฟล์เดียว
 
+- **แท็บที่สามใน Properties: "Style" 🖌** (ต่อจาก Properties ⚙ และ Events ⚡) สำหรับ control ที่เลือก:
+  ค่าจริงจากธีม + บอกว่ามาจากกฎไหน (`button.primary`) แก้ทับรายตัวได้, แยกตามสถานะ (ปกติ/ชี้/กด/โฟกัส/ปิดใช้)
+  พร้อมตัวอย่างบนฟอร์ม, transition (ระยะเวลา + easing), animation สำเร็จรูป (จางเข้า กระพริบ หมุน),
+  ปุ่ม "ส่งไปที่ธีม" ย้ายค่าที่แต่งเป็น class ใน theme.css — แท็บ Properties เดิม (Back colour, Font) คงไว้สำหรับคนจาก C#
+- **CSS transition / animation** (phai-ui ยังไม่รองรับ): ลำดับ `transition` (สี ขอบ opacity — ไล่ค่าด้วยตัวจับเวลา
+  ในตัววาดของ phai-ui) → `@keyframes` + `animation` → `transform` บางส่วน (control ของ Windows หมุน/ขยับแบบเว็บไม่ได้ทั้งหมด)
+- **Theme Editor** แบบ Skin Editor ของ DevExpress: หน้าต่างเลือกสี/ขอบ/มุมมน เห็น control ทุกชนิดเปลี่ยนทันที
+  ไม่ต้องเขียน CSS เอง แล้วบันทึกเป็น theme.css
+
 ## งานถัดไป (เรียงตามความสำคัญ)
 
 ### 0. Properties ของฟอร์มให้ใกล้ WinForms (เจ้านายชี้ 2026-11-19: "ทำไมฉันไม่มีเหมือน c#")
