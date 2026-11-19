@@ -93,6 +93,78 @@ pub struct Style {
     pub accent_color: Option<Color>,
     /// Toolbar glyphs.
     pub icon_color: Option<Color>,
+    /// CSS `transition`: colours change over this many milliseconds, along this curve.
+    pub transition: Option<(i32, Easing)>,
+}
+
+/// How a transition moves from the old colour to the new - CSS's timing functions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Easing {
+    #[default]
+    Ease,
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
+impl Easing {
+    pub fn parse(s: &str) -> Option<Easing> {
+        Some(match s {
+            "ease" => Easing::Ease,
+            "linear" => Easing::Linear,
+            "ease-in" => Easing::EaseIn,
+            "ease-out" => Easing::EaseOut,
+            "ease-in-out" => Easing::EaseInOut,
+            _ => return None,
+        })
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Easing::Ease => "ease",
+            Easing::Linear => "linear",
+            Easing::EaseIn => "ease-in",
+            Easing::EaseOut => "ease-out",
+            Easing::EaseInOut => "ease-in-out",
+        }
+    }
+
+    /// How far along at time `t` (0 to 1).
+    pub fn at(self, t: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        match self {
+            Easing::Linear => t,
+            Easing::EaseIn => t * t * t,
+            Easing::EaseOut => 1.0 - (1.0 - t).powi(3),
+            Easing::EaseInOut | Easing::Ease => {
+                if t < 0.5 {
+                    4.0 * t * t * t
+                } else {
+                    1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+                }
+            }
+        }
+    }
+}
+
+impl Color {
+    /// Part way from `self` to `to`.
+    pub fn mix(self, to: Color, t: f32) -> Color {
+        let m = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t).round().clamp(0.0, 255.0) as u8;
+        Color { r: m(self.r, to.r), g: m(self.g, to.g), b: m(self.b, to.b), a: m(self.a, to.a) }
+    }
+}
+
+impl Style {
+    /// The colours part way from `self` to `to`; the rest `to`'s.
+    pub fn mix(&self, to: &Style, t: f32) -> Style {
+        let c = |a: Option<Color>, b: Option<Color>| match (a, b) {
+            (Some(a), Some(b)) => Some(a.mix(b, t)),
+            (_, b) => b,
+        };
+        Style { background: c(self.background, to.background), color: c(self.color, to.color), border_color: c(self.border_color, to.border_color), accent_color: c(self.accent_color, to.accent_color), icon_color: c(self.icon_color, to.icon_color), ..to.clone() }
+    }
 }
 
 impl Style {
@@ -114,7 +186,7 @@ impl Style {
         macro_rules! over {
             ($($f:ident),*) => { $( if top.$f.is_some() { self.$f = top.$f; } )* };
         }
-        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color);
+        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color, transition);
         self
     }
 
@@ -175,6 +247,7 @@ impl Selector {
 enum Value {
     Color(Color),
     Number(i32),
+    Transition(i32, Easing),
 }
 
 #[derive(Clone, Debug)]
@@ -182,6 +255,47 @@ struct Rule {
     selectors: Vec<Selector>,
     decls: Vec<(Prop, Value)>,
     order: usize,
+    /// The file it is in (empty: the sheet itself), and each declaration's line.
+    source: String,
+    lines: Vec<usize>,
+}
+
+impl Selector {
+    /// As CSS writes it: `button.primary:hover`.
+    pub fn text(&self) -> String {
+        let mut s = self.kind.clone().unwrap_or_default();
+        if let Some(id) = &self.id {
+            s.push_str(&format!("#{id}"));
+        }
+        for c in &self.classes {
+            s.push_str(&format!(".{c}"));
+        }
+        for p in &self.states {
+            s.push_str(match p {
+                Pseudo::Hover => ":hover",
+                Pseudo::Pressed => ":pressed",
+                Pseudo::Focus => ":focus",
+                Pseudo::Disabled => ":disabled",
+                Pseudo::Selected => ":selected",
+                Pseudo::Checked => ":checked",
+            });
+        }
+        if s.is_empty() {
+            "*".into()
+        } else {
+            s
+        }
+    }
+}
+
+/// Where one property's value comes from: the rule that won, as CSS writes its selector, its
+/// file (empty: the theme itself) and its line.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Origin {
+    pub property: &'static str,
+    pub selector: String,
+    pub source: String,
+    pub line: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -195,6 +309,7 @@ enum Prop {
     FontSize,
     AccentColor,
     IconColor,
+    Transition,
 }
 
 impl Prop {
@@ -209,8 +324,24 @@ impl Prop {
             "font-size" => Prop::FontSize,
             "accent-color" => Prop::AccentColor,
             "icon-color" => Prop::IconColor,
+            "transition" => Prop::Transition,
             _ => return None,
         })
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Prop::Background => "background",
+            Prop::Color => "color",
+            Prop::BorderColor => "border-color",
+            Prop::BorderWidth => "border-width",
+            Prop::BorderRadius => "border-radius",
+            Prop::FontWeight => "font-weight",
+            Prop::FontSize => "font-size",
+            Prop::AccentColor => "accent-color",
+            Prop::IconColor => "icon-color",
+            Prop::Transition => "transition",
+        }
     }
 
     fn is_color(self) -> bool {
@@ -282,7 +413,9 @@ impl Theme {
         let mut rules = Vec::new();
         for (selectors, decls, source) in raw {
             let mut out = Vec::new();
+            let mut lines = Vec::new();
             for (name, value, line) in decls {
+                lines.push(line);
                 let err = |message: String| ThemeError { line, message: if source.is_empty() { message } else { format!("{source}: {message}") } };
                 let prop = Prop::parse(&name).ok_or_else(|| err(format!("unknown property {name}")))?;
                 let text = resolve_vars(&value, &vars, line, 0).map_err(|e| err(e.message))?;
@@ -290,7 +423,7 @@ impl Theme {
                 out.push((prop, value));
             }
             let order = rules.len();
-            rules.push(Rule { selectors, decls: out, order });
+            rules.push(Rule { selectors, decls: out, order, source, lines });
         }
         Ok(Theme { rules, vars })
     }
@@ -311,6 +444,31 @@ impl Theme {
             }
         }
         s
+    }
+
+    /// Where each property this control has in this state comes from - for the designer's Style
+    /// tab, as a browser's inspector shows it.
+    pub fn explain(&self, q: &Query) -> Vec<Origin> {
+        // (specificity, order, rule, the selector of it that matched)
+        type Hit<'r> = ((u8, u8, u8), usize, &'r Rule, &'r Selector);
+        let mut hits: Vec<Hit> = Vec::new();
+        for r in &self.rules {
+            if let Some(sel) = r.selectors.iter().filter(|s| s.matches(q)).max_by_key(|s| s.specificity()) {
+                hits.push((sel.specificity(), r.order, r, sel));
+            }
+        }
+        hits.sort_by_key(|(spec, order, _, _)| (*spec, *order));
+        let mut out: Vec<Origin> = Vec::new();
+        for (_, _, r, sel) in hits {
+            for (k, (p, _)) in r.decls.iter().enumerate() {
+                let o = Origin { property: p.name(), selector: sel.text(), source: r.source.clone(), line: r.lines.get(k).copied().unwrap_or(0) };
+                match out.iter_mut().find(|x| x.property == o.property) {
+                    Some(x) => *x = o,
+                    None => out.push(o),
+                }
+            }
+        }
+        out
     }
 
     fn sheet_style(&self, q: &Query) -> Style {
@@ -334,6 +492,7 @@ impl Theme {
                     (Prop::BorderRadius, Value::Number(n)) => s.border_radius = Some(*n),
                     (Prop::FontWeight, Value::Number(n)) => s.font_weight = Some(*n),
                     (Prop::FontSize, Value::Number(n)) => s.font_size = Some(*n),
+                    (Prop::Transition, Value::Transition(ms, e)) => s.transition = Some((*ms, *e)),
                     _ => {}
                 }
             }
@@ -395,6 +554,37 @@ fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, Strin
 
 static CURRENT: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
 static WINDOW_OVER: RwLock<Option<Style>> = RwLock::new(None);
+static STATE_RULES: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
+
+/// The controls' own looks in their states - `#ok:hover { background: #e0f2fe }` - which the
+/// designer's Style tab writes and the generated code gives here; over the theme and the
+/// controls' own. The theme's `var()`s may be used. An error names the line.
+pub fn set_state_rules(css: &str) -> Result<(), ThemeError> {
+    if css.trim().is_empty() {
+        *STATE_RULES.write().unwrap_or_else(|e| e.into_inner()) = None;
+        return Ok(());
+    }
+    let vars = current().vars.clone();
+    let mut sheet = String::from(":root {");
+    for (k, v) in &vars {
+        sheet.push_str(&format!(" {k}: {v};"));
+    }
+    sheet.push_str(" }\n");
+    sheet.push_str(css);
+    let t = Theme::parse(&sheet).map_err(|e| ThemeError { line: e.line.saturating_sub(1), message: e.message })?;
+    *STATE_RULES.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(t));
+    Ok(())
+}
+
+/// What the controls' state rules say about this control in this state.
+pub fn state_rules_style(q: &Query) -> Style {
+    STATE_RULES.read().unwrap_or_else(|e| e.into_inner()).as_ref().map(|t| t.sheet_style(q)).unwrap_or_default()
+}
+
+/// Where the controls' state rules give this control its values.
+pub fn state_rules_explain(q: &Query) -> Vec<Origin> {
+    STATE_RULES.read().unwrap_or_else(|e| e.into_inner()).as_ref().map(|t| t.explain(q)).unwrap_or_default()
+}
 
 /// The program's window background and words over every theme it loads - a form's BackColor and
 /// ForeColor, as CSS `window { background; color }`. Words that are not a colour are left out.
@@ -609,6 +799,21 @@ fn resolve_vars(raw: &str, vars: &HashMap<String, String>, line: usize, depth: u
 
 fn parse_value(prop: Prop, text: &str) -> Option<Value> {
     let t = text.trim();
+    if prop == Prop::Transition {
+        // `150ms`, `0.2s ease-out`, `background 200ms linear` - every colour, whatever is named.
+        let mut ms = None;
+        let mut easing = Easing::Ease;
+        for w in t.split_whitespace() {
+            if let Some(n) = w.strip_suffix("ms").and_then(|n| n.parse::<f32>().ok()) {
+                ms = Some(n as i32);
+            } else if let Some(n) = w.strip_suffix('s').and_then(|n| n.parse::<f32>().ok()) {
+                ms = Some((n * 1000.0) as i32);
+            } else if let Some(e) = Easing::parse(w) {
+                easing = e;
+            }
+        }
+        return ms.filter(|m| *m >= 0).map(|m| Value::Transition(m, easing));
+    }
     if prop.is_color() {
         return parse_color(t).map(Value::Color);
     }

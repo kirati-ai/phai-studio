@@ -241,6 +241,40 @@ struct Css {
     push: bool,
     /// A label as wide as its words - AutoSize.
     auto: bool,
+    /// The designer showing it in a state it is not in - its Style tab's preview.
+    preview: Option<State>,
+}
+
+/// Shows control `h` as if it were in `state` (hovered, pressed...) - or as it is, for `None`.
+/// The designer's Style tab uses it to preview a state's look.
+pub fn set_preview_state(h: HWND, state: Option<State>) {
+    with_css(h, |c| c.preview = state);
+    unsafe {
+        let _ = Gdi::RedrawWindow(Some(h), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_FRAME | Gdi::RDW_ERASE);
+    }
+}
+
+/// Where each of control `h`'s values comes from in `state`: the theme's rules, then its own
+/// (`#id`, its Properties), then its state rules - for the Style tab.
+pub fn explain_of(h: HWND, kind: Kind, state: State) -> Vec<theme::Origin> {
+    let (classes, id, own) = with_css(h, |c| (c.classes.clone(), c.id.clone(), c.own.clone())).unwrap_or_default();
+    let refs: Vec<&str> = classes.iter().map(String::as_str).collect();
+    let q = Query { kind: kind.css(), classes: &refs, id: id.as_deref(), state };
+    let mut out = theme::current().explain(&q);
+    let mut put = |o: theme::Origin| match out.iter_mut().find(|x| x.property == o.property) {
+        Some(x) => *x = o,
+        None => out.push(o),
+    };
+    let me = format!("#{}", id.clone().unwrap_or_default());
+    for (p, set) in [("background", own.background.is_some()), ("color", own.color.is_some()), ("border-color", own.border_color.is_some()), ("border-width", own.border_width.is_some()), ("border-radius", own.border_radius.is_some()), ("font-weight", own.font_weight.is_some()), ("accent-color", own.accent_color.is_some()), ("icon-color", own.icon_color.is_some()), ("transition", own.transition.is_some())] {
+        if set {
+            put(theme::Origin { property: p, selector: me.clone(), source: "own".into(), line: 0 });
+        }
+    }
+    for o in theme::state_rules_explain(&q) {
+        put(theme::Origin { source: "own".into(), ..o });
+    }
+    out
 }
 
 /// A check box's state: 0 unticked, 1 ticked, 2 neither (WinForms' Indeterminate).
@@ -316,7 +350,7 @@ fn with_css<R>(h: HWND, f: impl FnOnce(&mut Css) -> R) -> Option<R> {
 
 fn mark(h: HWND, kind: Kind) {
     let mut map = CSS.lock().unwrap_or_else(|e| e.into_inner());
-    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), align: 0, mixed: false, three: false, push: false, auto: false });
+    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), align: 0, mixed: false, three: false, push: false, auto: false, preview: None });
 }
 
 fn forget(h: HWND) {
@@ -358,9 +392,68 @@ pub fn set_css(h: HWND, classes: &str, id: &str) {
 
 /// What the theme says about control `h` in `state`.
 pub fn style_of(h: HWND, kind: Kind, state: State) -> Style {
-    let (classes, id, own) = with_css(h, |c| (c.classes.clone(), c.id.clone(), c.own.clone())).unwrap_or_default();
+    let (classes, id, own, preview) = with_css(h, |c| (c.classes.clone(), c.id.clone(), c.own.clone(), c.preview)).unwrap_or_default();
+    let state = match preview {
+        Some(p) => State { hover: state.hover || p.hover, pressed: state.pressed || p.pressed, focus: state.focus || p.focus, disabled: state.disabled || p.disabled, selected: state.selected || p.selected, checked: state.checked || p.checked },
+        None => state,
+    };
     let refs: Vec<&str> = classes.iter().map(String::as_str).collect();
-    theme::current().style(&Query { kind: kind.css(), classes: &refs, id: id.as_deref(), state }).under(&own)
+    let q = Query { kind: kind.css(), classes: &refs, id: id.as_deref(), state };
+    theme::current().style(&q).under(&own).under(&theme::state_rules_style(&q))
+}
+
+/// A colour change under way: from what was shown to what the state now asks, since `start`.
+struct Anim {
+    from: Style,
+    to: Style,
+    start: std::time::Instant,
+}
+
+static ANIMS: Mutex<Option<HashMap<isize, Anim>>> = Mutex::new(None);
+const ANIM_TIMER: usize = 0x7A11;
+
+/// [`style_of`] for the control's look as drawn now: with a CSS `transition`, a change of state
+/// moves its colours over the transition's time instead of at once.
+pub fn style_animated(h: HWND, kind: Kind, state: State) -> Style {
+    let target = style_of(h, kind, state);
+    let mut map = ANIMS.lock().unwrap_or_else(|e| e.into_inner());
+    let m = map.get_or_insert_with(HashMap::new);
+    let key = h.0 as isize;
+    let Some((ms, easing)) = target.transition.filter(|(ms, _)| *ms > 0) else {
+        m.remove(&key);
+        return target;
+    };
+    let now = std::time::Instant::now();
+    let done = |a: &Anim| now.duration_since(a.start).as_millis() as i32 >= ms;
+    let shown = |a: &Anim| if done(a) { a.to.clone() } else { a.from.mix(&a.to, easing.at(now.duration_since(a.start).as_millis() as f32 / ms as f32)) };
+    match m.get(&key) {
+        None => {
+            m.insert(key, Anim { from: target.clone(), to: target.clone(), start: now - std::time::Duration::from_millis(ms as u64) });
+            target
+        }
+        Some(a) if a.to == target => shown(a),
+        Some(a) => {
+            let from = shown(a);
+            m.insert(key, Anim { from: from.clone(), to: target, start: now });
+            unsafe {
+                wm::SetTimer(Some(h), ANIM_TIMER, 15, Some(anim_tick));
+            }
+            from
+        }
+    }
+}
+
+extern "system" fn anim_tick(h: HWND, _: u32, _: usize, _: u32) {
+    let running = ANIMS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).map(|a| {
+        let ms = a.to.transition.map(|t| t.0).unwrap_or(0);
+        (a.start.elapsed().as_millis() as i32) < ms + 15
+    })).unwrap_or(false);
+    unsafe {
+        if !running {
+            let _ = wm::KillTimer(Some(h), ANIM_TIMER);
+        }
+        let _ = Gdi::RedrawWindow(Some(h), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_FRAME);
+    }
 }
 
 fn window_style() -> Style {
@@ -675,7 +768,7 @@ pub fn draw_item(l: LPARAM) -> bool {
         checked,
         selected: false,
     };
-    let s = style_of(d.hwndItem, kind, state);
+    let s = style_animated(d.hwndItem, kind, state);
     let dc = d.hDC;
     let r = d.rcItem;
     let h = d.hwndItem;
@@ -817,7 +910,7 @@ unsafe extern "system" fn edit_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id
                 disabled: !windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h).as_bool(),
                 ..Default::default()
             };
-            let s = style_of(h, Kind::Edit, state);
+            let s = style_animated(h, Kind::Edit, state);
             let dc = Gdi::GetWindowDC(Some(h));
             let mut wr = RECT::default();
             let _ = wm::GetWindowRect(h, &mut wr);
@@ -1521,7 +1614,7 @@ fn range_paint(h: HWND, slider: bool) {
         let hot = with_css(h, |c| c.hot).unwrap_or(false);
         let focus = windows::Win32::UI::Input::KeyboardAndMouse::GetFocus() == h;
         let kind = if slider { Kind::Slider } else { Kind::Progress };
-        let s = style_of(h, kind, State { hover: hot, focus, disabled: !enabled, ..Default::default() });
+        let s = style_animated(h, kind, State { hover: hot, focus, disabled: !enabled, ..Default::default() });
         // Drawn off screen and copied once, so dragging does not flicker.
         let mem = Gdi::CreateCompatibleDC(Some(dc));
         let bmp = Gdi::CreateCompatibleBitmap(dc, rc.right.max(1), rc.bottom.max(1));

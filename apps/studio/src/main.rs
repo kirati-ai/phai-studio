@@ -1202,6 +1202,51 @@ impl Studio {
             }
             (Key::FormStart, _) => f.form.start = (text == t("Windows default")).then(|| "windows".to_string()),
             (Key::FormState, _) => f.form.maximized = (text == t("Maximized")).then_some(true),
+            (Key::StyleProp(prop, st), Some(i)) => {
+                let v = text.trim();
+                if !v.is_empty() && phai_ui::theme::declarations_style(&format!("{prop}: {v}")).is_err() {
+                    return;
+                }
+                if st == 0 {
+                    // The normal state is the control's own properties.
+                    let (key, value) = match prop {
+                        "background" => (Key::BackColor, v.to_string()),
+                        "color" => (Key::ForeColor, v.to_string()),
+                        "border-color" => (Key::BorderColor, v.to_string()),
+                        "border-radius" => (Key::Radius, v.trim_end_matches("px").to_string()),
+                        "font-weight" => (Key::Bold, if v == "bold" || v.parse::<i32>().is_ok_and(|n| n >= 600) { "True" } else { "False" }.to_string()),
+                        "border-width" => (Key::More("border_width"), v.trim_end_matches("px").to_string()),
+                        "accent-color" => (Key::More("accent_color"), v.to_string()),
+                        _ => (Key::More("icon_color"), v.to_string()),
+                    };
+                    return self.apply_one(key, &value);
+                }
+                let Some(state) = phai_form::STATES.get(st as usize - 1) else { return };
+                let c = &mut f.control[i];
+                let now = props::with_decl(c.states.get(*state).map(String::as_str).unwrap_or(""), prop, (!v.is_empty()).then_some(v));
+                if now.is_empty() {
+                    c.states.remove(*state);
+                } else {
+                    c.states.insert(state.to_string(), now);
+                }
+            }
+            (Key::StyleTransition | Key::StyleEasing, Some(i)) => {
+                use phai_form::HasProps;
+                let c = &mut f.control[i];
+                let old = c.prop("transition").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let ms = old.split_whitespace().find(|w| w.ends_with('s')).unwrap_or("").to_string();
+                let easing = old.split_whitespace().find(|w| phai_ui::theme::Easing::parse(w).is_some()).unwrap_or("ease").to_string();
+                let (ms, easing) = if key == Key::StyleTransition {
+                    match text.trim().trim_end_matches("ms").parse::<u32>() {
+                        Ok(n) if n > 0 => (format!("{n}ms"), easing),
+                        _ if text.trim().is_empty() || text.trim() == "0" => (String::new(), easing),
+                        _ => return,
+                    }
+                } else {
+                    (if ms.is_empty() { "150ms".into() } else { ms }, text.trim().to_string())
+                };
+                c.set_prop("transition", (!ms.is_empty()).then(|| phai_form::toml::Value::String(if easing == "ease" { ms.clone() } else { format!("{ms} {easing}") })));
+            }
             (Key::FormOn(name), _) => {
                 let h = text.trim();
                 if h.is_empty() {
@@ -1340,12 +1385,71 @@ impl Studio {
         self.say_selection();
     }
 
+    /// The chosen control's look - its own colours, border, weight, transition and its looks in
+    /// states - written into the form's theme as `kind.class` rules, and the control given that
+    /// class in their place, as Visual Studio's "extract to style" and DevExpress' skins do.
+    pub fn send_style_to_theme(&mut self, class: &str) {
+        let Some(i) = self.selected else { return };
+        if class.is_empty() || !class.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') || class.starts_with(|c: char| c.is_ascii_digit()) {
+            controls::status_text(self.status, 0, t("A class's name: letters, digits and -, not starting with a digit."));
+            return;
+        }
+        let (Some(form), Some(theme)) = (self.doc.path.clone(), self.doc.form.form.theme.clone()) else {
+            controls::status_text(self.status, 0, t("The form has no theme - choose or make one in the Theme menu first."));
+            return;
+        };
+        let Some(kind) = self.canvas.as_ref().and_then(|cv| cv.control_window(i)).and_then(win::kind_of) else { return };
+        let c = self.doc.form.control[i].clone();
+        let sel = format!("{}.{class}", kind.css());
+        let mut css = format!("{}/* {class}: from {} in Phai Studio */{}", char::from(10), c.id, char::from(10));
+        if let Some(own) = c.own_css() {
+            css.push_str(&format!("{sel} {{ {own}; }}{}", char::from(10)));
+        }
+        for (st, decls) in &c.states {
+            css.push_str(&format!("{sel}:{st} {{ {decls}; }}{}", char::from(10)));
+        }
+        let path = form.with_file_name("").join(&theme);
+        let mut sheet = std::fs::read_to_string(&path).unwrap_or_default();
+        sheet.push_str(&css);
+        if std::fs::write(&path, sheet).is_err() {
+            return;
+        }
+        self.checkpoint();
+        self.edit(|f| {
+            use phai_form::HasProps;
+            let c = &mut f.control[i];
+            c.back_color = None;
+            c.fore_color = None;
+            c.border_color = None;
+            c.radius = None;
+            c.bold = None;
+            for name in ["border_width", "accent_color", "icon_color", "transition"] {
+                c.set_prop(name, None);
+            }
+            c.states.clear();
+            let mut classes: Vec<String> = c.class.as_deref().unwrap_or("").split_whitespace().map(str::to_string).collect();
+            if !classes.iter().any(|x| x == class) {
+                classes.push(class.to_string());
+            }
+            c.class = Some(classes.join(" "));
+        });
+        self.load_theme();
+        self.rebuild();
+        self.refresh_props();
+        controls::status_text(self.status, 0, &tf("{0} is in {1} now", &[&sel, &theme]));
+    }
+
     pub fn rebuild(&mut self) {
+        // The controls' looks in their states, for the canvas as for the program.
+        let _ = phai_ui::theme::set_state_rules(&self.doc.form.state_css());
         // Pictures with a relative path are the project's.
         let base = self.doc.path.as_deref().and_then(cargo::project_of);
         phai_ui::picture::set_base(base.as_deref());
         if let Some(c) = self.canvas.as_mut() {
             c.rebuild();
+        }
+        if let Some(p) = self.props.as_mut() {
+            p.sync_preview();
         }
         // A label that sizes itself: the width it took is its width in the form, as Visual
         // Studio writes a Size it did not choose - so the handles go round what is drawn.
@@ -6994,7 +7098,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: the start window, once the window is up - unless switched off,
@@ -7030,6 +7134,12 @@ fn main() {
                 [n] => s.select(Some(*n)),
                 [] => {}
                 _ => s.select_many(&many),
+            }
+        }
+        // `--style N`: the Style tab, on state N - for checking by picture.
+        if let Some(n) = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            if let Some(p) = s.props.as_mut() {
+                p.set_style_state(n);
             }
         }
         if args.iter().any(|a| a == "--events") {
@@ -7202,6 +7312,23 @@ fn main() {
             }
         }
         // `--exceptions-test`: Exception Settings set from `PHAI_EXCEPTIONS_TEST`, then read back.
+        // `--style-test`: control 6 given a pressed colour and a transition through the Style
+        // tab's keys, then sent to the theme as `save`; what the form and the theme hold printed.
+        if args.iter().any(|a| a == "--style-test") {
+            s.select(Some(6));
+            s.apply(props::Key::StyleProp("color", 2), "#ffcc00");
+            s.apply(props::Key::StyleTransition, "250");
+            s.apply(props::Key::StyleEasing, "ease-out");
+            let c = &s.doc.form.control[6];
+            println!("before: states {:?}, transition {:?}", c.states, phai_form::HasProps::prop(c, "transition"));
+            s.send_style_to_theme("save");
+            let c = &s.doc.form.control[6];
+            println!("after: class {:?}, states {:?}, transition {:?}, back {:?}", c.class, c.states, phai_form::HasProps::prop(c, "transition"), c.back_color);
+            let theme = s.doc.path.as_ref().map(|p| p.with_file_name("").join(s.doc.form.form.theme.clone().unwrap_or_default())).unwrap_or_default();
+            let css = std::fs::read_to_string(theme).unwrap_or_default();
+            println!("theme ends: {}", css.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | "));
+            std::process::exit(0);
+        }
         // `--menu-test`: what the menus hold as Windows has them - the Format menu's icons, the
         // Theme menu's style sheets - and a double-click on the form going to its code; printed.
         if args.iter().any(|a| a == "--menu-test") {
@@ -8202,6 +8329,67 @@ impl MainWindowEvents for MainWindow {
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let shot = std::process::Command::new(&exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-more.png")).status().unwrap();
         assert!(shot.success(), "photographed");
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A real project whose button has a look of its own for hover and a transition: the state's
+    /// colour reaches the running button, and a change of state moves through the colours between.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn state_looks_and_transitions_reach_the_running_program() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-style-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut go = Control::new(Kind::Button, "go", [11, 40, 100, 28]);
+        go.text = Some("Go".into());
+        go.back_color = Some("#ffffff".into());
+        go.states.insert("hover".into(), "background: #000000".into());
+        go.set_prop("transition", Some(phai_form::toml::Value::String("300ms linear".into())));
+        f.control.push(go);
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Go", "ไป")]).unwrap();
+        let user = dir.join("src").join("main_window.rs");
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use phai_ui::theme::{Color, State};
+use phai_ui::win::{self, Kind};
+
+#[derive(Default)]
+pub struct MainWindow {}
+
+impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        let h = ui.go.hwnd();
+        let hover = State { hover: true, ..Default::default() };
+        let bg = |s: phai_ui::theme::Style| s.background.unwrap_or(Color::rgb(1, 2, 3));
+        let mut bits = 0;
+        if bg(win::style_of(h, Kind::Button, hover)) == Color::rgb(0, 0, 0) { bits |= 1 }
+        if bg(win::style_of(h, Kind::Button, State::default())) == Color::rgb(255, 255, 255) { bits |= 2 }
+        let _ = win::style_animated(h, Kind::Button, State::default());
+        if bg(win::style_animated(h, Kind::Button, hover)) == Color::rgb(255, 255, 255) { bits |= 4 }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let mid = bg(win::style_animated(h, Kind::Button, hover));
+        if mid.r > 40 && mid.r < 215 { bits |= 8 }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        if bg(win::style_animated(h, Kind::Button, hover)) == Color::rgb(0, 0, 0) { bits |= 16 }
+        if win::explain_of(h, Kind::Button, hover).iter().any(|o| o.property == "background" && o.source == "own" && o.selector == "#go:hover") { bits |= 32 }
+        std::process::exit(if bits == 63 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(&user, code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(&exe).status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of what worked");
         let _ = std::fs::remove_dir_all(&dir);

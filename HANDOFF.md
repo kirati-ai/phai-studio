@@ -112,7 +112,17 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - 🟡 BackgroundImage: label/checkbox วาดพื้นทึบทับรูป (ต้องให้ ctl_color คืน NULL_BRUSH เมื่อหน้าต่างมีรูป + invalidate
   พื้นใต้ label ตอนเปลี่ยนข้อความ)
 
-### 2. แท็บ Style 🖌, CSS transition / animation, Theme Editor (ดูหัวข้อ "หลักของ control" ด้านบน)
+### 2. แท็บ Style 🖌 — เสร็จ (2026-11-19) เหลือ animation และ Theme Editor
+- ทำแล้ว: แท็บที่สามใน Properties (`apps/studio/src/props.rs` `gather_style`): เลือกสถานะ → ค่าจริงทุก property +
+  ที่มา (`Theme::explain`, `win::explain_of`) → แก้ได้ (normal = ค่าใน Properties เดิม, สถานะอื่น = `Control.states`),
+  canvas แสดง control ในสถานะนั้น (`win::set_preview_state`), Transition (ms + easing → prop `transition`),
+  "ส่งไปที่ธีม" (`Studio::send_style_to_theme`); phai-ui: `transition` ใน CSS (`win::style_animated` ไล่สี
+  background/color/border/accent/icon ด้วยตัวจับเวลา) ใช้กับปุ่ม/ช่องติ๊ก/radio, ขอบช่องกรอก, slider/progress
+  ตรวจ: `--style N`, `--style-test`, เทสต์ `state_looks_and_transitions_reach_the_running_program`
+- ต่อไป: animation สำเร็จรูป (`animation: blink 1s infinite`, fade-in = ไล่สีจากพื้นหลัง, pulse) — Win32 child
+  window หมุน/โปร่งใสไม่ได้ (layered child ต้องมี manifest Windows 8+) จึงทำแบบไล่สี; transition ของแท็บและ list
+  ยังไม่ทำ (วาดคนละทาง: controls.rs `tabs`, list custom draw)
+- Theme Editor แบบ Skin Editor: หน้าต่างแสดง control ทุกชนิด + ตัวเลือกสี `--accent` ฯลฯ เปลี่ยนทันที บันทึกเป็น theme.css
 
 ### 3. ทิศทาง DevExpress: grid ก่อน (จัดกลุ่ม, กรองแบบ Excel, ผลรวม, master-detail, ตัวแก้ในช่อง, ส่งออก Excel/PDF)
 
