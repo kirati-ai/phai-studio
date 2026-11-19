@@ -35,6 +35,8 @@
 `TextBox`, `Button`, `CheckBox`, `ListView`, `Grid`, `StatusBar`... (newtype รอบ HWND) มี `text()`, `set_text()`,
 `set_enabled()`, `checked()`, `rows()`... แล้ว codegen ให้ field ใน `<Form>Ui` เป็นชนิดเหล่านี้แทน `HWND`
 (ระวังโค้ดผู้ใช้เดิมที่ใช้ `ui.x` เป็น HWND: ให้ชนิดห่อมี `.hwnd()` และ `Deref`/`From` ไป HWND)
+- แบบ C#: `struct` + `impl` = class, `trait Control` = ส่วนที่ทุก control มีร่วม (Enabled, Visible, Focus, Show/Hide)
+- เสร็จแล้ว dropdown ของ Properties แสดงชื่อชนิดเต็มแบบ VS (`ok  phai_ui::Button`) และ rust-analyzer เติม methods ให้แบบ IntelliSense
 
 ### 3. เล็กน้อย
 - โหมดมืด: เส้นสว่างบางใต้แถบเครื่องมือแถวแรก (rebar band border, `win::rebar_colours`)
