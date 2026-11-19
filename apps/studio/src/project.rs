@@ -237,7 +237,7 @@ const MAIN_WINDOW_RS: &str = r#"//! MainWindow: what its controls do. Phai Studi
 //! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phaiform.
 
 use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
-use phai_ui::{controls, text::tf};
+use phai_ui::text::tf;
 
 #[derive(Default)]
 pub struct MainWindow {
@@ -247,7 +247,7 @@ pub struct MainWindow {
 impl MainWindowEvents for MainWindow {
     fn ok_clicked(&mut self, ui: &MainWindowUi) {
         self.clicks += 1;
-        controls::status_text(ui.status, 0, &tf("Hello, {0}", &[&self.clicks]));
+        ui.status.set_part_text(0, &tf("Hello, {0}", &[&self.clicks]));
     }
 }
 "#;

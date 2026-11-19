@@ -619,10 +619,10 @@ impl Props {
                 let w = win::wide(&s);
                 wm::SendMessageW(self.chooser, 0x0143 /* CB_ADDSTRING */, None, Some(LPARAM(w.as_ptr() as isize)));
             };
-            // Name, a tab, kind: the chooser draws the two apart.
-            add(format!("{}\t{}", f.form.name, t("Form")));
+            // As Visual Studio: the name, then its type in code - `name  phai_ui::ctl::TextBox`.
+            add(format!("{}\t{}Ui", f.form.name, f.form.name));
             for c in &f.control {
-                add(format!("{}\t{}", c.id, crate::kind_label(c.kind)));
+                add(format!("{}\tphai_ui::ctl::{}", c.id, phai_form::codegen::ctl_type(c.kind)));
             }
             wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(if s.selection().len() > 1 { usize::MAX } else { s.selected.map(|i| i + 1).unwrap_or(0) })), None);
         }

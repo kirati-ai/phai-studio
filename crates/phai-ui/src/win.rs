@@ -470,11 +470,13 @@ pub fn radio(parent: HWND, text: &str, id: i32, f: HFONT, group: i32, checked: b
     h
 }
 
-pub fn is_checked(h: HWND) -> bool {
+pub fn is_checked(h: impl Into<HWND>) -> bool {
+    let h: HWND = h.into();
     unsafe { wm::SendMessageW(h, BM_GETCHECK, None, None).0 != 0 }
 }
 
-pub fn set_checked(h: HWND, on: bool) {
+pub fn set_checked(h: impl Into<HWND>, on: bool) {
+    let h: HWND = h.into();
     unsafe {
         wm::SendMessageW(h, BM_SETCHECK, Some(WPARAM(on as usize)), None);
     }
@@ -771,7 +773,8 @@ pub fn combo_with(parent: HWND, id: i32, f: HFONT, items: &[&str], editable: boo
     h
 }
 
-pub fn combo_selected(h: HWND) -> i32 {
+pub fn combo_selected(h: impl Into<HWND>) -> i32 {
+    let h: HWND = h.into();
     unsafe { wm::SendMessageW(h, 0x0147 /* CB_GETCURSEL */, None, None).0 as i32 }
 }
 
@@ -841,7 +844,8 @@ pub fn list_columns(h: HWND, columns: &[(&str, i32)]) {
     }
 }
 
-pub fn list_add(h: HWND, cells: &[&str]) {
+pub fn list_add(h: impl Into<HWND>, cells: &[&str]) {
+    let h: HWND = h.into();
     use windows::Win32::UI::Controls as cc;
     unsafe {
         let row = wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 as i32;
@@ -856,7 +860,8 @@ pub fn list_add(h: HWND, cells: &[&str]) {
 
 /// Selects one row of a list view - the others not - and scrolls it into view.
 /// The words in a list's cell: row and column from 0.
-pub fn list_text(h: HWND, row: usize, col: i32) -> String {
+pub fn list_text(h: impl Into<HWND>, row: usize, col: i32) -> String {
+    let h: HWND = h.into();
     use windows::Win32::UI::Controls as cc;
     let mut buf = vec![0u16; 512];
     let mut item = cc::LVITEMW { iSubItem: col, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 512, ..Default::default() };
@@ -864,7 +869,8 @@ pub fn list_text(h: HWND, row: usize, col: i32) -> String {
     String::from_utf16_lossy(&buf[..n.min(512)])
 }
 
-pub fn list_select(h: HWND, row: usize) {
+pub fn list_select(h: impl Into<HWND>, row: usize) {
+    let h: HWND = h.into();
     use windows::Win32::UI::Controls as cc;
     unsafe {
         let all = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(cc::LVIS_SELECTED.0 | cc::LVIS_FOCUSED.0), ..Default::default() };
@@ -968,7 +974,8 @@ pub fn tree_add(h: HWND, parent: isize, text: &str, image: i32, data: isize) -> 
 }
 
 /// Where a child window is in its parent's client area.
-pub fn rect_in_parent(h: HWND) -> RECT {
+pub fn rect_in_parent(h: impl Into<HWND>) -> RECT {
+    let h: HWND = h.into();
     let mut r = RECT::default();
     unsafe {
         let _ = wm::GetWindowRect(h, &mut r);
@@ -1045,7 +1052,8 @@ extern "system" fn panel_outlined_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) 
 
 /// Fills a tree from lines: two spaces (or a tab) before a line put it under the line above with
 /// one less. The items' numbers are their line numbers.
-pub fn tree_items(h: HWND, lines: &[&str]) {
+pub fn tree_items(h: impl Into<HWND>, lines: &[&str]) {
+    let h: HWND = h.into();
     tree_clear(h);
     let mut parents: Vec<isize> = Vec::new();
     for (n, line) in lines.iter().enumerate() {
@@ -1082,7 +1090,8 @@ pub fn timer_stop(h: HWND, id: i32) {
 }
 
 /// Empties the tree.
-pub fn tree_clear(h: HWND) {
+pub fn tree_clear(h: impl Into<HWND>) {
+    let h: HWND = h.into();
     unsafe {
         wm::SendMessageW(h, 0x1101 /* TVM_DELETEITEM */, None, Some(LPARAM(-0x10000 /* TVI_ROOT */)));
     }
@@ -1096,7 +1105,8 @@ pub fn tree_expand(h: HWND, item: isize) {
 }
 
 /// The number kept with the chosen item, if one is chosen.
-pub fn tree_selected(h: HWND) -> Option<isize> {
+pub fn tree_selected(h: impl Into<HWND>) -> Option<isize> {
+    let h: HWND = h.into();
     use windows::Win32::UI::Controls as cc;
     unsafe {
         let item = wm::SendMessageW(h, 0x110A /* TVM_GETNEXTITEM */, Some(WPARAM(9 /* TVGN_CARET */)), None).0;
@@ -1229,7 +1239,8 @@ pub fn date(parent: HWND, id: i32, f: HFONT) -> HWND {
 }
 
 /// The date shown, as `(year, month, day)`.
-pub fn date_value(h: HWND) -> (i32, i32, i32) {
+pub fn date_value(h: impl Into<HWND>) -> (i32, i32, i32) {
+    let h: HWND = h.into();
     let mut st = windows::Win32::Foundation::SYSTEMTIME::default();
     unsafe {
         wm::SendMessageW(h, 0x1001 /* DTM_GETSYSTEMTIME */, None, Some(LPARAM(&mut st as *mut _ as isize)));
@@ -1237,7 +1248,8 @@ pub fn date_value(h: HWND) -> (i32, i32, i32) {
     (st.wYear as i32, st.wMonth as i32, st.wDay as i32)
 }
 
-pub fn set_date(h: HWND, year: i32, month: i32, day: i32) {
+pub fn set_date(h: impl Into<HWND>, year: i32, month: i32, day: i32) {
+    let h: HWND = h.into();
     let st = windows::Win32::Foundation::SYSTEMTIME { wYear: year as u16, wMonth: month as u16, wDay: day as u16, ..Default::default() };
     unsafe {
         wm::SendMessageW(h, 0x1002 /* DTM_SETSYSTEMTIME */, Some(WPARAM(0 /* GDT_VALID */)), Some(LPARAM(&st as *const _ as isize)));
@@ -1350,7 +1362,8 @@ pub fn slider(parent: HWND, id: i32, min: i32, max: i32, value: i32) -> HWND {
 }
 
 /// The value of a number box, slider or progress bar.
-pub fn value(h: HWND) -> i32 {
+pub fn value(h: impl Into<HWND>) -> i32 {
+    let h: HWND = h.into();
     match kind_of(h) {
         Some(Kind::Edit) => text_of(h).trim().parse().unwrap_or(0),
         _ => unsafe { state::<Range>(h) }.map(|r| r.value).unwrap_or(0),
@@ -1358,7 +1371,8 @@ pub fn value(h: HWND) -> i32 {
 }
 
 /// Sets a number box's, slider's or progress bar's value, kept within its range.
-pub fn set_value(h: HWND, v: i32) {
+pub fn set_value(h: impl Into<HWND>, v: i32) {
+    let h: HWND = h.into();
     match kind_of(h) {
         Some(Kind::Edit) => set_text(h, &v.to_string()),
         _ => {
@@ -2169,13 +2183,15 @@ fn check_theme(top: HWND) {
 
 // --- small things ---------------------------------------------------------------------------------
 
-pub fn move_to(h: HWND, x: i32, y: i32, w: i32, height: i32) {
+pub fn move_to(h: impl Into<HWND>, x: i32, y: i32, w: i32, height: i32) {
+    let h: HWND = h.into();
     unsafe {
         let _ = wm::MoveWindow(h, x, y, w.max(0), height.max(0), true);
     }
 }
 
-pub fn text_of(h: HWND) -> String {
+pub fn text_of(h: impl Into<HWND>) -> String {
+    let h: HWND = h.into();
     unsafe {
         let n = wm::GetWindowTextLengthW(h);
         let mut buf = vec![0u16; n as usize + 1];
@@ -2184,14 +2200,16 @@ pub fn text_of(h: HWND) -> String {
     }
 }
 
-pub fn set_text(h: HWND, s: &str) {
+pub fn set_text(h: impl Into<HWND>, s: &str) {
+    let h: HWND = h.into();
     let w = wide(s);
     unsafe {
         let _ = wm::SetWindowTextW(h, PCWSTR(w.as_ptr()));
     }
 }
 
-pub fn enable(h: HWND, on: bool) {
+pub fn enable(h: impl Into<HWND>, on: bool) {
+    let h: HWND = h.into();
     unsafe {
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(h, on);
     }
@@ -2207,7 +2225,8 @@ pub fn show_top(h: HWND) {
     }
 }
 
-pub fn show(h: HWND, on: bool) {
+pub fn show(h: impl Into<HWND>, on: bool) {
+    let h: HWND = h.into();
     unsafe {
         let _ = wm::ShowWindow(h, if on { wm::SW_SHOWNA } else { wm::SW_HIDE });
     }

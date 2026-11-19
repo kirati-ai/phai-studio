@@ -19,11 +19,13 @@
 //! see `apps/gallery/build.rs`.
 
 pub mod controls;
+pub mod ctl;
 pub mod dialogs;
 pub mod events;
 pub mod form;
 pub mod grid;
 pub mod icon;
+pub mod invoke;
 pub mod layout;
 pub mod picture;
 pub mod props;

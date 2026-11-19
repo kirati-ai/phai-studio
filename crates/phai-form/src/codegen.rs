@@ -58,7 +58,7 @@ fn text_of(c: &Control) -> String {
 /// The calls that give control `c` its table properties (`props::CONTROL`) - `ui.` before its
 /// name when `on_ui` - only those of words when `words_only` (the Thai or English again).
 fn prop_calls(c: &Control, on_ui: bool, words_only: bool) -> Vec<String> {
-    let name = if on_ui { format!("self.{}", c.id) } else { c.id.clone() };
+    let name = if on_ui { format!("self.{}.hwnd()", c.id) } else { c.id.clone() };
     props::of_kind(c.kind)
         .filter(|s| s.how == props::How::Call && (!words_only || s.ty == props::Ty::Words))
         .filter_map(|s| c.prop(s.name).map(|v| format!("phai_ui::props::{}({name}, {});", s.name, props::rust_literal(s, v))))
@@ -88,6 +88,34 @@ pub fn tab_order(f: &FormFile) -> Vec<usize> {
     let mut v: Vec<usize> = (0..f.control.len()).filter(|i| focusable(&f.control[*i])).collect();
     v.sort_by_key(|i| (f.control[*i].int("tab_index").unwrap_or(i32::MAX), *i));
     v
+}
+
+/// The `phai_ui::ctl` type of a control of `kind` - its field's type in the generated struct.
+pub fn ctl_type(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Label => "Label",
+        Kind::Edit | Kind::Textarea => "TextBox",
+        Kind::Rich => "RichTextBox",
+        Kind::Button => "Button",
+        Kind::Checkbox => "CheckBox",
+        Kind::Radio => "RadioButton",
+        Kind::Combo => "ComboBox",
+        Kind::List => "ListView",
+        Kind::Grid => "Grid",
+        Kind::Tree => "TreeView",
+        Kind::Picture => "PictureBox",
+        Kind::Date => "DateTimePicker",
+        Kind::Number => "NumericUpDown",
+        Kind::Slider => "TrackBar",
+        Kind::Progress => "ProgressBar",
+        Kind::Group => "GroupBox",
+        Kind::Tabs => "TabControl",
+        Kind::Flow => "FlowPanel",
+        Kind::Table => "TablePanel",
+        Kind::Statusbar => "StatusBar",
+        Kind::Timer => "Timer",
+        Kind::ContextMenu => "ContextMenu",
+    }
 }
 
 /// `phai_ui::events`' name for an event code.
@@ -174,7 +202,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    pub toolbar: HWND,");
     }
     for c in &f.control {
-        let _ = writeln!(w, "    pub {}: HWND,", c.id);
+        let _ = writeln!(w, "    pub {}: phai_ui::ctl::{},", c.id, ctl_type(c.kind));
     }
     for c in f.control.iter().filter(|c| c.bind.is_some()) {
         let _ = writeln!(w, "    /// The table {} shows, and what it held when last read.", c.id);
@@ -393,7 +421,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             // A context menu is the window's own too: made when a right-click asks for it.
             Kind::ContextMenu => "hwnd".to_string(),
             // A timer is the window's own: its field is the window, its ticks come as WM_TIMER.
-            Kind::Timer => format!("{{ win::timer(hwnd, {id}, {}, {}); hwnd }}", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
+            Kind::Timer => format!("phai_ui::ctl::Timer::new(hwnd, {id}, {}, {})", c.value.unwrap_or(1000).max(1), c.enabled != Some(false)),
         };
         if c.kind.is_component() {
             let _ = writeln!(w, "        let {} = {make};", c.id);
@@ -455,7 +483,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            toolbar,");
     }
     for c in &f.control {
-        let _ = writeln!(w, "            {},", c.id);
+        if c.kind == Kind::Timer {
+            let _ = writeln!(w, "            {},", c.id);
+        } else {
+            let _ = writeln!(w, "            {}: phai_ui::ctl::{}({}),", c.id, ctl_type(c.kind), c.id);
+        }
     }
     for c in f.control.iter().filter(|c| c.bind.is_some()) {
         let _ = writeln!(w, "            {}_data,", c.id);
@@ -486,6 +518,67 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w);
     }
 
+    // the form's methods, as a WinForms Form's
+    let _ = writeln!(w, "    /// Closes the window, as the close box would - its FormClosing first.");
+    let _ = writeln!(w, "    pub fn close(&self) {{");
+    let _ = writeln!(w, "        unsafe {{");
+    let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(self.hwnd), wm::WM_CLOSE, WPARAM(0), LPARAM(0));");
+    let _ = writeln!(w, "        }}");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// Out of sight, still running; [`Self::show_window`] brings it back.");
+    let _ = writeln!(w, "    pub fn hide(&self) {{");
+    let _ = writeln!(w, "        win::show(self.hwnd, false);");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    pub fn show_window(&self) {{");
+    let _ = writeln!(w, "        win::show(self.hwnd, true);");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// In front, taking the keys.");
+    let _ = writeln!(w, "    pub fn activate(&self) {{");
+    let _ = writeln!(w, "        unsafe {{");
+    let _ = writeln!(w, "            let _ = wm::SetForegroundWindow(self.hwnd);");
+    let _ = writeln!(w, "        }}");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    pub fn center_to_screen(&self) {{");
+    let _ = writeln!(w, "        win::center_on_screen(self.hwnd);");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// The words in its title bar.");
+    let _ = writeln!(w, "    pub fn title(&self) -> String {{");
+    let _ = writeln!(w, "        win::text_of(self.hwnd)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    pub fn set_title(&self, s: &str) {{");
+    let _ = writeln!(w, "        win::set_text(self.hwnd, s);");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// A handle other threads use to run work on this window's thread - [`Self::begin_invoke`].");
+    let _ = writeln!(w, "    pub fn invoker(&self) -> phai_ui::invoke::Invoker {{");
+    let _ = writeln!(w, "        phai_ui::invoke::Invoker::new(self.hwnd)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// From any thread: `f` runs on the window's thread with the program's {name} and the");
+    let _ = writeln!(w, "    /// controls, soon; returns at once - WinForms' BeginInvoke. `false` when the window is gone.");
+    let _ = writeln!(w, "    pub fn begin_invoke<E: {events} + 'static>(inv: phai_ui::invoke::Invoker, f: impl FnOnce(&mut E, &{ui}) + Send + 'static) -> bool {{");
+    let _ = writeln!(w, "        inv.post(Box::new(move |e, ui| {{");
+    let _ = writeln!(w, "            if let (Some(e), Some(ui)) = (e.downcast_mut::<E>(), ui.downcast_ref::<{ui}>()) {{");
+    let _ = writeln!(w, "                f(e, ui);");
+    let _ = writeln!(w, "            }}");
+    let _ = writeln!(w, "        }}))");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// As [`Self::begin_invoke`], waiting until `f` has run - WinForms' Invoke.");
+    let _ = writeln!(w, "    pub fn invoke<E: {events} + 'static>(inv: phai_ui::invoke::Invoker, f: impl FnOnce(&mut E, &{ui}) + Send + 'static) {{");
+    let _ = writeln!(w, "        inv.send(Box::new(move |e, ui| {{");
+    let _ = writeln!(w, "            if let (Some(e), Some(ui)) = (e.downcast_mut::<E>(), ui.downcast_ref::<{ui}>()) {{");
+    let _ = writeln!(w, "                f(e, ui);");
+    let _ = writeln!(w, "            }}");
+    let _ = writeln!(w, "        }}))");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
     // relabel
     let _ = writeln!(w, "    /// Every word again in the language now chosen - after `phai_ui::text::set_thai`.");
     let _ = writeln!(w, "    pub fn relabel(&self) {{");
@@ -506,7 +599,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                 let _ = writeln!(w, "        win::set_text(self.{}, t({}));", c.id, lit(&text_of(c)));
             }
             Kind::Tabs => {
-                let _ = writeln!(w, "        controls::tabs_relabel(self.{}, &[{}]);", c.id, c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", "));
+                let _ = writeln!(w, "        controls::tabs_relabel(self.{}.hwnd(), &[{}]);", c.id, c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", "));
             }
             Kind::Statusbar if !text_of(c).is_empty() => {
                 let _ = writeln!(w, "        controls::status_text(self.{}, 0, t({}));", c.id, lit(&text_of(c)));
@@ -541,7 +634,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                 format!("(px({cw}), px({ch}))")
             }).collect();
             let _ = writeln!(w, "            let sizes = [{}];", sizes.join(", "));
-            let names: Vec<String> = kids.iter().map(|k| format!("self.{}", f.control[*k].id)).collect();
+            let names: Vec<String> = kids.iter().map(|k| format!("self.{}.hwnd()", f.control[*k].id)).collect();
             let gap = c.int("gap").unwrap_or(6);
             if c.kind == Kind::Flow {
                 let _ = writeln!(w, "            let places = phai_ui::layout::flow_with(area, &sizes, px({gap}), {}, {});", c.word("direction") == Some("top_down"), c.flag("wrap", true));
@@ -602,7 +695,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for (which, idc) in [("accept_button", 1), ("cancel_button", 2)] {
         if let Some(b) = f.form.word(which) {
             let what = if idc == 1 { "Enter" } else { "Escape" };
-            let _ = writeln!(w, "                {idc} => phai_ui::form::click(ui.{b}), // {what}: {}", props::find_form(which).map(|s| s.label).unwrap_or_default());
+            let _ = writeln!(w, "                {idc} => phai_ui::form::click(ui.{b}.hwnd()), // {what}: {}", props::find_form(which).map(|s| s.label).unwrap_or_default());
         }
     }
     let in_context = |h: &str| f.control.iter().filter(|c| c.kind == Kind::ContextMenu).any(|c| c.menu_items().iter().any(|(id, _)| id == h));
@@ -673,7 +766,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            let (x, y) = (win::loword(l.0 as usize) as i16 as i32, win::hiword(l.0 as usize) as i16 as i32);");
         for c in with_menu {
             let Some(menu) = f.control.iter().find(|m| m.kind == Kind::ContextMenu && Some(&m.id) == c.context_menu.as_ref()) else { continue };
-            let _ = writeln!(w, "            if from == host.ui.{}.0 as isize {{", c.id);
+            let _ = writeln!(w, "            if from == host.ui.{}.hwnd().0 as isize {{", c.id);
             let _ = writeln!(w, "                unsafe {{");
             let _ = writeln!(w, "                    let m = wm::CreatePopupMenu().unwrap_or_default();");
             for (id, label) in menu.menu_items() {
@@ -849,6 +942,10 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             let _ = writeln!(w, "        }}");
         }
     }
+    let _ = writeln!(w, "        phai_ui::invoke::WM_INVOKE => {{");
+    let _ = writeln!(w, "            // Work handed over from another thread (begin_invoke, invoke).");
+    let _ = writeln!(w, "            LRESULT(unsafe {{ phai_ui::invoke::run(l, &mut host.events, &host.ui) }})");
+    let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        0x02E0 => {{");
     let _ = writeln!(w, "            // WM_DPICHANGED: the window, its font and its icons at the new scale.");
     let _ = writeln!(w, "            let r = unsafe {{ &*(l.0 as *const RECT) }};");
@@ -979,7 +1076,7 @@ mod tests {
             assert!(code.contains(&format!("fn {h}(&mut self, ui: &MainWindowUi) {{}}")), "{h}");
         }
         for c in &f.control {
-            assert!(code.contains(&format!("pub {}: HWND,", c.id)), "{}", c.id);
+            assert!(code.contains(&format!("pub {}: phai_ui::ctl::{},", c.id, ctl_type(c.kind))), "{}", c.id);
         }
         assert!(!code.contains("include_str!"), "no theme, no include");
     }

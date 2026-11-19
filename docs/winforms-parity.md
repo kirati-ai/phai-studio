@@ -21,14 +21,15 @@
 | P | Tag | — (เก็บใน struct ของผู้ใช้แทน: Rust มีชนิดข้อมูลชัดกว่า object) | — |
 | P | Padding, Margin | 🟡 `gap` ของ flow/table | 🟡 |
 | P | RightToLeft | — (ไทย/อังกฤษไม่ต้องใช้) | — |
-| M | Focus, Show, Hide, Refresh, BringToFront, SendToBack | ดูหัวข้อ Methods | ⬜ |
+| M | Focus, Show, Hide, Refresh, Invalidate, BringToFront, SendToBack, PointToScreen, PointToClient, FindForm, SuspendLayout, ResumeLayout, Handle | `ui.x.focus()` ... `ui.x.hwnd()` (`phai_ui::ctl`) | ✅ |
+| M | Invoke, BeginInvoke (งานจาก thread อื่น) | `ui.invoker()`, `MainWindowUi::begin_invoke(inv, \|me, ui\| ...)`, `invoke` | ✅ |
 | E | Click, DoubleClick, Enter, Leave, KeyDown, KeyUp, KeyPress, MouseEnter, MouseLeave, MouseDown, MouseUp, MouseMove, Resize | `events = { key_down = "..." }` (`phai_ui::events`) | ✅ |
 
 ## Form
 
 | | WinForms | Phai | สถานะ |
 |---|---|---|---|
-| P | Text | `title` | ✅ |
+| P | Text | `title` (`ui.title()`, `ui.set_title()`) | ✅ |
 | P | Size, StartPosition, WindowState | `size`, `start`, `maximized` | ✅ |
 | P | AcceptButton, CancelButton | `accept_button`, `cancel_button` | ✅ |
 | P | FormBorderStyle | `border` | ✅ |
@@ -40,7 +41,7 @@
 | P | Font | `font_size` | ✅ |
 | P | KeyPreview | `key_preview` | ✅ |
 | P | BackgroundImage, AutoScroll, AllowDrop | ⬜ (ทำทีหลัง) | ⬜ |
-| M | Show, ShowDialog (คืน DialogResult), Close | `show`, `show_dialog`, `close` | 🟡 |
+| M | Show, ShowDialog (คืน DialogResult), Close, Hide, Activate, CenterToScreen | `show`, `show_dialog`, `close`, `hide`, `show_window`, `activate`, `center_to_screen` | ✅ |
 | E | Load, Shown, FormClosing (e.cancel()), FormClosed, Resize, Activated, Deactivate | `loaded`, `events = { shown, closing, closed, resize, activated, deactivate }` | ✅ |
 | E | Click, DoubleClick, MouseDown/Up/Move, KeyDown/Up/Press | `events = { click, ... }` | ✅ |
 
@@ -51,7 +52,7 @@
 | P | Text, TextAlign | `text`, `text_align` | ✅ |
 | P | DialogResult | `dialog_result` | ✅ |
 | P | Image, FlatStyle | — (หน้าตามาจาก CSS) | — |
-| M | PerformClick | | ⬜ |
+| M | PerformClick | `perform_click()` | ✅ |
 | E | Click | `on_click` | ✅ |
 
 ## Label
@@ -70,7 +71,7 @@
 | P | ReadOnly, MaxLength | `read_only`, `max_length` | ✅ |
 | P | PlaceholderText, TextAlign, CharacterCasing | `placeholder`, `text_align`, `char_casing` | ✅ |
 | P | ScrollBars, WordWrap (textarea) | ⬜ (ต้องสร้าง control ใหม่) | ⬜ |
-| M | Clear, SelectAll, AppendText, Copy, Cut, Paste, Undo, ScrollToCaret | | ⬜ |
+| M | Clear, SelectAll, Select, SelectedText, AppendText, Copy, Cut, Paste, Undo, CanUndo, ScrollToCaret, Lines | `clear()`, `select_all()`, `select()`, `selected_text()`, `append_text()`, `copy()`, `cut()`, `paste()`, `undo()`, `can_undo()`, `scroll_to_caret()`, `lines()` | ✅ |
 | E | TextChanged | `on_change` | ✅ |
 | E | KeyDown, KeyPress, Enter, Leave | `events` | ✅ |
 
@@ -79,7 +80,7 @@
 | | WinForms | Phai | สถานะ |
 |---|---|---|---|
 | P | Text, ReadOnly, MaxLength, WordWrap, DetectUrls | `text`, `read_only`, `max_length`, `word_wrap`, `detect_urls` | ✅ |
-| M | LoadFile, SaveFile, Find | | ⬜ |
+| M | LoadFile, SaveFile, Find (+ ทุกตัวของ TextBox) | `load_file()`, `save_file()`, `find()` | ✅ |
 | E | TextChanged | `on_change` | ✅ |
 
 ## CheckBox / RadioButton
@@ -97,7 +98,7 @@
 |---|---|---|---|
 | P | Items, SelectedIndex | `items`, `selected_index` | ✅ |
 | P | DropDownStyle (DropDown/DropDownList), Sorted, MaxDropDownItems | `editable`, `sorted`, `max_drop_down_items` | ✅ |
-| M | Items.Add, Items.Clear, FindString, BeginUpdate/EndUpdate | | ⬜ |
+| M | Items.Add/Insert/RemoveAt/Clear/Count, SelectedIndex, SelectedItem, FindString, FindStringExact, DroppedDown, BeginUpdate/EndUpdate | `items_add()` ... `begin_update()` | ✅ |
 | E | SelectedIndexChanged | `on_change` | ✅ |
 | E | TextChanged (พิมพ์ได้) | `events = { text_changed = "..." }` | ✅ |
 
@@ -106,7 +107,7 @@
 | | WinForms | Phai | สถานะ |
 |---|---|---|---|
 | P | Columns, View, FullRowSelect, GridLines, MultiSelect, CheckBoxes, HeaderStyle, HideSelection | `columns`, `view`, `full_row_select`, `grid_lines`, `multi_select`, `check_boxes`, `header`, `hide_selection` | ✅ |
-| M | Items.Add, Items.Clear, EnsureVisible | | ⬜ |
+| M | Items.Add/RemoveAt/Clear/Count, SelectedIndices, EnsureVisible, Checked, BeginUpdate/EndUpdate | `items_add()`, `cell()`, `set_cell()`, `selected_indices()`, `ensure_visible()`, `checked()` | ✅ |
 | E | SelectedIndexChanged | `on_select` | ✅ |
 | E | DoubleClick, ColumnClick | `events = { double_click, column_click }` | ✅ |
 
@@ -116,7 +117,7 @@
 |---|---|---|---|
 | P | Columns, DataSource | `columns`, `bind` | ✅ |
 | P | ReadOnly, GridLines, MultiSelect | `read_only`, `grid_lines`, `multi_select` | ✅ |
-| M | Rows.Add, Rows.Clear, Refresh | | ⬜ |
+| M | Rows.Add, Rows.Clear, Rows.Count, ClearSelection, Refresh, ค่าในช่อง | `rows_add()`, `rows_clear()`, `rows_count()`, `clear_selection()`, `refresh()`, `cell()`, `set_cell()`, `fill()` | ✅ |
 | E | CellValueChanged | `on_change` | ✅ |
 | E | SelectionChanged, DoubleClick, ColumnClick | `events` | ✅ |
 
@@ -135,7 +136,7 @@
 | P | Value, Minimum, Maximum | `value`, `min`, `max` | ✅ |
 | P | Increment, Hexadecimal, ThousandsSeparator, ReadOnly, TextAlign | `increment`, `hexadecimal`, `thousands`, `read_only`, `text_align` | ✅ |
 | P | DecimalPlaces | — (Windows' up-down นับเป็นจำนวนเต็ม) | — |
-| M | UpButton, DownButton | | ⬜ |
+| M | UpButton, DownButton | `up_button()`, `down_button()` | ✅ |
 | E | ValueChanged | `on_change` | ✅ |
 
 ## TrackBar (`slider`) / ProgressBar (`progress`)
@@ -146,7 +147,7 @@
 | P | SmallChange, LargeChange, TickFrequency | `small_change`, `large_change`, `tick_frequency` | ✅ |
 | P | Orientation (แนวตั้ง) | ⬜ | ⬜ |
 | P | Step, Style = Marquee | `step`, `marquee` | ✅ |
-| M | PerformStep | `phai_ui::props::perform_step` | ✅ |
+| M | PerformStep, Increment | `perform_step()`, `increment()` | ✅ |
 | E | ValueChanged / Scroll | `on_change` | ✅ |
 
 ## PictureBox (`picture`)
@@ -154,7 +155,7 @@
 | | WinForms | Phai | สถานะ |
 |---|---|---|---|
 | P | Image, SizeMode, BorderStyle | `image`, `size_mode`, `border` | ✅ |
-| M | Load | | ⬜ |
+| M | Load | `load()` | ✅ |
 | E | Click, DoubleClick | `events` | ✅ |
 
 ## TreeView (`tree`)
@@ -164,7 +165,7 @@
 | P | Nodes | `items` (เว้นหน้าบรรทัดเป็นชั้น) | ✅ |
 | P | ShowLines, ShowPlusMinus, ShowRootLines, CheckBoxes, FullRowSelect, HideSelection | `show_lines`, `show_plus_minus`, `show_root_lines`, `check_boxes`, `full_row_select`, `hide_selection` | ✅ |
 | P | LabelEdit | ⬜ | ⬜ |
-| M | ExpandAll, CollapseAll | `expand_all` (property และ `phai_ui::props::expand_all`) | ✅ |
+| M | ExpandAll, CollapseAll, Nodes.Add, Nodes.Clear, SelectedNode, Expand, Collapse | `expand_all()`, `collapse_all()`, `nodes_add()`, `nodes_add_under()`, `nodes_clear()`, `selected_node()`, `selected_text()` | ✅ |
 | E | AfterSelect | `on_select` | ✅ |
 | E | DoubleClick | `events = { double_click = "..." }` | ✅ |
 
@@ -174,7 +175,7 @@
 |---|---|---|---|
 | P | TabPages, SelectedIndex | `tabs` + `page`, `selected_index` | ✅ |
 | P | Alignment, Multiline | — (แท็บวาดเองตามธีม) | — |
-| M | SelectTab | | ⬜ |
+| M | SelectTab, SelectedIndex | `select_tab()`, `selected_index()` | ✅ |
 | E | SelectedIndexChanged | `on_change` | ✅ |
 
 ## Timer
@@ -182,7 +183,7 @@
 | | WinForms | Phai | สถานะ |
 |---|---|---|---|
 | P | Interval, Enabled | `value`, `enabled` | ✅ |
-| M | Start, Stop | | ⬜ |
+| M | Start, Stop, Interval, Enabled | `start()`, `stop()`, `set_interval()`, `enabled()` | ✅ |
 | E | Tick | `on_tick` | ✅ |
 
 ## ContextMenuStrip (`contextmenu`)
@@ -191,7 +192,7 @@
 |---|---|---|---|
 | P | Items | `items` (`เมธอด \| ข้อความ`) | ✅ |
 | E | ItemClicked (ต่อรายการ) | เมธอดของแต่ละรายการ | ✅ |
-| E | Opening | | ⬜ |
+| E | Opening | — (เมนูสร้างตอนคลิกขวา ไม่มีขั้นก่อนเปิด) | — |
 
 ## FlowLayoutPanel (`flow`) / TableLayoutPanel (`table`)
 
