@@ -11,6 +11,10 @@ use windows::Win32::Graphics::Gdi::HFONT;
 use windows::Win32::UI::WindowsAndMessaging::{self as wm, HMENU};
 
 const ID_TABS: i32 = 500;
+/// The panel's close button, at the right of its tabs.
+const ID_CLOSE: i32 = 531;
+/// The main window's View > Errors and output: shows and hides this panel.
+const ID_VIEW_OUTPUT: i32 = 183;
 const ID_OUTPUT: i32 = 501;
 pub const ID_REFS: i32 = 502;
 pub const ID_LOCALS: i32 = 503;
@@ -83,8 +87,9 @@ impl Bottom {
             wm::SendMessageW(output, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
         let mut layout = Layout::new((800, 140));
-        layout.add(tabs, Item { bounds: Rect::new(0, 0, 0, 28), dock: Dock::Top, anchor: Anchor::default() });
-        layout.add(errors, Item { bounds: Rect::default(), dock: Dock::Fill, anchor: Anchor::default() });
+        // The tabs leave room at the right for the close button.
+        layout.add(tabs, Item { bounds: Rect::new(0, 0, 770, 28), dock: Dock::None, anchor: Anchor { left: true, top: true, right: true, bottom: false } });
+        layout.add(errors, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(output, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(refs, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(locals, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
@@ -96,8 +101,15 @@ impl Bottom {
         let show_errors = win::checkbox(hwnd, t("Errors"), ID_SHOW_ERRORS, font, true);
         let show_warnings = win::checkbox(hwnd, t("Warnings"), ID_SHOW_WARNINGS, font, true);
         let right = Anchor { left: false, top: true, right: true, bottom: false };
-        layout.add(show_errors, Item { bounds: Rect::new(560, 3, 110, 22), dock: Dock::None, anchor: right });
-        layout.add(show_warnings, Item { bounds: Rect::new(676, 3, 120, 22), dock: Dock::None, anchor: right });
+        layout.add(show_errors, Item { bounds: Rect::new(530, 3, 110, 22), dock: Dock::None, anchor: right });
+        layout.add(show_warnings, Item { bounds: Rect::new(646, 3, 120, 22), dock: Dock::None, anchor: right });
+        // Close, as every Visual Studio tool window has; View > Errors and output brings it back, and
+        // a build or a run shows it again.
+        let close = win::toolbar(hwnd, ID_CLOSE + 100, &[(ID_CLOSE, t("Close"), 0xE711)]);
+        layout.add(close, Item { bounds: Rect::new(772, 1, 26, 26), dock: Dock::None, anchor: right });
+        unsafe {
+            let _ = wm::SetWindowPos(close, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+        }
         unsafe {
             for c in [show_errors, show_warnings] {
                 let _ = wm::SetWindowPos(c, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
@@ -232,6 +244,14 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match (msg, b) {
         (wm::WM_SIZE, Some(b)) => {
             b.layout.apply(h);
+            LRESULT(0)
+        }
+        (wm::WM_COMMAND, _) if win::loword(w.0) as i32 == ID_CLOSE => {
+            if let Ok(p) = unsafe { wm::GetParent(h) } {
+                unsafe {
+                    let _ = wm::PostMessageW(Some(p), wm::WM_COMMAND, WPARAM(ID_VIEW_OUTPUT as usize), LPARAM(0));
+                }
+            }
             LRESULT(0)
         }
         (wm::WM_COMMAND, Some(b)) if win::loword(w.0) as i32 == ID_TABS => {
