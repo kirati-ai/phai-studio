@@ -269,6 +269,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            theme::set(sheet);");
         let _ = writeln!(w, "        }}");
     }
+    let states = f.state_css();
+    if !states.is_empty() {
+        let _ = writeln!(w, "        // The controls' own looks in their states (the designer's Style tab).");
+        let _ = writeln!(w, "        let _ = theme::set_state_rules({});", lit(&states));
+    }
     if f.form.events.contains_key("double_click") {
         let _ = writeln!(w, "        let class = win::register_with(win::ClassStyle::DoubleClicks, {}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
     } else {

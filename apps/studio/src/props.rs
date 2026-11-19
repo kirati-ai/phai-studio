@@ -8,7 +8,7 @@
 
 use phai_form::props::{self as table, Spec, Ty};
 use phai_form::{anchor_text, parse_anchor, Anchors, HasProps, Kind, DOCKS};
-use phai_ui::text::t;
+use phai_ui::text::{t, tf};
 use phai_ui::theme::{Color, State};
 use phai_ui::win;
 use windows::core::PCWSTR;
@@ -74,6 +74,39 @@ pub enum Key {
     On(&'static str),
     /// The form's event.
     FormOn(&'static str),
+    /// The Style tab's state, shown on the canvas - not the model's.
+    StyleState,
+    /// A CSS property of the chosen control in a state (0 normal, then `phai_form::STATES`).
+    StyleProp(&'static str, u8),
+    /// The chosen control's transition: milliseconds, and its curve.
+    StyleTransition,
+    StyleEasing,
+    /// Its look moved into the theme as a class.
+    StyleToTheme,
+}
+
+/// The CSS properties the Style tab shows, in its order.
+pub const STYLE_PROPS: [&str; 8] = ["background", "color", "border-color", "border-width", "border-radius", "font-weight", "accent-color", "icon-color"];
+
+/// The Style tab's states: normal, then the model's.
+pub fn style_states() -> Vec<&'static str> {
+    let mut v = vec!["normal"];
+    v.extend(phai_form::STATES);
+    v
+}
+
+/// A control's declaration of `prop` in a state's CSS (`background: red; color: white`).
+pub fn decl_of(decls: &str, prop: &str) -> Option<String> {
+    decls.split(';').filter_map(|d| d.split_once(':')).find(|(k, _)| k.trim() == prop).map(|(_, v)| v.trim().to_string())
+}
+
+/// `decls` with `prop` set to `value`, or taken out for `None`.
+pub fn with_decl(decls: &str, prop: &str, value: Option<&str>) -> String {
+    let mut out: Vec<String> = decls.split(';').map(str::trim).filter(|d| !d.is_empty() && d.split_once(':').is_none_or(|(k, _)| k.trim() != prop)).map(str::to_string).collect();
+    if let Some(v) = value {
+        out.push(format!("{prop}: {v}"));
+    }
+    out.join("; ")
 }
 
 /// The Events tab's category of an event, as Visual Studio groups them.
@@ -142,7 +175,7 @@ struct Prop {
     name: &'static str,
     value: String,
     ed: Ed,
-    help: &'static str,
+    help: std::borrow::Cow<'static, str>,
     /// The composite property this one is a part of - shown only when that is open.
     parent: Option<Key>,
     /// Set apart from its default: shown in bold, as Visual Studio shows it.
@@ -209,6 +242,10 @@ pub struct Props {
     help_name: HWND,
     help_text: HWND,
     mode: usize,
+    /// The Style tab's state: 0 normal, then `phai_form::STATES`.
+    style_state: usize,
+    /// The canvas control shown in that state.
+    previewing: Option<HWND>,
     alphabetical: bool,
     folded: Vec<&'static str>,
     /// The composite properties folded open.
@@ -230,6 +267,7 @@ const ID_SORT_CAT: i32 = 3302;
 const ID_SORT_AZ: i32 = 3303;
 const ID_MODE_PROPS: i32 = 3305;
 const ID_MODE_EVENTS: i32 = 3306;
+const ID_MODE_STYLE: i32 = 3307;
 
 fn bar_items() -> Vec<(i32, &'static str, u16)> {
     vec![
@@ -238,6 +276,7 @@ fn bar_items() -> Vec<(i32, &'static str, u16)> {
         (0, "", 0),
         (ID_MODE_PROPS, t("Properties"), 0xE713),
         (ID_MODE_EVENTS, t("Events"), 0xE945),
+        (ID_MODE_STYLE, t("Style"), 0xE790),
     ]
 }
 const ID_EDITOR: i32 = 3304;
@@ -298,7 +337,7 @@ impl Props {
         let help_text = win::child(hwnd, "STATIC", "", wm::WINDOW_STYLE(0x80), Default::default(), 0, font);
         win::register_kind(help_text, win::Kind::Label);
         win::set_css(help_text, "muted", "");
-        let p = Props { hwnd, chooser, bar, heading, grid, help_name, help_text, mode: 0, alphabetical: false, folded: vec![], expanded: vec![], props: vec![], lines: vec![], chosen: None, top: 0, editor: None, font, bold, filling: false };
+        let p = Props { hwnd, chooser, bar, heading, grid, help_name, help_text, mode: 0, style_state: 0, previewing: None, alphabetical: false, folded: vec![], expanded: vec![], props: vec![], lines: vec![], chosen: None, top: 0, editor: None, font, bold, filling: false };
         p.say_bar();
         p
     }
@@ -330,10 +369,13 @@ impl Props {
     fn gather_one(&self, sel: Option<usize>) -> Vec<Prop> {
         let Some(s) = studio() else { return vec![] };
         let f = &s.doc.form;
-        let p = |category, key, name, value: String, ed, help| Prop { category, key, name, value, ed, help, parent: None, set: false };
-        let part = |parent: Key, category, key, name, value: String, ed, help| Prop { category, key, name, value, ed, help, parent: Some(parent), set: false };
+        let p = |category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: None, set: false };
+        let part = |parent: Key, category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: Some(parent), set: false };
         let sizes: Vec<String> = ["", "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"].iter().map(|s| s.to_string()).collect();
         let bools = Ed::Bool;
+        if self.mode == 2 {
+            return self.gather_style(sel);
+        }
         if self.mode == 1 {
             // Events: the control's, or the form's own and its menus' and toolbar's.
             let methods = user_methods();
@@ -342,7 +384,7 @@ impl Props {
                     Key::On(n) | Key::FormOn(n) => n,
                     _ => "",
                 };
-                Prop { category: event_category(ev_name), key, name, value: value.cloned().unwrap_or_default(), ed: Ed::Choice(methods.clone(), true), help: t(help), parent: None, set: value.is_some() }
+                Prop { category: event_category(ev_name), key, name, value: value.cloned().unwrap_or_default(), ed: Ed::Choice(methods.clone(), true), help: t(help).into(), parent: None, set: value.is_some() }
             };
             return match sel.and_then(|i| f.control.get(i)) {
                 Some(c) => {
@@ -393,7 +435,7 @@ impl Props {
             .chain(table::FORM.iter().map(|sp| {
                 let buttons: Vec<String> = f.control.iter().filter(|c| c.kind == Kind::Button).map(|c| c.id.clone()).collect();
                 let v = f.form.prop(sp.name);
-                Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: ed_of(sp, &buttons), help: t(sp.help), parent: None, set: v.is_some() }
+                Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: ed_of(sp, &buttons), help: t(sp.help).into(), parent: None, set: v.is_some() }
             }))
             .collect();
         };
@@ -531,8 +573,67 @@ impl Props {
                     value = x;
                 }
             }
-            v.push(Prop { category: t(sp.category), key: Key::More(sp.name), name: sp.label, value, ed: ed_of(sp, &[]), help: t(sp.help), parent: None, set: val.is_some() });
+            v.push(Prop { category: t(sp.category), key: Key::More(sp.name), name: sp.label, value, ed: ed_of(sp, &[]), help: t(sp.help).into(), parent: None, set: val.is_some() });
         }
+        v
+    }
+
+    /// The Style tab: the chosen control's look in the chosen state - each value as it is drawn,
+    /// where it comes from below, set ones in bold - its transition, and a way into the theme.
+    fn gather_style(&self, sel: Option<usize>) -> Vec<Prop> {
+        let Some(s) = studio() else { return vec![] };
+        let f = &s.doc.form;
+        let row = |category: &'static str, key, name: &'static str, value: String, ed, help: std::borrow::Cow<'static, str>, set| Prop { category, key, name, value, ed, help, parent: None, set };
+        let Some((i, c)) = sel.and_then(|i| f.control.get(i).map(|c| (i, c))) else {
+            return vec![row(t("Style"), Key::StyleState, t("Choose a control"), String::new(), Ed::ReadOnly, t("The Style tab shows a control's look: choose one on the form.").into(), false)];
+        };
+        let states = style_states();
+        let st = self.style_state.min(states.len() - 1);
+        let mut v = vec![row(t("State"), Key::StyleState, t("State"), states[st].to_string(), Ed::Choice(states.iter().map(|x| x.to_string()).collect(), false), t("The state to see and change; the form shows the control in it.").into(), st != 0)];
+        let Some(h) = s.canvas.as_ref().and_then(|cv| cv.control_window(i)) else { return v };
+        let Some(kind) = win::kind_of(h) else { return v };
+        let state = State { hover: states[st] == "hover", pressed: states[st] == "pressed", focus: states[st] == "focus", disabled: states[st] == "disabled", checked: states[st] == "checked", selected: false };
+        let look = win::style_of(h, kind, state);
+        let origins = win::explain_of(h, kind, state);
+        let own_css = c.own_css().unwrap_or_default();
+        let mine = if st == 0 { own_css } else { c.states.get(states[st]).cloned().unwrap_or_default() };
+        for prop in STYLE_PROPS {
+            let value = match prop {
+                "background" => look.background.map(hex),
+                "color" => look.color.map(hex),
+                "border-color" => look.border_color.map(hex),
+                "accent-color" => look.accent_color.map(hex),
+                "icon-color" => look.icon_color.map(hex),
+                "border-width" => look.border_width.map(|n| n.to_string()),
+                "border-radius" => look.border_radius.map(|n| n.to_string()),
+                _ => look.font_weight.map(|w| if w >= 600 { "bold".into() } else { "normal".into() }),
+            }
+            .unwrap_or_default();
+            let help: std::borrow::Cow<'static, str> = match origins.iter().find(|o| o.property == prop) {
+                Some(o) if o.source == "own" => tf("Set on this control: {0}", &[&o.selector]).into(),
+                Some(o) if o.source.is_empty() => tf("From {0} in the theme, line {1}", &[&o.selector, &o.line]).into(),
+                Some(o) => tf("From {0} in {1}, line {2}", &[&o.selector, &o.source, &o.line]).into(),
+                None => t("Nothing sets it: Windows' own.").into(),
+            };
+            let ed = match prop {
+                "border-width" | "border-radius" => Ed::Number,
+                "font-weight" => Ed::Choice(vec![String::new(), "normal".into(), "bold".into()], false),
+                _ => Ed::Color,
+            };
+            let set = decl_of(&mine, prop).is_some() || (st == 0 && prop == "font-weight" && c.bold == Some(true));
+            v.push(row(t("Look in this state"), Key::StyleProp(prop, st as u8), prop, value, ed, help, set));
+        }
+        if st == 0 {
+            let (ms, easing) = c.prop("transition").and_then(|v| v.as_str()).map(|t| {
+                let ms = t.split_whitespace().find_map(|w| w.strip_suffix("ms").and_then(|n| n.parse::<i32>().ok()).or_else(|| w.strip_suffix('s').and_then(|n| n.parse::<f32>().ok()).map(|n| (n * 1000.0) as i32)));
+                let e = t.split_whitespace().find(|w| phai_ui::theme::Easing::parse(w).is_some()).unwrap_or("ease").to_string();
+                (ms.map(|m| m.to_string()).unwrap_or_default(), e)
+            }).unwrap_or_default();
+            let set = !ms.is_empty();
+            v.push(row(t("Transition"), Key::StyleTransition, t("Duration (ms)"), ms, Ed::Number, t("Its colours move to a new state's over this many milliseconds - 150 is quick; empty, at once.").into(), set));
+            v.push(row(t("Transition"), Key::StyleEasing, t("Easing"), if easing.is_empty() { "ease".into() } else { easing }, Ed::Choice(["ease", "linear", "ease-in", "ease-out", "ease-in-out"].iter().map(|x| x.to_string()).collect(), false), t("How the change moves: ease starts and ends gently, linear evenly.").into(), set));
+        }
+        v.push(row(t("Theme"), Key::StyleToTheme, t("Send to theme"), t("Make a class...").into(), Ed::Dialog, t("This control's look, every state, becomes a class in the theme's CSS that other controls can take; the control takes the class.").into(), false));
         v
     }
 
@@ -589,7 +690,7 @@ impl Props {
 
     /// The icons' pressed state as the pane is now.
     fn say_bar(&self) {
-        for (id, on) in [(ID_SORT_CAT, !self.alphabetical), (ID_SORT_AZ, self.alphabetical), (ID_MODE_PROPS, self.mode == 0), (ID_MODE_EVENTS, self.mode == 1)] {
+        for (id, on) in [(ID_SORT_CAT, !self.alphabetical), (ID_SORT_AZ, self.alphabetical), (ID_MODE_PROPS, self.mode == 0), (ID_MODE_EVENTS, self.mode == 1), (ID_MODE_STYLE, self.mode == 2)] {
             win::toolbar_check(self.bar, id, on);
         }
     }
@@ -628,6 +729,7 @@ impl Props {
         }
         let keep = self.chosen.and_then(|l| self.lines.get(l)).and_then(|l| if let Line::Prop(i) = l { self.props.get(*i).map(|p| p.key) } else { None });
         self.props = self.gather();
+        self.sync_preview();
         for q in self.props.iter_mut().filter(|q| q.key == Key::Event) {
             q.set = !q.value.is_empty();
         }
@@ -646,7 +748,7 @@ impl Props {
         match self.chosen.and_then(|l| self.lines.get(l)) {
             Some(Line::Prop(i)) => {
                 win::set_text(self.help_name, self.props[*i].name);
-                win::set_text(self.help_text, self.props[*i].help);
+                win::set_text(self.help_text, &self.props[*i].help);
             }
             _ => {
                 win::set_text(self.help_name, "");
@@ -680,6 +782,29 @@ impl Props {
         y += grid_h + gap;
         win::move_to(self.help_name, m, y, width - 2 * m, row);
         win::move_to(self.help_text, m, y + row, width - 2 * m, help_h - row);
+    }
+
+    /// The Style tab shows the chosen control in its state; the control before goes back. Again
+    /// after the canvas is built anew, its windows being new.
+    pub fn sync_preview(&mut self) {
+        let Some(s) = studio() else { return };
+        let want = (self.mode == 2 && self.style_state > 0).then(|| s.selected.and_then(|i| s.canvas.as_ref().and_then(|cv| cv.control_window(i)))).flatten();
+        if self.previewing != want {
+            if let Some(old) = self.previewing.take() {
+                win::set_preview_state(old, None);
+            }
+        }
+        if let Some(h) = want {
+            let st = style_states()[self.style_state.min(5)];
+            win::set_preview_state(h, Some(State { hover: st == "hover", pressed: st == "pressed", focus: st == "focus", disabled: st == "disabled", checked: st == "checked", selected: false }));
+            self.previewing = Some(h);
+        }
+    }
+
+    /// The Style tab on state `n` (0 normal, then hover, pressed, focus, disabled, checked).
+    pub fn set_style_state(&mut self, n: usize) {
+        self.style_state = n;
+        self.set_mode(2);
     }
 
     pub fn set_mode(&mut self, mode: usize) {
@@ -951,6 +1076,13 @@ impl Props {
     /// One change to the model, one undo step; the pane fills itself again afterwards.
     fn commit(&mut self, key: Key, value: &str) {
         let Some(s) = studio() else { return };
+        if key == Key::StyleState {
+            self.style_state = style_states().iter().position(|x| *x == value).unwrap_or(0);
+            unsafe {
+                let _ = wm::PostMessageW(Some(self.hwnd), WM_REFILL, WPARAM(0), LPARAM(0));
+            }
+            return;
+        }
         s.checkpoint();
         s.apply(key, value);
         unsafe {
@@ -983,6 +1115,15 @@ impl Props {
         let p = self.props[i].clone();
         match p.key {
             Key::FormTheme => s.command(crate::ID_THEME_IMPORT_PUB),
+            Key::StyleToTheme => {
+                let suggested = s.selected.and_then(|i| s.doc.form.control.get(i)).map(|c| c.id.replace('_', "-")).unwrap_or_default();
+                if let Some(class) = phai_ui::dialogs::ask(Some(self.hwnd), t("Send to theme"), t("The class's name, as CSS writes it - letters, digits and -:"), &suggested, false) {
+                    s.send_style_to_theme(class.trim());
+                    unsafe {
+                        let _ = wm::PostMessageW(Some(self.hwnd), WM_REFILL, WPARAM(0), LPARAM(0));
+                    }
+                }
+            }
             Key::Items => {
                 if let Some(text) = phai_ui::dialogs::ask_lines(Some(self.hwnd), p.name, t("One a line; a list's columns as Name:width."), &p.value) {
                     self.commit(p.key, &text);
@@ -1010,8 +1151,12 @@ impl Props {
             return;
         }
         match (id, code) {
-            (ID_MODE_PROPS, 0) | (ID_MODE_EVENTS, 0) => {
-                self.mode = (id == ID_MODE_EVENTS) as usize;
+            (ID_MODE_PROPS, 0) | (ID_MODE_EVENTS, 0) | (ID_MODE_STYLE, 0) => {
+                self.mode = match id {
+                    ID_MODE_EVENTS => 1,
+                    ID_MODE_STYLE => 2,
+                    _ => 0,
+                };
                 self.say_bar();
                 self.refresh();
             }

@@ -340,6 +340,10 @@ pub struct Control {
     /// A button that saves or reloads a bound grid: `"customers:save"`, `"customers:reload"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind_action: Option<String>,
+    /// Its look in a state, over the theme's: `states = { hover = "background: #e0f2fe" }` -
+    /// CSS declarations for `#id:hover`. States: hover, pressed, focus, disabled, checked.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub states: std::collections::BTreeMap<String, String>,
     /// Its events' methods beyond its one `on_...`, by the table's names (`events::CONTROL`):
     /// `events = { key_down = "name_key_down" }`.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
@@ -411,6 +415,7 @@ impl Control {
             on_tick: None,
             cols: None,
             context_menu: None,
+            states: Default::default(),
             events: Default::default(),
             more: Props::new(),
         };
@@ -530,6 +535,9 @@ pub fn anchor_text(a: Anchors) -> Option<String> {
         }
     }
 }
+
+/// The states a control's own look can be given for, as CSS pseudo-classes.
+pub const STATES: [&str; 5] = ["hover", "pressed", "focus", "disabled", "checked"];
 
 pub const DOCKS: [&str; 6] = ["none", "top", "bottom", "left", "right", "fill"];
 
@@ -689,6 +697,13 @@ impl FormFile {
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
             out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu)));
+            for (st, decls) in &c.states {
+                if !STATES.contains(&st.as_str()) {
+                    out.push((format!("{}: no state {st} - {}", c.id, STATES.join(", ")), at.clone()));
+                } else if let Err(e) = phai_ui::theme::declarations_style(decls) {
+                    out.push((format!("{} {st}: {}", c.id, e.message), at.clone()));
+                }
+            }
             for (e, h) in &c.events {
                 if crate::events::find(c.kind, e).is_none() {
                     out.push((format!("a {} has no event {e}", c.kind.name()), at.clone()));
@@ -825,6 +840,20 @@ impl FormFile {
             if c.kind == Kind::ContextMenu {
                 for (id, _) in c.menu_items().into_iter().filter(|(id, _)| !id.is_empty()) {
                     add(&id);
+                }
+            }
+        }
+        out
+    }
+
+    /// The controls' looks in their states as CSS - `#ok:hover { background: #e0f2fe; }` - for
+    /// `phai_ui::theme::set_state_rules`.
+    pub fn state_css(&self) -> String {
+        let mut out = String::new();
+        for c in &self.control {
+            for (st, decls) in &c.states {
+                if !decls.trim().is_empty() {
+                    out.push_str(&format!("#{}:{st} {{ {} }}\n", c.id, decls.trim()));
                 }
             }
         }

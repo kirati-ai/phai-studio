@@ -148,6 +148,22 @@ dialog_result = "ok"         # คลิกแล้วปิดหน้าต�
 
 รายการเต็มต่อชนิด control: `docs/winforms-parity.md`
 
+## หน้าตาตามสถานะ และ transition (แท็บ Style 🖌)
+
+```toml
+[[control]]
+kind = "button"
+id = "save"
+transition = "200ms ease-out"                                  # สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน
+states = { hover = "background: #0b5d43", pressed = "color: #ffcc00" }   # = CSS #save:hover { } ...
+```
+
+สถานะ: `hover` `pressed` `focus` `disabled` `checked` — ลำดับชั้น: ธีม → `theme.css` → class → ค่าของ control
+(Properties) → ค่าตามสถานะของ control; codegen ส่ง `#id:state { }` ทั้งหมดให้ `phai_ui::theme::set_state_rules`
+แท็บ Style แสดงค่าจริงของแต่ละ property ในสถานะที่เลือก (ตั้งเองเป็นตัวหนา) พร้อมที่มา เช่น
+"มาจาก button.primary:hover ในธีม บรรทัด 40", แสดง control บนฟอร์มในสถานะนั้น, และปุ่ม "ส่งไปที่ธีม" ย้ายทุกค่าเป็น
+`kind.class { }` / `kind.class:hover { }` ต่อท้าย theme.css แล้วให้ control ใช้ class นั้นแทน
+
 ## โค้ดที่สร้าง
 
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:

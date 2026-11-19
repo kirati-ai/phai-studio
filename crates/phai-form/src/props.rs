@@ -81,6 +81,7 @@ pub const CONTROL: &[Spec] = &[
     runtime_only(spec("cursor", "Cursor", "Appearance", Ty::Choice(CURSORS), "default", &[], How::Call, "The mouse pointer over it.")),
     spec("border_width", "Border width", "Appearance", Ty::Int(0, 8), "", &[], How::Css("border-width: {}px"), "Its border's thickness, pixels - #id { border-width }."),
     spec("accent_color", "Accent colour", "Appearance", Ty::Color, "", &[Kind::Checkbox, Kind::Radio, Kind::Tabs, Kind::Progress, Kind::Slider, Kind::Button], How::Css("accent-color: {}"), "The tick, the dot, the bar or the chosen tab's line - #id { accent-color }."),
+    spec("transition", "Transition", "Appearance", Ty::Text, "", &[], How::Css("transition: {}"), "Its colours change over time when its state does: 150ms, 0.3s ease-out - #id { transition }."),
     spec("icon_color", "Icon colour", "Appearance", Ty::Color, "", &[Kind::Tree], How::Css("icon-color: {}"), "Its icons' colour - #id { icon-color }."),
     // Words.
     spec("text_align", "TextAlign", "Appearance", Ty::Choice(ALIGN), "center", &[Kind::Button], How::Call, "Where its words sit."),
