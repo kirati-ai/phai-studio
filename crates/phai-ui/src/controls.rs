@@ -128,15 +128,34 @@ struct Tabs {
     labels: Vec<String>,
     selected: usize,
     hot: Option<usize>,
+    /// Documents' tabs: each has a close button (on the chosen one and the one under the pointer),
+    /// and a middle click closes it too.
+    closable: bool,
+    /// The close button under the pointer.
+    hot_close: bool,
 }
+
+/// The high bit of the index a closable tab strip sends: that tab's close button was clicked.
+pub const TAB_CLOSE: usize = 0x8000;
 
 /// Tabs along the top, the chosen one underlined in the accent colour. The parent shows the
 /// chosen page's controls; it hears `WM_COMMAND` with `id` and the index in the high word.
 pub fn tabs(parent: HWND, id: i32, f: HFONT, labels: &[&str]) -> HWND {
     let h = create(parent, "PhaiTabs", Some(tabs_proc), "", id, f, WINDOW_EX_STYLE(0));
-    win::set_state(h, Box::new(Tabs { font: f, labels: labels.iter().map(|s| s.to_string()).collect(), selected: 0, hot: None }));
+    win::set_state(h, Box::new(Tabs { font: f, labels: labels.iter().map(|s| s.to_string()).collect(), selected: 0, hot: None, closable: false, hot_close: false }));
     mark(h, Kind::Tabs);
     h
+}
+
+/// Gives each tab a close button, as a document's tab has: the parent hears the tab's index with
+/// [`TAB_CLOSE`] added when it is clicked (or the tab is middle-clicked).
+pub fn tabs_closable(h: HWND) {
+    unsafe {
+        if let Some(t) = win::state::<Tabs>(h) {
+            t.closable = true;
+            let _ = Gdi::InvalidateRect(Some(h), None, true);
+        }
+    }
 }
 
 pub fn tabs_selected(h: HWND) -> usize {
@@ -171,7 +190,8 @@ fn tab_edges(h: HWND, t: &Tabs) -> Vec<(i32, i32)> {
         .map(|l| {
             let font = win::css_font(h, &win::style_of(h, Kind::Tabs, State::default())).unwrap_or(t.font);
             let (w, _) = win::measure(h, font, l);
-            let e = (x, x + w + 2 * pad);
+            let close = if t.closable { px(h, 20) } else { 0 };
+            let e = (x, x + w + 2 * pad + close);
             x = e.1;
             e
         })
@@ -187,6 +207,16 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             return r;
         }
         let at = |x: i32, t: &Tabs| tab_edges(h, t).iter().position(|(a, b)| x >= *a && x < *b);
+        // A closable tab's close button: the square at its right end.
+        let close_box = |i: usize, t: &Tabs| -> Option<RECT> {
+            let (_, b) = *tab_edges(h, t).get(i)?;
+            let mut r = RECT::default();
+            let _ = wm::GetClientRect(h, &mut r);
+            let size = px(h, 16);
+            let top = (r.bottom - px(h, 3) - size) / 2;
+            t.closable.then_some(RECT { left: b - px(h, 8) - size, right: b - px(h, 8), top, bottom: top + size })
+        };
+        let on_close = |x: i32, y: i32, t: &Tabs| at(x, t).and_then(|i| close_box(i, t).filter(|c| x >= c.left && x < c.right && y >= c.top && y < c.bottom).map(|_| i));
         match msg {
             wm::WM_ERASEBKGND => LRESULT(1),
             wm::WM_PAINT => {
@@ -200,8 +230,24 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
                 for (i, (a, b)) in tab_edges(h, t).into_iter().enumerate() {
                     let st = win::style_of(h, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
-                    let mut tr = RECT { left: a, right: b, top: r.top, bottom: r.bottom - px(h, 3) };
+                    let close_w = if t.closable { px(h, 20) } else { 0 };
+                    let mut tr = RECT { left: a, right: b - close_w, top: r.top, bottom: r.bottom - px(h, 3) };
                     win::draw_text_styled(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text()), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
+                    // The close button, on the chosen tab and the one under the pointer.
+                    if let Some(c) = close_box(i, t).filter(|_| i == t.selected || t.hot == Some(i)) {
+                        if t.hot == Some(i) && t.hot_close {
+                            win::round_rect(dc, c, base.border_or(Color::rgb(220, 220, 220)), base.border_or(Color::rgb(220, 220, 220)), px(h, 3));
+                        }
+                        let (cx, cy, k) = ((c.left + c.right) / 2, (c.top + c.bottom) / 2, px(h, 4));
+                        let pen = Gdi::CreatePen(Gdi::PS_SOLID, px(h, 1).max(1), windows::Win32::Foundation::COLORREF(st.color_or(win::window_text()).colorref()));
+                        let old = Gdi::SelectObject(dc, pen.into());
+                        let _ = Gdi::MoveToEx(dc, cx - k, cy - k, None);
+                        let _ = Gdi::LineTo(dc, cx + k + 1, cy + k + 1);
+                        let _ = Gdi::MoveToEx(dc, cx + k, cy - k, None);
+                        let _ = Gdi::LineTo(dc, cx - k - 1, cy + k + 1);
+                        Gdi::SelectObject(dc, old);
+                        let _ = Gdi::DeleteObject(pen.into());
+                    }
                     if i == t.selected {
                         let inset = px(h, 12);
                         let line = RECT { left: a + inset, right: b - inset, top: r.bottom - px(h, 3), bottom: r.bottom };
@@ -213,6 +259,16 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                     }
                 }
                 let _ = Gdi::EndPaint(h, &ps);
+                LRESULT(0)
+            }
+            wm::WM_LBUTTONDOWN | wm::WM_MBUTTONUP if t.closable && (msg == wm::WM_MBUTTONUP || on_close(win::point_of(l).0, win::point_of(l).1, t).is_some()) => {
+                // Close: the parent decides (it may ask to save first).
+                if let Some(i) = at(win::point_of(l).0, t) {
+                    let id = wm::GetDlgCtrlID(h) as usize;
+                    if let Ok(p) = wm::GetParent(h) {
+                        wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((i | TAB_CLOSE) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
+                    }
+                }
                 LRESULT(0)
             }
             wm::WM_LBUTTONDOWN => {
@@ -229,7 +285,13 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 LRESULT(0)
             }
             wm::WM_MOUSEMOVE => {
-                let hot = at(win::point_of(l).0, t);
+                let (x, y) = win::point_of(l);
+                let hot = at(x, t);
+                let hot_close = on_close(x, y, t).is_some();
+                if hot_close != t.hot_close {
+                    t.hot_close = hot_close;
+                    let _ = Gdi::InvalidateRect(Some(h), None, true);
+                }
                 if hot != t.hot {
                     if t.hot.is_none() {
                         let mut tm = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: h, dwHoverTime: 0 };
