@@ -32,6 +32,13 @@ pub struct Form {
     /// Points for every control's words; none is Windows' own (9 pt). A control may set its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub font_size: Option<i32>,
+    /// Where the window first appears, as WinForms' StartPosition: `"center"` (none: the middle of
+    /// the screen) or `"windows"` (where Windows puts it). A window shown over another is centred on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start: Option<String>,
+    /// Opens filling the screen, as WinForms' WindowState = Maximized.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximized: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -500,7 +507,7 @@ const LAST: &str = "\u{1}";
 impl FormFile {
     /// A new empty form.
     pub fn new(name: &str) -> FormFile {
-        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], min_size: None, theme: None, font_size: None }, menu: vec![], toolbar: vec![], control: vec![] }
+        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], min_size: None, theme: None, font_size: None, start: None, maximized: None }, menu: vec![], toolbar: vec![], control: vec![] }
     }
 
     pub fn parse(src: &str) -> Result<FormFile, FormError> {
@@ -533,6 +540,11 @@ impl FormFile {
         }
         if let Some(c) = self.control.iter().find(|c| !font_ok(c.font_size)) {
             out.push((format!("{}: font_size 6 to 48 points", c.id), Some(format!("id = \"{}\"", c.id))));
+        }
+        if let Some(st) = &self.form.start {
+            if !["center", "windows"].contains(&st.as_str()) {
+                out.push((format!("start {st:?}: center or windows"), Some("start".into())));
+            }
         }
         if self.form.size[0] < 50 || self.form.size[1] < 30 {
             out.push(("form size is too small".into(), Some("size".into())));

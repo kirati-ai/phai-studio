@@ -26,6 +26,8 @@ pub enum Key {
     FormHeight,
     FormTheme,
     FormFont,
+    FormStart,
+    FormState,
     Id,
     Text,
     X,
@@ -313,6 +315,8 @@ impl Props {
                 p(t("Layout"), Key::FormSize, t("Size"), format!("{}, {}", f.form.size[0], f.form.size[1]), Ed::Text, t("The inside of the window, at 100% scale.")),
                 part(Key::FormSize, t("Layout"), Key::FormWidth, t("Width"), f.form.size[0].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
                 part(Key::FormSize, t("Layout"), Key::FormHeight, t("Height"), f.form.size[1].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
+                p(t("Layout"), Key::FormStart, t("Start position"), if f.form.start.as_deref() == Some("windows") { t("Windows default") } else { t("Center screen") }.to_string(), Ed::Choice(vec![t("Center screen").to_string(), t("Windows default").to_string()], false), t("Where the window first appears: the middle of the screen, or where Windows puts it.")),
+                p(t("Layout"), Key::FormState, t("Window state"), if f.form.maximized == Some(true) { t("Maximized") } else { t("Normal") }.to_string(), Ed::Choice(vec![t("Normal").to_string(), t("Maximized").to_string()], false), t("Maximized: the window opens filling the screen.")),
             ]
             .into_iter()
             .map(|mut q| {

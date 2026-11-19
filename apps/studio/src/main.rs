@@ -1101,7 +1101,7 @@ impl Studio {
     /// controls chosen: each of them takes it.
     pub fn apply(&mut self, key: Key, text: &str) {
         let chosen = self.selection();
-        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme);
+        let form_key = matches!(key, Key::FormName | Key::FormTitle | Key::FormWidth | Key::FormHeight | Key::FormSize | Key::FormFont | Key::FormTheme | Key::FormStart | Key::FormState);
         if chosen.len() > 1 && !form_key && !matches!(key, Key::Id | Key::Event) {
             let primary = self.selected;
             for j in chosen {
@@ -1170,6 +1170,8 @@ impl Studio {
                     return;
                 }
             }
+            (Key::FormStart, _) => f.form.start = (text == t("Windows default")).then(|| "windows".to_string()),
+            (Key::FormState, _) => f.form.maximized = (text == t("Maximized")).then_some(true),
             (Key::FormTheme, _) => {
                 f.form.theme = (!text.trim().is_empty()).then(|| text.trim().to_string());
                 self.changed();
