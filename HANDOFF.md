@@ -1,4 +1,64 @@
-# Handoff — Phai Studio (2026-11-16)
+# Handoff — Phai Studio (2026-11-19)
+
+> เปิด session ใหม่แล้วบอกว่า **"อ่าน HANDOFF.md แล้วทำต่อ"** · ตอบเจ้านายเป็นภาษาไทย เรียก "เจ้านาย"
+> ส่วนท้ายไฟล์ (ตั้งแต่ "ประวัติเดิม") เป็นบันทึกเก่าวันที่ 16 พ.ย. ไว้อ้างอิงเท่านั้น
+
+## สถานะตอนนี้
+
+- repo สาธารณะ `kirati-ai/phai-studio` (MIT) · รุ่นล่าสุดที่แจก **v0.1.2** (GitHub Releases + https://phai-studio.monrak.net)
+- โค้ดบน `main` ใหม่กว่า v0.1.2 (ยังไม่ออกรุ่น): ไม่มีหน้าต่างคอนโซลตอนรัน (ผลลัพธ์ขึ้นแท็บ Output), ฟอร์มเปิดกลางจอ /
+  โปรเจกต์ใหม่เต็มจอ (`start`, `maximized`), เมนู Theme แสดงไฟล์ CSS ที่ใช้, โหมดมืด (แถบเครื่องมือ + scrollbar),
+  ไอคอนในเมนู Format, ปุ่มปิดหน้าต่างล่าง, หน้าต่าง Project แบบ Solution Explorer (แถบปุ่ม, ค้นหา, Dependencies,
+  ไฟล์ .rs ซ้อนใต้ฟอร์ม), แท็บเอกสารมีปุ่ม ✕ + คลิกกลางปิด, ดับเบิลคลิกฟอร์ม/control ไปที่โค้ด
+- **ออกรุ่นใหม่** (เมื่อเจ้านายสั่ง): แก้ `version` ใน `Cargo.toml` (workspace) → commit → `git tag vX.Y.Z` → push tag
+  GitHub Actions build ตัวติดตั้งให้เอง → แล้ว `bash site/deploy.sh` ให้เว็บชี้รุ่นใหม่
+- การเซ็นโค้ด: SignPath **ไม่อนุมัติ** (ยังไม่มีคนรู้จักพอ) — สมัครใหม่ได้ภายหลัง ดู `docs/signpath-application.md`
+  ทางฟรีอีกทาง: Microsoft Store (บัญชีนักพัฒนาฟรี, Microsoft เซ็นให้เฉพาะแพ็กเกจ **MSIX**) — ยังไม่ได้ทำ
+
+## งานถัดไป (เรียงตามความสำคัญ)
+
+### 1. Events ให้ครบแบบ Visual Studio (สำคัญที่สุด)
+ตอนนี้ control มี event เดียว (`Control::handler()` / `Kind::event()` ใน `crates/phai-form/src/model.rs`):
+ปุ่ม Click, ช่องกรอก Change, list/combo Select, timer Tick. หน้า Events (⚡) ใน `apps/studio/src/props.rs`
+- เพิ่มในฟอร์ม: ตาราง `events = { key_down = "name_key_down", mouse_enter = "...", ... }` ต่อ control
+  (เก็บของเดิม `on_click` ฯลฯ ไว้ให้ไฟล์เก่าอ่านได้)
+- ชุดแรกที่ควรมี: ทุกตัว Enter/Leave (โฟกัส), KeyDown/KeyUp/KeyPress, MouseEnter/MouseLeave, MouseDown/MouseUp, DoubleClick;
+  check box CheckedChanged; ช่องกรอก TextChanged; list/grid SelectedIndexChanged, CellChanged; ฟอร์ม Load/Closing/Resize
+- Win32: สิ่งที่ไม่มาเป็น WM_COMMAND/WM_NOTIFY (คีย์, เมาส์, โฟกัส) ต้อง subclass control (`SetWindowSubclass`)
+  ใน code ที่ `crates/phai-form/src/codegen.rs` สร้าง แล้วเรียก `events.<handler>(ui, args)`; args เช่น key code, ตำแหน่งเมาส์
+- trait `<Form>Events` ได้เมธอดใหม่พร้อมค่าเริ่มต้นว่าง; หน้า Events แสดงรายการทั้งหมดของชนิด control นั้น
+  ดับเบิลคลิกชื่อ event = สร้างเมธอด (ใช้ `codegen::add_handler` + `open_code_at` ใน main.rs)
+- ทดสอบ: แบบเดียวกับ `add_form_tests` ใน `apps/studio/src/main.rs` (สร้างโปรเจกต์จริง build รัน ส่งข้อความ Win32 แล้วตรวจ)
+
+### 2. Methods แบบ object
+ตอนนี้สั่ง control ด้วยฟังก์ชัน (`win::set_text(ui.name, ..)`, `controls::status_text(..)`). ทำชนิดห่อใน phai-ui:
+`TextBox`, `Button`, `CheckBox`, `ListView`, `Grid`, `StatusBar`... (newtype รอบ HWND) มี `text()`, `set_text()`,
+`set_enabled()`, `checked()`, `rows()`... แล้ว codegen ให้ field ใน `<Form>Ui` เป็นชนิดเหล่านี้แทน `HWND`
+(ระวังโค้ดผู้ใช้เดิมที่ใช้ `ui.x` เป็น HWND: ให้ชนิดห่อมี `.hwnd()` และ `Deref`/`From` ไป HWND)
+
+### 3. เล็กน้อย
+- โหมดมืด: เส้นสว่างบางใต้แถบเครื่องมือแถวแรก (rebar band border, `win::rebar_colours`)
+- ยังไม่ได้ลองในหน้าจอจริง: ไอคอนในเมนู Format, รายการไฟล์ในเมนู Theme, ดับเบิลคลิกฟอร์มไปที่โค้ด
+- หัวคอลัมน์ของตารางที่ผูกฐานข้อมูลยังไม่แปลไทย (ตั้งใจ: ใช้ชื่อคอลัมน์จริง)
+- Microsoft Store (MSIX): ต้องให้โปรเจกต์อ้าง phai-ui/phai-data จาก git แทนโฟลเดอร์ติดตั้ง
+
+## วิธีทำงาน (สำคัญ)
+- เครื่องมือ: cargo อยู่ที่ `/d/Tools/Rust/cargo/bin`; ตรวจก่อน commit: `cargo test -q --workspace` + `cargo clippy -q --workspace --all-targets`
+- เปลี่ยน codegen แล้วต้อง `cargo test -p phai-form -- --ignored regenerate` (ไฟล์ของ apps/sample)
+- เทสต์ที่สร้างโปรเจกต์จริง: `cargo test -p phai-studio add_form_tests -- --include-ignored`
+- ถ่ายภาพหน้าจอโดยไม่แย่งเมาส์/คีย์บอร์ด: `PHAI_SETTINGS_DIR=<tmp> PHAI_SHOT=out.png target/debug/phai-studio.exe [ไฟล์]`
+- แพตช์ด้วย Python: เขียนสคริปต์เป็นไฟล์ด้วย Write tool (heredoc ใน bash ทำ `
+` เพี้ยน); ตัว `\` ใน Rust ใช้ `char::from(92)`
+- เว็บ: `site/` (PHP) → `bash site/deploy.sh` (ใช้ key `~/.ssh/phaicity_vps`, aaPanel); monrak.net ต้นฉบับที่
+  `D:\DesktopServer\www\monrak-site`; บอทถูกห้ามดาวน์โหลดทุกเว็บด้วย nginx `extension/<site>/no-bot-downloads.conf`
+- คู่มือ: แก้ `docs/help-src/help_pages*.py` แล้ว `python docs/help-src/help_gen.py`
+- กติกาเจ้านาย: commit + push ทุกรอบที่ผ่าน, ไม่ force-push, ไม่ใช้ของเสียเงิน, ไม่ใส่อีเมลเจ้านายในที่สาธารณะ,
+  ห้ามรีบูต, หน้าต่างทดสอบห้ามแย่งเมาส์/คีย์บอร์ด
+
+---
+
+# ประวัติเดิม (2026-11-16)
+
 
 ## ▶ เริ่มตรงนี้
 
