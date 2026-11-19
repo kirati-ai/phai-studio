@@ -6201,6 +6201,11 @@ fn hex_dump(addr: u64, bytes: &[Option<u8>]) -> String {
 }
 
 /// A remembered setting, `name=value` lines in `settings.txt`.
+/// A remembered setting, for the other modules.
+pub fn setting_pub(name: &str) -> Option<String> {
+    setting(name)
+}
+
 fn setting(name: &str) -> Option<String> {
     let text = std::fs::read_to_string(settings_dir()?.join("settings.txt")).ok()?;
     text.lines().find_map(|l| l.strip_prefix(&format!("{name}=")).map(str::to_string))
@@ -7173,6 +7178,42 @@ fn main() {
             }
         }
         // `--exceptions-test`: Exception Settings set from `PHAI_EXCEPTIONS_TEST`, then read back.
+        // `--menu-test`: what the menus hold as Windows has them - the Format menu's icons, the
+        // Theme menu's style sheets - and a double-click on the form going to its code; printed.
+        if args.iter().any(|a| a == "--menu-test") {
+            let bar = wm::GetMenu(hwnd);
+            let (mut icons, mut sheets, mut lock_menu) = (0, Vec::new(), false);
+            for i in 0..wm::GetMenuItemCount(Some(bar)).max(0) {
+                let m = wm::GetSubMenu(bar, i);
+                let ids: Vec<u32> = (0..wm::GetMenuItemCount(Some(m)).max(0)).map(|k| wm::GetMenuItemID(m, k)).collect();
+                if ids.contains(&(ID_LOCK as u32)) {
+                    lock_menu = true;
+                    for k in 0..ids.len() {
+                        let mut info = wm::MENUITEMINFOW { cbSize: std::mem::size_of::<wm::MENUITEMINFOW>() as u32, fMask: wm::MIIM_BITMAP, ..Default::default() };
+                        if wm::GetMenuItemInfoW(m, k as u32, true, &mut info).is_ok() && !info.hbmpItem.is_invalid() {
+                            icons += 1;
+                        }
+                    }
+                }
+                if ids.contains(&(ID_THEME_NONE as u32)) {
+                    for (k, id) in ids.iter().enumerate() {
+                        if (ID_THEME_FILE as u32..ID_THEME_FILE as u32 + THEME_FILES_MAX as u32).contains(id) {
+                            let mut buf = [0u16; 260];
+                            let n = wm::GetMenuStringW(m, k as u32, Some(&mut buf), wm::MF_BYPOSITION);
+                            let checked = wm::GetMenuState(m, *id, wm::MF_BYCOMMAND) & wm::MF_CHECKED.0 != 0;
+                            sheets.push(format!("{}{}", String::from_utf16_lossy(&buf[..n.max(0) as usize]), if checked { " (ticked)" } else { "" }));
+                        }
+                    }
+                }
+            }
+            println!("format menu found: {lock_menu}, items with icons: {icons}");
+            println!("theme menu sheets: {sheets:?}");
+            s.select(None);
+            s.add_handler_for_selected();
+            let at = s.doc.code.map(phai_editor::view::caret_line);
+            println!("double-click on the form: code open {}, at line {:?}", s.doc.code.is_some(), at);
+            std::process::exit(0);
+        }
         if args.iter().any(|a| a == "--exceptions-test") {
             s.command(ID_EXCEPTIONS);
             println!("remembered: {:?}", setting("exceptions"));

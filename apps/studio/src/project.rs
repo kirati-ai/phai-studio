@@ -30,12 +30,33 @@ pub fn phai_data_path() -> PathBuf {
 
 /// How a project names phai-data - the same way as phai-ui.
 pub fn phai_data_dependency() -> String {
-    let local = phai_data_path();
+    library_dependency(&phai_data_path())
+}
+
+/// Whether this Phai Studio was installed from the Microsoft Store: an MSIX package lives in
+/// `WindowsApps`, a folder no one writes in, whose name changes with every update.
+pub fn from_store(exe: &Path) -> bool {
+    exe.components().any(|c| c.as_os_str().eq_ignore_ascii_case("WindowsApps"))
+}
+
+/// How a project names one of the Phai libraries, `local` its copy on this machine. That copy
+/// while it is there; from the repository Phai Studio was built from when it is not - or when
+/// Phai Studio came from the Store, whose folder moves with each update, or the setting
+/// `library_from_git` is `1`. From git, pinned to this Phai Studio's release (`tag = "v0.1.2"`),
+/// so the project builds the same next year.
+pub fn library_dependency(local: &Path) -> String {
     let repo = env!("CARGO_PKG_REPOSITORY");
-    if local.join("Cargo.toml").is_file() || repo.is_empty() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let want_git = !repo.is_empty() && (from_store(&exe) || crate::setting_pub("library_from_git").as_deref() == Some("1"));
+    library_line(local, repo, env!("CARGO_PKG_VERSION"), want_git)
+}
+
+/// The dependency's line: `{ path = ".." }` or `{ git = "..", tag = "v.." }`.
+pub fn library_line(local: &Path, repo: &str, version: &str, want_git: bool) -> String {
+    if !want_git && (local.join("Cargo.toml").is_file() || repo.is_empty()) {
         format!("{{ path = {:?} }}", local.to_string_lossy().replace('\\', "/"))
     } else {
-        format!("{{ git = {repo:?} }}")
+        format!("{{ git = {repo:?}, tag = \"v{version}\" }}")
     }
 }
 
@@ -167,13 +188,7 @@ strip = true
 /// else the repository Phai Studio was built from (`repository` in the workspace Cargo.toml) - so a
 /// project made by someone who only downloaded Phai Studio builds anywhere.
 pub fn phai_ui_dependency() -> String {
-    let local = phai_ui_path();
-    let repo = env!("CARGO_PKG_REPOSITORY");
-    if local.join("Cargo.toml").is_file() || repo.is_empty() {
-        format!("{{ path = {:?} }}", local.to_string_lossy().replace('\\', "/"))
-    } else {
-        format!("{{ git = {repo:?} }}")
-    }
+    library_dependency(&phai_ui_path())
 }
 
 const BUILD_RS: &str = r#"//! Embeds a manifest that names Common Controls 6. Without it Windows hands the program the old
@@ -303,6 +318,18 @@ pub fn pick_folder(owner: HWND, title: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_store_install_takes_the_libraries_from_git_at_its_release() {
+        assert!(from_store(Path::new(r"C:\Program Files\WindowsApps\Monrak.PhaiStudio_0.1.3.0_x64__abc\phai-studio.exe")));
+        assert!(!from_store(Path::new(r"C:\Users\me\AppData\Local\Programs\Phai Studio\phai-studio.exe")));
+        let here = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("crates").join("phai-ui");
+        let repo = "https://github.com/kirati-ai/phai-studio";
+        let git = "{ git = \"https://github.com/kirati-ai/phai-studio\", tag = \"v0.1.3\" }";
+        assert!(library_line(&here, repo, "0.1.3", false).starts_with("{ path = "), "the copy on this machine");
+        assert_eq!(library_line(&here, repo, "0.1.3", true), git, "asked for git");
+        assert_eq!(library_line(Path::new("nowhere"), repo, "0.1.3", false), git, "no copy here");
+    }
 
     #[test]
     fn folder_names_become_package_names() {
