@@ -119,6 +119,35 @@ parts = [120]
 
 designer ตรวจทุกช่องตอนเปิดไฟล์ ช่องที่ไม่รู้จักหรือค่าที่ผิดเป็น error บอกบรรทัด ไม่ข้ามเงียบๆ แบบเดียวกับ CSS
 
+## property แบบ WinForms (ตาราง `crates/phai-form/src/props.rs`)
+
+property อื่นของฟอร์มและ control เขียนเป็น `ชื่อ = ค่า` ธรรมดา ไม่ใส่บรรทัดที่เป็นค่าเริ่มต้น ตารางเดียวบอก
+ชื่อ, ชนิดค่า, ค่าเริ่มต้น, ชนิด control ที่มี, หมวดใน Properties และคำอธิบาย — Properties, ตัวตรวจไฟล์,
+codegen และ canvas อ่านจากตารางนี้ทั้งหมด control เรียก `phai_ui::props::<ชื่อ>(control, ค่า)` หลังสร้าง
+
+```toml
+[form]
+border = "fixed_dialog"      # FormBorderStyle: sizable fixed_single fixed_dialog fixed_tool sizable_tool none
+accept_button = "ok"         # Enter กดปุ่มนี้; cancel_button = Esc
+maximize_box = false         # minimize_box, control_box, top_most, show_in_taskbar
+opacity = 95                 # %
+icon = "app.ico"             # ไฟล์ในโปรเจกต์ ฝังในโปรแกรมด้วย include_bytes!
+min_size = [300, 200]        # max_size
+back_color = "#fffbeb"       # fore_color — CSS window { } ของทั้งโปรแกรม
+
+[[control]]
+kind = "edit"
+id = "name"
+read_only = true             # max_length, placeholder, text_align, char_casing, tooltip, cursor, tab_index, tab_stop
+
+[[control]]
+kind = "button"
+id = "ok"
+dialog_result = "ok"         # คลิกแล้วปิดหน้าต่าง; show_dialog() คืน DialogResult::Ok
+```
+
+รายการเต็มต่อชนิด control: `docs/winforms-parity.md`
+
 ## โค้ดที่สร้าง
 
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:

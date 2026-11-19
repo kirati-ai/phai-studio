@@ -43,7 +43,7 @@ pub mod templates {
     //! template is edited in Phai Studio like any form once it is made.
 
     use super::metrics::*;
-    use phai_form::{Control, FormFile, Kind, Menu, MenuItem, Tool};
+    use phai_form::{Control, FormFile, Kind, Menu, MenuItem, Tool, HasProps};
 
     /// What Phai Studio lists under File > New from template.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,7 +99,7 @@ pub mod templates {
         let mut f = FormFile::new(name);
         f.form.title = "Question".into();
         f.form.size = [360, 140];
-        f.form.min_size = Some([300, 140]);
+        f.form.set_size("min_size", Some([300, 140]));
         let mut prompt = Control::new(Kind::Label, "prompt", [MARGIN, MARGIN, 360 - 2 * MARGIN, ROW]);
         prompt.text = Some("What should it be?".into());
         prompt.anchor = Some("left top right".into());
@@ -115,7 +115,7 @@ pub mod templates {
         let mut f = FormFile::new(name);
         f.form.title = "My program".into();
         f.form.size = [640, 420];
-        f.form.min_size = Some([400, 260]);
+        f.form.set_size("min_size", Some([400, 260]));
         let item = |id: &str, label: &str, key: Option<&str>| MenuItem { id: Some(id.into()), label: Some(label.into()), key: key.map(str::to_string), separator: false };
         f.menu = vec![
             Menu { label: "&File".into(), items: vec![item("new_item", "New", Some("Ctrl+N")), item("open_item", "Open...", Some("Ctrl+O")), item("save_item", "Save", Some("Ctrl+S")), MenuItem { separator: true, ..Default::default() }, item("exit", "Exit", None)] },
@@ -149,7 +149,7 @@ pub mod templates {
         let group_h = GROUP_TOP + rows * ROW + (rows - 1).max(0) * GAP + MARGIN;
         let height = MARGIN + group_h + MARGIN + ROW + MARGIN;
         f.form.size = [width, height];
-        f.form.min_size = Some([360, height]);
+        f.form.set_size("min_size", Some([360, height]));
         let mut group = Control::new(Kind::Group, "details", [MARGIN, MARGIN, width - 2 * MARGIN, group_h]);
         group.text = Some("Details".into());
         group.anchor = Some("left top right".into());

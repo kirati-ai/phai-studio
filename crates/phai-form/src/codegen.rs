@@ -8,7 +8,8 @@
 
 use std::fmt::Write;
 
-use crate::model::{parse_anchor, snake, Control, FormFile, Kind};
+use crate::model::{parse_anchor, snake, Control, FormFile, HasProps, Kind};
+use crate::props;
 
 /// Where the theme is, if the form has one.
 #[derive(Clone, Debug, Default)]
@@ -51,6 +52,41 @@ fn dock_code(c: &Control) -> &'static str {
 
 fn text_of(c: &Control) -> String {
     c.text.clone().unwrap_or_default()
+}
+
+/// The calls that give control `c` its table properties (`props::CONTROL`) - `ui.` before its
+/// name when `on_ui` - only those of words when `words_only` (the Thai or English again).
+fn prop_calls(c: &Control, on_ui: bool, words_only: bool) -> Vec<String> {
+    let name = if on_ui { format!("self.{}", c.id) } else { c.id.clone() };
+    props::of_kind(c.kind)
+        .filter(|s| s.how == props::How::Call && (!words_only || s.ty == props::Ty::Words))
+        .filter_map(|s| c.prop(s.name).map(|v| format!("phai_ui::props::{}({name}, {});", s.name, props::rust_literal(s, v))))
+        .collect()
+}
+
+/// A combo's items in the order shown: sorted when it is `sorted`.
+pub fn combo_items(c: &Control) -> Vec<String> {
+    let mut items = c.items.clone();
+    if c.flag("sorted", false) {
+        items.sort_by_key(|s| s.to_lowercase());
+    }
+    items
+}
+
+/// The page of the tabs shown first: the first tabs control's SelectedIndex.
+pub fn first_page(f: &FormFile) -> usize {
+    f.control.iter().find(|c| c.kind == Kind::Tabs).and_then(|c| c.int("selected_index")).unwrap_or(0).max(0) as usize
+}
+
+/// The controls Tab goes through, in its order, when any has a TabIndex; empty otherwise.
+pub fn tab_order(f: &FormFile) -> Vec<usize> {
+    let focusable = |c: &Control| props::find(c.kind, "tab_index").is_some();
+    if !f.control.iter().any(|c| focusable(c) && c.int("tab_index").is_some()) {
+        return vec![];
+    }
+    let mut v: Vec<usize> = (0..f.control.len()).filter(|i| focusable(&f.control[*i])).collect();
+    v.sort_by_key(|i| (f.control[*i].int("tab_index").unwrap_or(i32::MAX), *i));
+    v
 }
 
 /// `<name>_ui.rs`.
@@ -132,6 +168,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "struct Host<E> {{");
     let _ = writeln!(w, "    ui: {ui},");
     let _ = writeln!(w, "    events: E,");
+    let _ = writeln!(w, "    /// The program's main window: the program ends with it.");
+    let _ = writeln!(w, "    main: bool,");
     let _ = writeln!(w, "}}");
     let _ = writeln!(w);
 
@@ -155,10 +193,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// Shows this window over `owner` and waits until it is closed, `owner` taking no input");
-    let _ = writeln!(w, "    /// meanwhile - as `ShowDialog()` in WinForms.");
-    let _ = writeln!(w, "    pub fn show_dialog<E: {events} + 'static>(owner: HWND, events: E) {{");
+    let _ = writeln!(w, "    /// meanwhile - as `ShowDialog()` in WinForms. What it answers: the DialogResult of the");
+    let _ = writeln!(w, "    /// button that closed it, or `Cancel`.");
+    let _ = writeln!(w, "    pub fn show_dialog<E: {events} + 'static>(owner: HWND, events: E) -> phai_ui::form::DialogResult {{");
     let _ = writeln!(w, "        let hwnd = Self::make(Some(owner), events);");
     let _ = writeln!(w, "        win::modal_loop(hwnd, owner);");
+    let _ = writeln!(w, "        phai_ui::form::take_result(hwnd)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
     let _ = writeln!(w, "    fn make<E: {events} + 'static>(owner: Option<HWND>, events: E) -> HWND {{");
@@ -168,26 +208,46 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            theme::set(sheet);");
         let _ = writeln!(w, "        }}");
     }
+    let (back, fore) = (f.form.word("back_color"), f.form.word("fore_color"));
+    if back.is_some() || fore.is_some() {
+        let opt = |v: Option<&str>| v.map(|s| format!("Some({})", lit(s))).unwrap_or_else(|| "None".into());
+        let _ = writeln!(w, "        theme::set_window_colors({}, {});", opt(back), opt(fore));
+    }
     let _ = writeln!(w, "        let class = win::register({}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
     let _ = writeln!(w, "        let title = wide(t({}));", lit(&f.form.title));
     let menu = if f.menu.is_empty() { "None" } else { "Some(Self::menu())" };
+    let fm = &f.form;
+    let _ = writeln!(w, "        let (style, ex) = phai_ui::form::frame({}, {}, {}, {}, {});", lit(fm.word("border").unwrap_or("sizable")), fm.flag("maximize_box", true), fm.flag("minimize_box", true), fm.flag("control_box", true), fm.flag("top_most", false));
+    let _ = writeln!(w, "        let main = owner.is_none();");
+    let _ = writeln!(w, "        let over = owner;");
+    if !fm.flag("show_in_taskbar", true) {
+        let _ = writeln!(w, "        // ShowInTaskbar = false: owned by a hidden window, which Windows gives no button.");
+        let _ = writeln!(w, "        let owner = owner.or_else(|| Some(phai_ui::form::hidden_owner()));");
+    }
     let _ = writeln!(w, "        unsafe {{");
-    let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default();");
+    let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default();");
     let _ = writeln!(w, "            let ui = Self::build(hwnd);");
     for c in f.control.iter().filter(|c| c.bind.is_some()) {
         let _ = writeln!(w, "            if let Err(e) = ui.reload_{}() {{", c.id);
         let _ = writeln!(w, "                win::message(Some(hwnd), &e, t({}), wm::MB_ICONWARNING);", lit(&f.form.title));
         let _ = writeln!(w, "            }}");
     }
-    let _ = writeln!(w, "            let mut host = Box::new(Host {{ ui, events }});");
+    let _ = writeln!(w, "            let mut host = Box::new(Host {{ ui, events, main }});");
     let _ = writeln!(w, "            host.events.loaded(&host.ui);");
     let _ = writeln!(w, "            win::set_state(hwnd, host);");
     let _ = writeln!(w, "            win::theme_frame(hwnd);");
+    if let Some(icon) = fm.word("icon") {
+        let _ = writeln!(w, "            phai_ui::form::set_icon(hwnd, include_bytes!(concat!(env!(\"CARGO_MANIFEST_DIR\"), {})));", lit(&format!("/{}", icon.trim_start_matches(['/', '\\']).replace('\\', "/"))));
+    }
+    if let Some(o) = fm.int("opacity") {
+        let _ = writeln!(w, "            phai_ui::form::set_opacity(hwnd, {o});");
+    }
     let _ = writeln!(w, "            let style = wm::GetWindowLongW(hwnd, wm::GWL_STYLE) as u32;");
+    let _ = writeln!(w, "            let ex = wm::GetWindowLongW(hwnd, wm::GWL_EXSTYLE) as u32;");
     let _ = writeln!(w, "            let mut r = RECT {{ left: 0, top: 0, right: win::px(hwnd, {}), bottom: win::px(hwnd, {}) }};", f.form.size[0], f.form.size[1]);
-    let _ = writeln!(w, "            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), {}, Default::default(), win::dpi(hwnd) as u32);", !f.menu.is_empty());
+    let _ = writeln!(w, "            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), {}, wm::WINDOW_EX_STYLE(ex), win::dpi(hwnd) as u32);", !f.menu.is_empty());
     let _ = writeln!(w, "            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);");
-    let _ = writeln!(w, "            if let Some(o) = owner {{");
+    let _ = writeln!(w, "            if let Some(o) = over {{");
     let _ = writeln!(w, "                win::center_on(hwnd, o);");
     if f.form.start.as_deref() != Some("windows") {
         let _ = writeln!(w, "            }} else {{");
@@ -272,7 +332,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Button => format!("win::button(hwnd, {text}, {id}, {font}, false)"),
             Kind::Checkbox => format!("win::checkbox(hwnd, {text}, {id}, {font}, {})", c.checked.unwrap_or(false)),
             Kind::Radio => format!("win::radio(hwnd, {text}, {id}, {font}, {}, {})", c.group.unwrap_or(0), c.checked.unwrap_or(false)),
-            Kind::Combo => format!("win::combo(hwnd, {id}, {font}, &[{}])", c.items.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
+            Kind::Combo => format!("win::combo_with(hwnd, {id}, {font}, &[{}], {})", combo_items(c).iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", "), c.flag("editable", false)),
             Kind::List => format!("win::list(hwnd, {id}, {font}, &[{}])", c.columns.iter().map(|(s, n)| format!("(t({}), {n})", lit(s))).collect::<Vec<_>>().join(", ")),
             Kind::Group => format!("controls::group(hwnd, {text}, {id}, {font})"),
             Kind::Tabs => format!("controls::tabs(hwnd, {id}, {font}, &[{}])", c.tabs.iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ")),
@@ -313,10 +373,16 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                 let _ = writeln!(w, "        controls::status_text({}, 0, {text});", c.id);
             }
         }
+        for call in prop_calls(c, false, false) {
+            let _ = writeln!(w, "        {call}");
+        }
+        if c.kind == Kind::Tabs && first_page(f) > 0 {
+            let _ = writeln!(w, "        controls::tabs_select({}, {});", c.id, first_page(f));
+        }
         if c.enabled == Some(false) {
             let _ = writeln!(w, "        win::enable({}, false);", c.id);
         }
-        if c.visible == Some(false) || c.page.is_some_and(|p| p > 0) {
+        if c.visible == Some(false) || c.page.is_some_and(|p| p != first_page(f)) {
             let _ = writeln!(w, "        win::show({}, false);", c.id);
         }
         let [x, y, cw, ch] = c.rect();
@@ -328,6 +394,10 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             let list = |v: &[String]| v.iter().map(|x| lit(x)).collect::<Vec<_>>().join(", ");
             let _ = writeln!(w, "        let {}_data = phai_data::Binding::new(crate::data_sources::connection(), {}, {}, &[{}], &[{}]);", c.id, lit(&b.database), lit(&b.table), list(&b.columns), list(&b.keys));
         }
+    }
+    let order = tab_order(f);
+    if !order.is_empty() {
+        let _ = writeln!(w, "        phai_ui::form::tab_order(&[{}]);", order.iter().map(|i| f.control[*i].id.clone()).collect::<Vec<_>>().join(", "));
     }
     let _ = writeln!(w, "        {ui} {{");
     let _ = writeln!(w, "            hwnd,");
@@ -394,6 +464,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
             _ => {}
         }
+        for call in prop_calls(c, true, true) {
+            let _ = writeln!(w, "        {call}");
+        }
     }
     let _ = writeln!(w, "    }}");
 
@@ -420,12 +493,13 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }).collect();
             let _ = writeln!(w, "            let sizes = [{}];", sizes.join(", "));
             let names: Vec<String> = kids.iter().map(|k| format!("self.{}", f.control[*k].id)).collect();
+            let gap = c.int("gap").unwrap_or(6);
             if c.kind == Kind::Flow {
-                let _ = writeln!(w, "            let places = phai_ui::layout::flow(area, &sizes, px(6));");
+                let _ = writeln!(w, "            let places = phai_ui::layout::flow_with(area, &sizes, px({gap}), {}, {});", c.word("direction") == Some("top_down"), c.flag("wrap", true));
                 let _ = writeln!(w, "            for (k, h) in [{}].into_iter().enumerate() {{", names.join(", "));
                 let _ = writeln!(w, "                win::move_to(h, places[k].0, places[k].1, sizes[k].0, sizes[k].1);");
             } else {
-                let _ = writeln!(w, "            let cells = phai_ui::layout::table(area, &sizes, {}, px(6));", c.cols.unwrap_or(2).max(1));
+                let _ = writeln!(w, "            let cells = phai_ui::layout::table(area, &sizes, {}, px({gap}));", c.cols.unwrap_or(2).max(1));
                 let _ = writeln!(w, "            for (k, h) in [{}].into_iter().enumerate() {{", names.join(", "));
                 let _ = writeln!(w, "                win::move_to(h, cells[k].x, cells[k].y, cells[k].w, cells[k].h);");
             }
@@ -451,14 +525,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
 
     // proc
     let _ = writeln!(w, "extern \"system\" fn proc_<E: {events} + 'static>(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {{");
-    if let Some([mw, mh]) = f.form.min_size {
+    let (min, max) = (f.form.size_of("min_size"), f.form.size_of("max_size"));
+    if min.is_some() || max.is_some() {
+        let pair = |s: Option<[i32; 2]>| s.map(|[a, b]| format!("Some(({a}, {b}))")).unwrap_or_else(|| "None".into());
         let _ = writeln!(w, "    if msg == wm::WM_GETMINMAXINFO {{");
-        let _ = writeln!(w, "        let info = unsafe {{ &mut *(l.0 as *mut wm::MINMAXINFO) }};");
-        let _ = writeln!(w, "        let style = unsafe {{ wm::GetWindowLongW(hwnd, wm::GWL_STYLE) }} as u32;");
-        let _ = writeln!(w, "        let mut r = RECT {{ left: 0, top: 0, right: win::px(hwnd, {mw}), bottom: win::px(hwnd, {mh}) }};");
-        let _ = writeln!(w, "        let _ = unsafe {{ windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), {}, Default::default(), win::dpi(hwnd) as u32) }};", !f.menu.is_empty());
-        let _ = writeln!(w, "        info.ptMinTrackSize.x = r.right - r.left;");
-        let _ = writeln!(w, "        info.ptMinTrackSize.y = r.bottom - r.top;");
+        let _ = writeln!(w, "        phai_ui::form::min_max(hwnd, l, {}, {}, {});", pair(min), pair(max), !f.menu.is_empty());
         let _ = writeln!(w, "        return LRESULT(0);");
         let _ = writeln!(w, "    }}");
     }
@@ -473,8 +544,14 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_COMMAND => {{");
     let _ = writeln!(w, "            let (id, code) = (win::loword(w.0) as i32, win::hiword(w.0));");
-    let _ = writeln!(w, "            let Host {{ ui, events }} = host;");
+    let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
     let _ = writeln!(w, "            match id {{");
+    for (which, idc) in [("accept_button", 1), ("cancel_button", 2)] {
+        if let Some(b) = f.form.word(which) {
+            let what = if idc == 1 { "Enter" } else { "Escape" };
+            let _ = writeln!(w, "                {idc} => phai_ui::form::click(ui.{b}), // {what}: {}", props::find_form(which).map(|s| s.label).unwrap_or_default());
+        }
+    }
     let in_context = |h: &str| f.control.iter().filter(|c| c.kind == Kind::ContextMenu).any(|c| c.menu_items().iter().any(|(id, _)| id == h));
     for h in handlers.iter().filter(|h| f.menu.iter().flat_map(|m| &m.items).any(|it| it.id.as_deref() == Some(h.as_str())) || f.toolbar.iter().any(|t| &t.id == *h) || in_context(h)) {
         let _ = writeln!(w, "                {} => events.{h}(ui),", const_name(h));
@@ -493,6 +570,13 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                 let _ = writeln!(w, "                        win::message(Some(hwnd), &e, t({}), wm::MB_ICONWARNING);", lit(&f.form.title));
                 let _ = writeln!(w, "                    }}{after}");
                 let _ = writeln!(w, "                }}");
+            }
+            Kind::Button if c.word("dialog_result").is_some() => {
+                // Clicked: its handler, then the window closes with its answer.
+                let r = c.word("dialog_result").unwrap_or("none");
+                let answer = format!("phai_ui::form::DialogResult::{}", r[..1].to_uppercase() + &r[1..]);
+                let before = call.map(|c| format!("{c}; ")).unwrap_or_default();
+                let _ = writeln!(w, "                {id} if code == 0 => {{ {before}phai_ui::form::close_with(hwnd, {answer}); }}");
             }
             Kind::Button | Kind::Checkbox | Kind::Radio => {
                 if let Some(call) = call {
@@ -551,7 +635,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let timers: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::Timer && c.on_tick.is_some()).collect();
     if !timers.is_empty() {
         let _ = writeln!(w, "        wm::WM_TIMER => {{");
-        let _ = writeln!(w, "            let Host {{ ui, events }} = host;");
+        let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
         let _ = writeln!(w, "            match w.0 as i32 {{");
         for c in timers {
             let _ = writeln!(w, "                CONTROL_{} => events.{}(ui),", c.id.to_ascii_uppercase(), c.on_tick.as_deref().unwrap_or_default());
@@ -566,7 +650,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "        wm::WM_NOTIFY if unsafe {{ (*(l.0 as *const windows::Win32::UI::Controls::NMHDR)).code }} == (-451i32) as u32 => {{");
         let _ = writeln!(w, "            // TVN_SELCHANGEDW: a tree's item chosen.");
         let _ = writeln!(w, "            let from = unsafe {{ (*(l.0 as *const windows::Win32::UI::Controls::NMHDR)).idFrom }};");
-        let _ = writeln!(w, "            let Host {{ ui, events }} = host;");
+        let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
         for c in trees {
             let _ = writeln!(w, "            if from == CONTROL_{} as usize {{", c.id.to_ascii_uppercase());
             let _ = writeln!(w, "                events.{}(ui);", c.on_select.as_deref().unwrap_or_default());
@@ -583,7 +667,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "            if hdr.code == cc::LVN_ITEMCHANGED {{");
         let _ = writeln!(w, "                let it = unsafe {{ &*(l.0 as *const cc::NMLISTVIEW) }};");
         let _ = writeln!(w, "                let chosen = it.uNewState & cc::LVIS_SELECTED.0 != 0 && it.uOldState & cc::LVIS_SELECTED.0 == 0;");
-        let _ = writeln!(w, "                let Host {{ ui, events }} = host;");
+        let _ = writeln!(w, "                let Host {{ ui, events, .. }} = host;");
         for c in lists {
             let _ = writeln!(w, "                if chosen && hdr.idFrom == CONTROL_{} as usize {{", c.id.to_ascii_uppercase());
             let _ = writeln!(w, "                    events.{}(ui);", c.on_select.as_deref().unwrap_or_default());
@@ -608,7 +692,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_DESTROY => {{");
     let _ = writeln!(w, "            // The program ends with its main window; a window shown over another only closes.");
-    let _ = writeln!(w, "            if unsafe {{ wm::GetWindow(hwnd, wm::GW_OWNER) }}.map_or(true, |o| o.is_invalid()) {{");
+    let _ = writeln!(w, "            if host.main {{");
     let _ = writeln!(w, "                unsafe {{ wm::PostQuitMessage(0) }};");
     let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            LRESULT(0)");

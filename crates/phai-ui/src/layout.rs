@@ -284,6 +284,28 @@ pub fn flow(area: Rect, sizes: &[(i32, i32)], gap: i32) -> Vec<(i32, i32)> {
     out
 }
 
+/// A flow panel's places with WinForms' FlowDirection and WrapContents: `down`, top to bottom and
+/// on to the next column; `wrap` off, one row (or column) however long.
+pub fn flow_with(area: Rect, sizes: &[(i32, i32)], gap: i32, down: bool, wrap: bool) -> Vec<(i32, i32)> {
+    if !down {
+        let wide = if wrap { area } else { Rect { w: i32::MAX / 4, ..area } };
+        return flow(wide, sizes, gap);
+    }
+    let mut out = Vec::with_capacity(sizes.len());
+    let (mut x, mut y, mut col_w) = (area.x + gap, area.y + gap, 0);
+    for &(w, h) in sizes {
+        if wrap && y > area.y + gap && y + h > area.y + area.h - gap {
+            y = area.y + gap;
+            x += col_w + gap;
+            col_w = 0;
+        }
+        out.push((x, y));
+        y += h + gap;
+        col_w = col_w.max(w);
+    }
+    out
+}
+
 /// A table panel's places, as WinForms' TableLayoutPanel: `cols` equal columns across the area,
 /// items in order row by row, each as wide as its cell; a row as tall as its tallest item.
 pub fn table(area: Rect, sizes: &[(i32, i32)], cols: usize, gap: i32) -> Vec<Rect> {

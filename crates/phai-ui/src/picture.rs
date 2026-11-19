@@ -81,6 +81,18 @@ fn load(path: &Path) -> Option<Image> {
 
 struct Picture {
     image: Option<Image>,
+    /// SizeMode: 0 zoom, 1 normal, 2 stretch, 3 center.
+    mode: u8,
+}
+
+/// How the picture fills its box: `"zoom"`, `"normal"`, `"stretch"` or `"center"`.
+pub fn set_size_mode(h: HWND, mode: &str) {
+    if let Some(p) = unsafe { win::state::<Picture>(h) } {
+        p.mode = match mode { "normal" => 1, "stretch" => 2, "center" => 3, _ => 0 };
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
 }
 
 /// A picture control showing the file at `path` (nothing shown when it cannot be read).
@@ -89,7 +101,7 @@ pub fn picture(parent: HWND, id: i32, path: &str) -> HWND {
     let h = unsafe {
         wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(wm::HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
     };
-    win::set_state(h, Box::new(Picture { image: None }));
+    win::set_state(h, Box::new(Picture { image: None, mode: 0 }));
     set_picture(h, path);
     h
 }
@@ -132,9 +144,18 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let _ = wm::GetClientRect(h, &mut r);
             let bg = win::window_background();
             win::fill(dc, &r, bg);
+            let mode = win::state::<Picture>(h).map(|p| p.mode).unwrap_or(0);
             match win::state::<Picture>(h).and_then(|p| p.image.as_ref()) {
                 Some(img) => {
-                    let to = fit(r, img.w, img.h);
+                    let to = match mode {
+                        1 => RECT { left: 0, top: 0, right: img.w, bottom: img.h },
+                        2 => r,
+                        3 => {
+                            let (x, y) = ((r.right - img.w) / 2, (r.bottom - img.h) / 2);
+                            RECT { left: x, top: y, right: x + img.w, bottom: y + img.h }
+                        }
+                        _ => fit(r, img.w, img.h),
+                    };
                     let src = Gdi::CreateCompatibleDC(Some(dc));
                     let old = Gdi::SelectObject(src, img.bmp.into());
                     let blend = Gdi::BLENDFUNCTION { BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1 /* AC_SRC_ALPHA */ };

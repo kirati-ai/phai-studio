@@ -301,8 +301,19 @@ impl Theme {
         parse_color(&resolve_vars(raw, &self.vars, 0, 0).ok()?)
     }
 
-    /// What the sheet says about this control in this state.
+    /// What the sheet says about this control in this state - the program's own window colours
+    /// ([`set_window_colors`]) over the sheet's for the window itself.
     pub fn style(&self, q: &Query) -> Style {
+        let s = self.sheet_style(q);
+        if q.kind == "window" {
+            if let Some(over) = WINDOW_OVER.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                return s.under(over);
+            }
+        }
+        s
+    }
+
+    fn sheet_style(&self, q: &Query) -> Style {
         let mut hits: Vec<((u8, u8, u8), usize, &Rule)> = Vec::new();
         for r in &self.rules {
             if let Some(spec) = r.selectors.iter().filter(|s| s.matches(q)).map(|s| s.specificity()).max() {
@@ -383,6 +394,14 @@ fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, Strin
 // --- the theme in use ---------------------------------------------------------------------------
 
 static CURRENT: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
+static WINDOW_OVER: RwLock<Option<Style>> = RwLock::new(None);
+
+/// The program's window background and words over every theme it loads - a form's BackColor and
+/// ForeColor, as CSS `window { background; color }`. Words that are not a colour are left out.
+pub fn set_window_colors(background: Option<&str>, color: Option<&str>) {
+    let s = Style { background: background.and_then(parse_color), color: color.and_then(parse_color), ..Default::default() };
+    *WINDOW_OVER.write().unwrap_or_else(|e| e.into_inner()) = (!s.is_empty()).then_some(s);
+}
 
 /// The theme every control draws with; the built-in light one until [`set`] is called.
 pub fn current() -> Arc<Theme> {

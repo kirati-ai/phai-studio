@@ -5,5 +5,7 @@ pub mod bars;
 pub mod codegen;
 pub mod live;
 pub mod model;
+pub mod props;
 
 pub use model::*;
+pub use toml;

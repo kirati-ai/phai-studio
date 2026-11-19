@@ -678,6 +678,71 @@ pub static THAI: &[(&str, &str)] = &[
     ("About Phai Studio", "เกี่ยวกับ Phai Studio"),
     ("The guide is not installed with this copy of Phai Studio.", "Phai Studio ชุดนี้ไม่ได้ติดตั้งคู่มือมาด้วย"),
     ("Phai Studio {0}\n\nA free, open-source studio for Windows programs in Rust.\nMIT License - Monrak Net\n\n{1}", "Phai Studio {0}\n\nเครื่องมือฟรีและเปิดซอร์ส สำหรับสร้างโปรแกรม Windows ด้วย Rust\nสัญญาอนุญาต MIT - Monrak Net\n\n{1}"),
+    ("Misc", "อื่น ๆ"),
+    ("Window Style", "รูปแบบหน้าต่าง"),
+    ("Its place in the order Tab moves through; unset, the form's order.", "ลำดับที่ปุ่ม Tab เลื่อนผ่าน ถ้าไม่ตั้งใช้ลำดับในฟอร์ม"),
+    ("Whether Tab stops on it.", "ปุ่ม Tab หยุดที่ตัวนี้หรือไม่"),
+    ("Words shown when the mouse rests on it.", "ข้อความที่ขึ้นเมื่อวางเมาส์ค้างไว้"),
+    ("The mouse pointer over it.", "รูปตัวชี้เมาส์เมื่ออยู่บนตัวนี้"),
+    ("Its border's thickness, pixels - #id { border-width }.", "ความหนาของขอบ (พิกเซล) - #id { border-width }"),
+    ("The tick, the dot, the bar or the chosen tab's line - #id { accent-color }.", "สีของเครื่องหมายติ๊ก จุด แถบ หรือเส้นใต้แท็บที่เลือก - #id { accent-color }"),
+    ("Its icons' colour - #id { icon-color }.", "สีของไอคอน - #id { icon-color }"),
+    ("Where its words sit.", "ตำแหน่งของข้อความ"),
+    ("A thin line round it, or none.", "มีเส้นขอบบาง ๆ รอบตัว หรือไม่มี"),
+    ("Clicked, it closes the window, and show_dialog returns this.", "เมื่อคลิก หน้าต่างจะปิด และ show_dialog คืนค่านี้"),
+    ("Its words can be read and copied, not changed.", "อ่านและคัดลอกข้อความได้ แต่แก้ไม่ได้"),
+    ("The most letters it takes; unset, no limit but Windows' own.", "จำนวนตัวอักษรสูงสุดที่รับได้ ถ้าไม่ตั้งจำกัดตาม Windows"),
+    ("Grey words shown while it is empty.", "ข้อความสีเทาที่แสดงขณะช่องยังว่าง"),
+    ("What is typed in, made capitals or small letters.", "เปลี่ยนสิ่งที่พิมพ์เป็นตัวพิมพ์ใหญ่หรือพิมพ์เล็ก"),
+    ("Long lines wrap at the edge; off, it scrolls sideways.", "บรรทัดยาวตัดขึ้นบรรทัดใหม่ที่ขอบ ถ้าปิดจะเลื่อนไปทางข้าง"),
+    ("Web addresses show as links.", "แสดงที่อยู่เว็บเป็นลิงก์"),
+    ("How much an arrow adds or takes away.", "ลูกศรเพิ่มหรือลดค่าครั้งละเท่าไร"),
+    ("Shows the number in base 16.", "แสดงตัวเลขเป็นเลขฐาน 16"),
+    ("Commas between thousands: 1,000.", "ใส่จุลภาคคั่นหลักพัน: 1,000"),
+    ("How far an arrow key moves it.", "ปุ่มลูกศรเลื่อนไปครั้งละเท่าไร"),
+    ("How far Page Up and Page Down move it; unset, a tenth of the range.", "Page Up / Page Down เลื่อนครั้งละเท่าไร ถ้าไม่ตั้งใช้หนึ่งในสิบของช่วง"),
+    ("A tick mark every so many; unset, none.", "ขีดบอกระดับทุก ๆ เท่านี้ ถ้าไม่ตั้งไม่มีขีด"),
+    ("How much perform_step adds.", "perform_step เพิ่มค่าครั้งละเท่าไร"),
+    ("A block that runs along, for work of unknown length.", "แถบวิ่งไปมา สำหรับงานที่ไม่รู้ว่าจะนานเท่าไร"),
+    ("Words can be typed in as well as chosen.", "พิมพ์ข้อความเองได้ นอกจากเลือกจากรายการ"),
+    ("Its items in alphabetical order.", "เรียงรายการตามตัวอักษร"),
+    ("The item chosen when the window opens, from 0; -1 none.", "รายการที่เลือกไว้ตอนเปิดหน้าต่าง นับจาก 0 ใส่ -1 คือไม่เลือก"),
+    ("How many items the open list shows before it scrolls.", "จำนวนรายการที่แสดงตอนเปิดรายการ ก่อนจะต้องเลื่อน"),
+    ("Rows with columns, or the items alone.", "แสดงเป็นแถวพร้อมคอลัมน์ หรือแสดงแต่รายการ"),
+    ("Lines between rows and columns.", "เส้นคั่นระหว่างแถวและคอลัมน์"),
+    ("A click chooses the whole row.", "คลิกแล้วเลือกทั้งแถว"),
+    ("Several rows can be chosen at once.", "เลือกได้หลายแถวพร้อมกัน"),
+    ("A box to tick before each item.", "มีช่องติ๊กหน้าแต่ละรายการ"),
+    ("The column headings shown, or none.", "แสดงหัวคอลัมน์ หรือไม่แสดง"),
+    ("The chosen row stops showing when it loses the focus.", "แถวที่เลือกจะไม่แสดงเมื่อโฟกัสไปที่อื่น"),
+    ("Dotted lines join items to their parents.", "เส้นประเชื่อมรายการกับรายการแม่"),
+    ("A button to open and close items that hold others.", "ปุ่มเปิด/ปิดรายการที่มีรายการย่อย"),
+    ("The top items have their buttons too.", "รายการชั้นบนสุดก็มีปุ่มเปิด/ปิดด้วย"),
+    ("Every item open when the window opens.", "เปิดทุกรายการไว้ตอนเปิดหน้าต่าง"),
+    ("The page shown when the window opens, from 0.", "หน้าที่แสดงตอนเปิดหน้าต่าง นับจาก 0"),
+    ("How the date shows: Windows' short or long date, the time, or CustomFormat.", "รูปแบบการแสดงวันที่: วันที่แบบสั้นหรือยาวของ Windows, เวลา หรือ CustomFormat"),
+    ("With Format custom: dd MMM yyyy, HH:mm and the like.", "ใช้เมื่อ Format เป็น custom เช่น dd MMM yyyy, HH:mm"),
+    ("The date when the window opens, 2026-11-19; unset, today.", "วันที่ตอนเปิดหน้าต่าง เช่น 2026-11-19 ถ้าไม่ตั้งใช้วันนี้"),
+    ("The earliest date it takes.", "วันที่เร็วที่สุดที่รับได้"),
+    ("The latest date it takes.", "วันที่ช้าที่สุดที่รับได้"),
+    ("Zoom: as large as fits, its shape kept. Normal: its own size, top left. Stretch: filling the box. Center: its own size, in the middle.", "Zoom: ขยายเต็มที่โดยคงสัดส่วน, Normal: ขนาดจริงชิดมุมซ้ายบน, Stretch: ยืดเต็มกรอบ, Center: ขนาดจริงอยู่กลาง"),
+    ("Across, then the next row - or down, then the next column.", "เรียงไปทางขวาแล้วขึ้นแถวใหม่ หรือเรียงลงแล้วขึ้นคอลัมน์ใหม่"),
+    ("On to the next row when one is full; off, one row.", "ขึ้นแถวใหม่เมื่อเต็ม ถ้าปิดจะเรียงแถวเดียว"),
+    ("Pixels between the controls in it, and round its edge.", "ระยะห่าง (พิกเซล) ระหว่าง control ข้างใน และรอบขอบ"),
+    ("The button Enter clicks, wherever the focus is.", "ปุ่มที่ถูกกดเมื่อกด Enter ไม่ว่าโฟกัสอยู่ที่ไหน"),
+    ("The button Escape clicks.", "ปุ่มที่ถูกกดเมื่อกด Esc"),
+    ("Sizable: its edges drag. Fixed: they do not. Dialog: a dialog's frame. Tool: a small title bar. None: no frame at all.", "Sizable: ลากขอบย่อขยายได้, Fixed: ลากไม่ได้, Dialog: กรอบแบบกล่องโต้ตอบ, Tool: แถบชื่อเล็ก, None: ไม่มีกรอบเลย"),
+    ("The title bar's Maximize button.", "ปุ่มขยายเต็มจอบนแถบชื่อ"),
+    ("The title bar's Minimize button.", "ปุ่มย่อหน้าต่างบนแถบชื่อ"),
+    ("The title bar's buttons and its menu; off, none of them.", "ปุ่มและเมนูบนแถบชื่อ ถ้าปิดจะไม่มีทั้งหมด"),
+    ("It stays over every other window.", "อยู่เหนือหน้าต่างอื่นทุกหน้าต่างเสมอ"),
+    ("It has a button on the taskbar.", "มีปุ่มบนแถบงาน (taskbar)"),
+    ("How solid it is, percent; less shows what is behind.", "ความทึบเป็นเปอร์เซ็นต์ ยิ่งน้อยยิ่งเห็นสิ่งที่อยู่ข้างหลัง"),
+    ("An .ico file of the project for its title bar and taskbar button.", "ไฟล์ .ico ในโปรเจกต์ สำหรับแถบชื่อและปุ่มบนแถบงาน"),
+    ("The smallest its inside can be dragged, at 100% scale.", "ขนาดภายในที่เล็กที่สุดที่ลากย่อได้ ที่สเกล 100%"),
+    ("The largest its inside can be dragged, at 100% scale.", "ขนาดภายในที่ใหญ่ที่สุดที่ลากขยายได้ ที่สเกล 100%"),
+    ("The window's background over the theme - CSS window { background }, for the whole program.", "สีพื้นหลังของหน้าต่างทับธีม - CSS window { background } ใช้กับทั้งโปรแกรม"),
+    ("The window's words' colour over the theme - CSS window { color }, for the whole program.", "สีตัวอักษรของหน้าต่างทับธีม - CSS window { color } ใช้กับทั้งโปรแกรม"),
 ];
 
 #[cfg(test)]
@@ -688,5 +753,12 @@ mod tests {
         let used = phai_ui::text::scan(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src")), &["text.rs", "project.rs"]); // project.rs holds a new program's source, not ours
         assert!(used.len() > 40, "the scanner found only {}", used.len());
         assert_eq!(phai_ui::text::problems(&used), Vec::<String>::new());
+    }
+
+    #[test]
+    fn every_table_property_has_thai_help() {
+        phai_ui::text::add(super::THAI);
+        let words: Vec<String> = phai_form::props::CONTROL.iter().chain(phai_form::props::FORM).flat_map(|s| [s.help.to_string(), s.category.to_string()]).collect();
+        assert_eq!(phai_ui::text::problems(&words), Vec::<String>::new());
     }
 }
