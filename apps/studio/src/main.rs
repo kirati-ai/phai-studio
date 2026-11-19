@@ -187,6 +187,8 @@ const ID_THEME_EDIT: i32 = 790;
 const ID_THEME_EDITOR: i32 = 791;
 /// Project > Add Form: a second window for the project.
 const ID_ADD_FORM: i32 = 291;
+/// Project > Add User Control: a control of the project's own, made as a form.
+const ID_ADD_USER_CONTROL: i32 = 293;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -731,6 +733,7 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::FontDialog => t("Font dialog"),
         Kind::PrintDocument => t("Print document"),
         Kind::BindingSource => t("Binding source"),
+        Kind::UserControl => t("User control"),
         Kind::ErrorProvider => t("Error provider"),
         Kind::NotifyIcon => t("Notify icon"),
         Kind::Split => t("Split container"),
@@ -778,6 +781,7 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::FontDialog => glyph::FONT_PICK,
             Kind::PrintDocument => glyph::PRINT,
             Kind::BindingSource => glyph::BINDING,
+            Kind::UserControl => glyph::USER_CONTROL,
             Kind::ErrorProvider => glyph::ERROR_MARK,
             Kind::NotifyIcon => glyph::TRAY,
             Kind::Split => glyph::SPLIT,
@@ -1071,6 +1075,7 @@ fn build_menu() -> HMENU {
         sub(t("&Debug"), debug);
         let proj = wm::CreatePopupMenu().unwrap_or_default();
         add(proj, ID_ADD_FORM, t("Add Form..."), "");
+        add(proj, ID_ADD_USER_CONTROL, t("Add User Control..."), "");
         sep(proj);
         add(proj, ID_MANAGE_CRATES, t("Manage Crates..."), "");
         sep(proj);
@@ -2101,9 +2106,13 @@ impl Studio {
         while taken.contains(&at) {
             at = (at.0 + canvas::GRID * 2, at.1 + canvas::GRID * 2);
         }
+        let user = first_user_control(self.doc.path.as_deref(), &self.doc.form.form.name);
         self.edit(|f| {
             let id = f.next_id(kind);
             let mut c = phai_form::Control::new(kind, &id, [at.0, at.1, w, h]);
+            if kind == Kind::UserControl {
+                fill_user_control(&mut c, user.as_ref(), false);
+            }
             if kind == Kind::Statusbar {
                 c.bounds = Some([0, 0, 0, 26]);
             }
@@ -3705,18 +3714,20 @@ impl Studio {
     /// Project > Add Form, as Visual Studio's "Add Form (Windows Forms)": a new window in the
     /// project's `src` - its form, its generated code and the programmer's file - declared in
     /// main.rs, and opened to design. Another window shows it with `<Name>Ui::show(ui.hwnd, ...)`.
-    fn add_form(&mut self) {
+    fn add_form(&mut self, user_control: bool) {
+        let caption = if user_control { t("Add User Control") } else { t("Add Form") };
         let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
-            win::message(Some(self.hwnd), t("Open a form of the project first, so the new form can join it."), t("Add Form"), wm::MB_ICONINFORMATION);
+            win::message(Some(self.hwnd), t("Open a form of the project first, so the new form can join it."), caption, wm::MB_ICONINFORMATION);
             return;
         };
         let src = dir.join("src");
-        let mut n = 2;
-        while src.join(format!("form{n}.phaiform")).exists() {
+        let stem = if user_control { "UserControl" } else { "Form" };
+        let mut n = if user_control { 1 } else { 2 };
+        while src.join(format!("{}.phaiform", snake(&format!("{stem}{n}")))).exists() {
             n += 1;
         }
-        let default = format!("Form{n}");
-        let Some(answer) = phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Add Form"), &[phai_ui::dialogs::Field::Text(t("Name"), &default)]) else { return };
+        let default = format!("{stem}{n}");
+        let Some(answer) = phai_ui::dialogs::ask_fields(Some(self.hwnd), caption, &[phai_ui::dialogs::Field::Text(t("Name"), &default)]) else { return };
         let name = form_type_name(&answer[0]);
         if name.is_empty() {
             return;
@@ -3724,15 +3735,15 @@ impl Studio {
         let file = snake(&name);
         let path = src.join(format!("{file}.phaiform"));
         if path.exists() || src.join(format!("{file}.rs")).exists() || src.join(format!("{file}_ui.rs")).exists() {
-            win::message(Some(self.hwnd), &tf("The project already has {0}", &[&file]), t("Add Form"), wm::MB_ICONINFORMATION);
+            win::message(Some(self.hwnd), &tf("The project already has {0}", &[&file]), caption, wm::MB_ICONINFORMATION);
             return;
         }
-        let (path, declared) = match write_new_form(&dir, &name) {
+        let (path, declared) = match write_new(&dir, &name, user_control) {
             Ok(r) => r,
             Err(e) => {
                 win::message(Some(self.hwnd), &format!("{}
 
-{e}", tf("{0} cannot be saved", &[&path.display()])), t("Add Form"), wm::MB_ICONWARNING);
+{e}", tf("{0} cannot be saved", &[&path.display()])), caption, wm::MB_ICONWARNING);
                 return;
             }
         };
@@ -3741,7 +3752,9 @@ impl Studio {
             e.show_project_of(Some(&path));
         }
         let how = format!("{name}Ui::show(ui.hwnd, {file}::{name}::default())");
-        if declared {
+        if user_control {
+            self.say_status(&tf("Added {0} - put it on a form from the Toolbox (User control)", &[&name]));
+        } else if declared {
             self.say_status(&tf("Added {0} - show it from another window with {1}", &[&name, &how]));
         } else {
             self.say_status(&tf("Added {0} - add `mod {1}; mod {1}_ui;` to main.rs", &[&name, &file]));
@@ -5998,7 +6011,8 @@ impl Studio {
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_PROJECT_PROPS => self.project_properties(),
-            ID_ADD_FORM => self.add_form(),
+            ID_ADD_FORM => self.add_form(false),
+            ID_ADD_USER_CONTROL => self.add_form(true),
             ID_MANAGE_CRATES => match self.doc.path.as_deref().and_then(cargo::project_of) {
                 Some(dir) => {
                     let dir = std::path::absolute(&dir).unwrap_or(dir);
@@ -7785,13 +7799,67 @@ fn main() {
 
 /// A new form in the project at `dir`: `src/<name>.phaiform`, its generated `_ui.rs` and the
 /// programmer's file, and main.rs told of it. The form's path, and whether main.rs was changed.
+/// The user control `name` in `folder` (`address_box.phaiform` for AddressBox), when that form is
+/// one.
+fn user_control_form(folder: &Path, name: &str) -> Option<FormFile> {
+    use phai_form::HasProps;
+    let text = std::fs::read_to_string(folder.join(format!("{}.phaiform", snake(name)))).ok()?;
+    FormFile::parse(&text).ok().filter(|f| f.form.flag("user_control", false))
+}
+
+/// The project's user controls beside form `path` - their names and sizes, by name - leaving out
+/// the form itself.
+fn user_controls_beside(path: Option<&Path>, own: &str) -> Vec<(String, [i32; 2])> {
+    let Some(folder) = path.and_then(Path::parent) else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(folder) else { return vec![] };
+    let mut out: Vec<(String, [i32; 2])> = rd
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "phaiform"))
+        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .filter_map(|t| FormFile::parse(&t).ok())
+        .filter(|f| phai_form::HasProps::flag(&f.form, "user_control", false) && f.form.name != own)
+        .map(|f| (f.form.name.clone(), f.form.size))
+        .collect();
+    out.sort();
+    out
+}
+
+fn first_user_control(path: Option<&Path>, own: &str) -> Option<(String, [i32; 2])> {
+    user_controls_beside(path, own).into_iter().next()
+}
+
+/// A user control just put on a form: the project's first one, at its own size unless it was
+/// drawn.
+fn fill_user_control(c: &mut phai_form::Control, user: Option<&(String, [i32; 2])>, drawn: bool) {
+    use phai_form::HasProps;
+    if let Some((name, size)) = user {
+        c.set_prop("control_type", Some(phai_form::toml::Value::String(name.clone())));
+        if !drawn {
+            if let Some(b) = c.bounds.as_mut() {
+                b[2] = size[0];
+                b[3] = size[1];
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
+    write_new(dir, name, false)
+}
+
+/// A new form, or a new user control: a form that is a control other forms hold.
+fn write_new(dir: &Path, name: &str, user_control: bool) -> std::io::Result<(PathBuf, bool)> {
     let src = dir.join("src");
     let file = snake(name);
     let path = src.join(format!("{file}.phaiform"));
     let mut f = FormFile::new(name);
     f.form.title = name.to_string();
-    f.form.size = [400, 300];
+    f.form.size = if user_control { [300, 150] } else { [400, 300] };
+    if user_control {
+        f.form.more.insert("user_control".into(), phai_form::toml::Value::Boolean(true));
+    }
     if dir.join("theme.css").is_file() {
         f.form.theme = Some("../theme.css".into());
     }
@@ -9016,6 +9084,137 @@ impl MainWindowEvents for MainWindow {
         let cargo = crate::cargo::find_cargo().unwrap();
         let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let run = std::process::Command::new(&exe).output().unwrap();
+        assert_eq!(run.status.code(), Some(42), "1000 + the bits of what worked: {}", String::from_utf8_lossy(&run.stderr));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A UserControl in a real project: AddressBox made as a form of its own, put on the main
+    /// window; its controls reached from the window's code, its change told to the window, it
+    /// and the box inside it growing with the window - and drawn with its controls in the designer.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn a_user_control_sits_on_a_form_with_its_own_controls() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-userctl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let src = dir.join("src");
+        let (path, declared) = write_new(&dir, "AddressBox", true).unwrap();
+        assert!(declared);
+        let mut uc = FormFile::parse(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(uc.form.flag("user_control", false) && uc.form.size == [300, 150]);
+        let mut street = Control::new(Kind::Edit, "street", [10, 10, 280, 23]);
+        street.anchor = Some("left top right".into());
+        street.on_change = Some("street_changed".into());
+        let city = Control::new(Kind::Edit, "city", [10, 40, 150, 23]);
+        uc.control.extend([street, city]);
+        assert!(uc.check().is_empty(), "{:?}", uc.check());
+        std::fs::write(&path, uc.to_toml()).unwrap();
+        let generated = codegen::generate(&uc, &theme_options(&path, uc.form.theme.as_deref()));
+        assert!(generated.contains("pub fn create_in<E: AddressBoxEvents + 'static>(parent: HWND, id: i32, events: E) -> HWND"), "{generated}");
+        std::fs::write(src.join("address_box_ui.rs"), generated).unwrap();
+        std::fs::write(src.join("address_box.rs"), r##"use crate::address_box_ui::{AddressBoxEvents, AddressBoxUi};
+
+#[derive(Default)]
+pub struct AddressBox {}
+
+impl AddressBoxEvents for AddressBox {
+    fn street_changed(&mut self, ui: &AddressBoxUi) {
+        ui.notify_parent();
+    }
+}
+"##).unwrap();
+
+        let form_path = src.join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let mut home = Control::new(Kind::UserControl, "home", [11, 40, 0, 0]);
+        fill_user_control(&mut home, first_user_control(Some(&form_path), &f.form.name).as_ref(), false);
+        assert_eq!(home.word("control_type"), Some("AddressBox"));
+        assert_eq!(home.bounds, Some([11, 40, 300, 150]));
+        home.anchor = Some("left top right".into());
+        home.on_change = Some("address_changed".into());
+        f.control.push(home);
+        // A window that can be sized: the template's opens maximized.
+        f.form.maximized = None;
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        let mut nameless = f.clone();
+        nameless.control.last_mut().unwrap().set_prop("control_type", None);
+        assert!(!nameless.check().is_empty());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("crate::address_box_ui::AddressBoxUi::create_in(hwnd, CONTROL_HOME, crate::address_box::AddressBox::default())"), "{generated}");
+        std::fs::write(src.join("main_window_ui.rs"), generated).unwrap();
+
+        // The designer: the frame holds AddressBox's two boxes.
+        unsafe {
+            phai_ui::win::init();
+            extern "system" fn holder_proc(h: windows::Win32::Foundation::HWND, m: u32, w: windows::Win32::Foundation::WPARAM, l: windows::Win32::Foundation::LPARAM) -> windows::Win32::Foundation::LRESULT {
+                phai_ui::win::def(h, m, w, l)
+            }
+            let class = phai_ui::win::register("PhaiTestHolder", Some(holder_proc), None);
+            let holder = wm::CreateWindowExW(Default::default(), windows::core::PCWSTR(class.as_ptr()), windows::core::PCWSTR::null(), wm::WS_POPUP, 0, 0, 500, 400, None, None, Some(phai_ui::win::instance()), None).unwrap();
+            let folder = src.clone();
+            phai_form::live::set_user_controls(move |name| user_control_form(&folder, name));
+            let font = phai_ui::win::font(holder, 0, false);
+            let built = phai_form::live::build(holder, &f, font, 0);
+            let frame = *built.controls.last().unwrap();
+            let mut kids = 0;
+            let mut c = wm::GetWindow(frame, wm::GW_CHILD).unwrap_or_default();
+            while !c.is_invalid() {
+                kids += 1;
+                c = wm::GetWindow(c, wm::GW_HWNDNEXT).unwrap_or_default();
+            }
+            assert_eq!(kids, 2, "AddressBox's two boxes in its frame on the canvas");
+            let _ = wm::DestroyWindow(holder);
+        }
+
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use crate::address_box_ui::AddressBoxUi;
+use windows::Win32::UI::WindowsAndMessaging as wm;
+
+#[derive(Default)]
+pub struct MainWindow {
+    changes: usize,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn address_changed(&mut self, _ui: &MainWindowUi) {
+        self.changes += 1;
+    }
+
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let mut bits = 0;
+        AddressBoxUi::with(ui.home, |a| a.street.set_text("12 Sukhumvit"));
+        if self.changes > 0 { bits |= 1 }
+        AddressBoxUi::with(ui.home, |a| a.city.set_text("กรุงเทพฯ"));
+        if AddressBoxUi::with(ui.home, |a| (a.street.text(), a.city.text())) == Some(("12 Sukhumvit".into(), "กรุงเทพฯ".into())) { bits |= 2 }
+        let width = |h: windows::Win32::Foundation::HWND| { let r = phai_ui::win::rect_in_parent(h); r.right - r.left };
+        let street = AddressBoxUi::with(ui.home, |a| a.street.hwnd()).unwrap();
+        let (home_before, street_before) = (width(ui.home.hwnd()), width(street));
+        let mut r = windows::Win32::Foundation::RECT::default();
+        unsafe {
+            let _ = wm::GetWindowRect(ui.hwnd, &mut r);
+            let _ = wm::SetWindowPos(ui.hwnd, None, 0, 0, r.right - r.left + 120, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
+        }
+        let (home_after, street_after) = (width(ui.home.hwnd()), width(street));
+        if home_after - home_before == 120 && street_after - street_before == 120 { bits |= 4 }
+        else { eprintln!("home {home_before}->{home_after} street {street_before}->{street_after}"); }
+        let parent = unsafe { wm::GetParent(street).unwrap_or_default() };
+        if parent == ui.home.hwnd() && unsafe { wm::GetParent(parent).unwrap_or_default() } == ui.hwnd { bits |= 8 }
+        if AddressBoxUi::with(ui.hwnd, |_| ()).is_none() { bits |= 16 }
+        std::process::exit(if bits == 31 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(src.join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stderr).matches("warning").count(), 0, "{}", String::from_utf8_lossy(&out.stderr));
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let run = std::process::Command::new(&exe).output().unwrap();
         assert_eq!(run.status.code(), Some(42), "1000 + the bits of what worked: {}", String::from_utf8_lossy(&run.stderr));

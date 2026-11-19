@@ -29,6 +29,69 @@ thread_local! {
     static TRANSLATE: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
 }
 
+/// Where the designer finds a user control's form by its name: none, and a user control is an
+/// empty frame with its name.
+type Finder = Box<dyn Fn(&str) -> Option<FormFile>>;
+
+thread_local! {
+    static USER_CONTROLS: std::cell::RefCell<Option<Finder>> = const { std::cell::RefCell::new(None) };
+    /// How deep in user controls within user controls the building is: a control that holds
+    /// itself stops.
+    static DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// How the designer reads the project's user controls: `find("AddressBox")` its form.
+pub fn set_user_controls(find: impl Fn(&str) -> Option<FormFile> + 'static) {
+    USER_CONTROLS.with(|u| *u.borrow_mut() = Some(Box::new(find)));
+}
+
+/// A user control on the canvas: a frame with its own controls in it, laid out as they will be.
+fn user_control(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging as wm;
+    unsafe extern "system" fn sized(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, data: usize) -> LRESULT {
+        let layout = data as *const Layout;
+        match msg {
+            wm::WM_SIZE => unsafe { (*layout).apply(h) },
+            wm::WM_NCDESTROY => unsafe {
+                let _ = RemoveWindowSubclass(h, Some(sized), 78);
+                drop(Box::from_raw(layout as *mut Layout));
+            },
+            _ => {}
+        }
+        unsafe { DefSubclassProc(h, msg, w, l) }
+    }
+    let name = c.word("control_type").unwrap_or("");
+    let frame = win::panel(parent, id, true);
+    let depth = DEPTH.with(|d| d.get());
+    let form = if depth < 4 { USER_CONTROLS.with(|u| u.borrow().as_ref().and_then(|find| find(name))) } else { None };
+    match form {
+        Some(uf) => {
+            DEPTH.with(|d| d.set(depth + 1));
+            let inner = build(frame, &uf, font, 0);
+            DEPTH.with(|d| d.set(depth));
+            if let Some(back) = uf.form.word("back_color") {
+                win::set_own_style(frame, &format!("background-color: {back}")).ok();
+            }
+            let layout = Box::into_raw(Box::new(inner.layout)) as usize;
+            unsafe {
+                let _ = SetWindowSubclass(frame, Some(sized), 78, layout);
+            }
+        }
+        None => {
+            let label = win::label(frame, if name.is_empty() { "UserControl" } else { name }, 0, font);
+            let mut layout = Layout::new((120, 23));
+            layout.add(label, Item { bounds: Rect::new(6, 4, 200, 23), dock: Dock::None, anchor: Anchor::default() });
+            let layout = Box::into_raw(Box::new(layout)) as usize;
+            unsafe {
+                let _ = SetWindowSubclass(frame, Some(sized), 78, layout);
+            }
+        }
+    }
+    frame
+}
+
 /// Shows the form's words as written (`false`) or in the chosen language (`true`, the default).
 pub fn set_translate(on: bool) {
     TRANSLATE.with(|t| t.set(on));
@@ -140,6 +203,7 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             let (vertical, d) = c.split_bar();
             phai_ui::split::split(parent, id, vertical, d)
         }
+        Kind::UserControl => user_control(parent, c, id, font),
         // A component has no window on the form: a hidden stand-in keeps the controls' order.
         _ => {
             let h = win::label(parent, "", id, font);

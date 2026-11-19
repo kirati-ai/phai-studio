@@ -145,6 +145,8 @@ impl Canvas {
         let (w, h) = (win::px(self.hwnd, f.form.size[0]), win::px(self.hwnd, f.form.size[1]));
         let (ox, oy) = origin(f);
         win::move_to(self.surface, win::px(self.hwnd, ox), win::px(self.hwnd, oy), w, h);
+        let folder = s.doc.path.as_deref().and_then(std::path::Path::parent).map(std::path::Path::to_path_buf);
+        live::set_user_controls(move |name| crate::user_control_form(folder.as_deref()?, name));
         let built = live::build(self.surface, f, s.font, 0);
         built.layout.apply(self.surface);
         live::arrange(f, &built.controls);
@@ -554,9 +556,14 @@ impl Canvas {
                     r[2] = w;
                     r[3] = h;
                 }
+                let user = crate::first_user_control(s.doc.path.as_deref(), &s.doc.form.form.name);
+                let drawn = norm(from, to)[2] >= 8 || norm(from, to)[3] >= 8;
                 s.edit(|f| {
                     let id = f.next_id(kind);
                     let mut c = Control::new(kind, &id, r);
+                    if kind == Kind::UserControl {
+                        crate::fill_user_control(&mut c, user.as_ref(), drawn);
+                    }
                     if kind == Kind::Statusbar {
                         c.bounds = Some([0, 0, 0, 26]);
                     }

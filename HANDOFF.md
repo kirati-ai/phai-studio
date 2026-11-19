@@ -88,7 +88,8 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - **WinForms ให้จบ (เจ้านายสั่ง 2026-11-19)** — ที่ยังขาดนอก checklist เดิม: Panel, SplitContainer, ListBox, CheckedListBox,
   LinkLabel, MaskedTextBox, MonthCalendar, NotifyIcon, dialog แบบ component (Open/Save/Color/Font), ErrorProvider,
   UserControl, MDI, การพิมพ์ (PrintDocument/Preview), data binding กับ control ทั่วไป, ลากวางระหว่าง control
-  — ติดตามใน `docs/winforms-parity.md` หัวข้อ "รอบสาม"
+  — ติดตามใน `docs/winforms-parity.md` หัวข้อ "รอบสาม" — **ครบทั้ง 20 ข้อแล้ว 2026-11-20** (ข้อสุดท้าย: Printing,
+  DataBindings/BindingSource, UserControl)
 
 ## ทำเสร็จแล้ว 2026-11-19 (งานข้อ 0-3 เดิม) — checklist: `docs/winforms-parity.md`
 

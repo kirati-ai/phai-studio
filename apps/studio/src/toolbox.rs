@@ -41,7 +41,7 @@ fn groups() -> [&'static str; 4] {
 
 fn group_of(k: Kind) -> usize {
     match k {
-        Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel | Kind::Split => 1,
+        Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel | Kind::Split | Kind::UserControl => 1,
         Kind::Statusbar => 2,
         k if k.is_component() => 3,
         _ => 0,

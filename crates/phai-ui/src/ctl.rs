@@ -250,6 +250,11 @@ macro_rules! control {
 }
 
 control!(
+    /// A control the project made as a form of its own - WinForms' UserControl. The form's code
+    /// reaches its controls with `TheirNameUi::with(ui.x, |c| ...)`.
+    UserControl
+);
+control!(
     /// WinForms' Label.
     Label
 );

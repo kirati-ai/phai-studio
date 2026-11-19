@@ -113,6 +113,7 @@ pub mod glyph {
     pub const SPLIT: u16 = 0xE89F; // DockLeft
     pub const PRINT: u16 = 0xE749; // Print
     pub const BINDING: u16 = 0xE8F1; // Library
+    pub const USER_CONTROL: u16 = 0xE7EF; // Contact
     pub const PAUSE: u16 = 0xE769;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).
