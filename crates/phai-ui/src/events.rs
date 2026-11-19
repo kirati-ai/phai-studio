@@ -33,6 +33,8 @@ pub const CLICK: u16 = 11;
 pub const DOUBLE_CLICK: u16 = 12;
 pub const RESIZE: u16 = 13;
 pub const DRAG_DROP: u16 = 14;
+/// A PrintDocument's page to draw (`crate::print`).
+pub const PRINT_PAGE: u16 = 15;
 
 /// The bit of `event` in a [`hook`]'s mask.
 pub const fn bit(event: u16) -> u32 {

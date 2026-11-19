@@ -23,6 +23,11 @@ pub const LIBRARY: &[(&str, &str)] = &[
     ("No", "ไม่"),
     // The Live Inspector (`inspect`).
     ("Live Inspector - {0}", "ตัวตรวจสด - {0}"),
+    // Printing (`print`).
+    ("Print preview - {0}", "ตัวอย่างก่อนพิมพ์ - {0}"),
+    ("Print...", "พิมพ์..."),
+    ("Close", "ปิด"),
+    ("Page {0} of {1}", "หน้า {0} จาก {1}"),
     ("Pick", "ชี้เลือก"),
     ("Picking...", "กำลังชี้..."),
     ("Point at a control in the window and click it. Esc stops.", "ชี้ control ในหน้าต่างแล้วคลิก - Esc เลิก"),
