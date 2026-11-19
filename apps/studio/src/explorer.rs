@@ -164,7 +164,8 @@ pub fn side_panel(parent: HWND) -> HWND {
 
 /// Makes the panes of the side: the explorer's caption and tree, a splitter, the properties'
 /// caption and the properties.
-pub fn set_side_parts(side: HWND, heading: HWND, bar: HWND, search: HWND, tree: HWND, props: HWND, servers: HWND, outline: HWND, font: HFONT) {
+pub fn set_side_parts(side: HWND, explorer: &Explorer, props: HWND, servers: HWND, outline: HWND, font: HFONT) {
+    let (heading, bar, search, tree) = (explorer.hwnd, explorer.bar, explorer.search, explorer.tree);
     if let Some(s) = unsafe { win::state::<Side>(side) } {
         let split = phai_ui::controls::splitter(side, ID_SIDE_SPLIT, false);
         let split2 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT2, false);
