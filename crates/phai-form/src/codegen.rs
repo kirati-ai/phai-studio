@@ -205,6 +205,7 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::Split => "SplitContainer",
         Kind::PrintDocument => "PrintDocument",
         Kind::BindingSource => "BindingSource",
+        Kind::UserControl => "UserControl",
     }
 }
 
@@ -333,6 +334,14 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let _ = writeln!(w, "}}");
     let _ = writeln!(w);
+    let user_control = f.form.flag("user_control", false);
+    if user_control {
+        let _ = writeln!(w, "thread_local! {{");
+        let _ = writeln!(w, "    /// Each {name} on a form: its window and its controls, for the form's code ([`{ui}::with`]).");
+        let _ = writeln!(w, "    static PLACED: std::cell::RefCell<std::collections::HashMap<isize, *const {ui}>> = std::cell::RefCell::new(std::collections::HashMap::new());");
+        let _ = writeln!(w, "}}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "struct Host<E> {{");
     let _ = writeln!(w, "    ui: {ui},");
     let _ = writeln!(w, "    events: E,");
@@ -376,6 +385,66 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        phai_ui::form::take_result(hwnd)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    if user_control {
+        let fm = &f.form;
+        let _ = writeln!(w, "    /// Puts this user control on `parent` - a form, or a panel on it - as control `id`, at its");
+        let _ = writeln!(w, "    /// own size; the form places it. Its controls answer to `events`, its own code.");
+        let _ = writeln!(w, "    pub fn create_in<E: {events} + 'static>(parent: HWND, id: i32, events: E) -> HWND {{");
+        let _ = writeln!(w, "        win::init();");
+        let _ = writeln!(w, "        let class = win::register({}, Some(proc_::<E>), None);", lit(&format!("Phai.{name}")));
+        let _ = writeln!(w, "        unsafe {{");
+        let _ = writeln!(w, "            let style = wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS | wm::WS_TABSTOP;");
+        let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(wm::WS_EX_CONTROLPARENT, PCWSTR(class.as_ptr()), PCWSTR::null(), style, 0, 0, win::px(parent, {}), win::px(parent, {}), Some(parent), Some(wm::HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();", fm.size[0], fm.size[1]);
+        let (back, fore) = (fm.word("back_color"), fm.word("fore_color"));
+        if back.is_some() || fore.is_some() {
+            let opt = |v: Option<&str>| v.map(|s| format!("Some({})", lit(s))).unwrap_or_else(|| "None".into());
+            let _ = writeln!(w, "            phai_ui::form::set_colors(hwnd, {}, {});", opt(back), opt(fore));
+        }
+        if let Some(img) = fm.word("background_image") {
+            let _ = writeln!(w, "            phai_ui::form::set_background_image(hwnd, {}, {});", lit(img), lit(fm.word("background_image_layout").unwrap_or("tile")));
+        }
+        let _ = writeln!(w, "            let ui = Self::build(hwnd);");
+        for c in f.control.iter().filter(|c| c.bind.is_some()) {
+            let _ = writeln!(w, "            if let Err(e) = ui.reload_{}() {{", c.id);
+            let _ = writeln!(w, "                win::message(Some(hwnd), &e, t({}), wm::MB_ICONWARNING);", lit(&f.form.title));
+            let _ = writeln!(w, "            }}");
+        }
+        let _ = writeln!(w, "            let host = Box::new(Host {{ ui, events, main: false }});");
+        let _ = writeln!(w, "            let at: *const {ui} = &host.ui;");
+        let _ = writeln!(w, "            PLACED.with(|m| m.borrow_mut().insert(hwnd.0 as isize, at));");
+        let _ = writeln!(w, "            let mut host = host;");
+        let _ = writeln!(w, "            // Its first WM_SIZE came before it had its controls: laid out now.");
+        let _ = writeln!(w, "            host.ui.layout.apply(hwnd);");
+        let _ = writeln!(w, "            host.events.loaded(&host.ui);");
+        let _ = writeln!(w, "            win::set_state(hwnd, host);");
+        if f.form.events.contains_key("shown") {
+            let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(hwnd), phai_ui::events::WM_SHOWN, WPARAM(0), LPARAM(0));");
+        }
+        let _ = writeln!(w, "            hwnd");
+        let _ = writeln!(w, "        }}");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// The controls of the {name} that is window `h`, for the form it is on: `f` given them.");
+        let _ = writeln!(w, "    /// None when `h` is not one.");
+        let _ = writeln!(w, "    pub fn with<R>(h: impl Into<HWND>, f: impl FnOnce(&{ui}) -> R) -> Option<R> {{");
+        let _ = writeln!(w, "        let h: HWND = h.into();");
+        let _ = writeln!(w, "        let at = PLACED.with(|m| m.borrow().get(&(h.0 as isize)).copied())?;");
+        let _ = writeln!(w, "        // Its window's state holds it until the window is gone, and it leaves the map then.");
+        let _ = writeln!(w, "        Some(f(unsafe {{ &*at }}))");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Tells the form it is on that it changed: the form's `on_change` for it runs - as a");
+        let _ = writeln!(w, "    /// UserControl raising its own event.");
+        let _ = writeln!(w, "    pub fn notify_parent(&self) {{");
+        let _ = writeln!(w, "        unsafe {{");
+        let _ = writeln!(w, "            let id = wm::GetDlgCtrlID(self.hwnd) as usize & 0xFFFF;");
+        let _ = writeln!(w, "            if let Ok(parent) = wm::GetParent(self.hwnd) {{");
+        let _ = writeln!(w, "                wm::SendMessageW(parent, wm::WM_COMMAND, Some(WPARAM(id | (0x0300 << 16))), Some(LPARAM(self.hwnd.0 as isize)));");
+        let _ = writeln!(w, "            }}");
+        let _ = writeln!(w, "        }}");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "    fn make<E: {events} + 'static>(owner: Option<HWND>, events: E) -> HWND {{");
     let _ = writeln!(w, "        win::init();");
     if let Some(inc) = &opts.theme_include {
@@ -578,6 +647,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
             Kind::ColorDialog => "phai_ui::ctl::ColorDialog::new(hwnd)".to_string(),
             Kind::FontDialog => "phai_ui::ctl::FontDialog::new(hwnd)".to_string(),
+            Kind::UserControl => {
+                let ty = c.word("control_type").unwrap_or("");
+                let file = snake(ty);
+                format!("crate::{file}_ui::{ty}Ui::create_in(hwnd, {id}, crate::{file}::{ty}::default())")
+            }
             Kind::BindingSource => format!("phai_ui::ctl::BindingSource::new(hwnd, {id}, &[{}])", c.data_columns().iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
             Kind::PrintDocument => format!("phai_ui::ctl::PrintDocument::new(hwnd, {id}, {}, {})", words(c, "document_name"), c.flag("landscape", false)),
             Kind::ErrorProvider => "phai_ui::ctl::ErrorProvider::new(hwnd)".to_string(),
@@ -992,7 +1066,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                     let _ = writeln!(w, "                {id} if code == 0 => {call},");
                 }
             }
-            Kind::Edit | Kind::Textarea | Kind::Number | Kind::Date | Kind::Slider | Kind::Rich | Kind::Grid => {
+            Kind::Edit | Kind::Textarea | Kind::Number | Kind::Date | Kind::Slider | Kind::Rich | Kind::Grid | Kind::UserControl => {
                 if let Some(call) = call {
                     let _ = writeln!(w, "                {id} if code == 0x0300 => {call}, // EN_CHANGE, win::VALUE_CHANGED");
                 }
@@ -1306,6 +1380,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "        wm::WM_NCDESTROY => {{");
+    if f.form.flag("user_control", false) {
+        let _ = writeln!(w, "            PLACED.with(|m| m.borrow_mut().remove(&(hwnd.0 as isize)));");
+    }
     let _ = writeln!(w, "            if let Some(host) = unsafe {{ win::take_state::<Host<E>>(hwnd) }} {{");
     let _ = writeln!(w, "                unsafe {{");
     let _ = writeln!(w, "                    let _ = Gdi::DeleteObject(host.ui.font.into());");

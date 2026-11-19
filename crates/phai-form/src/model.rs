@@ -242,10 +242,14 @@ pub enum Kind {
     /// it - WinForms' BindingSource; `bind` to a table fills it from the database.
     #[serde(rename = "bindingsource")]
     BindingSource,
+    /// A control made in the project as a form of its own (`user_control = true`) - WinForms'
+    /// UserControl; `control_type` names it.
+    #[serde(rename = "usercontrol")]
+    UserControl,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 39] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource];
+    pub const ALL: [Kind; 40] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource, Kind::UserControl];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -298,6 +302,7 @@ impl Kind {
             Kind::Split => "split",
             Kind::PrintDocument => "printdocument",
             Kind::BindingSource => "bindingsource",
+            Kind::UserControl => "usercontrol",
         }
     }
 
@@ -333,6 +338,7 @@ impl Kind {
             Kind::Calendar => (227, 162),
             Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument | Kind::BindingSource => (32, 32),
             Kind::Split => (300, 150),
+            Kind::UserControl => (300, 150),
         }
     }
 
@@ -340,7 +346,7 @@ impl Kind {
     pub fn event(self) -> Option<&'static str> {
         match self {
             Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Link | Kind::NotifyIcon => Some("on_click"),
-            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid | Kind::Masked | Kind::Calendar | Kind::CheckedList | Kind::Split => Some("on_change"),
+            Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid | Kind::Masked | Kind::Calendar | Kind::CheckedList | Kind::Split | Kind::UserControl => Some("on_change"),
             Kind::List | Kind::Tree | Kind::ListBox => Some("on_select"),
             Kind::Timer => Some("on_tick"),
             _ => None,
@@ -860,6 +866,9 @@ impl FormFile {
                 if let Some(k) = b.keys.iter().find(|k| !b.columns.contains(k)) {
                     out.push((format!("{}: the key {k} is not among the bound columns", c.id), at.clone()));
                 }
+            }
+            if c.kind == Kind::UserControl && !c.word("control_type").is_some_and(is_pascal) {
+                out.push((format!("{}: control_type - the user control's name, PascalCase, like AddressBox", c.id), Some("control_type".into())));
             }
             if let Some(d) = c.word("data_binding") {
                 // `source.column`: a binding source on this form, a column it has.

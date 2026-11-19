@@ -222,6 +222,25 @@ data_binding = "people.name"
 
 `ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง
 
+## User control — control ของโปรเจกต์เอง
+
+Project > เพิ่ม User Control สร้าง `address_box.phaiform` ที่มี `user_control = true` ออกแบบเหมือนฟอร์มทั่วไป
+แล้ววางบนฟอร์มอื่นจากกล่องเครื่องมือ:
+
+```toml
+[[control]]
+kind = "usercontrol"
+id = "home"
+control_type = "AddressBox"
+bounds = [11, 40, 300, 150]
+anchor = "left top right"
+on_change = "address_changed"     # เมื่อ AddressBox เรียก ui.notify_parent()
+```
+
+```rust
+AddressBoxUi::with(ui.home, |a| a.street.set_text("12 Sukhumvit"));
+```
+
 ## โค้ดที่สร้าง
 
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:

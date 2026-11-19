@@ -887,6 +887,12 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its rows' columns, with commas: name, phone - its table's when it is bound to one.", "คอลัมน์ของแถว คั่นด้วยจุลภาค: name, phone - ถ้าผูกกับตารางจะใช้คอลัมน์ของตาราง"),
     ("A binding source's id and a column - people.name: the control shows that column of the current row, and what is changed goes back.", "id ของแหล่งข้อมูลผูกกับคอลัมน์ - people.name: control แสดงคอลัมน์นั้นของแถวปัจจุบัน และสิ่งที่แก้จะเขียนกลับ"),
     ("Another row became the current one - moved to, added, taken out, or new rows given.", "แถวปัจจุบันเปลี่ยน - เลื่อนไป เพิ่ม ลบ หรือได้แถวชุดใหม่"),
+    ("User control", "User control (control ของโปรเจกต์)"),
+    ("Add User Control...", "เพิ่ม User Control..."),
+    ("Add User Control", "เพิ่ม User Control"),
+    ("Added {0} - put it on a form from the Toolbox (User control)", "เพิ่ม {0} แล้ว - วางบนฟอร์มได้จากกล่องเครื่องมือ (User control)"),
+    ("Not a window but a control other forms of the project put on themselves (kind usercontrol).", "ไม่ใช่หน้าต่าง แต่เป็น control ที่ฟอร์มอื่นในโปรเจกต์วางได้ (kind usercontrol)"),
+    ("The user control's name - a form of this project with UserControl on: AddressBox.", "ชื่อ user control - ฟอร์มในโปรเจกต์นี้ที่เปิด UserControl ไว้: AddressBox"),
 ];
 
 #[cfg(test)]
