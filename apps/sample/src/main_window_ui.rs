@@ -95,6 +95,13 @@ impl MainWindowUi {
 
     /// Shows this window beside `owner` (another window of the program) and returns at once,
     /// as `Show()` in WinForms. Closing it leaves the program running.
+    /// Opens this window inside `parent`, an MDI container (`is_mdi_container`), as WinForms'
+    /// `MdiParent` and `Show()`; it closes with it.
+    pub fn show_mdi_child<E: MainWindowEvents + 'static>(parent: HWND, events: E) -> HWND {
+        phai_ui::mdi::set_next_parent(parent);
+        Self::make(Some(parent), events)
+    }
+
     pub fn show<E: MainWindowEvents + 'static>(owner: HWND, events: E) -> HWND {
         Self::make(Some(owner), events)
     }
@@ -119,7 +126,12 @@ impl MainWindowUi {
         let main = owner.is_none();
         let over = owner;
         unsafe {
-            let hwnd = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, Some(Self::menu()), Some(win::instance()), None).unwrap_or_default();
+            // Inside an MDI container when show_mdi_child asked; a window of its own otherwise.
+            let mdi_frame = phai_ui::mdi::take_next();
+            let hwnd = match mdi_frame {
+                Some(frame) => phai_ui::mdi::create_child(frame, &class, &title, style),
+                None => wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, Some(Self::menu()), Some(win::instance()), None).unwrap_or_default(),
+            };
             let ui = Self::build(hwnd);
             let mut host = Box::new(Host { ui, events, main });
             host.events.loaded(&host.ui);
@@ -130,12 +142,18 @@ impl MainWindowUi {
             let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 480), bottom: win::px(hwnd, 360) };
             let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), true, wm::WINDOW_EX_STYLE(ex), win::dpi(hwnd) as u32);
             let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
-            if let Some(o) = over {
+            if mdi_frame.is_some() {
+                // Windows places a child form inside its container.
+            } else if let Some(o) = over {
                 win::center_on(hwnd, o);
             } else {
                 win::center_on_screen(hwnd);
             }
-            win::show_top(hwnd);
+            if mdi_frame.is_some() {
+                win::show(hwnd, true);
+            } else {
+                win::show_top(hwnd);
+            }
             // A debug build follows the theme file as it is saved.
             #[cfg(debug_assertions)]
             win::watch_theme(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/theme.css")));

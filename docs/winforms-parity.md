@@ -221,7 +221,7 @@
 | C | ErrorProvider | `errorprovider`: `set_error(control, "...")` (เครื่องหมายแดงข้าง control พร้อม tooltip ตามไปเมื่อ control ขยับ), `error()`, `clear()` | ✅ |
 | C | ToolTip (component) | — (เป็น property `tooltip` ของทุก control แล้ว) | — |
 | F | UserControl | | ⬜ |
-| F | MDI (IsMdiContainer, MdiParent) | | ⬜ |
+| F | MDI (IsMdiContainer, MdiParent) | ฟอร์ม `is_mdi_container = true`; `XxxUi::show_mdi_child(parent, events)`; `layout_mdi("cascade" / "tile_horizontal" / "tile_vertical" / "arrange_icons")`, `active_mdi_child()`, `mdi_children()`; Ctrl+F4, Ctrl+Tab; ฟอร์มลูกไม่มีเมนูของตัวเอง (Windows ไม่ให้) | ✅ |
 | F | PrintDocument / PrintPreviewDialog | | ⬜ |
 | F | DataBindings (ผูก property ของ control กับข้อมูล) | | ⬜ |
 | F | DoDragDrop ระหว่าง control | | ⬜ |

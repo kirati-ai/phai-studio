@@ -9,6 +9,7 @@
 //! | [`win`] | windows, fonts, DPI, buttons, checkboxes, radios, edits, lists, toolbar, the frame |
 //! | [`components`] | file, folder, colour and font dialogs; ErrorProvider; NotifyIcon |
 //! | [`split`] | SplitContainer: two panes and the bar between them |
+//! | [`mdi`] | MDI: forms inside a form, cascaded or tiled |
 //! | [`extra`] | ListBox, CheckedListBox, LinkLabel, MaskedTextBox, MonthCalendar |
 //! | [`controls`] | group frame, tabs, status bar - drawn whole by the library |
 //! | [`theme`] | themes as CSS; the built-in light and dark ones |
@@ -34,6 +35,7 @@ pub mod icon;
 pub mod inspect;
 pub mod invoke;
 pub mod layout;
+pub mod mdi;
 pub mod picture;
 pub mod props;
 #[cfg(feature = "shot")]

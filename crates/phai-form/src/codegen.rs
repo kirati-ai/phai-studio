@@ -305,6 +305,13 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// Shows this window beside `owner` (another window of the program) and returns at once,");
     let _ = writeln!(w, "    /// as `Show()` in WinForms. Closing it leaves the program running.");
+    let _ = writeln!(w, "    /// Opens this window inside `parent`, an MDI container (`is_mdi_container`), as WinForms'");
+    let _ = writeln!(w, "    /// `MdiParent` and `Show()`; it closes with it.");
+    let _ = writeln!(w, "    pub fn show_mdi_child<E: {events} + 'static>(parent: HWND, events: E) -> HWND {{");
+    let _ = writeln!(w, "        phai_ui::mdi::set_next_parent(parent);");
+    let _ = writeln!(w, "        Self::make(Some(parent), events)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
     let _ = writeln!(w, "    pub fn show<E: {events} + 'static>(owner: HWND, events: E) -> HWND {{");
     let _ = writeln!(w, "        Self::make(Some(owner), events)");
     let _ = writeln!(w, "    }}");
@@ -346,7 +353,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "        let owner = owner.or_else(|| Some(phai_ui::form::hidden_owner()));");
     }
     let _ = writeln!(w, "        unsafe {{");
-    let _ = writeln!(w, "            let hwnd = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default();");
+    let _ = writeln!(w, "            // Inside an MDI container when show_mdi_child asked; a window of its own otherwise.");
+    let _ = writeln!(w, "            let mdi_frame = phai_ui::mdi::take_next();");
+    let _ = writeln!(w, "            let hwnd = match mdi_frame {{");
+    let _ = writeln!(w, "                Some(frame) => phai_ui::mdi::create_child(frame, &class, &title, style),");
+    let _ = writeln!(w, "                None => wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), style, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, owner, {menu}, Some(win::instance()), None).unwrap_or_default(),");
+    let _ = writeln!(w, "            }};");
     let (back, fore) = (fm.word("back_color"), fm.word("fore_color"));
     if back.is_some() || fore.is_some() {
         let opt = |v: Option<&str>| v.map(|s| format!("Some({})", lit(s))).unwrap_or_else(|| "None".into());
@@ -382,18 +394,24 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            let mut r = RECT {{ left: 0, top: 0, right: win::px(hwnd, {}), bottom: win::px(hwnd, {}) }};", f.form.size[0], f.form.size[1]);
     let _ = writeln!(w, "            let _ = windows::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, wm::WINDOW_STYLE(style), {}, wm::WINDOW_EX_STYLE(ex), win::dpi(hwnd) as u32);", !f.menu.is_empty());
     let _ = writeln!(w, "            let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);");
-    let _ = writeln!(w, "            if let Some(o) = over {{");
+    let _ = writeln!(w, "            if mdi_frame.is_some() {{");
+    let _ = writeln!(w, "                // Windows places a child form inside its container.");
+    let _ = writeln!(w, "            }} else if let Some(o) = over {{");
     let _ = writeln!(w, "                win::center_on(hwnd, o);");
     if f.form.start.as_deref() != Some("windows") {
         let _ = writeln!(w, "            }} else {{");
         let _ = writeln!(w, "                win::center_on_screen(hwnd);");
     }
     let _ = writeln!(w, "            }}");
+    let _ = writeln!(w, "            if mdi_frame.is_some() {{");
+    let _ = writeln!(w, "                win::show(hwnd, true);");
+    let _ = writeln!(w, "            }} else {{");
     if f.form.maximized == Some(true) {
-        let _ = writeln!(w, "            win::show_maximized(hwnd);");
+        let _ = writeln!(w, "                win::show_maximized(hwnd);");
     } else {
-        let _ = writeln!(w, "            win::show_top(hwnd);");
+        let _ = writeln!(w, "                win::show_top(hwnd);");
     }
+    let _ = writeln!(w, "            }}");
     if f.form.events.contains_key("shown") {
         let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(hwnd), phai_ui::events::WM_SHOWN, WPARAM(0), LPARAM(0));");
     }
@@ -568,6 +586,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let mask = if hooked.is_empty() { "0".to_string() } else { hooked.iter().map(|k| format!("phai_ui::events::bit(phai_ui::events::{k})")).collect::<Vec<_>>().join(" | ") };
         let _ = writeln!(w, "        phai_ui::events::hook({}, hwnd, {}, {mask}, {keys});", c.id, control_id(i));
     }
+    if f.form.flag("is_mdi_container", false) {
+        let _ = writeln!(w, "        // IsMdiContainer: the area child forms open in, what docking leaves.");
+        let _ = writeln!(w, "        let mdi_client = phai_ui::mdi::client(hwnd);");
+        let _ = writeln!(w, "        layout.add(mdi_client, Item {{ bounds: Rect::new(0, 0, 0, 0), dock: Dock::Fill, anchor: Anchor::default() }});");
+    }
     // The controls in each split container's panes, which keep their anchors to their pane.
     for (s, (a, b)) in split_panes(f) {
         let ids = |v: &Vec<usize>| v.iter().map(|i| f.control[*i].id.clone()).collect::<Vec<_>>().join(", ");
@@ -627,6 +650,28 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    if f.form.flag("is_mdi_container", false) {
+        let _ = writeln!(w, "    /// The child forms arranged: `cascade`, `tile_horizontal`, `tile_vertical` or `arrange_icons` - LayoutMdi.");
+        let _ = writeln!(w, "    pub fn layout_mdi(&self, how: &str) {{");
+        let _ = writeln!(w, "        match how {{");
+        let _ = writeln!(w, "            \"tile_horizontal\" => phai_ui::mdi::tile(self.hwnd, false),");
+        let _ = writeln!(w, "            \"tile_vertical\" => phai_ui::mdi::tile(self.hwnd, true),");
+        let _ = writeln!(w, "            \"arrange_icons\" => phai_ui::mdi::arrange_icons(self.hwnd),");
+        let _ = writeln!(w, "            _ => phai_ui::mdi::cascade(self.hwnd),");
+        let _ = writeln!(w, "        }}");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// The child form in front - ActiveMdiChild.");
+        let _ = writeln!(w, "    pub fn active_mdi_child(&self) -> Option<HWND> {{");
+        let _ = writeln!(w, "        phai_ui::mdi::active_child(self.hwnd)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Every child form open in it - MdiChildren.");
+        let _ = writeln!(w, "    pub fn mdi_children(&self) -> Vec<HWND> {{");
+        let _ = writeln!(w, "        phai_ui::mdi::children(self.hwnd)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "    /// Out of sight, still running; [`Self::show_window`] brings it back.");
     let _ = writeln!(w, "    pub fn hide(&self) {{");
     let _ = writeln!(w, "        win::show(self.hwnd, false);");
