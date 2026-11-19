@@ -47,8 +47,8 @@
 - เปลี่ยน codegen แล้วต้อง `cargo test -p phai-form -- --ignored regenerate` (ไฟล์ของ apps/sample)
 - เทสต์ที่สร้างโปรเจกต์จริง: `cargo test -p phai-studio add_form_tests -- --include-ignored`
 - ถ่ายภาพหน้าจอโดยไม่แย่งเมาส์/คีย์บอร์ด: `PHAI_SETTINGS_DIR=<tmp> PHAI_SHOT=out.png target/debug/phai-studio.exe [ไฟล์]`
-- แพตช์ด้วย Python: เขียนสคริปต์เป็นไฟล์ด้วย Write tool (heredoc ใน bash ทำ `
-` เพี้ยน); ตัว `\` ใน Rust ใช้ `char::from(92)`
+- แพตช์ด้วย Python: เขียนสคริปต์เป็นไฟล์ด้วย Write tool (heredoc ใน bash ทำตัวขึ้นบรรทัดใหม่แบบ backslash-n เพี้ยน);
+  ถ้าต้องใส่ backslash ในโค้ด Rust ผ่านสคริปต์ ใช้ `char::from(92)` / `char::from(10)` แทน
 - เว็บ: `site/` (PHP) → `bash site/deploy.sh` (ใช้ key `~/.ssh/phaicity_vps`, aaPanel); monrak.net ต้นฉบับที่
   `D:\DesktopServer\www\monrak-site`; บอทถูกห้ามดาวน์โหลดทุกเว็บด้วย nginx `extension/<site>/no-bot-downloads.conf`
 - คู่มือ: แก้ `docs/help-src/help_pages*.py` แล้ว `python docs/help-src/help_gen.py`
