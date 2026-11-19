@@ -743,6 +743,42 @@ pub static THAI: &[(&str, &str)] = &[
     ("The largest its inside can be dragged, at 100% scale.", "ขนาดภายในที่ใหญ่ที่สุดที่ลากขยายได้ ที่สเกล 100%"),
     ("The window's background over the theme - CSS window { background }, for the whole program.", "สีพื้นหลังของหน้าต่างทับธีม - CSS window { background } ใช้กับทั้งโปรแกรม"),
     ("The window's words' colour over the theme - CSS window { color }, for the whole program.", "สีตัวอักษรของหน้าต่างทับธีม - CSS window { color } ใช้กับทั้งโปรแกรม"),
+    ("Focus", "โฟกัส"),
+    ("Key", "แป้นพิมพ์"),
+    ("Mouse", "เมาส์"),
+    ("Action", "การกระทำ"),
+    ("The window's KeyDown, KeyUp and KeyPress hear keys meant for its controls, first.", "KeyDown, KeyUp และ KeyPress ของหน้าต่างได้รับแป้นที่กดใน control ก่อนตัว control"),
+    ("Clicked with the left button.", "ถูกคลิกด้วยปุ่มซ้าย"),
+    ("Clicked twice, quickly.", "ถูกดับเบิลคลิก"),
+    ("It takes the focus: the next keys are for it.", "ได้รับโฟกัส แป้นที่กดต่อไปจะเข้าตัวนี้"),
+    ("The focus goes elsewhere.", "โฟกัสย้ายไปที่อื่น"),
+    ("A key pressed while it has the focus - e.key, e.ctrl; e.set_handled() keeps it from the control.", "กดแป้นขณะมีโฟกัส - e.key, e.ctrl; เรียก e.set_handled() เพื่อไม่ให้ control ได้รับแป้นนั้น"),
+    ("A key let go while it has the focus.", "ปล่อยแป้นขณะมีโฟกัส"),
+    ("A letter typed - e.ch; e.set_handled() keeps it out.", "พิมพ์ตัวอักษร - e.ch; เรียก e.set_handled() เพื่อไม่ให้ตัวอักษรเข้าไป"),
+    ("The mouse comes over it.", "เมาส์เลื่อนเข้ามาบนตัวนี้"),
+    ("The mouse goes off it.", "เมาส์เลื่อนออกจากตัวนี้"),
+    ("A mouse button pressed over it - e.x, e.y, e.button.", "กดปุ่มเมาส์บนตัวนี้ - e.x, e.y, e.button"),
+    ("A mouse button let go over it.", "ปล่อยปุ่มเมาส์บนตัวนี้"),
+    ("The mouse moves over it.", "เมาส์เคลื่อนบนตัวนี้"),
+    ("Its size changed - the window was sized, and it is anchored or docked.", "ขนาดเปลี่ยน - หน้าต่างถูกย่อขยายและตัวนี้ยึดขอบหรือ dock ไว้"),
+    ("Ticked or unticked.", "ถูกติ๊กหรือเอาติ๊กออก"),
+    ("Words typed into a drop-down that takes them.", "พิมพ์ข้อความลงในรายการเลือกที่พิมพ์ได้"),
+    ("A column's heading clicked - e.index, from 0.", "คลิกหัวคอลัมน์ - e.index นับจาก 0"),
+    ("Another row chosen.", "เลือกแถวอื่น"),
+    ("The window is on the screen for the first time.", "หน้าต่างขึ้นบนจอเป็นครั้งแรก"),
+    ("The window is about to close - e.cancel() keeps it open.", "หน้าต่างกำลังจะปิด - เรียก e.cancel() เพื่อไม่ให้ปิด"),
+    ("The window has closed.", "หน้าต่างปิดแล้ว"),
+    ("The window's size changed.", "ขนาดหน้าต่างเปลี่ยน"),
+    ("The window became the one in front, taking the keys.", "หน้าต่างขึ้นมาอยู่หน้าสุดและรับแป้นพิมพ์"),
+    ("Another window came in front.", "หน้าต่างอื่นขึ้นมาอยู่หน้า"),
+    ("The window itself clicked, not a control in it.", "คลิกที่ตัวหน้าต่าง ไม่ใช่ control ข้างใน"),
+    ("The window itself clicked twice.", "ดับเบิลคลิกที่ตัวหน้าต่าง"),
+    ("A mouse button pressed on the window itself.", "กดปุ่มเมาส์บนตัวหน้าต่าง"),
+    ("A mouse button let go on the window itself.", "ปล่อยปุ่มเมาส์บนตัวหน้าต่าง"),
+    ("The mouse moves over the window itself.", "เมาส์เคลื่อนบนตัวหน้าต่าง"),
+    ("A key pressed anywhere in the window when KeyPreview is on - before the control has it; e.set_handled() keeps it from the control.", "กดแป้นที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview - ก่อน control ได้รับ; e.set_handled() เพื่อไม่ให้ control ได้รับ"),
+    ("A key let go anywhere in the window when KeyPreview is on.", "ปล่อยแป้นที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview"),
+    ("A letter typed anywhere in the window when KeyPreview is on.", "พิมพ์ตัวอักษรที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview"),
 ];
 
 #[cfg(test)]
@@ -758,7 +794,8 @@ mod tests {
     #[test]
     fn every_table_property_has_thai_help() {
         phai_ui::text::add(super::THAI);
-        let words: Vec<String> = phai_form::props::CONTROL.iter().chain(phai_form::props::FORM).flat_map(|s| [s.help.to_string(), s.category.to_string()]).collect();
+        let mut words: Vec<String> = phai_form::props::CONTROL.iter().chain(phai_form::props::FORM).flat_map(|s| [s.help.to_string(), s.category.to_string()]).collect();
+        words.extend(phai_form::events::CONTROL.iter().chain(phai_form::events::FORM).map(|e| e.help.to_string()));
         assert_eq!(phai_ui::text::problems(&words), Vec::<String>::new());
     }
 }

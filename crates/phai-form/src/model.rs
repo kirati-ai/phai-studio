@@ -36,6 +36,9 @@ pub struct Form {
     /// Opens filling the screen, as WinForms' WindowState = Maximized.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximized: Option<bool>,
+    /// Its events' methods beyond `loaded`, by the table's names (`events::FORM`): `closing = "...")`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub events: std::collections::BTreeMap<String, String>,
     /// The rest of its properties, by the table's names (`props::FORM`): `border = "fixed_single"`,
     /// `accept_button = "ok"`, `min_size = [300, 200]`.
     #[serde(flatten)]
@@ -337,6 +340,10 @@ pub struct Control {
     /// A button that saves or reloads a bound grid: `"customers:save"`, `"customers:reload"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bind_action: Option<String>,
+    /// Its events' methods beyond its one `on_...`, by the table's names (`events::CONTROL`):
+    /// `events = { key_down = "name_key_down" }`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub events: std::collections::BTreeMap<String, String>,
     /// The rest of its properties, by the table's names (`props::CONTROL`): `read_only = true`.
     #[serde(flatten)]
     pub more: Props,
@@ -404,6 +411,7 @@ impl Control {
             on_tick: None,
             cols: None,
             context_menu: None,
+            events: Default::default(),
             more: Props::new(),
         };
         match kind {
@@ -571,7 +579,7 @@ const LAST: &str = "\u{1}";
 impl FormFile {
     /// A new empty form.
     pub fn new(name: &str) -> FormFile {
-        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], theme: None, font_size: None, start: None, maximized: None, more: Props::new() }, menu: vec![], toolbar: vec![], control: vec![] }
+        FormFile { format: FORMAT, form: Form { name: name.to_string(), title: name.to_string(), size: [480, 320], theme: None, font_size: None, start: None, maximized: None, events: Default::default(), more: Props::new() }, menu: vec![], toolbar: vec![], control: vec![] }
     }
 
     pub fn parse(src: &str) -> Result<FormFile, FormError> {
@@ -629,6 +637,23 @@ impl FormFile {
         if self.form.size[0] < 50 || self.form.size[1] < 30 {
             out.push(("form size is too small".into(), Some("size".into())));
         }
+        for (e, h) in &self.form.events {
+            if crate::events::find_form(e).is_none() {
+                out.push((format!("a form has no event {e}"), Some(format!("{e} ="))));
+            }
+            if !is_snake(h) || KEYWORDS.contains(&h.as_str()) {
+                out.push((format!("handler {h:?}: snake_case, not a Rust keyword"), Some(h.clone())));
+            }
+        }
+        // One method, one signature: a name given to events with other arguments is a mistake.
+        let mut sigs: std::collections::HashMap<String, crate::events::Args> = self.handlers().into_iter().map(|h| (h, crate::events::Args::None)).collect();
+        for (h, a) in self.event_methods() {
+            if let Some(was) = sigs.insert(h.clone(), a) {
+                if was != a {
+                    out.push((format!("{h} handles events with different arguments - give each its own method"), Some(h.clone())));
+                }
+            }
+        }
         let mut ids = std::collections::HashSet::new();
         let mut handlers = std::collections::HashSet::new();
         for c in &self.control {
@@ -664,6 +689,14 @@ impl FormFile {
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
             out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu)));
+            for (e, h) in &c.events {
+                if crate::events::find(c.kind, e).is_none() {
+                    out.push((format!("a {} has no event {e}", c.kind.name()), at.clone()));
+                }
+                if !is_snake(h) || KEYWORDS.contains(&h.as_str()) {
+                    out.push((format!("handler {h:?}: snake_case, not a Rust keyword"), Some(h.clone())));
+                }
+            }
             for (name, v) in &c.more {
                 match crate::props::find(c.kind, name) {
                     None => out.push((format!("unknown field `{name}` - not a property of a {}", c.kind.name()), Some(format!("{LAST}{name} =")))),
@@ -792,6 +825,30 @@ impl FormFile {
             if c.kind == Kind::ContextMenu {
                 for (id, _) in c.menu_items().into_iter().filter(|(id, _)| !id.is_empty()) {
                     add(&id);
+                }
+            }
+        }
+        out
+    }
+
+    /// The methods the events table's events name - the controls' and the form's - each once, with
+    /// what it is given; in form order.
+    pub fn event_methods(&self) -> Vec<(String, crate::events::Args)> {
+        let mut out: Vec<(String, crate::events::Args)> = Vec::new();
+        let mut add = |h: &str, a| {
+            if !out.iter().any(|(x, _)| x == h) {
+                out.push((h.to_string(), a));
+            }
+        };
+        for (e, h) in &self.form.events {
+            if let Some(s) = crate::events::find_form(e) {
+                add(h, s.args);
+            }
+        }
+        for c in &self.control {
+            for (e, h) in &c.events {
+                if let Some(s) = crate::events::find(c.kind, e) {
+                    add(h, s.args);
                 }
             }
         }

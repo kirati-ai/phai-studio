@@ -3,6 +3,7 @@
 pub mod arrange;
 pub mod bars;
 pub mod codegen;
+pub mod events;
 pub mod live;
 pub mod model;
 pub mod props;
