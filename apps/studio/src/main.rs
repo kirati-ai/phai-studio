@@ -970,6 +970,13 @@ fn build_menu() -> HMENU {
         sep(fmt);
         add(fmt, ID_LOCK, t("Lock controls"), "");
         add(fmt, ID_TAB_ORDER, t("Tab order"), "");
+        // The Layout bar's pictures beside the same commands, as Visual Studio's Format menu has them.
+        for (id, _, g) in layout_items() {
+            if id != 0 && g != 0 {
+                phai_ui::icon::set_menu_glyph(fmt, id as u32, g);
+            }
+        }
+        phai_ui::icon::set_menu_glyph(fmt, ID_LOCK as u32, 0xE72E); // Lock
         if let Some(c) = studio().and_then(|s| s.canvas.as_ref()) {
             for (id, on) in [(ID_LOCK, c.locked), (ID_TAB_ORDER, c.tab_mode())] {
                 if on {
