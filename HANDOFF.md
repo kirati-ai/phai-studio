@@ -26,6 +26,11 @@
 - **กลาง:** TopMost (WS_EX_TOPMOST), ShowInTaskbar (WS_EX_TOOLWINDOW / owner), ControlBox (WS_SYSMENU), KeyPreview
 - **ต่ำ:** Opacity (WS_EX_LAYERED), BackgroundImage, AutoScroll, Padding, Cursor, AllowDrop
 - event ของฟอร์ม: Shown, FormClosing (ถามก่อนปิดได้), FormClosed, Resize, Activated/Deactivate (ทำพร้อมงานข้อ 1)
+- **หลัก (เจ้านายยืนยัน):** ทุกอย่างที่ CSS ของธีมตั้งได้ ต้องแก้รายตัวได้ใน Properties - theme.css คือค่าเริ่มต้น,
+  ค่าที่ตั้งรายตัวเก็บใน `.phaiform` แล้ว codegen เขียนเป็น CSS `#id { }` ทับธีม (แบบ `back_color` ที่มีแล้ว)
+  ยังขาด: ฟอร์ม (background, color, font-weight), control: `border-width`, `accent-color`, `icon-color`
+  ช่องที่ยังไม่ตั้งควรแสดงค่าจริงจากธีม (ตัวธรรมดา) และค่าที่ตั้งเองเป็นตัวหนา แบบ VS
+  สีตามสถานะ (`:hover`, `:pressed`) ไม่ใส่ใน Properties: ใช้ class + CSS แทน
 - ไล่เทียบ property ของ control แต่ละชนิดกับ WinForms แบบเดียวกันด้วย (ตารางในบทสนทนา 2026-11-19: Button, TextBox,
   CheckBox, ComboBox, ListView, DataGridView, DateTimePicker, NumericUpDown, TrackBar, PictureBox, TreeView, TabControl, Timer)
 
