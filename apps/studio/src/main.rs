@@ -731,6 +731,7 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::FontDialog => t("Font dialog"),
         Kind::ErrorProvider => t("Error provider"),
         Kind::NotifyIcon => t("Notify icon"),
+        Kind::Split => t("Split container"),
     }
 }
 
@@ -775,6 +776,7 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::FontDialog => glyph::FONT_PICK,
             Kind::ErrorProvider => glyph::ERROR_MARK,
             Kind::NotifyIcon => glyph::TRAY,
+            Kind::Split => glyph::SPLIT,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -8813,6 +8815,67 @@ impl MainWindowEvents for MainWindow {
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(&exe).status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A SplitContainer in a real project: the bar moved, the list in the first pane grows by as
+    /// much and the box in the second moves over and shrinks - each anchored to its pane.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn a_split_container_moves_its_panes_controls() {
+        use phai_form::Control;
+        let dir = std::env::temp_dir().join(format!("phai-split-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        f.form.size = [520, 360];
+        let mut split = Control::new(Kind::Split, "panes", [11, 40, 400, 200]);
+        split.on_change = Some("bar_moved".into());
+        let mut list = Control::new(Kind::ListBox, "left_list", [15, 44, 190, 192]);
+        list.anchor = Some("all".into());
+        let mut name = Control::new(Kind::Edit, "right_box", [220, 50, 180, 23]);
+        name.anchor = Some("left top right".into());
+        f.control.extend([split, list, name]);
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        let panes = codegen::split_panes(&f);
+        assert_eq!(panes, vec![(f.control.len() - 3, (vec![f.control.len() - 2], vec![f.control.len() - 1]))]);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("layout.add_split(panes, &[left_list], &[right_box]);"), "{generated}");
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+
+#[derive(Default)]
+pub struct MainWindow {}
+
+impl MainWindowEvents for MainWindow {
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let px = |v: i32| phai_ui::win::px(ui.hwnd, v);
+        let (l0, b0) = (ui.left_list.bounds(), ui.right_box.bounds());
+        let mut bits = 0;
+        if ui.panes.splitter_distance() == 198 { bits |= 1 }
+        ui.panes.set_splitter_distance(248);
+        let (l1, b1) = (ui.left_list.bounds(), ui.right_box.bounds());
+        let near = |a: i32, b: i32| (a - b).abs() <= 1;
+        if near((l1.right - l1.left) - (l0.right - l0.left), px(50)) && l1.left == l0.left { bits |= 2 }
+        if near(b1.left - b0.left, px(50)) && b1.right == b0.right { bits |= 4 }
+        std::process::exit(if bits == 7 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        if let Some(png) = std::env::var_os("PHAI_SHOT_KEEP") {
+            let _ = std::process::Command::new(&exe).env("PHAI_SHOT", png).status();
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

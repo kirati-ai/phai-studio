@@ -101,6 +101,37 @@ pub fn tab_order(f: &FormFile) -> Vec<usize> {
     v
 }
 
+/// The controls in a split container's first pane and in its second, by index.
+pub type Panes = (Vec<usize>, Vec<usize>);
+
+/// Each split container (its index) with the controls in its first pane and in its second: every
+/// control laid out inside it, in the pane its middle is in.
+pub fn split_panes(f: &FormFile) -> Vec<(usize, Panes)> {
+    let mut out = Vec::new();
+    for (s, sc) in f.control.iter().enumerate().filter(|(_, c)| c.kind == Kind::Split) {
+        let [sx, sy, sw, sh] = sc.rect();
+        let (vertical, d) = sc.split_bar();
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        for (i, c) in f.control.iter().enumerate() {
+            if i == s || c.kind.is_component() || c.dock.as_deref().is_some_and(|d| d != "none") {
+                continue;
+            }
+            let [x, y, w, h] = c.rect();
+            if x < sx || y < sy || x + w > sx + sw || y + h > sy + sh {
+                continue;
+            }
+            let first = if vertical { x + w / 2 < sx + d } else { y + h / 2 < sy + d };
+            if first {
+                a.push(i);
+            } else {
+                b.push(i);
+            }
+        }
+        out.push((s, (a, b)));
+    }
+    out
+}
+
 /// The `phai_ui::ctl` type of a control of `kind` - its field's type in the generated struct.
 pub fn ctl_type(kind: Kind) -> &'static str {
     match kind {
@@ -139,6 +170,7 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::FontDialog => "FontDialog",
         Kind::ErrorProvider => "ErrorProvider",
         Kind::NotifyIcon => "NotifyIcon",
+        Kind::Split => "SplitContainer",
     }
 }
 
@@ -476,6 +508,10 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::OpenFile => format!("phai_ui::ctl::OpenFileDialog::new(hwnd, {}, {}, {}, {}, {})", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or("")), c.flag("multiselect", false)),
             Kind::SaveFile => format!("phai_ui::ctl::SaveFileDialog::new(hwnd, {}, {}, {}, {})", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or(""))),
             Kind::FolderDialog => format!("phai_ui::ctl::FolderBrowserDialog::new(hwnd, {}, {})", words(c, "title"), lit(c.word("initial_directory").unwrap_or(""))),
+            Kind::Split => {
+                let (vertical, d) = c.split_bar();
+                format!("phai_ui::split::split(hwnd, {id}, {vertical}, {d})")
+            }
             Kind::ColorDialog => "phai_ui::ctl::ColorDialog::new(hwnd)".to_string(),
             Kind::FontDialog => "phai_ui::ctl::FontDialog::new(hwnd)".to_string(),
             Kind::ErrorProvider => "phai_ui::ctl::ErrorProvider::new(hwnd)".to_string(),
@@ -531,6 +567,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         }
         let mask = if hooked.is_empty() { "0".to_string() } else { hooked.iter().map(|k| format!("phai_ui::events::bit(phai_ui::events::{k})")).collect::<Vec<_>>().join(" | ") };
         let _ = writeln!(w, "        phai_ui::events::hook({}, hwnd, {}, {mask}, {keys});", c.id, control_id(i));
+    }
+    // The controls in each split container's panes, which keep their anchors to their pane.
+    for (s, (a, b)) in split_panes(f) {
+        let ids = |v: &Vec<usize>| v.iter().map(|i| f.control[*i].id.clone()).collect::<Vec<_>>().join(", ");
+        let _ = writeln!(w, "        layout.add_split({}, &[{}], &[{}]);", f.control[s].id, ids(&a), ids(&b));
     }
     let order = tab_order(f);
     if !order.is_empty() {

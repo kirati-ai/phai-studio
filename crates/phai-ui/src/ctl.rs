@@ -328,6 +328,21 @@ control!(
     Panel
 );
 control!(
+    /// WinForms' SplitContainer: two panes and the bar between them.
+    SplitContainer
+);
+
+impl SplitContainer {
+    /// The first pane's width (or height), design pixels.
+    pub fn splitter_distance(self) -> i32 {
+        crate::split::distance(self.0)
+    }
+    /// Moves the bar; the panes' controls follow.
+    pub fn set_splitter_distance(self, d: i32) {
+        crate::split::set_distance(self.0, d)
+    }
+}
+control!(
     /// WinForms' ListBox.
     ListBox
 );
