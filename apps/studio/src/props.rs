@@ -86,7 +86,7 @@ pub enum Key {
 }
 
 /// The CSS properties the Style tab shows, in its order.
-pub const STYLE_PROPS: [&str; 8] = ["background", "color", "border-color", "border-width", "border-radius", "font-weight", "accent-color", "icon-color"];
+pub const STYLE_PROPS: [&str; 10] = ["background", "background-image", "box-shadow", "color", "border-color", "border-width", "border-radius", "font-weight", "accent-color", "icon-color"];
 
 /// The Style tab's states: normal, then the model's.
 pub fn style_states() -> Vec<&'static str> {
@@ -606,6 +606,8 @@ impl Props {
                 "icon-color" => look.icon_color.map(hex),
                 "border-width" => look.border_width.map(|n| n.to_string()),
                 "border-radius" => look.border_radius.map(|n| n.to_string()),
+                "background-image" => look.gradient.as_ref().map(|g| g.css()),
+                "box-shadow" => look.shadow.flatten().map(|s| s.css()),
                 _ => look.font_weight.map(|w| if w >= 600 { "bold".into() } else { "normal".into() }),
             }
             .unwrap_or_default();
@@ -617,6 +619,7 @@ impl Props {
             };
             let ed = match prop {
                 "border-width" | "border-radius" => Ed::Number,
+                "background-image" | "box-shadow" => Ed::Text,
                 "font-weight" => Ed::Choice(vec![String::new(), "normal".into(), "bold".into()], false),
                 _ => Ed::Color,
             };

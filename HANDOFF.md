@@ -109,8 +109,7 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   ThreeState/Appearance=Button, textarea WordWrap/ScrollBars (`win::textarea_with`), Date ShowCheckBox/ShowUpDown
   (`win::date_with`), TrackBar แนวตั้ง, TreeView LabelEdit, ฟอร์ม BackgroundImage/AutoScroll/Padding/AllowDrop,
   event DragDrop (`FileDropEventArgs`) — เทสต์ `creation_and_form_properties_reach_the_running_program`
-- 🟡 BackgroundImage: label/checkbox วาดพื้นทึบทับรูป (ต้องให้ ctl_color คืน NULL_BRUSH เมื่อหน้าต่างมีรูป + invalidate
-  พื้นใต้ label ตอนเปลี่ยนข้อความ)
+- BackgroundImage: label/group/ปุ่มโปร่งใสแล้ว (`win::paint_behind`)
 
 ### 2. แท็บ Style 🖌 และ Theme Editor — เสร็จ (2026-11-19) เหลือ animation
 - ทำแล้ว: แท็บที่สามใน Properties (`apps/studio/src/props.rs` `gather_style`): เลือกสถานะ → ค่าจริงทุก property +
@@ -127,7 +126,17 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   ทุกชนิดของจริง เปลี่ยนทันที (ฟอร์มที่ออกแบบก็เปลี่ยน) Save เขียนเฉพาะที่เปลี่ยน (`phai_ui::theme_edit`: set_var,
   set_base, set_prop, remove_prop - คอมเมนต์และลำดับเดิมอยู่ครบ) Cancel คืนธีมเดิม
   ตรวจ: `--theme-editor` + `PHAI_THEME_SHOT`, `PHAI_THEME_PAGE`, `PHAI_THEME_SET`, `PHAI_THEME_PROP`
-- เจ้านายถามถึง HomeSite และ Adobe ImageStyler (2026-11-19) - ยังไม่ได้สั่งงาน; ที่เข้ากับ Phai: เงา/ไล่สี
+- **เงาและไล่สี เสร็จ (2026-11-19):** CSS `box-shadow`, `linear-gradient()` (`background:` หรือ `background-image:`),
+  `rgba()`; `win::paint_box` วาดเงานุ่ม + ไล่สี + มุมมนเรียบ (DIB 32 บิต + AlphaBlend) ใช้กับปุ่ม, ช่องติ๊ก/radio,
+  แถบสถานะ, พื้นหน้าต่าง; `win::paint_behind` ให้ control/label/group วาดพื้นของหน้าต่างแม่ใต้ตัว
+  (DrawThemeParentBackground) → เห็นไล่สีหรือรูปพื้นหลังทะลุ — แก้ 🟡 ของ BackgroundImage ไปด้วย
+- **ทิศทางของเจ้านาย (2026-11-19):** "รวมข้อดี HomeSite + ImageStyler แต่เป็น Rust", "ให้ออกมาเป็น app ติดตั้งบน
+  Windows ได้" (มีแล้ว: Build > Publish → setup.exe ต่อผู้ใช้ ไม่ต้อง admin), "อยากให้เป็นนวัตกรรมใหม่ที่ไม่มีใครรู้จัก"
+  ข้อเสนอที่รอเจ้านายเลือก: (1) Inspector ของโปรแกรมที่กำลังรัน (F12 แก้ CSS/property สด แล้วเก็บลงฟอร์ม),
+  (2) ธีมจากรูปภาพ (ลากโลโก้/ภาพหน้าจอมาวาง ได้ธีมทั้งชุดที่ผ่าน contrast), (3) snippet มีช่องกรอกที่ตรวจด้วย
+  rust-analyzer ก่อนแทรก; ฝั่ง HomeSite ที่ยังขาด: QuickBar โค้ดสำเร็จรูป, คลัง snippet; ฝั่ง ImageStyler: bevel/glow,
+  แกลเลอรี style สำเร็จรูปใน Theme Editor
+- ประวัติ: เจ้านายถามถึง HomeSite และ Adobe ImageStyler (2026-11-19); ที่เข้ากับ Phai: เงา/ไล่สี
   (`box-shadow`, `linear-gradient`) ใน CSS ของ phai-ui แบบ style ของ ImageStyler, ตัวแก้ HTML/CSS แบบ HomeSite
 
 ### 3. ทิศทาง DevExpress: grid ก่อน (จัดกลุ่ม, กรองแบบ Excel, ผลรวม, master-detail, ตัวแก้ในช่อง, ส่งออก Excel/PDF)

@@ -850,6 +850,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Border of what cannot be used", "ขอบของสิ่งที่ใช้ไม่ได้"),
     ("Words of what cannot be used", "ตัวอักษรของสิ่งที่ใช้ไม่ได้"),
     ("Toolbar icons", "ไอคอนบนแถบเครื่องมือ"),
+    ("Colours that blend across it: linear-gradient(to bottom, #ffffff, #dde3ea) - #id { background-image }.", "สีที่ไล่ต่อกันไปทั่วตัว เช่น linear-gradient(to bottom, #ffffff, #dde3ea) - #id { background-image }"),
+    ("A soft shadow: 0 2px 6px rgba(0, 0, 0, 0.25) - across, down, blur, colour - #id { box-shadow }.", "เงานุ่ม เช่น 0 2px 6px rgba(0, 0, 0, 0.25) - เลื่อนขวา เลื่อนลง ความฟุ้ง สี - #id { box-shadow }"),
 ];
 
 #[cfg(test)]

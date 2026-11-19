@@ -42,7 +42,7 @@ pub const KINDS: [&str; 17] = ["window", "label", "button", "checkbox", "radio",
 pub const STATES: [&str; 7] = ["", "hover", "pressed", "focus", "disabled", "selected", "checked"];
 
 /// The properties of a control's rule.
-pub const PROPS: [&str; 8] = ["background", "color", "border-color", "border-width", "border-radius", "font-weight", "accent-color", "icon-color"];
+pub const PROPS: [&str; 10] = ["background", "background-image", "box-shadow", "color", "border-color", "border-width", "border-radius", "font-weight", "accent-color", "icon-color"];
 
 const ID_SAVE: i32 = 1;
 const ID_CANCEL: i32 = 2;
@@ -86,7 +86,7 @@ struct Editor {
 }
 
 fn is_colour(p: &str) -> bool {
-    !matches!(p, "border-width" | "border-radius" | "font-weight")
+    !matches!(p, "border-width" | "border-radius" | "font-weight" | "background-image" | "box-shadow")
 }
 
 fn hex(c: Color) -> String {
@@ -157,6 +157,8 @@ impl Editor {
                 "icon-color" => look.icon_color.map(hex),
                 "border-width" => look.border_width.map(|n| n.to_string()),
                 "border-radius" => look.border_radius.map(|n| n.to_string()),
+                "background-image" => look.gradient.as_ref().map(|g| g.css()),
+                "box-shadow" => look.shadow.flatten().map(|s| s.css()),
                 _ => look.font_weight.map(|n| n.to_string()),
             }
             .unwrap_or_default();
@@ -426,7 +428,7 @@ pub fn open(owner: HWND, path: &Path) {
     at(state, 141, 86, 300, 23);
     let mut props = Vec::new();
     for (i, _) in PROPS.iter().enumerate() {
-        let y = 128 + i as i32 * 32;
+        let y = 124 + i as i32 * 40;
         let label = win::label(hwnd, "", 0, font);
         at(label, 11, y, 180, 23);
         let swatch = win::button(hwnd, "", ID_PROP_SWATCH + i as i32, font, false);
