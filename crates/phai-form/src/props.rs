@@ -69,7 +69,7 @@ const fn runtime_only(mut s: Spec) -> Spec {
 }
 
 const ALIGN: &[&str] = &["left", "center", "right"];
-const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs];
+const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
 const TEXTS: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Number];
 const CURSORS: &[&str] = &["default", "hand", "ibeam", "wait", "cross", "help", "no", "size_all", "size_we", "size_ns"];
 
@@ -88,7 +88,7 @@ pub const CONTROL: &[Spec] = &[
     // Words.
     spec("text_align", "TextAlign", "Appearance", Ty::Choice(ALIGN), "center", &[Kind::Button], How::Call, "Where its words sit."),
     spec("text_align", "TextAlign", "Appearance", Ty::Choice(ALIGN), "left", &[Kind::Label, Kind::Edit, Kind::Number], How::Call, "Where its words sit."),
-    spec("border", "BorderStyle", "Appearance", Ty::Choice(&["none", "fixed"]), "none", &[Kind::Label, Kind::Picture], How::Call, "A thin line round it, or none."),
+    spec("border", "BorderStyle", "Appearance", Ty::Choice(&["none", "fixed"]), "none", &[Kind::Label, Kind::Picture, Kind::Panel], How::Call, "A thin line round it, or none."),
     spec("dialog_result", "DialogResult", "Behavior", Ty::Choice(&["none", "ok", "cancel", "yes", "no", "retry", "abort", "ignore"]), "none", &[Kind::Button], How::Code, "Clicked, it closes the window, and show_dialog returns this."),
     spec("read_only", "ReadOnly", "Behavior", Ty::Bool, "false", &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Number, Kind::Grid], How::Call, "Its words can be read and copied, not changed."),
     spec("max_length", "MaxLength", "Behavior", Ty::Int(0, 1_000_000), "", TEXTS, How::Call, "The most letters it takes; unset, no limit but Windows' own."),
@@ -115,7 +115,9 @@ pub const CONTROL: &[Spec] = &[
     spec("marquee", "Style = Marquee", "Appearance", Ty::Bool, "false", &[Kind::Progress], How::Call, "A block that runs along, for work of unknown length."),
     // Lists.
     spec("editable", "DropDownStyle = DropDown", "Behavior", Ty::Bool, "false", &[Kind::Combo], How::Code, "Words can be typed in as well as chosen."),
-    spec("sorted", "Sorted", "Behavior", Ty::Bool, "false", &[Kind::Combo], How::Code, "Its items in alphabetical order."),
+    spec("sorted", "Sorted", "Behavior", Ty::Bool, "false", &[Kind::Combo, Kind::ListBox], How::Code, "Its items in alphabetical order."),
+    spec("selection_mode", "SelectionMode", "Behavior", Ty::Choice(&["one", "multi"]), "one", &[Kind::ListBox], How::Code, "One line chosen at a time, or several with Ctrl and Shift."),
+    spec("mask", "Mask", "Behavior", Ty::Text, "", &[Kind::Masked], How::Code, "What it takes: 0 a digit, 9 a digit or none, L a letter, A a letter or digit, & anything; the rest stays as written - 000-000-0000."),
     spec("selected_index", "SelectedIndex", "Behavior", Ty::Int(-1, 9999), "0", &[Kind::Combo], How::Call, "The item chosen when the window opens, from 0; -1 none."),
     spec("max_drop_down_items", "MaxDropDownItems", "Behavior", Ty::Int(1, 100), "8", &[Kind::Combo], How::Call, "How many items the open list shows before it scrolls."),
     spec("view", "View", "Appearance", Ty::Choice(&["details", "list", "small_icons", "large_icons"]), "details", &[Kind::List], How::Call, "Rows with columns, or the items alone."),

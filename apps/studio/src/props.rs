@@ -516,9 +516,9 @@ impl Props {
         if c.kind == Kind::Picture {
             v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
         }
-        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree | Kind::Grid) {
+        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree | Kind::Grid | Kind::ListBox | Kind::CheckedList) {
             let items = match c.kind {
-                Kind::Combo | Kind::Tree => c.items.join("\n"),
+                Kind::Combo | Kind::Tree | Kind::ListBox | Kind::CheckedList => c.items.join("\n"),
                 Kind::Tabs => c.tabs.join("\n"),
                 _ => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
             };

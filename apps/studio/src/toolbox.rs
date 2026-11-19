@@ -41,7 +41,7 @@ fn groups() -> [&'static str; 4] {
 
 fn group_of(k: Kind) -> usize {
     match k {
-        Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table => 1,
+        Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel => 1,
         Kind::Statusbar => 2,
         Kind::Timer | Kind::ContextMenu => 3,
         _ => 0,

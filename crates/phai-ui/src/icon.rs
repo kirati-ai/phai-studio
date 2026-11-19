@@ -97,6 +97,12 @@ pub mod glyph {
     pub const STEP_INTO: u16 = 0x01A0;
     pub const STEP_OVER: u16 = 0x01A1;
     pub const STEP_OUT: u16 = 0x01A2;
+    pub const LINK: u16 = 0xE71B; // Link
+    pub const LISTBOX: u16 = 0xE8FD; // BulletedList
+    pub const CHECKLIST: u16 = 0xE9D5; // CheckList
+    pub const PANEL: u16 = 0xE7C3; // Page
+    pub const MASKED: u16 = 0xE8C1; // Characters
+    pub const MONTH: u16 = 0xE8BF; // CalendarDay
     pub const PAUSE: u16 = 0xE769;
 
     /// Every glyph by the name a form writes (`glyph = "SAVE"`).

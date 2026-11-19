@@ -79,6 +79,12 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - **Live Inspector (F12) เสร็จ 2026-11-19** — `crates/phai-ui/src/inspect.rs`, docs/phaiform.md หัวข้อ "ตัวตรวจสด"
 - **iOS / Android (เจ้านายถาม 2026-11-19 "หรือไม่ลองทำ"):** phai-ui เป็น Win32 ล้วน; ที่พกไปได้คือ logic Rust + `.phaiform` + CSS
   ต้องมี backend ที่สอง; Android build บน Windows ได้ (NDK ฟรี), iOS ต้องมี Mac + Xcode เพื่อ build/เซ็น
+  **เริ่มแล้วและพักไว้** (เจ้านาย: "เขียน android เป็น handoff ทำ winform ให้จบ") — branch `android-prototype`,
+  แผนและสถานะใน `docs/android-handoff.md` (อยู่บน branch นั้น); เครื่องมือติดตั้งแล้วที่ `D:\Android`
+- **WinForms ให้จบ (เจ้านายสั่ง 2026-11-19)** — ที่ยังขาดนอก checklist เดิม: Panel, SplitContainer, ListBox, CheckedListBox,
+  LinkLabel, MaskedTextBox, MonthCalendar, NotifyIcon, dialog แบบ component (Open/Save/Color/Font), ErrorProvider,
+  UserControl, MDI, การพิมพ์ (PrintDocument/Preview), data binding กับ control ทั่วไป, ลากวางระหว่าง control
+  — ติดตามใน `docs/winforms-parity.md` หัวข้อ "รอบสาม"
 
 ## ทำเสร็จแล้ว 2026-11-19 (งานข้อ 0-3 เดิม) — checklist: `docs/winforms-parity.md`
 

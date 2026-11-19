@@ -718,6 +718,12 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Rich => t("Rich text box"),
         Kind::Grid => t("Data grid"),
         Kind::ContextMenu => t("Context menu"),
+        Kind::Panel => t("Panel"),
+        Kind::ListBox => t("List box"),
+        Kind::CheckedList => t("Checked list box"),
+        Kind::Link => t("Link label"),
+        Kind::Masked => t("Masked text box"),
+        Kind::Calendar => t("Month calendar"),
     }
 }
 
@@ -749,6 +755,12 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Rich => glyph::DOCUMENT,
             Kind::Grid => glyph::APPS,
             Kind::ContextMenu => glyph::MENU_CONTEXT,
+            Kind::Panel => glyph::PANEL,
+            Kind::ListBox => glyph::LISTBOX,
+            Kind::CheckedList => glyph::CHECKLIST,
+            Kind::Link => glyph::LINK,
+            Kind::Masked => glyph::MASKED,
+            Kind::Calendar => glyph::MONTH,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -1368,7 +1380,7 @@ impl Studio {
                         c.set_prop(name, v);
                     }
                     Key::Items => match c.kind {
-                        Kind::Combo => c.items = list(),
+                        Kind::Combo | Kind::ListBox | Kind::CheckedList => c.items = list(),
                         Kind::ContextMenu => c.items = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect(),
                         // A tree's lines keep their indent: it is the tree.
                         Kind::Tree => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
@@ -1499,7 +1511,7 @@ impl Studio {
         }
         match c.kind {
             Kind::List | Kind::Grid => tasks.push((ITEMS, t("Edit Columns...").to_string())),
-            Kind::Combo | Kind::Tree => tasks.push((ITEMS, t("Edit Items...").to_string())),
+            Kind::Combo | Kind::Tree | Kind::ListBox | Kind::CheckedList => tasks.push((ITEMS, t("Edit Items...").to_string())),
             Kind::Tabs => tasks.push((ITEMS, t("Edit Tabs...").to_string())),
             Kind::Picture => tasks.push((IMAGE, t("Choose Image...").to_string())),
             _ => {}
@@ -8604,6 +8616,96 @@ impl MainWindowEvents for MainWindow {
         // Nothing else of the form changed.
         let others = |f: &FormFile| f.control.iter().filter(|c| c.id != "go").cloned().collect::<Vec<_>>();
         assert_eq!(others(&f2), others(&f));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WinForms' Panel, ListBox, CheckedListBox, LinkLabel, MaskedTextBox and MonthCalendar in a
+    /// real project: made from the form, their objects' methods, a mask typed into, its event.
+    /// `PHAI_SHOT_KEEP=<png>` keeps a picture of the window.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn the_rest_of_winforms_controls_work() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-extra-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        f.form.size = [520, 400];
+        let mut panel = Control::new(Kind::Panel, "holder", [11, 40, 240, 120]);
+        panel.back_color = Some("#e8f1ee".into());
+        panel.set_prop("border", Some(phai_form::toml::Value::String("fixed".into())));
+        let mut fruit = Control::new(Kind::ListBox, "fruit", [21, 50, 100, 95]);
+        fruit.items = vec!["Mango".into(), "Durian".into(), "Banana".into()];
+        fruit.set_prop("sorted", Some(phai_form::toml::Value::Boolean(true)));
+        fruit.on_select = Some("fruit_chosen".into());
+        let mut todo = Control::new(Kind::CheckedList, "todo", [131, 50, 110, 95]);
+        todo.items = vec!["Wash".into(), "Cook".into()];
+        todo.on_change = Some("todo_ticked".into());
+        let mut site = Control::new(Kind::Link, "site", [11, 170, 200, 23]);
+        site.text = Some("monrak.net".into());
+        site.on_click = Some("site_clicked".into());
+        let mut phone = Control::new(Kind::Masked, "phone", [11, 200, 150, 23]);
+        phone.set_prop("mask", Some(phai_form::toml::Value::String("000-000-0000".into())));
+        phone.on_change = Some("phone_changed".into());
+        let mut day = Control::new(Kind::Calendar, "day", [270, 40, 227, 162]);
+        day.on_change = Some("day_chosen".into());
+        f.control.extend([panel, fruit, todo, site, phone, day]);
+        // Checked once the window is up: its events reach the program only then.
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Mango", "มะม่วง"), ("Durian", "ทุเรียน"), ("Banana", "กล้วย"), ("Wash", "ซักผ้า"), ("Cook", "ทำกับข้าว"), ("monrak.net", "monrak.net")]).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging as wm;
+
+#[derive(Default)]
+pub struct MainWindow {
+    phone_changes: usize,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let mut bits = 0;
+        // Sorted: Banana, Durian, Mango.
+        if ui.fruit.items_count() == 3 && ui.fruit.item(0) == "Banana" { bits |= 1 }
+        ui.fruit.set_selected_index(Some(2));
+        if ui.fruit.selected_item().as_deref() == Some("Mango") { bits |= 2 }
+        ui.todo.set_checked(1, true);
+        if ui.todo.checked_indices() == vec![1] && ui.todo.item(0) == "Wash" { bits |= 4 }
+        if ui.site.link_text() == "monrak.net" { bits |= 8 }
+        // Typed into, a letter at a time, as the keyboard would: the x is not taken.
+        for c in "08x12345678".chars() {
+            unsafe { wm::SendMessageW(ui.phone.hwnd(), wm::WM_CHAR, Some(WPARAM(c as usize)), Some(LPARAM(1))) };
+        }
+        if ui.phone.text() == "081-234-5678" && ui.phone.value() == "0812345678" && ui.phone.mask_completed() { bits |= 16 }
+        if self.phone_changes == 10 { bits |= 32 }
+        ui.day.set_date(2026, 11, 19);
+        if ui.day.selection_start() == (2026, 11, 19) { bits |= 64 }
+        if std::env::var_os("PHAI_SHOT").is_none() {
+            std::process::exit(if bits == 127 { 42 } else { 1000 + bits });
+        }
+    }
+
+    fn phone_changed(&mut self, _ui: &MainWindowUi) {
+        self.phone_changes += 1;
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        if let Some(png) = std::env::var_os("PHAI_SHOT_KEEP") {
+            let _ = std::process::Command::new(&exe).env("PHAI_SHOT", png).status();
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

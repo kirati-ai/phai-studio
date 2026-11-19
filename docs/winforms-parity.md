@@ -204,3 +204,27 @@
 |---|---|---|---|
 | P | FlowDirection, WrapContents, Padding | `direction`, `wrap`, `gap` | ✅ |
 | P | ColumnCount | `cols` | ✅ |
+
+# รอบสาม: ของที่ WinForms มีนอกจากรายการข้างบน (เจ้านายสั่ง 2026-11-19 "ทำ winform ให้จบ")
+
+| | WinForms | Phai | สถานะ |
+|---|---|---|---|
+| C | Panel | `panel`: `back_color`, `border` (`fixed`), ใส่ control ข้างใน (designer ถือเป็น container) | ✅ |
+| C | ListBox | `listbox`: `items`, `sorted`, `selection_mode` (`one`/`multi`); `items_add/insert/remove_at/clear/count`, `item`, `selected_index`, `selected_indices`, `selected_item`; `on_select` | ✅ |
+| C | CheckedListBox | `checkedlist`: `items`; `checked(i)`, `set_checked`, `checked_indices`; `on_change` = ItemCheck | ✅ |
+| C | LinkLabel | `link`: `text` (ทั้งข้อความ หรือส่วนใน `<a>`); `link_text`, `set_link_text`; `on_click` = LinkClicked | ✅ |
+| C | MaskedTextBox | `masked`: `mask` (`0 9 # L ? A a & C`, `\` literal); `value()` (ไม่รวมตัวคั่น), `mask_completed()`; `on_change` | ✅ |
+| C | MonthCalendar | `calendar`: `selection_start()`, `set_date()`; `on_change` = DateChanged; สีจาก `calendar { }` ในธีม | ✅ |
+| C | SplitContainer | | ⬜ |
+| C | NotifyIcon | | ⬜ |
+| C | OpenFileDialog / SaveFileDialog / FolderBrowserDialog / ColorDialog / FontDialog (component) | | ⬜ |
+| C | ErrorProvider | | ⬜ |
+| C | ToolTip (component) | — (เป็น property `tooltip` ของทุก control แล้ว) | — |
+| F | UserControl | | ⬜ |
+| F | MDI (IsMdiContainer, MdiParent) | | ⬜ |
+| F | PrintDocument / PrintPreviewDialog | | ⬜ |
+| F | DataBindings (ผูก property ของ control กับข้อมูล) | | ⬜ |
+| F | DoDragDrop ระหว่าง control | | ⬜ |
+| F | MenuStrip / ToolStrip แบบละเอียด (ไอคอน, ปุ่มกดค้าง, รายการย่อยซ้อน) | | ⬜ |
+
+C = control/component, F = ความสามารถ

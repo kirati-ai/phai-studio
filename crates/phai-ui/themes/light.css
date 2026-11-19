@@ -104,6 +104,7 @@ tabs:selected { color: var(--text); }
 
 /* Dates: the box, and the calendar that drops from it (accent-color its chosen day). */
 date          { background: #ffffff; color: var(--text); border-color: var(--border); accent-color: var(--accent); }
+calendar      { background: #ffffff; color: var(--text); accent-color: var(--accent); }
 
 /* Progress bars and sliders: background is the track, accent-color what is done or chosen. */
 progress      { background: var(--rule); accent-color: var(--accent); border-radius: 3px; }

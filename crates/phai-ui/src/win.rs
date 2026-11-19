@@ -37,7 +37,7 @@ pub fn init() {
         let _ = HiDpi::SetProcessDpiAwarenessContext(HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let icc = windows::Win32::UI::Controls::INITCOMMONCONTROLSEX {
             dwSize: std::mem::size_of::<windows::Win32::UI::Controls::INITCOMMONCONTROLSEX>() as u32,
-            dwICC: windows::Win32::UI::Controls::ICC_LISTVIEW_CLASSES | windows::Win32::UI::Controls::ICC_BAR_CLASSES | windows::Win32::UI::Controls::ICC_STANDARD_CLASSES | windows::Win32::UI::Controls::ICC_DATE_CLASSES | windows::Win32::UI::Controls::ICC_UPDOWN_CLASS | windows::Win32::UI::Controls::ICC_COOL_CLASSES,
+            dwICC: windows::Win32::UI::Controls::ICC_LISTVIEW_CLASSES | windows::Win32::UI::Controls::ICC_BAR_CLASSES | windows::Win32::UI::Controls::ICC_STANDARD_CLASSES | windows::Win32::UI::Controls::ICC_DATE_CLASSES | windows::Win32::UI::Controls::ICC_UPDOWN_CLASS | windows::Win32::UI::Controls::ICC_COOL_CLASSES | windows::Win32::UI::Controls::ICC_LINK_CLASS,
         };
         let _ = windows::Win32::UI::Controls::InitCommonControlsEx(&icc);
     });
@@ -197,6 +197,8 @@ pub enum Kind {
     Date,
     Progress,
     Slider,
+    /// A month to choose a day in (MonthCalendar).
+    Calendar,
 }
 
 impl Kind {
@@ -217,6 +219,7 @@ impl Kind {
             Kind::Date => "date",
             Kind::Progress => "progress",
             Kind::Slider => "slider",
+            Kind::Calendar => "calendar",
         }
     }
 }
@@ -1141,7 +1144,8 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
     let kind = match msg {
         wm::WM_CTLCOLORSTATIC => kind_of(h).unwrap_or(Kind::Label),
         wm::WM_CTLCOLOREDIT => kind_of(h).unwrap_or(Kind::Edit),
-        wm::WM_CTLCOLORLISTBOX => Kind::Combo,
+        // A list box of the library's is a list; an open combo's list is the combo's.
+        wm::WM_CTLCOLORLISTBOX => kind_of(h).unwrap_or(Kind::Combo),
         wm::WM_CTLCOLORBTN => return Some(LRESULT(brush(window_background_for(h)).0 as isize)),
         _ => return None,
     };
@@ -1375,7 +1379,11 @@ fn panel_paint(h: HWND, outline: bool) {
         let dc = Gdi::BeginPaint(h, &mut ps);
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
-        fill(dc, &r, window_background_for(h));
+        // A panel with a colour of its own (its BackColor) shows it; else what is behind it.
+        match with_css(h, |c| c.own.background).flatten() {
+            Some(c) => fill(dc, &r, c),
+            None => paint_behind(h, dc, &r),
+        }
         if outline {
             let line = crate::theme::current().var_color("--border").unwrap_or(Color::rgb(0xb0, 0xb0, 0xb0));
             let mut x = r.left;
@@ -1567,6 +1575,10 @@ pub fn theme_native(h: HWND) {
                 set(2 /* MCSC_TITLEBK */, s.accent_or(Color::rgb(0x12, 0x85, 0x5f)));
                 set(3 /* MCSC_TITLETEXT */, Color::rgb(255, 255, 255));
                 let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_CFD") } else { PCWSTR::null() }, PCWSTR::null());
+            }
+            Some(Kind::Calendar) => {
+                let s = style_of(h, Kind::Calendar, State::default());
+                crate::extra::calendar_colors(h, s.background_or(window_background_for(h)), s.color_or(window_text_for(h)), s.accent_or(Color::rgb(0x12, 0x85, 0x5f)), dark);
             }
             Some(Kind::Progress) | Some(Kind::Slider) => {
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
@@ -2675,7 +2687,8 @@ pub fn text_of(h: impl Into<HWND>) -> String {
         let n = wm::GetWindowTextLengthW(h);
         let mut buf = vec![0u16; n as usize + 1];
         let got = wm::GetWindowTextW(h, &mut buf);
-        String::from_utf16_lossy(&buf[..got as usize])
+        // A SysLink counts the end of its words as one of them.
+        String::from_utf16_lossy(&buf[..got as usize]).trim_end_matches(' ').to_string()
     }
 }
 
