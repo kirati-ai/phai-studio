@@ -120,6 +120,51 @@ pub fn set_icon(hwnd: HWND, ico: &[u8]) {
     }
 }
 
+/// Whether menu item `id` of window `h`'s menu bar is ticked.
+pub fn menu_checked(h: HWND, id: i32) -> bool {
+    unsafe { wm::GetMenuState(wm::GetMenu(h), id as u32, wm::MF_BYCOMMAND) & wm::MF_CHECKED.0 != 0 }
+}
+
+/// Item `id` ticked or not, in the menu bar and on the toolbar alike - Checked.
+pub fn set_item_checked(h: HWND, toolbar: Option<HWND>, id: i32, on: bool) {
+    unsafe {
+        let _ = wm::CheckMenuItem(wm::GetMenu(h), id as u32, (wm::MF_BYCOMMAND | if on { wm::MF_CHECKED } else { wm::MF_UNCHECKED }).0);
+        if let Some(t) = toolbar {
+            wm::SendMessageW(t, 0x0402 /* TB_CHECKBUTTON */, Some(WPARAM(id as usize)), Some(LPARAM(on as isize)));
+        }
+    }
+}
+
+/// Whether item `id` is ticked: on the toolbar when it is there, in the menu bar otherwise.
+pub fn item_checked(h: HWND, toolbar: Option<HWND>, id: i32) -> bool {
+    if let Some(t) = toolbar {
+        let has = unsafe { wm::SendMessageW(t, 0x0419 /* TB_COMMANDTOINDEX */, Some(WPARAM(id as usize)), None).0 } >= 0;
+        if has {
+            return unsafe { wm::SendMessageW(t, 0x040A /* TB_ISBUTTONCHECKED */, Some(WPARAM(id as usize)), None).0 } != 0;
+        }
+    }
+    menu_checked(h, id)
+}
+
+/// Item `id` usable or greyed, in the menu bar and on the toolbar alike - Enabled.
+pub fn set_item_enabled(h: HWND, toolbar: Option<HWND>, id: i32, on: bool) {
+    unsafe {
+        let _ = wm::EnableMenuItem(wm::GetMenu(h), id as u32, wm::MF_BYCOMMAND | if on { wm::MF_ENABLED } else { wm::MF_GRAYED });
+        let _ = wm::DrawMenuBar(h);
+        if let Some(t) = toolbar {
+            wm::SendMessageW(t, 0x0401 /* TB_ENABLEBUTTON */, Some(WPARAM(id as usize)), Some(LPARAM(on as isize)));
+        }
+    }
+}
+
+/// A CheckOnClick item chosen: its tick turned over, menu and toolbar together; the tick now.
+pub fn toggle_item(h: HWND, toolbar: Option<HWND>, id: i32, from_toolbar: bool) -> bool {
+    // A toolbar button that stays down has turned itself over already.
+    let on = if from_toolbar { item_checked(h, toolbar, id) } else { !menu_checked(h, id) };
+    set_item_checked(h, toolbar, id, on);
+    on
+}
+
 /// A click on a button, as the mouse would make it - AcceptButton's Enter, CancelButton's Escape.
 pub fn click(button: HWND) {
     unsafe {

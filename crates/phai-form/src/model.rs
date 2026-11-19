@@ -119,6 +119,39 @@ pub struct MenuItem {
     pub key: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub separator: bool,
+    /// A picture beside it: a glyph's name, as a toolbar button's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glyph: Option<String>,
+    /// Ticked - Checked.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub checked: bool,
+    /// A click ticks it or takes the tick away - CheckOnClick.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub check_on_click: bool,
+    /// Greyed, not to be chosen - Enabled = false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disabled: bool,
+    /// A menu of its own that opens beside it - DropDownItems; it has no id then.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<MenuItem>,
+}
+
+impl MenuItem {
+    /// It and the items of its menus, all the way down, in order.
+    pub fn all(&self) -> Vec<&MenuItem> {
+        let mut out = vec![self];
+        for it in &self.items {
+            out.extend(it.all());
+        }
+        out
+    }
+}
+
+impl Menu {
+    /// Every item, those of its menus within menus too, in order.
+    pub fn all_items(&self) -> Vec<&MenuItem> {
+        self.items.iter().flat_map(|it| it.all()).collect()
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -127,6 +160,9 @@ pub struct Tool {
     pub id: String,
     pub label: String,
     pub glyph: String,
+    /// A button that stays pressed until clicked again - CheckOnClick.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub toggle: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -845,9 +881,14 @@ impl FormFile {
             }
         }
         for m in &self.menu {
-            for it in &m.items {
-                if it.separator {
+            for it in m.all_items() {
+                if it.separator || !it.items.is_empty() {
                     continue;
+                }
+                if let Some(g) = &it.glyph {
+                    if phai_ui::icon::glyph::by_name(g).is_none() {
+                        out.push((format!("glyph {g:?} is not one phai-ui knows"), Some(g.clone())));
+                    }
                 }
                 match (&it.id, &it.label) {
                     (Some(id), Some(_)) => {
@@ -887,7 +928,7 @@ impl FormFile {
             }
         };
         for m in &self.menu {
-            for it in &m.items {
+            for it in m.all_items() {
                 if let Some(id) = &it.id {
                     add(id);
                 }
@@ -986,7 +1027,7 @@ impl FormFile {
         add(&self.form.title);
         for m in &self.menu {
             add(&m.label);
-            for it in &m.items {
+            for it in m.all_items() {
                 if let Some(l) = &it.label {
                     add(l);
                 }
