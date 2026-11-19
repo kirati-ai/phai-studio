@@ -1170,7 +1170,16 @@ pub fn theme_native(h: HWND) {
             Some(Kind::Progress) | Some(Kind::Slider) => {
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
             }
-            _ => {}
+            Some(_) => {}
+            None => {
+                // A window of a program's own that scrolls (a toolbox, an editor): its scroll bars
+                // dark in a dark theme, as Windows' own controls have them.
+                let style = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32;
+                if style & (wm::WS_VSCROLL.0 | wm::WS_HSCROLL.0) != 0 {
+                    let _ = cc::SetWindowTheme(h, if dark { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
+                    let _ = wm::SetWindowPos(h, None, 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE | wm::SWP_FRAMECHANGED);
+                }
+            }
         }
     }
 }
@@ -1617,6 +1626,10 @@ pub fn rebar(parent: HWND, id: i32) -> HWND {
 /// The tray in the theme's colours.
 pub fn rebar_colours(h: HWND) {
     unsafe {
+        // Windows' own look paints the tray light whatever colour it is given: in a dark theme it is
+        // drawn plain, in the theme's colour.
+        let dark = theme::current().is_dark();
+        let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if dark { windows::core::w!(" ") } else { PCWSTR::null() }, if dark { windows::core::w!(" ") } else { PCWSTR::null() });
         wm::SendMessageW(h, 0x0413 /* RB_SETBKCOLOR */, None, Some(LPARAM(window_background().colorref() as isize)));
         wm::SendMessageW(h, 0x0415 /* RB_SETTEXTCOLOR */, None, Some(LPARAM(window_text().colorref() as isize)));
         let _ = Gdi::InvalidateRect(Some(h), None, true);
