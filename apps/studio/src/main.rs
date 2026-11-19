@@ -1710,7 +1710,21 @@ impl Studio {
     /// Double-click: give the control a handler if it has none, and put the empty method in the
     /// programmer's file if the form is saved and the method is not there yet.
     pub fn add_handler_for_selected(&mut self) {
-        let Some(i) = self.selected else { return };
+        // The form itself: its code, at the first method - or a new `loaded`, which runs as the
+        // window opens, as a WinForms form's double-click writes Form_Load.
+        let Some(i) = self.selected else {
+            let Some(path) = self.doc.path.clone() else { return };
+            let user = path.with_file_name(format!("{}.rs", snake(&self.doc.form.form.name)));
+            let Ok(src) = std::fs::read_to_string(&user) else { return };
+            if first_method_line(&src).is_none() {
+                if let Some(more) = codegen::add_handler(&src, &self.doc.form.form.name, "loaded") {
+                    let _ = std::fs::write(&user, more);
+                }
+            }
+            let src = std::fs::read_to_string(&user).unwrap_or_default();
+            self.open_code_at(&user, first_method_line(&src));
+            return;
+        };
         let c = &self.doc.form.control[i];
         let Some(event) = c.kind.event() else { return };
         let name = c.handler().map(str::to_string).unwrap_or_else(|| {
@@ -1734,6 +1748,19 @@ impl Studio {
                     controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
                 }
             }
+        }
+        // Then to it, as Visual Studio goes to the handler it writes.
+        let src = std::fs::read_to_string(&user).unwrap_or_default();
+        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
+        self.open_code_at(&user, line);
+    }
+
+    /// A code file in its tab, the caret on `line` (from 1) - inside the method's body when the
+    /// line opens one.
+    fn open_code_at(&mut self, path: &Path, line: Option<usize>) {
+        self.open_code(path);
+        if let (Some(code), Some(l)) = (self.doc.code, line) {
+            phai_editor::view::go_to(code, l + 1, 9);
         }
     }
 
@@ -6236,7 +6263,17 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_COMMAND => {
             let id = win::loword(w.0) as i32;
             if id == ID_TABS {
-                s.activate(win::hiword(w.0) as usize);
+                let i = win::hiword(w.0) as usize;
+                if i & phai_ui::controls::TAB_CLOSE != 0 {
+                    // A tab's close button: that tab, asking to save first if it has changes.
+                    let i = i & !phai_ui::controls::TAB_CLOSE;
+                    if i != s.active {
+                        s.activate(i);
+                    }
+                    s.close_tab();
+                } else {
+                    s.activate(i);
+                }
             } else {
                 s.command(id);
             }
@@ -6688,6 +6725,7 @@ fn main() {
         let config = win::combo(toolbar, ID_CONFIG, font, &["Debug", "Release"]);
         let toolbox = toolbox::new(hwnd, ID_TOOLBOX, font);
         let tabbar = controls::tabs(hwnd, ID_TABS, font, &[t("Untitled")]);
+        controls::tabs_closable(tabbar);
         let status = controls::status_bar(hwnd, ID_STATUS, font);
         let bottom = bottom::Bottom::new(hwnd, font, ID_ERRORS);
         let errors = bottom.errors;
@@ -7405,6 +7443,20 @@ fn relative_to(dir: &Path, file: &Path) -> Option<String> {
     Some(parts.join("/"))
 }
 
+/// The line (from 1) of the first method in a form's code file: its first `fn` inside an `impl`.
+fn first_method_line(src: &str) -> Option<usize> {
+    let mut in_impl = false;
+    for (i, l) in src.lines().enumerate() {
+        let t = l.trim_start();
+        if t.starts_with("impl ") {
+            in_impl = true;
+        } else if in_impl && (t.starts_with("fn ") || t.starts_with("pub fn ")) {
+            return Some(i + 1);
+        }
+    }
+    None
+}
+
 /// A table's name as a control's id: `Order Items` is `order_items`.
 fn bound_id(table: &str) -> String {
     let mut id: String = table.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
@@ -7471,6 +7523,23 @@ mod {file}_ui;
 #[cfg(test)]
 mod add_form_tests {
     use super::*;
+
+    #[test]
+    fn the_first_method_is_found() {
+        let src = "use x;
+
+pub struct A {}
+
+impl AEvents for A {
+    fn ok_clicked(&mut self, ui: &AUi) {
+    }
+}
+";
+        assert_eq!(first_method_line(src), Some(6));
+        assert_eq!(first_method_line("impl AEvents for A {
+}
+"), None);
+    }
 
     #[test]
     fn a_new_form_is_named_and_declared() {

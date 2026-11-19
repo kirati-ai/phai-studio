@@ -668,7 +668,8 @@ pub fn add_handler(user_src: &str, form_name: &str, handler: &str) -> Option<Str
     let start = user_src.find(&marker)?;
     // The impl's closing brace: the first `}` at the start of a line after it.
     let at = start + user_src[start..].find("\n}")?;
-    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui) {{}}{}", &user_src[..at], &user_src[at..]))
+    // An empty line inside, indented, for the caret to land on and the code to start from.
+    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui) {{\n        \n    }}{}", &user_src[..at], &user_src[at..]))
 }
 
 #[cfg(test)]
@@ -719,7 +720,7 @@ mod tests {
         let stub = user_stub(&f);
         assert!(add_handler(&stub, "MainWindow", "save").is_none(), "already there");
         let more = add_handler(&stub, "MainWindow", "print").unwrap();
-        assert!(more.contains("    fn print(&mut self, _ui: &MainWindowUi) {}\n}"), "{more}");
+        assert!(more.contains("    fn print(&mut self, _ui: &MainWindowUi) {\n        \n    }\n}"), "{more}");
         assert!(add_handler(&more, "MainWindow", "print").is_none());
         assert!(add_handler("struct X;", "MainWindow", "print").is_none(), "nowhere to put it");
     }
