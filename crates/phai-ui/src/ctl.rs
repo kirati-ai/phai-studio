@@ -19,6 +19,8 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 
 use crate::win;
 
+pub use crate::components::{ColorDialog, ErrorProvider, FolderBrowserDialog, FontDialog, NotifyIcon, OpenFileDialog, SaveFileDialog};
+
 fn send(h: HWND, msg: u32, w: usize, l: isize) -> isize {
     unsafe { wm::SendMessageW(h, msg, Some(WPARAM(w)), Some(LPARAM(l))).0 }
 }

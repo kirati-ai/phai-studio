@@ -724,6 +724,13 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Link => t("Link label"),
         Kind::Masked => t("Masked text box"),
         Kind::Calendar => t("Month calendar"),
+        Kind::OpenFile => t("Open file dialog"),
+        Kind::SaveFile => t("Save file dialog"),
+        Kind::FolderDialog => t("Folder dialog"),
+        Kind::ColorDialog => t("Colour dialog"),
+        Kind::FontDialog => t("Font dialog"),
+        Kind::ErrorProvider => t("Error provider"),
+        Kind::NotifyIcon => t("Notify icon"),
     }
 }
 
@@ -761,6 +768,13 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Link => glyph::LINK,
             Kind::Masked => glyph::MASKED,
             Kind::Calendar => glyph::MONTH,
+            Kind::OpenFile => glyph::OPEN_FILE,
+            Kind::SaveFile => glyph::SAVE_FILE,
+            Kind::FolderDialog => glyph::FOLDER_PICK,
+            Kind::ColorDialog => glyph::PALETTE,
+            Kind::FontDialog => glyph::FONT_PICK,
+            Kind::ErrorProvider => glyph::ERROR_MARK,
+            Kind::NotifyIcon => glyph::TRAY,
         };
         v.push((ID_TOOL + 1 + i as i32, kind_label(*k), g));
     }
@@ -8706,6 +8720,99 @@ impl MainWindowEvents for MainWindow {
         if let Some(png) = std::env::var_os("PHAI_SHOT_KEEP") {
             let _ = std::process::Command::new(&exe).env("PHAI_SHOT", png).status();
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WinForms' components in a real project: the dialogs made with the form's properties, the
+    /// ErrorProvider's mark beside a control and gone again, the NotifyIcon with its menu.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn winforms_components_work() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-comp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let s = |v: &str| Some(phai_form::toml::Value::String(v.into()));
+        let mut open = Control::new(Kind::OpenFile, "open_file", [0, 0, 0, 0]);
+        open.set_prop("title", s("Open a list"));
+        open.set_prop("filter", s("Text files|*.txt|All files|*.*"));
+        open.set_prop("default_ext", s("txt"));
+        open.set_prop("multiselect", Some(phai_form::toml::Value::Boolean(true)));
+        let mut save = Control::new(Kind::SaveFile, "save_file", [0, 0, 0, 0]);
+        save.set_prop("filter", s("Text files|*.txt"));
+        let folder = Control::new(Kind::FolderDialog, "folder", [0, 0, 0, 0]);
+        let colour = Control::new(Kind::ColorDialog, "colour", [0, 0, 0, 0]);
+        let font = Control::new(Kind::FontDialog, "font_pick", [0, 0, 0, 0]);
+        let errors = Control::new(Kind::ErrorProvider, "errors", [0, 0, 0, 0]);
+        let mut menu = Control::new(Kind::ContextMenu, "tray_menu", [0, 0, 0, 0]);
+        menu.items = vec!["show_window_again | Show".into(), "-".into(), "quit | Exit".into()];
+        let mut tray = Control::new(Kind::NotifyIcon, "tray", [0, 0, 0, 0]);
+        tray.text = Some("My program".into());
+        tray.on_click = Some("tray_clicked".into());
+        tray.context_menu = Some("tray_menu".into());
+        tray.events.insert("double_click".into(), "tray_opened".into());
+        let mut name = Control::new(Kind::Edit, "name", [11, 40, 150, 23]);
+        name.anchor = Some("left top right".into());
+        f.control.extend([open, save, folder, colour, font, errors, menu, tray, name]);
+        f.form.events.insert("shown".into(), "begin".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
+        assert!(generated.contains("host.ui.tray.remove();") && generated.contains("phai_ui::components::WM_TRAY"));
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Open a list", "เปิดรายการ"), ("Text files|*.txt|All files|*.*", "ไฟล์ข้อความ|*.txt|ทุกไฟล์|*.*"), ("Text files|*.txt", "ไฟล์ข้อความ|*.txt"), ("My program", "โปรแกรมของฉัน"), ("Show", "แสดง"), ("Exit", "ออก")]).unwrap();
+        let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+
+#[derive(Default)]
+pub struct MainWindow {}
+
+impl MainWindowEvents for MainWindow {
+    fn begin(&mut self, ui: &MainWindowUi) {
+        let mut bits = 0;
+        if ui.open_file.title == "Open a list" && ui.open_file.filter == "Text files|*.txt|All files|*.*" && ui.open_file.multiselect && ui.open_file.default_ext == "txt" { bits |= 1 }
+        if ui.save_file.filter == "Text files|*.txt" && ui.folder.title.is_empty() { bits |= 2 }
+        ui.errors.set_error(ui.name, "A name, please");
+        let mark = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindow(ui.name.hwnd(), windows::Win32::UI::WindowsAndMessaging::GW_HWNDFIRST) };
+        let _ = mark;
+        if ui.errors.error(ui.name) == "A name, please" { bits |= 4 }
+        // The mark stands just right of the box.
+        let r = ui.name.bounds();
+        let mut found = false;
+        unsafe extern "system" fn each(h: windows::Win32::Foundation::HWND, l: windows::Win32::Foundation::LPARAM) -> windows::core::BOOL {
+            let out = unsafe { &mut *(l.0 as *mut Vec<windows::Win32::Foundation::HWND>) };
+            out.push(h);
+            true.into()
+        }
+        let mut all: Vec<windows::Win32::Foundation::HWND> = Vec::new();
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::EnumChildWindows(Some(ui.hwnd), Some(each), windows::Win32::Foundation::LPARAM(&mut all as *mut _ as isize));
+        }
+        for h in all {
+            let b = phai_ui::win::rect_in_parent(h);
+            if b.left > r.right && b.left - r.right < 12 && b.top >= r.top && b.bottom <= r.bottom && unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(h) }.as_bool() {
+                found = true;
+            }
+        }
+        if found { bits |= 8 }
+        ui.errors.set_error(ui.name, "");
+        if ui.errors.error(ui.name).is_empty() { bits |= 16 }
+        ui.tray.set_text("Still here");
+        ui.tray.remove();
+        std::process::exit(if bits == 31 { 42 } else { 1000 + bits });
+    }
+}
+"##;
+        std::fs::write(dir.join("src").join("main_window.rs"), code).unwrap();
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let code = std::process::Command::new(&exe).status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

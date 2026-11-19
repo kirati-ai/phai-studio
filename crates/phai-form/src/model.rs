@@ -179,10 +179,27 @@ pub enum Kind {
     Masked,
     /// A month to choose a day in - WinForms' MonthCalendar.
     Calendar,
+    /// Components: Windows' dialogs for a file to open or save, a folder, a colour, a font.
+    #[serde(rename = "openfiledialog")]
+    OpenFile,
+    #[serde(rename = "savefiledialog")]
+    SaveFile,
+    #[serde(rename = "folderbrowserdialog")]
+    FolderDialog,
+    #[serde(rename = "colordialog")]
+    ColorDialog,
+    #[serde(rename = "fontdialog")]
+    FontDialog,
+    /// A component: red marks beside controls whose values are wrong - WinForms' ErrorProvider.
+    #[serde(rename = "errorprovider")]
+    ErrorProvider,
+    /// A component: the program's icon in the corner of the taskbar - WinForms' NotifyIcon.
+    #[serde(rename = "notifyicon")]
+    NotifyIcon,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 29] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
+    pub const ALL: [Kind; 36] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -191,7 +208,7 @@ impl Kind {
 
     /// A component: nothing on the form itself - Visual Studio puts it in the tray below.
     pub fn is_component(self) -> bool {
-        matches!(self, Kind::Timer | Kind::ContextMenu)
+        matches!(self, Kind::Timer | Kind::ContextMenu | Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon)
     }
 
     pub fn name(self) -> &'static str {
@@ -225,6 +242,13 @@ impl Kind {
             Kind::Link => "link",
             Kind::Masked => "masked",
             Kind::Calendar => "calendar",
+            Kind::OpenFile => "openfiledialog",
+            Kind::SaveFile => "savefiledialog",
+            Kind::FolderDialog => "folderbrowserdialog",
+            Kind::ColorDialog => "colordialog",
+            Kind::FontDialog => "fontdialog",
+            Kind::ErrorProvider => "errorprovider",
+            Kind::NotifyIcon => "notifyicon",
         }
     }
 
@@ -258,13 +282,14 @@ impl Kind {
             Kind::Link => (80, 23),
             Kind::Masked => (150, 23),
             Kind::Calendar => (227, 162),
+            Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon => (32, 32),
         }
     }
 
     /// The handler a control of this kind has, if any.
     pub fn event(self) -> Option<&'static str> {
         match self {
-            Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Link => Some("on_click"),
+            Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Link | Kind::NotifyIcon => Some("on_click"),
             Kind::Edit | Kind::Textarea | Kind::Combo | Kind::Tabs | Kind::Date | Kind::Number | Kind::Slider | Kind::Rich | Kind::Grid | Kind::Masked | Kind::Calendar | Kind::CheckedList => Some("on_change"),
             Kind::List | Kind::Tree | Kind::ListBox => Some("on_select"),
             Kind::Timer => Some("on_tick"),
@@ -273,7 +298,7 @@ impl Kind {
     }
 
     pub fn has_text(self) -> bool {
-        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group | Kind::Link)
+        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group | Kind::Link | Kind::NotifyIcon)
     }
 }
 
@@ -959,7 +984,7 @@ impl FormFile {
             add(&t.label);
         }
         for c in &self.control {
-            if c.kind != Kind::Edit {
+            if !matches!(c.kind, Kind::Edit | Kind::Masked) {
                 if let Some(t) = &c.text {
                     add(t);
                 }

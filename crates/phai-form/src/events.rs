@@ -80,6 +80,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("checked_changed", "CheckedChanged", Args::None, &[Kind::Checkbox, Kind::Radio], Source::Command(0), "Ticked or unticked."),
     ev("text_changed", "TextChanged", Args::None, &[Kind::Combo], Source::Command(5), "Words typed into a drop-down that takes them."),
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
+    ev("double_click", "MouseDoubleClick", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0203), "The icon in the corner clicked twice - as often, to show the window again."),
     ev("selection_changed", "SelectionChanged", Args::None, &[Kind::Grid], Source::Notify(-101), "Another row chosen."),
 ];
 
