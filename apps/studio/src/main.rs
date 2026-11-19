@@ -1347,6 +1347,30 @@ impl Studio {
         if let Some(c) = self.canvas.as_mut() {
             c.rebuild();
         }
+        // A label that sizes itself: the width it took is its width in the form, as Visual
+        // Studio writes a Size it did not choose - so the handles go round what is drawn.
+        if let Some(cv) = self.canvas.as_ref() {
+            let mut fitted = false;
+            for (i, c) in self.doc.form.control.iter_mut().enumerate() {
+                use phai_form::HasProps;
+                if !c.flag("auto_size", false) {
+                    continue;
+                }
+                if let (Some(h), Some([x, y, w, ht])) = (cv.control_window(i), c.bounds) {
+                    let r = win::rect_in_parent(h);
+                    let now = phai_ui::layout::unscale(r.right - r.left, win::dpi(h));
+                    if now > 0 && now != w {
+                        c.bounds = Some([x, y, now, ht]);
+                        fitted = true;
+                    }
+                }
+            }
+            if fitted {
+                if let Some(c) = self.canvas.as_mut() {
+                    c.place_handles();
+                }
+            }
+        }
         self.refresh_outline();
     }
 
@@ -8036,6 +8060,149 @@ impl MainWindowEvents for MainWindow {
         assert_eq!(String::from_utf8_lossy(&out.stderr).matches("warning").count(), 0, "{}", String::from_utf8_lossy(&out.stderr));
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-methods.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
+        assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A real project with the creation-time and form-wide properties - AutoSize, ThreeState,
+    /// WordWrap, ShowCheckBox, LabelEdit, BackColor of its own, AutoScroll, Padding - and files
+    /// dropped on a control; each found in the running window.
+    #[test]
+    #[ignore = "builds and runs a project with cargo"]
+    fn creation_and_form_properties_reach_the_running_program() {
+        use phai_form::{Control, HasProps};
+        let dir = std::env::temp_dir().join(format!("phai-more-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let v = |s: &str| phai_form::toml::Value::String(s.into());
+        let b = phai_form::toml::Value::Boolean;
+        let mut hint = Control::new(Kind::Label, "hint", [11, 40, 30, 23]);
+        hint.text = Some("Hi".into());
+        hint.set_prop("auto_size", Some(b(true)));
+        let mut agree = Control::new(Kind::Checkbox, "agree", [11, 70, 150, 23]);
+        agree.text = Some("Agree".into());
+        agree.set_prop("three_state", Some(b(true)));
+        let mut push = Control::new(Kind::Checkbox, "push", [170, 70, 100, 28]);
+        push.text = Some("Bold".into());
+        push.set_prop("appearance", Some(v("button")));
+        push.checked = Some(true);
+        let mut notes = Control::new(Kind::Textarea, "notes", [11, 100, 200, 80]);
+        notes.set_prop("word_wrap", Some(b(false)));
+        notes.set_prop("scroll_bars", Some(v("both")));
+        notes.events.insert("drag_drop".into(), "notes_dropped".into());
+        let mut when = Control::new(Kind::Date, "when", [11, 190, 200, 23]);
+        when.set_prop("show_check_box", Some(b(true)));
+        when.set_prop("show_up_down", Some(b(true)));
+        let mut places = Control::new(Kind::Tree, "places", [230, 100, 150, 120]);
+        places.items = vec![];
+        places.set_prop("label_edit", Some(b(true)));
+        let mut level = Control::new(Kind::Slider, "level", [400, 40, 40, 180]);
+        level.set_prop("orientation", Some(v("vertical")));
+        level.set_prop("tick_frequency", Some(phai_form::toml::Value::Integer(10)));
+        f.control.extend([hint, agree, push, notes, when, places, level]);
+        f.form.size = [460, 300];
+        f.form.set_prop("back_color", Some(v("#fff7e6")));
+        f.form.set_prop("auto_scroll", Some(b(true)));
+        f.form.set_prop("padding", Some(phai_form::toml::Value::Integer(8)));
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Hi", "สวัสดี"), ("Agree", "ยอมรับ"), ("Bold", "ตัวหนา")]).unwrap();
+        let user = dir.join("src").join("main_window.rs");
+        let code = r#"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
+use std::sync::OnceLock;
+use phai_ui::ctl::*;
+use windows::Win32::UI::WindowsAndMessaging as wm;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+static HIT: AtomicU32 = AtomicU32::new(0);
+fn hit(bit: u32) { HIT.fetch_or(1 << bit, SeqCst); }
+fn ok(b: bool, bit: u32) { if b { hit(bit) } }
+struct Parts { win: isize, hint: Label, agree: CheckBox, notes: TextBox, when: DateTimePicker, places: TreeView, status: StatusBar }
+unsafe impl Send for Parts {}
+unsafe impl Sync for Parts {}
+static UI: OnceLock<Parts> = OnceLock::new();
+fn style(h: HWND) -> u32 { unsafe { wm::GetWindowLongW(h, wm::GWL_STYLE) as u32 } }
+unsafe extern "system" fn poke(_: HWND, _: u32, id: usize, _: u32) {
+    unsafe { let _ = wm::KillTimer(None, id); }
+    let u = UI.get().unwrap();
+    let win = HWND(u.win as *mut _);
+    let narrow = u.hint.bounds().right - u.hint.bounds().left;
+    u.hint.set_text("A much longer sentence than before");
+    let wide = u.hint.bounds().right - u.hint.bounds().left;
+    ok(wide > narrow * 3, 0);
+    let mut states = vec![];
+    for _ in 0..3 {
+        unsafe { wm::SendMessageW(u.agree.hwnd(), 0x00F5, None, None); }
+        states.push(u.agree.check_state());
+    }
+    ok(states == [CheckState::Checked, CheckState::Indeterminate, CheckState::Unchecked], 1);
+    ok(style(u.notes.hwnd()) & (wm::WS_HSCROLL.0 | wm::WS_VSCROLL.0 | 0x80) == wm::WS_HSCROLL.0 | wm::WS_VSCROLL.0 | 0x80, 2);
+    ok(style(u.when.hwnd()) & 0x3 == 0x3, 3);
+    ok(style(u.places.hwnd()) & 0x8 != 0, 4);
+    ok(phai_ui::win::window_background_for(u.hint.hwnd()) == phai_ui::theme::Color::rgb(0xff, 0xf7, 0xe6), 5);
+    // Padding: the status bar docked to the bottom stands 8 pixels (at this scale) off the edge.
+    let mut c = windows::Win32::Foundation::RECT::default();
+    unsafe { let _ = wm::GetClientRect(win, &mut c); }
+    let gap = c.bottom - u.status.bounds().bottom;
+    ok((gap - phai_ui::win::px(win, 8)).abs() <= 1, 9);
+    // AutoScroll: smaller than designed, a bar; scrolled, the controls move up.
+    unsafe { let _ = wm::SetWindowPos(win, None, 0, 0, 300, 200, wm::SWP_NOMOVE | wm::SWP_NOZORDER); }
+    let mut si = wm::SCROLLINFO { cbSize: std::mem::size_of::<wm::SCROLLINFO>() as u32, fMask: wm::SIF_ALL, ..Default::default() };
+    unsafe { let _ = wm::GetScrollInfo(win, wm::SB_VERT, &mut si); }
+    ok(si.nMax + 1 > si.nPage as i32, 6);
+    let top = u.notes.bounds().top;
+    unsafe { wm::SendMessageW(win, wm::WM_VSCROLL, Some(WPARAM(1 /* SB_LINEDOWN */)), Some(LPARAM(0))); }
+    ok(u.notes.bounds().top < top, 7);
+    // Files dropped on the text box: a DROPFILES block as Explorer makes it.
+    let path: Vec<u16> = "C:\\\\dropped.txt".encode_utf16().chain([0, 0]).collect();
+    unsafe {
+        let mem = windows::Win32::System::Memory::GlobalAlloc(windows::Win32::System::Memory::GHND, 20 + path.len() * 2).unwrap();
+        let p = windows::Win32::System::Memory::GlobalLock(mem) as *mut u8;
+        *(p as *mut u32) = 20;
+        *(p.add(16) as *mut u32) = 1;
+        std::ptr::copy_nonoverlapping(path.as_ptr() as *const u8, p.add(20), path.len() * 2);
+        let _ = windows::Win32::System::Memory::GlobalUnlock(mem);
+        wm::SendMessageW(u.notes.hwnd(), 0x0233, Some(WPARAM(mem.0 as usize)), Some(LPARAM(0)));
+    }
+    let bits = HIT.load(SeqCst);
+    std::process::exit(if bits == 0x3FF { 42 } else { 1000 + bits as i32 });
+}
+
+#[derive(Default)]
+pub struct MainWindow {}
+
+impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        let _ = UI.set(Parts { win: ui.hwnd.0 as isize, hint: ui.hint, agree: ui.agree, notes: ui.notes, when: ui.when, places: ui.places, status: ui.status });
+        if std::env::var_os("PHAI_SHOT").is_none() {
+            unsafe { wm::SetTimer(None, 0, 300, Some(poke)); }
+        }
+    }
+    fn notes_dropped(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::FileDropEventArgs) {
+        ok(e.files == [std::path::PathBuf::from("C:\\\\dropped.txt")], 8);
+    }
+}
+"#;
+        std::fs::write(&user, code).unwrap();
+        let cargo_toml = dir.join("Cargo.toml");
+        let manifest = std::fs::read_to_string(&cargo_toml).unwrap();
+        if !manifest.contains("Win32_System_Memory") {
+            std::fs::write(&cargo_toml, manifest.replacen("\"Win32_Foundation\",", "\"Win32_Foundation\",
+    \"Win32_System_Memory\",", 1)).unwrap();
+        }
+        let target = std::env::temp_dir().join("phai-props-target");
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let run = |args: &[&str]| std::process::Command::new(&cargo).args(args).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        let out = run(&["build", "--quiet"]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
+        let shot = std::process::Command::new(&exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-more.png")).status().unwrap();
+        assert!(shot.success(), "photographed");
+        let code = std::process::Command::new(&exe).status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of what worked");
         let _ = std::fs::remove_dir_all(&dir);
     }

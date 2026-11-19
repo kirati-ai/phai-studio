@@ -169,7 +169,13 @@ impl Layout {
         unsafe {
             let _ = wm::GetClientRect(parent, &mut c);
         }
-        let size = (unscale(c.right - c.left, dpi), unscale(c.bottom - c.top, dpi));
+        let mut size = (unscale(c.right - c.left, dpi), unscale(c.bottom - c.top, dpi));
+        // AutoScroll: never smaller than designed; scrolled to where its bars are.
+        let scrolls = crate::form::scrolls(parent);
+        if scrolls {
+            size = (size.0.max(self.design.0), size.1.max(self.design.1));
+        }
+        let (ox, oy) = if scrolls { crate::form::update_scrollbars(parent, (scale(size.0, dpi), scale(size.1, dpi))) } else { (0, 0) };
         let items: Vec<Item> = self.items.iter().map(|(_, i)| *i).collect();
         let rects = arrange(self.design, size, self.padding, &items);
         unsafe {
@@ -177,6 +183,8 @@ impl Layout {
             for ((h, _), r) in self.items.iter().zip(&rects) {
                 let (x, y) = (scale(r.x, dpi), scale(r.y, dpi));
                 let (w, hgt) = (scale(r.x + r.w, dpi) - x, scale(r.y + r.h, dpi) - y);
+                let w = crate::win::auto_width(*h).unwrap_or(w);
+                let (x, y) = (x - ox, y - oy);
                 // A group frame goes to the back, whenever it was made: every sibling must clip it,
                 // or it paints over what it gathers.
                 let (after, flags) = if crate::win::kind_of(*h) == Some(crate::win::Kind::Group) {

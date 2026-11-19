@@ -94,7 +94,7 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                 let st = win::style_of(h, Kind::Group, State::default());
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
-                win::fill(dc, &r, win::window_background());
+                win::fill(dc, &r, win::window_background_for(h));
                 let text = win::text_of(h);
                 let (tw, th) = win::measure(h, win::css_font(h, &st).unwrap_or(s.font), &text);
                 let top = th / 2;
@@ -104,9 +104,9 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                     let x = px(h, 10);
                     let gap = px(h, 4);
                     let back = RECT { left: x - gap, top: r.top, right: x + tw + gap, bottom: r.top + th };
-                    win::fill(dc, &back, win::window_background());
+                    win::fill(dc, &back, win::window_background_for(h));
                     let mut tr = RECT { left: x, top: r.top, right: x + tw, bottom: r.top + th };
-                    win::draw_text_styled(dc, h, &text, &mut tr, st.color_or(win::window_text()), Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
+                    win::draw_text_styled(dc, h, &text, &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
                 }
                 let _ = Gdi::EndPaint(h, &ps);
                 LRESULT(0)
@@ -227,21 +227,21 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 let base = win::style_of(h, Kind::Tabs, State::default());
-                win::fill(dc, &r, base.background_or(win::window_background()));
+                win::fill(dc, &r, base.background_or(win::window_background_for(h)));
                 let rule = RECT { top: r.bottom - 1, ..r };
                 win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
                 for (i, (a, b)) in tab_edges(h, t).into_iter().enumerate() {
                     let st = win::style_of(h, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
                     let close_w = if t.closable { px(h, 20) } else { 0 };
                     let mut tr = RECT { left: a, right: b - close_w, top: r.top, bottom: r.bottom - px(h, 3) };
-                    win::draw_text_styled(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text()), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
+                    win::draw_text_styled(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
                     // The close button, on the chosen tab and the one under the pointer.
                     if let Some(c) = close_box(i, t).filter(|_| i == t.selected || t.hot == Some(i)) {
                         if t.hot == Some(i) && t.hot_close {
                             win::round_rect(dc, c, base.border_or(Color::rgb(220, 220, 220)), base.border_or(Color::rgb(220, 220, 220)), px(h, 3));
                         }
                         let (cx, cy, k) = ((c.left + c.right) / 2, (c.top + c.bottom) / 2, px(h, 4));
-                        let pen = Gdi::CreatePen(Gdi::PS_SOLID, px(h, 1).max(1), windows::Win32::Foundation::COLORREF(st.color_or(win::window_text()).colorref()));
+                        let pen = Gdi::CreatePen(Gdi::PS_SOLID, px(h, 1).max(1), windows::Win32::Foundation::COLORREF(st.color_or(win::window_text_for(h)).colorref()));
                         let old = Gdi::SelectObject(dc, pen.into());
                         let _ = Gdi::MoveToEx(dc, cx - k, cy - k, None);
                         let _ = Gdi::LineTo(dc, cx + k + 1, cy + k + 1);
@@ -381,10 +381,10 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 let st = win::style_of(h, Kind::StatusBar, State::default());
-                win::fill(dc, &r, st.background_or(win::window_background()));
+                win::fill(dc, &r, st.background_or(win::window_background_for(h)));
                 let rule = RECT { bottom: r.top + 1, ..r };
                 win::fill(dc, &rule, st.border_or(Color::rgb(229, 229, 229)));
-                let fg = st.color_or(win::window_text());
+                let fg = st.color_or(win::window_text_for(h));
                 let pad = px(h, 10);
                 let rest: i32 = s.widths.iter().skip(1).map(|w| px(h, *w)).sum();
                 let mut x = r.left;
@@ -493,7 +493,7 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 let base = win::style_of(h, Kind::Tabs, State::default());
-                win::fill(dc, &r, base.background_or(win::window_background()));
+                win::fill(dc, &r, base.background_or(win::window_background_for(h)));
                 let rule = RECT { top: r.bottom - 1, ..r };
                 win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
                 let muted = crate::theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
@@ -603,7 +603,7 @@ extern "system" fn splitter_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRE
                 let dc = Gdi::HDC(w.0 as *mut _);
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
-                win::fill(dc, &r, win::window_background());
+                win::fill(dc, &r, win::window_background_for(h));
                 // A hairline in the middle, as a divider.
                 let rule = if across { RECT { left: r.right / 2, right: r.right / 2 + 1, ..r } } else { RECT { top: r.bottom / 2, bottom: r.bottom / 2 + 1, ..r } };
                 win::fill(dc, &rule, win::style_of(h, Kind::Tabs, State::default()).border_or(Color::rgb(229, 229, 229)));

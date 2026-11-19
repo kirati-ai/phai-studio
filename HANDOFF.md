@@ -104,12 +104,13 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 
 ## งานถัดไป (เรียงตามความสำคัญ)
 
-### 1. ที่ยังเป็น ⬜/🟡 ใน `docs/winforms-parity.md`
-- ฟอร์ม BackColor/ForeColor รายหน้าต่าง (ตอนนี้ทั้งโปรแกรม: `theme::set_window_colors`) — ต้องให้ `window_background()`
-  ดูหน้าต่างราก ~16 จุดใน win.rs + controls.rs
-- Label AutoSize, CheckBox ThreeState, TextBox ScrollBars/WordWrap ของ textarea, Date ShowCheckBox/ShowUpDown,
-  TrackBar แนวตั้ง, TreeView LabelEdit (style ตอนสร้าง: ต้องสร้าง control ใหม่หรือส่งผ่าน constructor แบบ `combo_with`)
-- ฟอร์ม BackgroundImage, AutoScroll, AllowDrop (+ DragDrop events)
+### 1. `docs/winforms-parity.md` ครบแล้ว (2026-11-19 รอบสอง) เหลือ 🟡 เดียว
+- ทำเพิ่ม: BackColor/ForeColor รายหน้าต่าง (`win::window_background_for(h)` ดูหน้าต่างราก), Label AutoSize, CheckBox
+  ThreeState/Appearance=Button, textarea WordWrap/ScrollBars (`win::textarea_with`), Date ShowCheckBox/ShowUpDown
+  (`win::date_with`), TrackBar แนวตั้ง, TreeView LabelEdit, ฟอร์ม BackgroundImage/AutoScroll/Padding/AllowDrop,
+  event DragDrop (`FileDropEventArgs`) — เทสต์ `creation_and_form_properties_reach_the_running_program`
+- 🟡 BackgroundImage: label/checkbox วาดพื้นทึบทับรูป (ต้องให้ ctl_color คืน NULL_BRUSH เมื่อหน้าต่างมีรูป + invalidate
+  พื้นใต้ label ตอนเปลี่ยนข้อความ)
 
 ### 2. แท็บ Style 🖌, CSS transition / animation, Theme Editor (ดูหัวข้อ "หลักของ control" ด้านบน)
 

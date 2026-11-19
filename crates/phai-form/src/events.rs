@@ -14,6 +14,7 @@ pub enum Args {
     Mouse,
     Closing,
     Item,
+    Files,
 }
 
 impl Args {
@@ -26,6 +27,7 @@ impl Args {
             Args::Mouse => Some("phai_ui::events::MouseEventArgs"),
             Args::Closing => Some("phai_ui::events::ClosingEventArgs"),
             Args::Item => Some("phai_ui::events::ItemEventArgs"),
+            Args::Files => Some("phai_ui::events::FileDropEventArgs"),
         }
     }
 }
@@ -74,6 +76,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("mouse_up", "MouseUp", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_UP), "A mouse button let go over it."),
     ev("mouse_move", "MouseMove", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_MOVE), "The mouse moves over it."),
     ev("resize", "Resize", Args::None, &[], Source::Hook(phai_ui_codes::RESIZE), "Its size changed - the window was sized, and it is anchored or docked."),
+    ev("drag_drop", "DragDrop", Args::Files, &[], Source::Hook(phai_ui_codes::DRAG_DROP), "Files dropped on it from Explorer - e.files."),
     ev("checked_changed", "CheckedChanged", Args::None, &[Kind::Checkbox, Kind::Radio], Source::Command(0), "Ticked or unticked."),
     ev("text_changed", "TextChanged", Args::None, &[Kind::Combo], Source::Command(5), "Words typed into a drop-down that takes them."),
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
@@ -93,6 +96,7 @@ pub const FORM: &[EventSpec] = &[
     ev("mouse_down", "MouseDown", Args::Mouse, &[], Source::Form, "A mouse button pressed on the window itself."),
     ev("mouse_up", "MouseUp", Args::Mouse, &[], Source::Form, "A mouse button let go on the window itself."),
     ev("mouse_move", "MouseMove", Args::Mouse, &[], Source::Form, "The mouse moves over the window itself."),
+    ev("drag_drop", "DragDrop", Args::Files, &[], Source::Form, "Files dropped on the window from Explorer - e.files."),
     ev("key_down", "KeyDown", Args::Key, &[], Source::Form, "A key pressed anywhere in the window when KeyPreview is on - before the control has it; e.set_handled() keeps it from the control."),
     ev("key_up", "KeyUp", Args::Key, &[], Source::Form, "A key let go anywhere in the window when KeyPreview is on."),
     ev("key_press", "KeyPress", Args::KeyPress, &[], Source::Form, "A letter typed anywhere in the window when KeyPreview is on."),
@@ -113,6 +117,7 @@ pub mod phai_ui_codes {
     pub const CLICK: u16 = phai_ui::events::CLICK;
     pub const DOUBLE_CLICK: u16 = phai_ui::events::DOUBLE_CLICK;
     pub const RESIZE: u16 = phai_ui::events::RESIZE;
+    pub const DRAG_DROP: u16 = phai_ui::events::DRAG_DROP;
 }
 
 /// Whether controls of `kind` raise `e`: an empty list is every control on the form.

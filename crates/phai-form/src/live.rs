@@ -106,8 +106,8 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             }
             h
         }
-        Kind::Textarea => win::textarea(parent, text, id, font),
-        Kind::Date => win::date(parent, id, font),
+        Kind::Textarea => win::textarea_with(parent, text, id, font, c.flag("word_wrap", true), c.word("scroll_bars").unwrap_or("vertical")),
+        Kind::Date => win::date_with(parent, id, font, c.flag("show_check_box", false), c.flag("show_up_down", false)),
         Kind::Number => win::number(parent, id, font, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
         Kind::Progress => win::progress(parent, id, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
         Kind::Slider => win::slider(parent, id, c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
