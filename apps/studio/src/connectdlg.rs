@@ -169,12 +169,13 @@ pub fn make(owner: HWND, start: Option<&Connection>) -> HWND {
         win::set_css(file_note, "muted", "");
         at(file_note, fx, row_y(1), fw, ROW * 2);
         // Below: Test, what it said, OK, Cancel.
-        let foot = row_y(7) + 8;
+        // What Test connection said: a line of its own, the whole width, above the buttons.
+        let foot = row_y(7) + 34;
         let test = win::button(hwnd, t("Test connection"), ID_TEST, font, false);
         phai_ui::props::tooltip(test, t("Connect once, to see that it answers"));
         at(test, M, foot, 150, 30);
         let say = win::label(hwnd, "", 0, font);
-        at(say, M + 160, foot + 4, W - 2 * M - 160 - 210, 22);
+        at(say, M, row_y(7) + 2, W - 2 * M, 24);
         let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
         at(ok, W - M - 200, foot, 96, 30);
         let cancel = win::button(hwnd, t("Cancel"), ID_CANCEL, font, false);
@@ -209,6 +210,13 @@ pub fn said_of(c: &Connection, e: &str) -> String {
         return tf("No computer is named {0} - check the Server box.", &[&c.host]);
     }
     e.to_string()
+}
+
+/// For checking: Test connection pressed.
+pub fn press_test(h: HWND) {
+    unsafe {
+        wm::SendMessageW(h, wm::WM_COMMAND, Some(WPARAM(ID_TEST as usize)), None);
+    }
 }
 
 /// For checking: a click in the middle of card `k`, sent as the mouse sends it.
