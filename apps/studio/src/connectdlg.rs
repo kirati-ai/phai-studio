@@ -199,6 +199,31 @@ pub fn show_kind(h: HWND, k: usize) {
     set_kind(h, k.min(KINDS.len() - 1));
 }
 
+/// What a failed connection means, in words a person can act on: nothing answering at the
+/// address (os error 10061) is the server not running there, or another port.
+pub fn said_of(c: &Connection, e: &str) -> String {
+    if e.contains("10061") || e.contains("actively refused") || e.contains("Connection refused") {
+        return tf("Nothing answers at {0}:{1} - is {2} running there, on that port?", &[&c.host, &c.port, &c.kind.name()]);
+    }
+    if e.contains("11001") || e.contains("No such host") {
+        return tf("No computer is named {0} - check the Server box.", &[&c.host]);
+    }
+    e.to_string()
+}
+
+/// For checking: a click in the middle of card `k`, sent as the mouse sends it.
+pub fn click_card(h: HWND, k: usize) {
+    let Some(cards) = state(h).map(|d| d.cards) else { return };
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(cards, &mut r);
+        let cw = r.right / KINDS.len() as i32;
+        let x = cw * k as i32 + cw / 2;
+        wm::SendMessageW(cards, wm::WM_LBUTTONDOWN, Some(WPARAM(1)), Some(LPARAM(((r.bottom / 2) << 16 | x) as isize)));
+        wm::SendMessageW(cards, wm::WM_LBUTTONUP, Some(WPARAM(0)), Some(LPARAM(((r.bottom / 2) << 16 | x) as isize)));
+    }
+}
+
 /// Card `k` chosen: its fields shown, a server's user and port as its kind usually has them
 /// unless they were changed.
 fn set_kind(h: HWND, k: usize) {
@@ -215,23 +240,18 @@ fn set_kind(h: HWND, k: usize) {
     for c in [d.f.file, d.f.browse, d.f.file_note] {
         win::show(c, file);
     }
-    if !file && was < KINDS.len() && was != k {
+    // A port and user as some database has them by default (or none) follow the card; ones the
+    // person typed stay. Compared with every server's defaults, not only the card before - that
+    // may be SQLite, which has neither.
+    if !file && was != k {
         let (port, user) = (win::text_of(d.f.port), win::text_of(d.f.user));
-        let defaults = |kind: Kind| (kind.default_port().to_string(), if kind == Kind::Postgres { "postgres" } else { "root" });
-        let (old_port, old_user) = defaults(KINDS[was]);
-        let (new_port, new_user) = defaults(KINDS[k]);
-        if port.trim().is_empty() || port.trim() == old_port {
-            win::set_text(d.f.port, &new_port);
+        let ports = [Kind::MySql.default_port().to_string(), Kind::Postgres.default_port().to_string()];
+        if port.trim().is_empty() || ports.iter().any(|p| p == port.trim()) {
+            win::set_text(d.f.port, &KINDS[k].default_port().to_string());
         }
-        if user.trim().is_empty() || user.trim() == old_user {
-            win::set_text(d.f.user, new_user);
+        if user.trim().is_empty() || ["root", "postgres"].contains(&user.trim()) {
+            win::set_text(d.f.user, if KINDS[k] == Kind::Postgres { "postgres" } else { "root" });
         }
-    }
-    if !file && win::text_of(d.f.port).trim().is_empty() {
-        win::set_text(d.f.port, &KINDS[k].default_port().to_string());
-    }
-    if !file && win::text_of(d.f.user).trim().is_empty() {
-        win::set_text(d.f.user, if KINDS[k] == Kind::Postgres { "postgres" } else { "root" });
     }
     win::set_text(d.say, "");
     unsafe {
@@ -361,10 +381,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
                 ID_TEST => {
                     let c = d.read();
+                    let probe_words = c.clone();
                     let name = c.kind.name();
                     match phai_ui::dialogs::wait_for(Some(h), &tf("Add Connection - {0}", &[&name]), t("Connecting..."), move |_| c.test()) {
                         Some(Ok(version)) => win::set_text(d.say, &tf("It answers: {0} {1}", &[&name, &version])),
-                        Some(Err(e)) => win::set_text(d.say, &e),
+                        Some(Err(e)) => win::set_text(d.say, &said_of(&probe_words, &e)),
                         None => {}
                     }
                 }
@@ -381,5 +402,18 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             win::def(h, msg, w, l)
         }
         _ => win::def(h, msg, w, l),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_connection_says_what_to_check() {
+        let c = Connection { host: "localhost".into(), port: 5432, kind: Kind::Postgres, ..Default::default() };
+        let said = said_of(&c, "No connection could be made because the target machine actively refused it. (os error 10061)");
+        assert!(said.contains("localhost:5432") && said.contains("PostgreSQL"), "{said}");
+        assert_eq!(said_of(&c, "password authentication failed"), "password authentication failed", "other words as they are");
     }
 }

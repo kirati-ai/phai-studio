@@ -664,6 +664,26 @@ impl Canvas {
 
     // --- the canvas's mouse: the form's own handles ---
 
+    /// A right-click on the form or the component tray: what is under it chosen (unless it is
+    /// already among the chosen), then its menu - as Visual Studio's designer has it.
+    fn context(&mut self, on_surface: bool, l: LPARAM) {
+        let Some(s) = studio() else { return };
+        let p = self.design_point(if on_surface { self.surface } else { self.hwnd }, l);
+        let under = if on_surface {
+            self.hit(p)
+        } else {
+            tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]).map(|(i, _)| i)
+        };
+        if under.is_none_or(|i| !s.selection().contains(&i)) {
+            s.select(under);
+            self.place_handles();
+        }
+        unsafe {
+            let _ = km::SetFocus(Some(self.surface));
+        }
+        s.designer_menu(self.hwnd);
+    }
+
     fn canvas_down(&mut self, l: LPARAM) {
         let Some(s) = studio() else { return };
         let p = self.design_point(self.hwnd, l);
@@ -991,6 +1011,13 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        // A right-click on a component's chip below the form.
+        wm::WM_RBUTTONUP => {
+            if let Some(c) = canvas_of(h) {
+                c.context(false, l);
+            }
+            LRESULT(0)
+        }
         // An editor on the canvas says its text changed; an editor takes the canvas's whole size.
         wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::CHANGED => {
             if let Some(s) = studio() {
@@ -1097,6 +1124,12 @@ extern "system" fn surface_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
         wm::WM_LBUTTONDOWN => {
             if let Some(c) = canvas_of(h) {
                 c.down(l);
+            }
+            LRESULT(0)
+        }
+        wm::WM_RBUTTONUP => {
+            if let Some(c) = canvas_of(h) {
+                c.context(true, l);
             }
             LRESULT(0)
         }
