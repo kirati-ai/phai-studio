@@ -315,9 +315,75 @@ pub fn pick_folder(owner: HWND, title: &str) -> Option<PathBuf> {
     }
 }
 
+/// The Phai libraries a project may name, each with where this Phai Studio has it.
+fn libraries() -> [(&'static str, PathBuf); 3] {
+    [("phai-ui", phai_ui_path()), ("phai-data", phai_data_path()), ("phai-web", crate::web::phai_web_path())]
+}
+
+/// A project's Cargo.toml with each Phai library whose `path` leads nowhere - Phai Studio
+/// uninstalled, put in another folder, or the project copied from another machine - named again
+/// by `line_for` (the name to its new `{ .. }`); `None` when every path is still good.
+pub fn fixed_libraries(toml: &str, exists: impl Fn(&Path) -> bool, line_for: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let mut changed = false;
+    let lines: Vec<String> = toml
+        .lines()
+        .map(|l| {
+            let Some((name, value)) = l.split_once('=') else { return l.to_string() };
+            let name = name.trim();
+            let value = value.trim();
+            if !["phai-ui", "phai-data", "phai-web"].contains(&name) || !value.starts_with('{') {
+                return l.to_string();
+            }
+            let Some(rest) = value.split("path").nth(1) else { return l.to_string() };
+            let Some(path) = rest.split('"').nth(1) else { return l.to_string() };
+            if exists(&Path::new(path).join("Cargo.toml")) {
+                return l.to_string();
+            }
+            match line_for(name) {
+                Some(new) => {
+                    changed = true;
+                    format!("{name} = {new}")
+                }
+                None => l.to_string(),
+            }
+        })
+        .collect();
+    let mut out = lines.join("\n");
+    if toml.ends_with('\n') {
+        out.push('\n');
+    }
+    changed.then_some(out)
+}
+
+/// Mends a project's Cargo.toml before a build (see [`fixed_libraries`]); whether it changed.
+pub fn mend_libraries(project: &Path) -> bool {
+    let file = project.join("Cargo.toml");
+    let Ok(toml) = std::fs::read_to_string(&file) else { return false };
+    let libs = libraries();
+    let fixed = fixed_libraries(&toml, |p| p.is_file(), |name| libs.iter().find(|(n, _)| *n == name).map(|(_, local)| library_dependency(local)));
+    match fixed {
+        Some(t) => std::fs::write(&file, t).is_ok(),
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_library_path_that_leads_nowhere_is_named_again() {
+        let toml = "[package]\nname = \"t\"\n\n[dependencies]\nphai-ui = { path = \"C:/Gone/phai-ui\" }\nphai-data = { path = \"C:/Here/phai-data\" }\nregex = \"1\"\n\n[target.'cfg(target_arch = \"wasm32\")'.dependencies]\nphai-web = { path = \"C:/Gone/phai-web\" }\n";
+        let here = |p: &Path| p.starts_with("C:/Here");
+        let new = |n: &str| Some(format!("{{ path = \"D:/now/{n}\" }}"));
+        let out = fixed_libraries(toml, here, new).expect("mended");
+        assert!(out.contains("phai-ui = { path = \"D:/now/phai-ui\" }"), "{out}");
+        assert!(out.contains("phai-web = { path = \"D:/now/phai-web\" }"), "{out}");
+        assert!(out.contains("phai-data = { path = \"C:/Here/phai-data\" }"), "a good path stays: {out}");
+        assert!(out.contains("regex = \"1\"") && out.ends_with('\n'), "{out}");
+        let fine = "[dependencies]\nphai-ui = { path = \"C:/Here/phai-ui\" }\nphai-ui-git = { git = \"x\" }\n";
+        assert_eq!(fixed_libraries(fine, here, new), None, "nothing to mend");
+    }
 
     #[test]
     fn a_store_install_takes_the_libraries_from_git_at_its_release() {

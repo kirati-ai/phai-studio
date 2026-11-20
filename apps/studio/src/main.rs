@@ -5076,6 +5076,9 @@ impl Studio {
             win::message(Some(self.hwnd), t("This form is not in a Cargo project - make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
             return;
         };
+        // A Phai library's path that leads nowhere (Phai Studio uninstalled or moved, the project
+        // copied from another machine): named again from where this Phai Studio has it.
+        let mended = project::mend_libraries(&dir) || cargo::project_of(&path).is_some_and(|p| p != dir && project::mend_libraries(&p));
         if then_run {
             self.stop();
         }
@@ -5089,6 +5092,9 @@ impl Studio {
         if let Some(b) = self.bottom.as_ref() {
             b.clear_output();
             b.show_tab(1);
+            if mended {
+                b.add_line(t("Cargo.toml: the Phai libraries' folder was gone - now named where this Phai Studio has them."));
+            }
         }
         self.show_errors(true);
         cargo::run_job(self.hwnd, dir, job, whole, then_run, self.release);
