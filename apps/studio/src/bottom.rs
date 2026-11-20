@@ -38,7 +38,7 @@ pub const ID_COVERAGE: i32 = 530;
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
 /// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints, 11 threads,
 /// 12 memory, 13 disassembly, 14 code coverage.
-fn labels() -> [&'static str; 15] {
+pub fn labels() -> [&'static str; 15] {
     [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads"), t("Memory"), t("Disassembly"), t("Code Coverage")]
 }
 
@@ -66,6 +66,9 @@ pub struct Bottom {
     pub disassembly: HWND,
     pub coverage: HWND,
     layout: Layout,
+    /// Which tabs are open, by the order of [`labels`]: as Visual Studio's tool windows, each
+    /// closes on its own (its ×) and opens again when it is asked for. Errors and Output to begin.
+    open: std::cell::Cell<[bool; 15]>,
 }
 
 impl Bottom {
@@ -75,6 +78,7 @@ impl Bottom {
             wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default()
         };
         let tabs = controls::tabs(hwnd, ID_TABS, font, &labels());
+        controls::tabs_closable(tabs);
         let errors = win::list(hwnd, errors_id, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
         let refs = win::list(hwnd, ID_REFS, font, &[(t("File"), 170), (t("Line"), 60), (t("Code"), 640)]);
@@ -150,7 +154,7 @@ impl Bottom {
             wm::SendMessageW(disassembly, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
         layout.add(disassembly, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, open: std::cell::Cell::new(std::array::from_fn(|k| k < 2)) });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -158,9 +162,55 @@ impl Bottom {
         b
     }
 
-    /// 0 the errors, 1 the output, 2 the references, 3 the locals, 4 the call stack.
+    /// The open tabs, in order.
+    fn open_tabs(&self) -> Vec<usize> {
+        let open = self.open.get();
+        (0..15).filter(|k| open[*k]).collect()
+    }
+
+    /// The strip again: the open tabs' names, `i` chosen.
+    fn restrip(&self, i: usize) {
+        let all = labels();
+        let shown = self.open_tabs();
+        let names: Vec<&str> = shown.iter().map(|k| all[*k]).collect();
+        controls::tabs_relabel(self.tabs, &names);
+        controls::tabs_select(self.tabs, shown.iter().position(|k| *k == i).unwrap_or(0));
+    }
+
+    /// Closes tab `i`; the one beside it shows. The last one closed hides the panel, as the
+    /// panel's own × does.
+    pub fn close_tab(&self, i: usize) {
+        let mut open = self.open.get();
+        let before = self.open_tabs();
+        open[i] = false;
+        self.open.set(open);
+        let left = self.open_tabs();
+        if left.is_empty() {
+            // Errors comes back the next time the panel shows.
+            let mut open = self.open.get();
+            open[0] = true;
+            self.open.set(open);
+            self.show_tab(0);
+            if let Ok(p) = unsafe { wm::GetParent(self.hwnd) } {
+                unsafe {
+                    let _ = wm::PostMessageW(Some(p), wm::WM_COMMAND, WPARAM(ID_VIEW_OUTPUT as usize), LPARAM(0));
+                }
+            }
+            return;
+        }
+        let at = before.iter().position(|k| *k == i).unwrap_or(0);
+        let shown = controls::tabs_selected(self.tabs);
+        let current = before.get(shown).copied().unwrap_or(0);
+        self.show_tab(if current == i { left[at.min(left.len() - 1)] } else { current });
+    }
+
+    /// Shows tab `i` (0 the errors, 1 the output, 2 the references, 3 the locals, 4 the call
+    /// stack - the order of [`labels`]), opening it if it was closed.
     pub fn show_tab(&self, i: usize) {
-        controls::tabs_select(self.tabs, i);
+        let mut open = self.open.get();
+        open[i] = true;
+        self.open.set(open);
+        self.restrip(i);
         win::show(self.errors, i == 0);
         win::show(self.output, i == 1);
         win::show(self.refs, i == 2);
@@ -189,7 +239,9 @@ impl Bottom {
     }
 
     pub fn relabel(&self) {
-        controls::tabs_relabel(self.tabs, &labels());
+        let shown = self.open_tabs();
+        let i = shown.get(controls::tabs_selected(self.tabs)).copied().unwrap_or(0);
+        self.restrip(i);
     }
 
     /// One more line at the end of the Immediate window.
@@ -255,7 +307,16 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         }
         (wm::WM_COMMAND, Some(b)) if win::loword(w.0) as i32 == ID_TABS => {
-            b.show_tab(win::hiword(w.0) as usize);
+            // The strip counts the open tabs only; its high bit is a tab's ×.
+            let n = win::hiword(w.0) as usize;
+            let shown = b.open_tabs();
+            if let Some(k) = shown.get(n & !controls::TAB_CLOSE).copied() {
+                if n & controls::TAB_CLOSE != 0 {
+                    b.close_tab(k);
+                } else {
+                    b.show_tab(k);
+                }
+            }
             LRESULT(0)
         }
         // The filters are the main window's to apply.
