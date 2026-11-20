@@ -86,8 +86,8 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   ไม่ต้องใช้ Mac หรือบัญชี Apple; ชื่อ event ใช้ชื่อเดียวกับ Windows; ทำได้: control ทั่วไป, ธีม, ลุคตามสถานะ (CSS :hover จริง)
   ทำไม่ได้บนเว็บ: NotifyIcon, ไฟล์ตรง ๆ (ใช้ File API แทน) — งาน native Android บน branch เป็นทางสำรอง
   **เริ่มแล้ว 2026-11-20: รอบแรกใช้ได้** — `crates/phai-web`, `phai_form::web`, Studio Build > สร้างสำหรับเว็บ (PWA) /
-  รันในเบราว์เซอร์ (`apps/studio/src/web.rs`); รายละเอียดและสิ่งที่ยังไม่มีใน `docs/web.md`. ต่อไป: เมนูบาร์/toolbar บนเว็บ,
-  tree, ฐานข้อมูลผ่าน HTTP, เผยแพร่ `web/` ขึ้น HTTPS จาก Studio, ทดสอบบนมือถือจริง
+  รันในเบราว์เซอร์ (`apps/studio/src/web.rs`); รายละเอียดและสิ่งที่ยังไม่มีใน `docs/web.md`. เมนูบาร์/toolbar บนเว็บเสร็จ 2026-11-20; ต่อไป:
+  เมนูคลิกขวา, tree, ฐานข้อมูลผ่าน HTTP, เผยแพร่ `web/` ขึ้น HTTPS จาก Studio, ทดสอบบนมือถือจริง
 - **WinForms ให้จบ (เจ้านายสั่ง 2026-11-19)** — ที่ยังขาดนอก checklist เดิม: Panel, SplitContainer, ListBox, CheckedListBox,
   LinkLabel, MaskedTextBox, MonthCalendar, NotifyIcon, dialog แบบ component (Open/Save/Color/Font), ErrorProvider,
   UserControl, MDI, การพิมพ์ (PrintDocument/Preview), data binding กับ control ทั่วไป, ลากวางระหว่าง control

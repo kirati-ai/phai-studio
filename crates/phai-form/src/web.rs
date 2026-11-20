@@ -28,12 +28,6 @@ pub fn on_web(kind: Kind) -> bool {
 /// control or part it is about.
 pub fn left_out(f: &FormFile) -> Vec<String> {
     let mut out = Vec::new();
-    if !f.menu.is_empty() {
-        out.push("menu bar".to_string());
-    }
-    if !f.toolbar.is_empty() {
-        out.push("toolbar".to_string());
-    }
     for c in &f.control {
         if !on_web(c.kind) {
             out.push(format!("{} ({})", c.id, c.kind.name()));
@@ -97,6 +91,48 @@ fn hook_event(name: &str) -> Option<&'static str> {
     })
 }
 
+fn glyph_code(name: Option<&str>) -> u16 {
+    name.and_then(phai_ui::icon::glyph::by_name).unwrap_or(0)
+}
+
+/// A menu's items as `phai_ui::menu::Item` literals.
+fn items_code(items: &[crate::model::MenuItem]) -> String {
+    let all: Vec<String> = items
+        .iter()
+        .map(|it| {
+            if it.separator {
+                return "phai_ui::menu::Item { separator: true, ..Default::default() }".to_string();
+            }
+            format!(
+                "phai_ui::menu::Item {{ id: {}, label: t({}), key: {}, glyph: {}, checked: {}, check_on_click: {}, disabled: {}, separator: false, items: {} }}",
+                lit(it.id.as_deref().unwrap_or("")),
+                lit(it.label.as_deref().unwrap_or("")),
+                lit(it.key.as_deref().unwrap_or("")),
+                glyph_code(it.glyph.as_deref()),
+                it.checked,
+                it.check_on_click,
+                it.disabled,
+                items_code(&it.items)
+            )
+        })
+        .collect();
+    format!("vec![{}]", all.join(", "))
+}
+
+/// The ids of the form's menu items and toolbar buttons, each once.
+fn item_ids(f: &FormFile) -> Vec<String> {
+    let mut v: Vec<String> = f.menu.iter().flat_map(|m| m.all_items()).filter_map(|it| it.id.clone()).collect();
+    for t in &f.toolbar {
+        if !v.contains(&t.id) {
+            v.push(t.id.clone());
+        }
+    }
+    v
+}
+
+/// The toolbar's height in the designer: Windows' own.
+pub const TOOLBAR_HEIGHT: i32 = 34;
+
 /// `src/web/<form>_ui.rs`.
 pub fn generate(f: &FormFile) -> String {
     let name = &f.form.name;
@@ -130,6 +166,9 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "pub struct {ui} {{");
     let _ = writeln!(w, "    pub hwnd: HWND,");
     let _ = writeln!(w, "    area: HWND,");
+    if !f.toolbar.is_empty() {
+        let _ = writeln!(w, "    pub toolbar: HWND,");
+    }
     for c in &shown {
         let _ = writeln!(w, "    pub {}: phai_ui::ctl::{},", c.id, crate::codegen::ctl_type(c.kind));
     }
@@ -183,7 +222,37 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "}}");
     let _ = writeln!(w);
 
+    let ids = item_ids(f);
+    if !ids.is_empty() {
+        let _ = writeln!(w, "/// A menu item or toolbar button chosen: its method.");
+        let _ = writeln!(w, "fn chosen<E: {events} + 'static>(me: &Me<E>) -> impl FnMut(&String) + 'static {{");
+        let _ = writeln!(w, "    call_with(me, |e: &mut E, ui: &{ui}, id: &String| match id.as_str() {{");
+        for id in ids.iter().filter(|id| handlers.contains(id)) {
+            let _ = writeln!(w, "        {} => e.{id}(ui),", lit(id));
+        }
+        let _ = writeln!(w, "        _ => {{}}");
+        let _ = writeln!(w, "    }})");
+        let _ = writeln!(w, "}}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "impl {ui} {{");
+    if !ids.is_empty() {
+        let _ = writeln!(w, "    /// Whether menu item (or toolbar button) `item` is ticked - its id in the form.");
+        let _ = writeln!(w, "    pub fn item_checked(&self, item: &str) -> bool {{");
+        let _ = writeln!(w, "        phai_ui::menu::item_checked(self.hwnd, item)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Ticks menu item (and toolbar button) `item`, or takes the tick away - Checked.");
+        let _ = writeln!(w, "    pub fn set_item_checked(&self, item: &str, on: bool) {{");
+        let _ = writeln!(w, "        phai_ui::menu::set_item_checked(self.hwnd, item, on)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Menu item (and toolbar button) `item` usable or greyed - Enabled.");
+        let _ = writeln!(w, "    pub fn set_item_enabled(&self, item: &str, on: bool) {{");
+        let _ = writeln!(w, "        phai_ui::menu::set_item_enabled(self.hwnd, item, on)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "    /// Puts the window on the page; the page runs it.");
     let _ = writeln!(w, "    pub fn run<E: {events} + 'static>(events: E) {{");
     let _ = writeln!(w, "        Self::make(true, events);");
@@ -291,6 +360,16 @@ pub fn generate(f: &FormFile) -> String {
         }
     }
     let _ = writeln!(w, "        let me: Me<E> = Rc::new(OnceCell::new());");
+    if !f.menu.is_empty() {
+        let menus = f.menu.iter().map(|m| format!("phai_ui::menu::Menu {{ label: t({}), items: {} }}", lit(&m.label), items_code(&m.items))).collect::<Vec<_>>().join(", ");
+        let _ = writeln!(w, "        let menus = vec![{menus}];");
+        let _ = writeln!(w, "        phai_ui::menu::shortcuts(hwnd, &menus, chosen(&me));");
+        let _ = writeln!(w, "        phai_ui::menu::menu_bar(hwnd, menus, chosen(&me));");
+    }
+    if !f.toolbar.is_empty() {
+        let tools = f.toolbar.iter().map(|t| format!("phai_ui::menu::Tool {{ id: {}, label: t({}), glyph: {}, toggle: {} }}", lit(&t.id), lit(&t.label), glyph_code(Some(&t.glyph)), t.toggle)).collect::<Vec<_>>().join(", ");
+        let _ = writeln!(w, "        let toolbar = phai_ui::menu::toolbar(hwnd, area, vec![{tools}], {TOOLBAR_HEIGHT}, chosen(&me));");
+    }
     // Timers tick into the program once it is there.
     for c in shown.iter().filter(|c| c.kind == Kind::Timer) {
         let tick = c.handler().map(|h| format!("call(&me, |e: &mut E, ui: &{ui}| e.{h}(ui))")).unwrap_or_else(|| "|| {}".to_string());
@@ -299,6 +378,9 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "        let ui = {ui} {{");
     let _ = writeln!(w, "            hwnd,");
     let _ = writeln!(w, "            area,");
+    if !f.toolbar.is_empty() {
+        let _ = writeln!(w, "            toolbar,");
+    }
     for c in &shown {
         if c.kind == Kind::Timer {
             let _ = writeln!(w, "            {},", c.id);
@@ -491,7 +573,29 @@ textarea.phai-edit { padding: 4px 6px; resize: none; }
 .phai-tab { border: 0; background: transparent; padding: 6px 12px; font: inherit; color: var(--muted, #5f5f5f); border-bottom: 2px solid transparent; cursor: pointer; }
 .phai-tab.selected { color: var(--text, #1b1b1b); border-bottom-color: var(--accent, #12855f); }
 .phai-k-listbox, .phai-k-checkedlist { padding: 0; }
-@media (pointer: coarse) { .phai-edit, .phai-combo, .phai-date { font-size: 16px; } }
+.phai-menubar { flex: none; display: flex; align-items: stretch; gap: 2px; padding: 0 4px; height: 28px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--rule, #e5e5e5); }
+.phai-menu-top { border: 0; background: transparent; color: inherit; font: inherit; padding: 0 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.phai-menu-top:hover, .phai-menu-top.open { background: var(--accent-tint, #e7f3ef); }
+.phai-menu-state { display: none; }
+.phai-dropdown { position: fixed; z-index: 100; min-width: 180px; max-width: calc(100vw - 8px); max-height: calc(100dvh - 8px); overflow-y: auto; padding: 4px; background: var(--surface, #fff); color: var(--text, #1b1b1b); border: 1px solid var(--border, #d4d4d4); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); font-size: 12px; }
+.phai-menu-item { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px 0 4px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
+.phai-menu-item:hover { background: var(--accent-tint, #e7f3ef); }
+.phai-menu-item.disabled { color: var(--disabled-text, #a0a0a0); pointer-events: none; }
+.phai-menu-mark { width: 18px; text-align: center; flex: none; }
+.phai-menu-item.checked .phai-menu-mark::before { content: "\2713"; }
+.phai-menu-item.checked .phai-menu-mark.phai-glyph { font-size: 0; }
+.phai-menu-item.checked .phai-menu-mark.phai-glyph::before { font-size: 12px; font-family: system-ui, sans-serif; }
+.phai-menu-label { flex: 1; }
+.phai-menu-key { color: var(--muted, #5f5f5f); padding-left: 16px; }
+.phai-menu-sep { height: 1px; margin: 4px 6px; background: var(--rule, #e5e5e5); }
+.phai-glyph { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-size: 15px; line-height: 1; }
+.phai-toolbar { position: absolute; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--rule, #e5e5e5); }
+.phai-tool { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; font: inherit; cursor: pointer; white-space: nowrap; }
+.phai-tool:hover { background: var(--accent-tint, #e7f3ef); }
+.phai-tool .phai-glyph { color: var(--icon, #3c3c3c); }
+.phai-tool.checked { background: var(--accent-tint-pressed, #d0e7df); border-color: var(--accent, #12855f); }
+.phai-tool.disabled { color: var(--disabled-text, #a0a0a0); pointer-events: none; }
+@media (pointer: coarse) { .phai-edit, .phai-combo, .phai-date { font-size: 16px; } .phai-menu-item { min-height: 40px; font-size: 15px; } .phai-menubar { height: 36px; } }
 "#;
 
 /// The page: the window's title, the theme, the program started.
@@ -651,6 +755,15 @@ mod tests {
         assert!(code.contains("form::after_shown"), "{code}");
         assert!(!code.contains("pub tray"), "{code}");
         assert_eq!(left_out(&f), vec!["tray (notifyicon)".to_string()]);
+        // A menu within a menu, a tick a click turns over, a toolbar button that stays down.
+        let mut g = f.clone();
+        g.menu = crate::bars::menus_from_text("&View\n  word_wrap | Word wrap | checked | check_on_click\n  Zoom\n    zoom_in | Zoom in | Ctrl+= | SEARCH\n").unwrap();
+        g.toolbar = vec![crate::model::Tool { id: "word_wrap".into(), label: "Wrap".into(), glyph: "SEARCH".into(), toggle: true }];
+        let code = generate(&g);
+        assert!(code.contains("phai_ui::menu::Item { id: \"word_wrap\", label: t(\"Word wrap\"), key: \"\", glyph: 0, checked: true, check_on_click: true"), "{code}");
+        assert!(code.contains("label: t(\"Zoom\")") && code.contains("key: \"Ctrl+=\", glyph: 59169"), "{code}");
+        assert!(code.contains("phai_ui::menu::toolbar(hwnd, area, vec![phai_ui::menu::Tool { id: \"word_wrap\", label: t(\"Wrap\"), glyph: 59169, toggle: true }], 34, chosen(&me));"), "{code}");
+        assert!(code.contains("pub fn set_item_checked(&self, item: &str, on: bool)") && code.contains("pub toolbar: HWND,"), "{code}");
     }
 
     #[test]

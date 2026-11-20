@@ -103,7 +103,7 @@ pub fn start() {
 
 /// Every window as big as the page lets it be: shrunk to the screen's width when its design is
 /// wider (a phone), its anchored controls stretched when the screen is bigger.
-fn fit_all() {
+pub(crate) fn fit_all() {
     let all = WINDOWS.with(|w| w.borrow().clone());
     for (_, area, size) in all {
         fit(area, size);
@@ -113,6 +113,11 @@ fn fit_all() {
 fn fit(area: HWND, (dw, dh): (i32, i32)) {
     let (Some(area), Some(holder)) = (el(area), el(area).and_then(|a| a.parent_element()).map(|p| p.unchecked_into::<HtmlElement>())) else { return };
     let (cw, ch) = (holder.client_width().max(1) as f64, holder.client_height().max(1) as f64);
+    // A page not shown yet (a tab behind another) has no width: fitted when it shows, as the
+    // browser then says it was resized.
+    if cw < 64.0 {
+        return;
+    }
     let zoom = (cw / dw.max(1) as f64).min(1.0);
     let s = area.style();
     let _ = s.set_property("zoom", &format!("{zoom}"));
