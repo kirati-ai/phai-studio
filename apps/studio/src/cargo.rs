@@ -262,6 +262,10 @@ pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> 
 
 /// Where Cargo is: on the PATH, in `CARGO_HOME`, in the usual place, or in `D:\Tools\Rust`.
 pub fn find_cargo() -> Option<PathBuf> {
+    // The one Tools > Options names, when it is there.
+    if let Some(own) = crate::setting_pub("cargo_path").map(PathBuf::from).filter(|p| p.is_file()) {
+        return Some(own);
+    }
     let mut places: Vec<PathBuf> = Vec::new();
     if let Some(path) = std::env::var_os("PATH") {
         places.extend(std::env::split_paths(&path));

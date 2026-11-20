@@ -50,8 +50,24 @@ pub fn tray_chips(f: &phai_form::FormFile, size: [i32; 2]) -> Vec<(usize, [i32; 
 pub fn origin(f: &phai_form::FormFile) -> (i32, i32) {
     (MARGIN, MARGIN + chrome(f))
 }
-/// Positions snap to this many design pixels.
-pub const GRID: i32 = 4;
+/// Positions snap to this many design pixels - Tools > Options > Form Designer.
+static GRID_SIZE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(4);
+static SNAP_TO_GRID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static SNAPLINES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// The grid's step, design pixels.
+pub fn grid() -> i32 {
+    GRID_SIZE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The designer's settings: the grid's step (1 to 64), whether moves and sizes snap to it,
+/// whether snaplines line controls up with each other.
+pub fn set_designer(step: i32, snap_to_grid: bool, snaplines: bool) {
+    use std::sync::atomic::Ordering::Relaxed;
+    GRID_SIZE.store(step.clamp(1, 64), Relaxed);
+    SNAP_TO_GRID.store(snap_to_grid, Relaxed);
+    SNAPLINES.store(snaplines, Relaxed);
+}
 const HANDLE: i32 = 7;
 /// The smart tag's size, design pixels.
 const TAG: i32 = 15;
@@ -94,7 +110,10 @@ pub struct Canvas {
 }
 
 fn snap(v: i32) -> i32 {
-    (v as f32 / GRID as f32).round() as i32 * GRID
+    if !SNAP_TO_GRID.load(std::sync::atomic::Ordering::Relaxed) {
+        return v;
+    }
+    (v as f32 / grid() as f32).round() as i32 * grid()
 }
 
 fn register_mark() -> Vec<u16> {
@@ -485,7 +504,8 @@ impl Canvas {
                 let first = self.group[0].1;
                 let raw = (p.0 - from.0, p.1 - from.1);
                 let moved_rect = [first[0] + raw.0, first[1] + raw.1, first[2], first[3]];
-                let ((sx, sy), lines) = phai_form::arrange::snaplines(moved_rect, &others, s.doc.form.form.size, phai_design::metrics::MARGIN);
+                // Snaplines off (Options): the grid alone.
+                let ((sx, sy), lines) = if SNAPLINES.load(std::sync::atomic::Ordering::Relaxed) { phai_form::arrange::snaplines(moved_rect, &others, s.doc.form.form.size, phai_design::metrics::MARGIN) } else { ((0, 0), Vec::new()) };
                 let snapped_x = lines.iter().any(|(v, _)| *v);
                 let snapped_y = lines.iter().any(|(v, _)| !*v);
                 *d = (
@@ -518,7 +538,7 @@ impl Canvas {
                 if matches!(*handle, 4..=6) {
                     h = snap(y + h + dy) - y;
                 }
-                *now = [x, y, w.max(GRID), h.max(GRID)];
+                *now = [x, y, w.max(grid()), h.max(grid())];
                 let n = *now;
                 win::move_to(self.live[*index], scale(n[0], dpi), scale(n[1], dpi), scale(n[2], dpi), scale(n[3], dpi));
             }

@@ -82,6 +82,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         ID_NEXT_ERROR => (0xE783, RED), // Error
         ID_PREV_ERROR => (0xE783, RED),
         ID_EDIT_MENUS => (glyph::MENU_BAR, TEAL),
+        ID_CUSTOM_STD => (glyph::SETTINGS, TEAL),
         ID_EDIT_TOOLBAR => (glyph::TOOLBAR, TEAL),
         // View
         ID_PREVIEW => (glyph::MONITOR, BLUE),
@@ -160,6 +161,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         ID_CMD_PROMPT => (0xE756, GREY),
         ID_POWERSHELL => (0xE756, BLUE),
         ID_OPTIONS => (glyph::SETTINGS, GREY),
+        ID_TABLE_DESIGNER => (0xE80A, TEAL), // ViewAll: a table's grid
         // Help
         ID_HELP_STUDIO => (0xE897, BLUE), // Help
         ID_HELP_RUST => (0xE736, AMBER), // ReadingMode: a book

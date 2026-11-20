@@ -1,6 +1,6 @@
 //! Tools > Options, as Visual Studio has it: Phai Studio's own settings in one window, by kind in
-//! a tree on the left - its look and language, what it opens with, the tabs of the panes, the
-//! code editor's text, where projects take the Phai libraries from.
+//! a tree on the left - Environment, Text Editor, Form Designer, Projects and Solutions,
+//! Debugging, Source Control - each page's settings on the right.
 
 use phai_ui::text::t;
 use phai_ui::win;
@@ -12,17 +12,11 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 const ID_TREE: i32 = 10;
 const ID_OK: i32 = 1;
 const ID_CANCEL: i32 = 2;
-const ID_THEME: i32 = 20;
-const ID_LANGUAGE: i32 = 21;
-const ID_RECENT: i32 = 22;
-const ID_STARTUP: i32 = 23;
-const ID_TABBED: i32 = 24;
-const ID_FONT_PT: i32 = 25;
-const ID_GIT: i32 = 26;
 
 /// Phai Studio's settings as Options shows them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Values {
+    // Environment
     /// 0 as Windows is set, 1 light, 2 dark.
     pub theme: usize,
     pub thai: bool,
@@ -32,14 +26,58 @@ pub struct Values {
     pub startup: usize,
     /// Project and Properties as tabs along the bottom.
     pub tabbed: bool,
+    /// A form changed outside Phai Studio (the Live Inspector, Git) is noticed...
+    pub detect_changes: bool,
+    /// ...and loaded again without asking while it has no unsaved changes here.
+    pub auto_reload: bool,
+    // Text Editor
+    pub line_numbers: bool,
+    /// Reference counts after a function's line.
+    pub lenses: bool,
+    pub braces: bool,
+    /// rust-analyzer: completion, errors as you type, Go To Definition.
+    pub rust_analyzer: bool,
+    pub tab_size: usize,
+    /// Tab and a new indent type spaces; off, a tab character.
+    pub spaces: bool,
+    pub font: String,
     /// The code editor's text, points.
     pub font_pt: i32,
+    /// rustfmt runs on a Rust file as it is saved.
+    pub format_on_save: bool,
+    // Form Designer
+    pub grid: i32,
+    pub snap_to_grid: bool,
+    pub snaplines: bool,
+    // Projects and Solutions
+    pub save_before_build: bool,
+    /// The Output pane comes forward as a build starts.
+    pub output_on_build: bool,
+    /// Debug or Release remembered for next time.
+    pub remember_config: bool,
+    /// cargo.exe to use; empty, found as usual (PATH, CARGO_HOME, ~/.cargo/bin).
+    pub cargo_path: String,
     /// Projects take the Phai libraries from GitHub, at this Phai Studio's release.
     pub git: bool,
+    // Debugging
+    pub break_on_panic: bool,
+    // Source Control
+    pub blame: bool,
 }
 
 pub const THEMES: [&str; 3] = ["windows", "light", "dark"];
 pub const STARTUPS: [&str; 3] = ["start", "empty", "last"];
+/// Fixed-width fonts Windows has, offered first; any other can be typed.
+pub const FONTS: [&str; 5] = ["Cascadia Mono", "Cascadia Code", "Consolas", "Courier New", "Lucida Console"];
+
+/// "1"/"0" as a setting holds a tick; what was never set is `or`.
+fn tick(v: Option<String>, or: bool) -> bool {
+    v.map(|v| v == "1").unwrap_or(or)
+}
+
+fn one(b: bool) -> String {
+    if b { "1" } else { "0" }.to_string()
+}
 
 impl Values {
     /// The settings as saved; `get` reads one by name. What was never set is Phai Studio's default.
@@ -50,30 +88,80 @@ impl Values {
             None if get("start_window").as_deref() == Some("0") => 1,
             None => 0,
         };
+        let number = |k: &str, or: i64, lo: i64, hi: i64| get(k).and_then(|v| v.parse::<i64>().ok()).unwrap_or(or).clamp(lo, hi);
         Values {
             theme: get("theme").and_then(|v| THEMES.iter().position(|s| *s == v)).unwrap_or(1),
             thai: get("lang").as_deref() == Some("th"),
-            recent: get("recent_max").and_then(|v| v.parse().ok()).unwrap_or(9).clamp(1, 9),
+            recent: number("recent_max", 9, 1, 9) as usize,
             startup,
-            tabbed: get("side_tabbed").as_deref() != Some("0"),
-            font_pt: get("editor_font_pt").and_then(|v| v.parse().ok()).unwrap_or(10).clamp(6, 40),
-            git: get("library_from_git").as_deref() == Some("1"),
+            tabbed: tick(get("side_tabbed"), true),
+            detect_changes: tick(get("detect_changes"), true),
+            auto_reload: tick(get("auto_reload"), true),
+            line_numbers: tick(get("line_numbers"), true),
+            lenses: tick(get("code_lens"), true),
+            braces: tick(get("brace_highlight"), true),
+            rust_analyzer: tick(get("rust_analyzer"), true),
+            tab_size: number("tab_size", 4, 1, 16) as usize,
+            spaces: tick(get("tab_spaces"), true),
+            font: get("editor_font").filter(|f| !f.trim().is_empty()).unwrap_or_else(|| FONTS[0].to_string()),
+            font_pt: number("editor_font_pt", 10, 6, 40) as i32,
+            format_on_save: tick(get("format_on_save"), false),
+            grid: number("grid_size", 4, 1, 64) as i32,
+            snap_to_grid: tick(get("snap_to_grid"), true),
+            snaplines: tick(get("snaplines"), true),
+            save_before_build: tick(get("save_before_build"), true),
+            output_on_build: tick(get("output_on_build"), true),
+            remember_config: tick(get("remember_config"), false),
+            cargo_path: get("cargo_path").unwrap_or_default(),
+            git: tick(get("library_from_git"), false),
+            // Debug > Exception Settings keeps it among the exceptions: "panic" there.
+            break_on_panic: get("exceptions").map(|e| e.split(',').any(|w| w.trim() == "panic")).unwrap_or(true),
+            blame: tick(get("blame"), false),
         }
     }
 
-    /// Each setting by name, as it is saved.
-    pub fn pairs(&self) -> Vec<(&'static str, String)> {
+    /// Each setting by name, as it is saved. `exceptions` is the list as it was, with "panic" put
+    /// in it or taken out.
+    pub fn pairs(&self, exceptions: Option<&str>) -> Vec<(&'static str, String)> {
+        let mut ex: Vec<String> = exceptions.unwrap_or("panic").split(',').map(|w| w.trim().to_string()).filter(|w| !w.is_empty() && w != "panic").collect();
+        if self.break_on_panic {
+            ex.insert(0, "panic".to_string());
+        }
         vec![
             ("theme", THEMES[self.theme].to_string()),
             ("lang", if self.thai { "th" } else { "en" }.to_string()),
             ("recent_max", self.recent.to_string()),
             ("startup", STARTUPS[self.startup].to_string()),
             // The start window's own tick says the same.
-            ("start_window", if self.startup == 0 { "1" } else { "0" }.to_string()),
-            ("side_tabbed", if self.tabbed { "1" } else { "0" }.to_string()),
+            ("start_window", one(self.startup == 0)),
+            ("side_tabbed", one(self.tabbed)),
+            ("detect_changes", one(self.detect_changes)),
+            ("auto_reload", one(self.auto_reload)),
+            ("line_numbers", one(self.line_numbers)),
+            ("code_lens", one(self.lenses)),
+            ("brace_highlight", one(self.braces)),
+            ("rust_analyzer", one(self.rust_analyzer)),
+            ("tab_size", self.tab_size.to_string()),
+            ("tab_spaces", one(self.spaces)),
+            ("editor_font", self.font.clone()),
             ("editor_font_pt", self.font_pt.to_string()),
-            ("library_from_git", if self.git { "1" } else { "0" }.to_string()),
+            ("format_on_save", one(self.format_on_save)),
+            ("grid_size", self.grid.to_string()),
+            ("snap_to_grid", one(self.snap_to_grid)),
+            ("snaplines", one(self.snaplines)),
+            ("save_before_build", one(self.save_before_build)),
+            ("output_on_build", one(self.output_on_build)),
+            ("remember_config", one(self.remember_config)),
+            ("cargo_path", self.cargo_path.trim().to_string()),
+            ("library_from_git", one(self.git)),
+            ("exceptions", ex.join(",")),
+            ("blame", one(self.blame)),
         ]
+    }
+
+    /// What the code editor is told.
+    pub fn editor(&self) -> phai_editor::prefs::Prefs {
+        phai_editor::prefs::Prefs { tab_size: self.tab_size, spaces: self.spaces, line_numbers: self.line_numbers, lenses: self.lenses, braces: self.braces, font: self.font.clone() }
     }
 }
 
@@ -88,22 +176,71 @@ pub fn windows_dark() -> bool {
     ok.is_ok() && v == 0
 }
 
-/// The pages, by the number each tree item keeps: its words and its controls.
-const PAGES: usize = 5;
+/// The pages, in the tree's order: (the group it is under, its name).
+fn pages() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (t("Environment"), t("General")),
+        (t("Environment"), t("Startup")),
+        (t("Environment"), t("Tabs and Windows")),
+        (t("Environment"), t("Documents")),
+        (t("Text Editor"), t("General")),
+        (t("Text Editor"), t("Tabs")),
+        (t("Text Editor"), t("Font")),
+        (t("Text Editor"), t("Formatting")),
+        (t("Form Designer"), t("General")),
+        (t("Projects and Solutions"), t("Build and Run")),
+        (t("Projects and Solutions"), t("Phai libraries")),
+        (t("Debugging"), t("General")),
+        (t("Source Control"), t("Git")),
+    ]
+}
 
-struct Dialog {
-    tree: HWND,
-    heading: HWND,
-    /// Each page's controls: (label or 0, control) rows, top to bottom.
-    pages: Vec<Vec<(HWND, HWND)>>,
-    page: usize,
+/// What a row of a page holds.
+#[derive(Clone, Copy, PartialEq)]
+enum Row {
+    /// A label and its control beside it.
+    Pair(HWND, HWND),
+    /// A check box, the whole width.
+    Check(HWND),
+    /// A quiet note, the whole width.
+    Note(HWND),
+}
+
+struct Controls {
     theme: HWND,
     language: HWND,
     recent: HWND,
     startup: HWND,
     tabbed: HWND,
+    detect: HWND,
+    reload: HWND,
+    numbers: HWND,
+    lenses: HWND,
+    braces: HWND,
+    analyzer: HWND,
+    tab_size: HWND,
+    indent: HWND,
+    font: HWND,
     font_pt: HWND,
+    format: HWND,
+    grid: HWND,
+    snap: HWND,
+    snaplines: HWND,
+    save_first: HWND,
+    output: HWND,
+    remember: HWND,
+    cargo: HWND,
     git: HWND,
+    panic: HWND,
+    blame: HWND,
+}
+
+struct Dialog {
+    tree: HWND,
+    heading: HWND,
+    rows: Vec<Vec<Row>>,
+    page: usize,
+    c: Controls,
     ok: HWND,
     cancel: HWND,
     chosen: Option<Values>,
@@ -114,12 +251,8 @@ fn state<'a>(h: HWND) -> Option<&'a mut Dialog> {
     unsafe { win::state::<Dialog>(h) }
 }
 
-fn page_name(k: usize) -> &'static str {
-    [t("General"), t("Startup"), t("Tabs and Windows"), t("Font"), t("Phai libraries")][k]
-}
-
-/// Shows Options over `owner`, starting from `now`; the settings chosen, or `None` on Cancel.
-/// `page` opens on that page (0 General ... 4 Phai libraries).
+/// Shows Options over `owner`, starting from `now`, open on `page`; the settings chosen, or
+/// `None` on Cancel.
 pub fn choose(owner: HWND, now: &Values, page: usize) -> Option<Values> {
     let hwnd = make(owner, now, page);
     unsafe {
@@ -155,63 +288,116 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
         let bold = win::font(hwnd, 0, true);
         let tree = win::tree(hwnd, ID_TREE, font);
         let heading = win::label(hwnd, "", 0, bold);
+        let next = std::cell::Cell::new(100);
+        let id = || {
+            next.set(next.get() + 1);
+            next.get()
+        };
         let label = |text: &str| win::label(hwnd, text, 0, font);
-        let theme = win::combo(hwnd, ID_THEME, font, &[t("Use Windows setting"), t("Light"), t("Dark")]);
-        let language = win::combo(hwnd, ID_LANGUAGE, font, &["English", "ไทย"]);
-        let recent = win::number(hwnd, ID_RECENT, font, 1, 9, now.recent as i32);
-        let startup = win::combo(hwnd, ID_STARTUP, font, &[t("Start Window"), t("Empty environment"), t("Most recent project")]);
-        let tabbed = win::checkbox(hwnd, t("Project and Properties as tabs along the bottom"), ID_TABBED, font, now.tabbed);
-        let font_pt = win::number(hwnd, ID_FONT_PT, font, 6, 40, now.font_pt);
-        let git = win::checkbox(hwnd, t("Take the Phai libraries from GitHub, at this Phai Studio's release"), ID_GIT, font, now.git);
-        // The note in two lines: a label does not wrap.
-        let git_off = label(t("Off: from this machine, beside Phai Studio."));
-        let git_on = label(t("On: a project builds on any machine, the same next year."));
-        for n in [git_off, git_on] {
-            win::set_css(n, "muted", "");
-        }
-        for (c, v) in [(theme, now.theme), (language, now.thai as usize), (startup, now.startup)] {
-            wm::SendMessageW(c, 0x014E /* CB_SETCURSEL */, Some(WPARAM(v)), None);
-        }
-        let pages = vec![
-            vec![(label(t("Color theme:")), theme), (label(t("Language:")), language), (label(t("Items in recently used lists:")), recent)],
-            vec![(label(t("On startup, open:")), startup)],
-            vec![(HWND::default(), tabbed)],
-            vec![(label(t("Size (points):")), font_pt)],
-            vec![(HWND::default(), git), (HWND::default(), git_off), (HWND::default(), git_on)],
+        let note = |text: &str| {
+            let h = win::label(hwnd, text, 0, font);
+            win::set_css(h, "muted", "");
+            Row::Note(h)
+        };
+        let combo = |items: &[&str], at: usize| {
+            let h = win::combo(hwnd, id(), font, items);
+            wm::SendMessageW(h, 0x014E /* CB_SETCURSEL */, Some(WPARAM(at)), None);
+            h
+        };
+        let check = |text: &str, on: bool| win::checkbox(hwnd, text, id(), font, on);
+        let c = Controls {
+            theme: combo(&[t("Use Windows setting"), t("Light"), t("Dark")], now.theme),
+            language: combo(&["English", "ไทย"], now.thai as usize),
+            recent: win::number(hwnd, id(), font, 1, 9, now.recent as i32),
+            startup: combo(&[t("Start Window"), t("Empty environment"), t("Most recent project")], now.startup),
+            tabbed: check(t("Project and Properties as tabs along the bottom"), now.tabbed),
+            detect: check(t("Detect when a form is changed outside Phai Studio"), now.detect_changes),
+            reload: check(t("Reload it without asking when it has no unsaved changes"), now.auto_reload),
+            numbers: check(t("Line numbers"), now.line_numbers),
+            lenses: check(t("Reference counts after a function (CodeLens)"), now.lenses),
+            braces: check(t("Highlight the matching bracket"), now.braces),
+            analyzer: check(t("rust-analyzer: completion, errors as you type, Go To Definition"), now.rust_analyzer),
+            tab_size: win::number(hwnd, id(), font, 1, 16, now.tab_size as i32),
+            indent: combo(&[t("Insert spaces"), t("Keep tabs")], (!now.spaces) as usize),
+            font: {
+                let h = win::combo_with(hwnd, id(), font, &FONTS, true);
+                win::set_text(h, &now.font);
+                h
+            },
+            font_pt: win::number(hwnd, id(), font, 6, 40, now.font_pt),
+            format: check(t("Format a Rust file with rustfmt when it is saved"), now.format_on_save),
+            grid: win::number(hwnd, id(), font, 1, 64, now.grid),
+            snap: check(t("Snap to grid"), now.snap_to_grid),
+            snaplines: check(t("Snaplines: line controls up with each other"), now.snaplines),
+            save_first: check(t("Save changes before building"), now.save_before_build),
+            output: check(t("Show Output when a build starts"), now.output_on_build),
+            remember: check(t("Remember Debug or Release for next time"), now.remember_config),
+            cargo: win::edit(hwnd, &now.cargo_path, id(), font, false),
+            git: check(t("Take the Phai libraries from GitHub, at this Phai Studio's release"), now.git),
+            panic: check(t("Break when a Rust program panics"), now.break_on_panic),
+            blame: check(t("Show who last changed each line (blame)"), now.blame),
+        };
+        let rows = vec![
+            vec![Row::Pair(label(t("Color theme:")), c.theme), Row::Pair(label(t("Language:")), c.language), Row::Pair(label(t("Items in recently used lists:")), c.recent)],
+            vec![Row::Pair(label(t("On startup, open:")), c.startup)],
+            vec![Row::Check(c.tabbed)],
+            vec![Row::Check(c.detect), Row::Check(c.reload)],
+            vec![Row::Check(c.numbers), Row::Check(c.lenses), Row::Check(c.braces), Row::Check(c.analyzer), note(t("Off: less memory and work in the background; the editor still colours and indents."))],
+            vec![Row::Pair(label(t("Tab size:")), c.tab_size), Row::Pair(label(t("Indent with:")), c.indent)],
+            vec![Row::Pair(label(t("Font:")), c.font), Row::Pair(label(t("Size (points):")), c.font_pt), note(t("A fixed-width font keeps code in columns."))],
+            vec![Row::Check(c.format), note(t("Format Document (Ctrl+K, Ctrl+D) does it by hand."))],
+            vec![Row::Pair(label(t("Grid size (pixels):")), c.grid), Row::Check(c.snap), Row::Check(c.snaplines)],
+            vec![Row::Check(c.save_first), Row::Check(c.output), Row::Check(c.remember), Row::Pair(label(t("cargo.exe:")), c.cargo), note(t("Empty: found as usual - PATH, CARGO_HOME, then .cargo\\bin in your folder."))],
+            vec![Row::Check(c.git), note(t("Off: from this machine, beside Phai Studio.")), note(t("On: a project builds on any machine, the same next year."))],
+            vec![Row::Check(c.panic), note(t("Which Windows exceptions stop it: Debug > Exception Settings."))],
+            vec![Row::Check(c.blame)],
         ];
         let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
         let cancel = win::button(hwnd, t("Cancel"), ID_CANCEL, font, false);
-        // The tree: each kind of setting, its pages under it.
-        let mut items = [0isize; PAGES];
-        for (group, kids) in [(t("Environment"), &[0usize, 1, 2][..]), (t("Text Editor"), &[3][..]), (t("Projects"), &[4][..])] {
-            let top = win::tree_add(tree, 0, group, -1, kids[0] as isize);
-            for k in kids {
-                items[*k] = win::tree_add(tree, top, page_name(*k), -1, *k as isize);
+        // The tree: each group, its pages under it; a group's own item opens its first page.
+        let all = pages();
+        let mut items = vec![0isize; all.len()];
+        let mut group_item = 0isize;
+        for (k, (group, name)) in all.iter().enumerate() {
+            if k == 0 || all[k - 1].0 != *group {
+                if group_item != 0 {
+                    win::tree_expand(tree, group_item);
+                }
+                group_item = win::tree_add(tree, 0, group, -1, k as isize);
             }
-            win::tree_expand(tree, top);
+            items[k] = win::tree_add(tree, group_item, name, -1, k as isize);
         }
-        win::set_state(hwnd, Box::new(Dialog { tree, heading, pages, page, theme, language, recent, startup, tabbed, font_pt, git, ok, cancel, chosen: None, done: false }));
-        let (w, h) = (win::px(hwnd, 760), win::px(hwnd, 480));
+        win::tree_expand(tree, group_item);
+        let page = page.min(all.len() - 1);
+        win::set_state(hwnd, Box::new(Dialog { tree, heading, rows, page, c, ok, cancel, chosen: None, done: false }));
+        let (w, h) = (win::px(hwnd, 800), win::px(hwnd, 540));
         let mut r = RECT::default();
         let _ = wm::GetWindowRect(owner, &mut r);
         let _ = wm::SetWindowPos(hwnd, None, r.left + (r.right - r.left - w) / 2, r.top + (r.bottom - r.top - h) / 2, w, h, wm::SWP_NOZORDER);
         win::theme_frame(hwnd);
-        wm::SendMessageW(tree, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9 /* TVGN_CARET */)), Some(LPARAM(items[page.min(PAGES - 1)])));
-        show_page(hwnd, page.min(PAGES - 1));
+        wm::SendMessageW(tree, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9 /* TVGN_CARET */)), Some(LPARAM(items[page])));
+        show_page(hwnd, page);
         hwnd
+    }
+}
+
+fn row_windows(r: &Row) -> Vec<HWND> {
+    match r {
+        Row::Pair(a, b) => vec![*a, *b],
+        Row::Check(h) | Row::Note(h) => vec![*h],
     }
 }
 
 fn show_page(h: HWND, page: usize) {
     let Some(d) = state(h) else { return };
     d.page = page;
-    win::set_text(d.heading, page_name(page));
-    for (k, rows) in d.pages.iter().enumerate() {
-        for (a, b) in rows {
-            if !a.is_invalid() {
-                win::show(*a, k == page);
+    let all = pages();
+    win::set_text(d.heading, &format!("{}  ›  {}", all[page].0, all[page].1));
+    for (k, rows) in d.rows.iter().enumerate() {
+        for r in rows {
+            for w in row_windows(r) {
+                win::show(w, k == page);
             }
-            win::show(*b, k == page);
         }
     }
     layout(h);
@@ -225,26 +411,28 @@ fn layout(h: HWND) {
     }
     let px = |v| win::px(h, v);
     let (m, row, gap, bw) = (px(12), px(26), px(10), px(96));
-    let tree_w = px(220);
+    let tree_w = px(230);
     let bottom = r.bottom - m - row - gap;
     win::move_to(d.tree, m, m, tree_w, bottom - m);
     let x = m + tree_w + px(16);
     let right = r.right - m;
     win::move_to(d.heading, x, m, right - x, row);
     let mut y = m + row + gap;
-    let label_w = px(220);
-    for (a, b) in &d.pages[d.page] {
-        if a.is_invalid() {
-            // A check box or a note: the whole width, a note as tall as its words need.
-            let tall = row;
-            win::move_to(*b, x, y, right - x, tall);
-            y += tall + gap;
-        } else {
-            win::move_to(*a, x, y, label_w, row);
-            let w = if win::kind_of(*b) == Some(win::Kind::Combo) { px(240) } else { px(90) };
-            win::move_to(*b, x + label_w, y, w, if win::kind_of(*b) == Some(win::Kind::Combo) { px(200) } else { row });
-            y += row + gap;
+    let label_w = px(200);
+    for line in &d.rows[d.page] {
+        match line {
+            Row::Check(b) | Row::Note(b) => win::move_to(*b, x, y, right - x, row),
+            Row::Pair(a, b) => {
+                win::move_to(*a, x, y, label_w, row);
+                let (w, tall) = match win::kind_of(*b) {
+                    Some(win::Kind::Combo) => (px(260), px(220)),
+                    Some(win::Kind::Edit) if *b == d.c.cargo => (right - x - label_w, row),
+                    _ => (px(90), row),
+                };
+                win::move_to(*b, x + label_w, y, w, tall);
+            }
         }
+        y += row + gap;
     }
     let by = r.bottom - m - row;
     win::move_to(d.ok, r.right - 2 * bw - m - px(8), by, bw, row);
@@ -252,16 +440,36 @@ fn layout(h: HWND) {
 }
 
 /// What the window says now.
-fn read(d: &Dialog) -> Values {
+fn read(c: &Controls) -> Values {
     let number = |h: HWND, lo: i32, hi: i32, or: i32| win::text_of(h).trim().parse::<i32>().unwrap_or(or).clamp(lo, hi);
+    let font = win::text_of(c.font).trim().to_string();
     Values {
-        theme: win::combo_selected(d.theme).max(0) as usize,
-        thai: win::combo_selected(d.language) == 1,
-        recent: number(d.recent, 1, 9, 9) as usize,
-        startup: win::combo_selected(d.startup).max(0) as usize,
-        tabbed: win::is_checked(d.tabbed),
-        font_pt: number(d.font_pt, 6, 40, 10),
-        git: win::is_checked(d.git),
+        theme: win::combo_selected(c.theme).max(0) as usize,
+        thai: win::combo_selected(c.language) == 1,
+        recent: number(c.recent, 1, 9, 9) as usize,
+        startup: win::combo_selected(c.startup).max(0) as usize,
+        tabbed: win::is_checked(c.tabbed),
+        detect_changes: win::is_checked(c.detect),
+        auto_reload: win::is_checked(c.reload),
+        line_numbers: win::is_checked(c.numbers),
+        lenses: win::is_checked(c.lenses),
+        braces: win::is_checked(c.braces),
+        rust_analyzer: win::is_checked(c.analyzer),
+        tab_size: number(c.tab_size, 1, 16, 4) as usize,
+        spaces: win::combo_selected(c.indent) != 1,
+        font: if font.is_empty() { FONTS[0].to_string() } else { font },
+        font_pt: number(c.font_pt, 6, 40, 10),
+        format_on_save: win::is_checked(c.format),
+        grid: number(c.grid, 1, 64, 4),
+        snap_to_grid: win::is_checked(c.snap),
+        snaplines: win::is_checked(c.snaplines),
+        save_before_build: win::is_checked(c.save_first),
+        output_on_build: win::is_checked(c.output),
+        remember_config: win::is_checked(c.remember),
+        cargo_path: win::text_of(c.cargo).trim().trim_matches('"').to_string(),
+        git: win::is_checked(c.git),
+        break_on_panic: win::is_checked(c.panic),
+        blame: win::is_checked(c.blame),
     }
 }
 
@@ -274,13 +482,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_GETMINMAXINFO => {
             let mm = unsafe { &mut *(l.0 as *mut wm::MINMAXINFO) };
-            mm.ptMinTrackSize = POINT { x: win::px(h, 620), y: win::px(h, 380) };
+            mm.ptMinTrackSize = POINT { x: win::px(h, 680), y: win::px(h, 440) };
             LRESULT(0)
         }
         wm::WM_COMMAND => {
             match win::loword(w.0) as i32 {
                 ID_OK => {
-                    d.chosen = Some(read(d));
+                    d.chosen = Some(read(&d.c));
                     d.done = true;
                 }
                 ID_CANCEL => d.done = true,
@@ -297,7 +505,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
                 if hdr.code == TVN_SELCHANGEDW {
                     if let Some(k) = win::tree_selected(d.tree) {
-                        show_page(h, (k as usize).min(PAGES - 1));
+                        show_page(h, (k as usize).min(pages().len() - 1));
                     }
                 }
             }
@@ -321,11 +529,39 @@ mod tests {
 
     #[test]
     fn settings_go_out_and_come_back_the_same() {
-        let none = |_: &str| None;
-        let d = Values::load(none);
-        assert_eq!(d, Values { theme: 1, thai: false, recent: 9, startup: 0, tabbed: true, font_pt: 10, git: false }, "the defaults");
-        let v = Values { theme: 2, thai: true, recent: 5, startup: 2, tabbed: false, font_pt: 13, git: true };
-        let saved: std::collections::HashMap<&str, String> = v.pairs().into_iter().collect();
+        let d = Values::load(|_| None);
+        assert!(d.theme == 1 && d.recent == 9 && d.startup == 0 && d.tabbed && d.tab_size == 4 && d.spaces && d.font == "Cascadia Mono", "the defaults");
+        assert!(d.break_on_panic && d.save_before_build && d.output_on_build && d.snap_to_grid && d.grid == 4 && !d.format_on_save && !d.blame);
+        let v = Values {
+            theme: 2,
+            thai: true,
+            recent: 5,
+            startup: 2,
+            tabbed: false,
+            detect_changes: false,
+            auto_reload: false,
+            line_numbers: false,
+            lenses: false,
+            braces: false,
+            rust_analyzer: false,
+            tab_size: 2,
+            spaces: false,
+            font: "Consolas".into(),
+            font_pt: 13,
+            format_on_save: true,
+            grid: 8,
+            snap_to_grid: false,
+            snaplines: false,
+            save_before_build: false,
+            output_on_build: false,
+            remember_config: true,
+            cargo_path: r"C:\rust\cargo.exe".into(),
+            git: true,
+            break_on_panic: false,
+            blame: true,
+        };
+        let saved: std::collections::HashMap<&str, String> = v.pairs(Some("panic,0xC0000005")).into_iter().collect();
+        assert_eq!(saved["exceptions"], "0xC0000005", "panic out, the exceptions kept");
         assert_eq!(Values::load(|k| saved.get(k).cloned()), v);
         // Before Options, the start window's tick said whether it opens.
         assert_eq!(Values::load(|k| (k == "start_window").then(|| "0".to_string())).startup, 1);

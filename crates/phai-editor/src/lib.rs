@@ -7,3 +7,4 @@ pub mod syntax;
 pub mod view;
 pub mod lsp;
 pub mod popup;
+pub mod prefs;

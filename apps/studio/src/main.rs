@@ -232,6 +232,8 @@ const ID_CMD_PROMPT: i32 = 632;
 const ID_POWERSHELL: i32 = 633;
 /// Tools > Options.
 const ID_OPTIONS: i32 = 634;
+/// Tools > Table Designer.
+const ID_TABLE_DESIGNER: i32 = 635;
 /// View > Other Windows: `ID_OTHER_WINDOW + n`, each tab of the bottom panel in its order.
 const ID_OTHER_WINDOW: i32 = 640;
 const ID_RELEASE: i32 = 144;
@@ -991,8 +993,6 @@ fn build_menu() -> HMENU {
         add(edit, ID_NEXT_ERROR, t("Go To Next Error"), "F8");
         add(edit, ID_PREV_ERROR, t("Go To Previous Error"), "Shift+F8");
         sep(edit);
-        add(edit, ID_EDIT_MENUS, t("Menus..."), "");
-        add(edit, ID_EDIT_TOOLBAR, t("Toolbar..."), "");
         sub(t("&Edit"), edit);
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
@@ -1169,7 +1169,6 @@ fn build_menu() -> HMENU {
             }
         }
         if current.is_some() {
-            add(th, ID_THEME_EDITOR, t("Theme Editor..."), "");
             add(th, ID_THEME_EDIT, &tf("Edit {0}", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
         }
         if !sheets.is_empty() || current.is_some() {
@@ -1187,6 +1186,13 @@ fn build_menu() -> HMENU {
         // command line in the project's folder, Options.
         let tools = wm::CreatePopupMenu().unwrap_or_default();
         add(tools, ID_ADD_CONNECTION, t("Connect to Database..."), "");
+        sep(tools);
+        // The editors, each in this one place.
+        add(tools, ID_THEME_EDITOR, t("Theme Editor..."), "");
+        add(tools, ID_TABLE_DESIGNER, t("Table Designer..."), "");
+        add(tools, ID_EDIT_MENUS, t("Menu Editor..."), "");
+        add(tools, ID_EDIT_TOOLBAR, t("Toolbar Editor..."), "");
+        add(tools, ID_CUSTOM_STD, t("Customize Toolbar..."), "");
         sep(tools);
         add(tools, ID_CREATE_GUID, t("Create GUID"), "");
         sep(tools);
@@ -2119,7 +2125,7 @@ impl Studio {
 
     /// Adds controls read from `text` and chooses them.
     fn add_controls(&mut self, text: &str) {
-        let Some(new) = phai_form::arrange::from_clipboard(text, &self.doc.form, canvas::GRID * 2) else { return };
+        let Some(new) = phai_form::arrange::from_clipboard(text, &self.doc.form, canvas::grid() * 2) else { return };
         let first = self.doc.form.control.len();
         let count = new.len();
         self.edit(|f| f.control.extend(new));
@@ -2180,7 +2186,7 @@ impl Studio {
         let taken: Vec<(i32, i32)> = self.doc.form.control.iter().filter_map(|c| c.bounds).map(|b| (b[0], b[1])).collect();
         let mut at = (m, m + if self.doc.form.toolbar.is_empty() { 0 } else { phai_ui::win::TOOLBAR_HEIGHT });
         while taken.contains(&at) {
-            at = (at.0 + canvas::GRID * 2, at.1 + canvas::GRID * 2);
+            at = (at.0 + canvas::grid() * 2, at.1 + canvas::grid() * 2);
         }
         let user = first_user_control(self.doc.path.as_deref(), &self.doc.form.form.name);
         self.edit(|f| {
@@ -2208,7 +2214,7 @@ impl Studio {
             return;
         }
         let mut rects: Vec<[i32; 4]> = chosen.iter().map(|i| self.doc.form.control[*i].rect()).collect();
-        phai_form::arrange::arrange_in(&mut rects, 0, op, self.doc.form.form.size, canvas::GRID * 2);
+        phai_form::arrange::arrange_in(&mut rects, 0, op, self.doc.form.form.size, canvas::grid() * 2);
         self.edit(|f| {
             for (i, r) in chosen.iter().zip(&rects) {
                 f.control[*i].bounds = Some(*r);
@@ -2359,6 +2365,10 @@ impl Studio {
 
     /// rust-analyzer for the project holding `path`, started if it is not running for it already.
     fn lsp_for(&mut self, path: &Path) -> Option<&mut phai_editor::lsp::Lsp> {
+        // Off in Tools > Options: no language server at all.
+        if setting("rust_analyzer").as_deref() == Some("0") {
+            return None;
+        }
         // The standard library and fetched crates, reached by F12, are the running server's too.
         if cargo::is_library(path) && self.lsp.is_some() {
             return self.lsp.as_mut();
@@ -3677,7 +3687,8 @@ impl Studio {
     /// takes back, and its generated code written again for the next run. Unsaved changes here
     /// are given up only when the person says so.
     pub fn check_form_on_disk(&mut self) -> bool {
-        if self.doc.code.is_some() {
+        // Tools > Options > Documents: not watched at all.
+        if self.doc.code.is_some() || setting("detect_changes").as_deref() == Some("0") {
             return false;
         }
         let Some(path) = self.doc.path.clone() else { return false };
@@ -3691,7 +3702,9 @@ impl Studio {
             return false;
         }
         let file = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-        if self.doc.dirty && win::message(Some(self.hwnd), &tf("{0} was changed outside Phai Studio - by the Live Inspector, perhaps. Load it as the file has it now? Undo brings back the form as it is here.", &[&file]), "Phai Studio", wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
+        // Asked first when there are unsaved changes here - or always, when Options says so.
+        let ask = self.doc.dirty || setting("auto_reload").as_deref() == Some("0");
+        if ask && win::message(Some(self.hwnd), &tf("{0} was changed outside Phai Studio - by the Live Inspector, perhaps. Load it as the file has it now? Undo brings back the form as it is here.", &[&file]), "Phai Studio", wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
             return false;
         }
         let was_dirty = self.doc.dirty;
@@ -3712,6 +3725,12 @@ impl Studio {
     fn save(&mut self, choose: bool) -> bool {
         // A code file: its text, with the line ends it came with.
         if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
+            // Tools > Options > Text Editor > Formatting: rustfmt first, as Format Document does.
+            if setting("format_on_save").as_deref() == Some("1") && path.extension().is_some_and(|e| e == "rs") {
+                if let Ok(new) = cargo::rustfmt(&phai_editor::view::text(h), &path) {
+                    phai_editor::view::replace_whole(h, &new);
+                }
+            }
             let text = phai_editor::view::text(h);
             let text = if self.doc.crlf { text.replace('\n', "\r\n") } else { text };
             return match std::fs::write(&path, text) {
@@ -3960,16 +3979,22 @@ impl Studio {
         now.thai = words::is_thai();
         now.tabbed = explorer::tabbed(self.side);
         now.font_pt = phai_editor::view::font_size();
+        now.blame = self.blame_on;
         let chosen = match std::env::var("PHAI_OPTIONS_TEST") {
-            // `PHAI_OPTIONS_TEST=theme,thai,recent,startup,tabbed,font,git`: chosen without the window.
+            // `PHAI_OPTIONS_TEST=name=value;name=value`: those settings changed, without the window.
             Ok(v) => {
-                let n: Vec<usize> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
-                (n.len() == 7).then(|| options::Values { theme: n[0], thai: n[1] == 1, recent: n[2], startup: n[3], tabbed: n[4] == 1, font_pt: n[5] as i32, git: n[6] == 1 })
+                let mut all: std::collections::HashMap<String, String> = now.pairs(setting("exceptions").as_deref()).into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+                for pair in v.split(';') {
+                    if let Some((k, x)) = pair.split_once('=') {
+                        all.insert(k.trim().to_string(), x.trim().to_string());
+                    }
+                }
+                Some(options::Values::load(|k| all.get(k).cloned()))
             }
             Err(_) => options::choose(self.hwnd, &now, page),
         };
         let Some(v) = chosen else { return };
-        for (name, value) in v.pairs() {
+        for (name, value) in v.pairs(setting("exceptions").as_deref()) {
             remember_setting(name, &value);
         }
         let dark = match v.theme {
@@ -3987,12 +4012,26 @@ impl Studio {
             self.relabel();
         }
         explorer::set_tabbed(self.side, v.tabbed);
+        phai_editor::prefs::set(v.editor());
         phai_editor::view::set_font_size(v.font_pt);
+        canvas::set_designer(v.grid, v.snap_to_grid, v.snaplines);
+        // rust-analyzer off: the running one stopped; on, it starts with the next Rust file shown.
+        if !v.rust_analyzer {
+            self.lsp = None;
+        }
+        if v.blame != self.blame_on {
+            self.blame_on = v.blame;
+            self.refresh_blame();
+        }
+        if let Some(d) = &self.debug {
+            d.send(Self::exceptions());
+        }
         for h in self.tabs.iter().filter_map(|t| t.doc.code).chain(self.doc.code) {
             unsafe {
                 let _ = Gdi::InvalidateRect(Some(h), None, true);
             }
         }
+        self.rebuild();
         self.rebuild_menu();
     }
 
@@ -5120,7 +5159,8 @@ impl Studio {
             win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
             return;
         };
-        if self.doc.dirty && !self.save(false) {
+        // Tools > Options > Build and Run: saved first, unless switched off.
+        if self.doc.dirty && setting("save_before_build").as_deref() != Some("0") && !self.save(false) {
             return;
         }
         let found = if whole { cargo::workspace_of(&path) } else { cargo::project_of(&path) };
@@ -5141,14 +5181,20 @@ impl Studio {
             cargo::Job::Test => t("Running tests..."),
             _ => t("Building..."),
         });
+        // Output brought forward as the build starts, unless Options says not to.
+        let forward = setting("output_on_build").as_deref() != Some("0");
         if let Some(b) = self.bottom.as_ref() {
             b.clear_output();
-            b.show_tab(1);
+            if forward {
+                b.show_tab(1);
+            }
             if mended {
                 b.add_line(t("Cargo.toml: the Phai libraries' folder was gone - now named where this Phai Studio has them."));
             }
         }
-        self.show_errors(true);
+        if forward {
+            self.show_errors(true);
+        }
         cargo::run_job(self.hwnd, dir, job, whole, then_run, self.release);
     }
 
@@ -6121,7 +6167,7 @@ impl Studio {
 
     fn command(&mut self, id: i32) {
         // Nothing open: nothing to save.
-        if self.nothing && matches!(id, ID_SAVE | ID_SAVE_AS | ID_SAVE_ALL) {
+        if self.nothing && matches!(id, ID_SAVE | ID_SAVE_AS | ID_SAVE_ALL | ID_EDIT_MENUS | ID_EDIT_TOOLBAR | ID_THEME_EDITOR) {
             return;
         }
         match id {
@@ -6477,6 +6523,18 @@ impl Studio {
                 }
             }
             ID_OPTIONS => self.options(0),
+            ID_TABLE_DESIGNER => {
+                // On what Server Explorer has chosen: a table's design, or a new table in a database.
+                if !explorer::servers_shown(self.side) {
+                    explorer::show_servers(self.side, true);
+                    self.refresh_side();
+                    self.rebuild_menu();
+                }
+                let hwnd = self.hwnd;
+                if !self.servers.as_mut().is_some_and(|sv| sv.table_designer(hwnd)) {
+                    controls::status_text(self.status, 0, t("Choose a table (to change it) or a database (for a new table) in Server Explorer, then Table Designer again"));
+                }
+            }
             ID_CREATE_GUID => {
                 let g = new_guid();
                 set_clipboard(self.hwnd, &g);
@@ -6618,6 +6676,9 @@ impl Studio {
             }
             ID_DEBUG | ID_RELEASE => {
                 self.release = id == ID_RELEASE;
+                if setting("remember_config").as_deref() == Some("1") {
+                    remember_setting("config", if self.release { "release" } else { "debug" });
+                }
                 controls::status_text(self.status, 2, if self.release { "Release" } else { "Debug" });
                 unsafe {
                     let old = wm::GetMenu(self.hwnd);
@@ -7390,6 +7451,8 @@ fn main() {
     }
     // The look and language Tools > Options chose; `--thai` and `--dark` say so for a test.
     let chosen = options::Values::load(setting);
+    phai_editor::prefs::set(chosen.editor());
+    canvas::set_designer(chosen.grid, chosen.snap_to_grid, chosen.snaplines);
     words::set_thai(args.iter().any(|a| a == "--thai") || chosen.thai);
     if args.iter().any(|a| a == "--dark") || chosen.theme == 2 || (chosen.theme == 0 && options::windows_dark()) {
         theme::set(Theme::dark());
@@ -7448,7 +7511,8 @@ fn main() {
             status,
             errors,
             bottom: Some(bottom),
-            release: false,
+            // Debug or Release as last time, when Options keeps it.
+            release: chosen.remember_config && setting("config").as_deref() == Some("release"),
             diagnostics: vec![],
             diag_rows: vec![],
             lens_round: 0,

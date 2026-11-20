@@ -130,7 +130,7 @@ impl Model {
             // What is before the caret decides: a line broken before its `{` is not opening one.
             let before = current[..col].trim_end();
             if before.ends_with('{') || before.ends_with('(') || before.ends_with('[') {
-                indent.push_str("    ");
+                indent.push_str(&crate::prefs::indent());
             }
             if indent.len() > col {
                 indent.truncate(col);
@@ -141,8 +141,12 @@ impl Model {
         if text == "}" && self.caret == self.anchor {
             let (line, col) = self.buf.position(self.caret);
             let before = &self.buf.line(line)[..col];
-            if before.len() >= 4 && before.chars().all(|c| c == ' ') {
-                self.anchor = self.caret - 4;
+            // One level back: a tab, or the spaces a level is.
+            let level = crate::prefs::get().tab_size;
+            if before.ends_with('\t') && before.chars().all(|c| c == ' ' || c == '\t') {
+                self.anchor = self.caret - 1;
+            } else if before.len() >= level && before.chars().all(|c| c == ' ') {
+                self.anchor = self.caret - level;
             }
         }
         self.replace(text, true);
@@ -668,12 +672,16 @@ impl Model {
             .split('\n')
             .map(|l| {
                 if out {
-                    let n = l.chars().take(4).take_while(|c| *c == ' ').count();
+                    // A tab, or up to a level of spaces.
+                    if let Some(rest) = l.strip_prefix('\t') {
+                        return rest.to_string();
+                    }
+                    let n = l.chars().take(crate::prefs::get().tab_size).take_while(|c| *c == ' ').count();
                     l[n..].to_string()
                 } else if l.is_empty() {
                     String::new()
                 } else {
-                    format!("    {l}")
+                    format!("{}{l}", crate::prefs::indent())
                 }
             })
             .collect();
