@@ -8,6 +8,7 @@ pub mod live;
 pub mod model;
 pub mod props;
 pub mod report;
+pub mod sample;
 pub mod web;
 
 pub use model::*;

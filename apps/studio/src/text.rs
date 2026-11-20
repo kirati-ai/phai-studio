@@ -1092,6 +1092,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("Sample Data in Designer", "ข้อมูลตัวอย่างในตัวออกแบบ"),
     ("Infer Anchors", "เดา Anchor ให้"),
     ("Anchors guessed for {0} controls - Undo takes them back", "เดา Anchor ให้ {0} control แล้ว - Undo เพื่อย้อนกลับ"),
     ("The designer cannot show this form: {0}", "ตัวออกแบบแสดงฟอร์มนี้ไม่ได้: {0}"),

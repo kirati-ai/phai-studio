@@ -225,6 +225,8 @@ const ID_SAVE_LAYOUT: i32 = 672;
 const ID_RESET_LAYOUT: i32 = 673;
 /// Format > Infer Anchors: each control's anchors guessed from where it is.
 const ID_INFER_ANCHORS: i32 = 674;
+/// View > Sample Data in Designer: made-up rows in the designer's lists and grids.
+const ID_DESIGN_SAMPLES: i32 = 675;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -1048,6 +1050,10 @@ fn build_menu() -> HMENU {
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
         add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
+        add(view, ID_DESIGN_SAMPLES, t("Sample Data in Designer"), "");
+        if setting("design_samples").as_deref() != Some("0") {
+            wm::CheckMenuItem(view, ID_DESIGN_SAMPLES as u32, wm::MF_CHECKED.0);
+        }
         let layouts = wm::CreatePopupMenu().unwrap_or_default();
         add(layouts, ID_SAVE_LAYOUT, t("Save Window Layout..."), "");
         for i in 0..winlayout::SLOTS {
@@ -6722,6 +6728,12 @@ impl Studio {
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
             ID_INFER_ANCHORS => self.infer_anchors(),
+            ID_DESIGN_SAMPLES => {
+                let on = setting("design_samples").as_deref() == Some("0");
+                remember_setting("design_samples", if on { "1" } else { "0" });
+                self.rebuild();
+                self.rebuild_menu();
+            }
             ID_SAVE_LAYOUT => self.save_window_layout(),
             ID_RESET_LAYOUT => self.apply_window_layout(&self.standard_layout()),
             id if (ID_APPLY_LAYOUT..ID_APPLY_LAYOUT + winlayout::SLOTS as i32).contains(&id) => {
