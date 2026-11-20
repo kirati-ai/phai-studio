@@ -9679,6 +9679,12 @@ fn main() {
                     sv.expand_first();
                 }
             }
+            // `--click-servers`: the first connection's [+] clicked as the mouse would.
+            if args.iter().any(|a| a == "--click-servers") {
+                if let Some(sv) = s.servers.as_ref() {
+                    sv.click_first();
+                }
+            }
             // `--design TABLE`: the Table Designer on the first connection's table (or a new one: `-`).
             if let Some(t) = args.iter().position(|a| a == "--design").and_then(|i| args.get(i + 1)).cloned() {
                 // Once the window's loop runs, so a picture can be taken of it.

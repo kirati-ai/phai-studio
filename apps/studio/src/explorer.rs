@@ -665,6 +665,9 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                         // Opening - or opened, by whatever opened it: read the first time.
                         TVN_ITEMEXPANDINGW | TVN_ITEMEXPANDEDW => {
                             let nm = unsafe { &*(l.0 as *const cc::NMTREEVIEWW) };
+                            if std::env::var_os("PHAI_SERVERS_TEST").is_some() {
+                                println!("servers: notify {} action {} item {:#x} data {}", hdr.code as i32, nm.action.0, nm.itemNew.hItem.0, nm.itemNew.lParam.0);
+                            }
                             if nm.action.0 & 2 != 0 {
                                 sv.expanding(nm.itemNew.hItem.0, nm.itemNew.lParam.0);
                             }
