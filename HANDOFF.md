@@ -5,8 +5,8 @@
 
 ## สถานะตอนนี้
 
-- repo สาธารณะ `kirati-ai/phai-studio` (MIT) · รุ่นล่าสุดที่แจก **v0.1.2** (GitHub Releases + https://phai-studio.monrak.net)
-- โค้ดบน `main` ใหม่กว่า v0.1.2 (ยังไม่ออกรุ่น): ไม่มีหน้าต่างคอนโซลตอนรัน (ผลลัพธ์ขึ้นแท็บ Output), ฟอร์มเปิดกลางจอ /
+- repo สาธารณะ `kirati-ai/phai-studio` (MIT) · รุ่นล่าสุดที่แจก **v0.1.3** (2026-11-20: เว็บ/PWA, การพิมพ์, DataBindings, UserControl) (GitHub Releases + https://phai-studio.monrak.net)
+- ก่อนหน้านั้น (อยู่ใน v0.1.3 แล้ว): ไม่มีหน้าต่างคอนโซลตอนรัน (ผลลัพธ์ขึ้นแท็บ Output), ฟอร์มเปิดกลางจอ /
   โปรเจกต์ใหม่เต็มจอ (`start`, `maximized`), เมนู Theme แสดงไฟล์ CSS ที่ใช้, โหมดมืด (แถบเครื่องมือ + scrollbar),
   ไอคอนในเมนู Format, ปุ่มปิดหน้าต่างล่าง, หน้าต่าง Project แบบ Solution Explorer (แถบปุ่ม, ค้นหา, Dependencies,
   ไฟล์ .rs ซ้อนใต้ฟอร์ม), แท็บเอกสารมีปุ่ม ✕ + คลิกกลางปิด, ดับเบิลคลิกฟอร์ม/control ไปที่โค้ด
