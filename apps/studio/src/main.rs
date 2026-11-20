@@ -29,6 +29,7 @@ mod gotoall;
 mod crates;
 mod diag;
 mod attach;
+mod avail;
 mod githistory;
 mod merge;
 mod coverage;
@@ -5212,6 +5213,7 @@ impl Studio {
         if let Some(mut child) = self.running.take() {
             let _ = child.kill();
             let _ = child.wait();
+            self.say_bars();
         }
     }
 
@@ -5236,8 +5238,15 @@ impl Studio {
         unsafe {
             wm::SendMessageW(self.config, 0x014E /* CB_SETCURSEL */, Some(WPARAM(self.release as usize)), None);
         }
-        win::toolbar_enable(self.toolbar, ID_NAV_BACK, self.nav_at > 0);
-        win::toolbar_enable(self.toolbar, ID_NAV_FORWARD, self.nav_at + 1 < self.nav.len());
+        // Every button on the bars greyed when what it needs is not there (see `avail`).
+        let now = avail::Now::of(self);
+        for (bar, items) in [(self.toolbar, toolbar_items()), (self.debug_bar, debug_items())] {
+            for (id, _, _) in items {
+                if id != 0 {
+                    win::toolbar_enable(bar, id, now.enabled(id));
+                }
+            }
+        }
         let design = self.doc.code.is_none();
         let n = self.selection().len();
         for (k, op) in FORMATS.iter().enumerate() {
@@ -6070,6 +6079,7 @@ impl Studio {
                     Some(Ok(child)) => {
                         self.watch_process(child.id());
                         self.running = Some(child);
+                        self.say_bars();
                         controls::status_text(self.status, 0, &tf("Running {0}", &[&out.executable.as_ref().and_then(|e| e.file_name()).unwrap_or_default().to_string_lossy()]));
                     }
                     Some(Err(e)) => {
@@ -7014,6 +7024,11 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             s.check_form_on_disk();
             win::def(hwnd, msg, w, l)
         }
+        // A menu about to open: what cannot be used now greyed (see `avail`).
+        wm::WM_INITMENUPOPUP => {
+            avail::grey_menu(wm::HMENU(w.0 as *mut _), &avail::Now::of(s));
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_DIAG => {
             s.diag_tick();
             LRESULT(0)
@@ -7207,6 +7222,8 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         WM_DEBUG => {
             let e = unsafe { Box::from_raw(l.0 as *mut phai_debug::Event) };
             s.debug_event(*e);
+            // Paused, going on, ended: the bars' buttons as that allows.
+            s.say_bars();
             LRESULT(0)
         }
         WM_WEB_DONE => {
@@ -7799,7 +7816,9 @@ fn main() {
                     let mut buf = [0u16; 256];
                     let n = unsafe { wm::GetMenuStringW(m, i as u32, Some(&mut buf), wm::MF_BYPOSITION) }.max(0) as usize;
                     let label = String::from_utf16_lossy(&buf[..n]);
-                    text.push_str(&format!("{}{}\n", "  ".repeat(depth), if label.is_empty() { "-".to_string() } else { label.replace('\t', "    ") }));
+                    // Greyed (see `avail`): marked.
+                    let grey = unsafe { wm::GetMenuState(m, i as u32, wm::MF_BYPOSITION) } & wm::MF_GRAYED.0 != 0;
+                    text.push_str(&format!("{}{}{}\n", "  ".repeat(depth), if label.is_empty() { "-".to_string() } else { label.replace('\t', "    ") }, if grey { "   [grey]" } else { "" }));
                     let sub = unsafe { wm::GetSubMenu(m, i) };
                     if !sub.is_invalid() {
                         walk(sub, depth + 1, text);
@@ -7807,7 +7826,10 @@ fn main() {
                 }
             }
             let mut text = String::new();
-            walk(wm::GetMenu(hwnd), 0, &mut text);
+            // As each menu would be when opened now.
+            let bar = wm::GetMenu(hwnd);
+            avail::grey_menu(bar, &avail::Now::of(s));
+            walk(bar, 0, &mut text);
             let _ = std::fs::write(out, text);
             std::process::exit(0);
         }
