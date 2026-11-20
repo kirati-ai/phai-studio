@@ -68,6 +68,12 @@
   <tr><td>เก็บแท็บสำคัญไว้ซ้ายสุด</td><td><b>File &gt; Pin Tab</b> แท็บที่ปักหมุดมีรูปหมุด คลิกหมุดเพื่อเลิกปัก, <b>File &gt; Close All But Pinned</b> ปิดที่เหลือทั้งหมด</td></tr>
   <tr><td>จัดหน้าต่างแบบที่ชอบแล้วเรียกกลับมา</td><td><b>View &gt; Window Layouts &gt; Save Window Layout...</b> ตั้งชื่อ แล้วเรียกด้วย <kbd>Ctrl+Alt+1</kbd> ถึง <kbd>Ctrl+Alt+0</kbd>, <b>Reset Window Layout</b> คืนแบบเริ่มต้น</td></tr>
   <tr><td>ตั้งปุ่มลัดเอง</td><td><b>Tools &gt; Keyboard Shortcuts...</b> เลือกคำสั่ง กดคีย์ในช่อง (บอกว่าคีย์นี้ใครใช้อยู่) แล้วกด <b>Assign</b>, <b>Remove</b> คืนคีย์เดิม, <b>Reset All</b> คืนทั้งหมด</td></tr>
+  <tr><td>ไปที่บรรทัด</td><td><kbd>Ctrl+G</kbd> ใส่เลขบรรทัด</td></tr>
+  <tr><td>สลับไปไฟล์ที่เปิดอยู่</td><td><kbd>Ctrl+Tab</kbd> (กด Tab ซ้ำเพื่อเลื่อน ปล่อย Ctrl เพื่อเปิด) เรียงจากไฟล์ที่ดูล่าสุด</td></tr>
+  <tr><td>แทนที่คำในทุกไฟล์</td><td><kbd>Ctrl+Shift+H</kbd> (Replace in Files) ถามก่อนแทนที่ ไฟล์ที่เปิดอยู่ Undo ได้</td></tr>
+  <tr><td>ดูชนิดและเมธอดทั้งโปรเจกต์</td><td><kbd>Ctrl+Shift+C</kbd> (Class View) ดับเบิลคลิกเพื่อไปที่นั่น</td></tr>
+  <tr><td>เทียบสองไฟล์</td><td><b>Tools &gt; Compare Files...</b> แสดงข้างกัน บรรทัดที่หายเป็นแดง เพิ่มเป็นเขียว แก้เป็นน้ำเงิน</td></tr>
+  <tr><td>ใช้พื้นที่จอเต็ม</td><td><kbd>Shift+Alt+Enter</kbd> (Full Screen) กดอีกครั้งเพื่อกลับ</td></tr>
   <tr><td>หาค่าตั้ง</td><td><b>Tools &gt; Options</b> พิมพ์ในช่อง <b>Search Options</b> เหลือเฉพาะหน้าที่มีคำนั้น</td></tr>
   <tr><td>ย้ายค่าตั้งไปเครื่องอื่น</td><td><b>Tools &gt; Options &gt; Export...</b> ได้ไฟล์เดียว แล้ว <b>Import...</b> ที่อีกเครื่อง</td></tr>
 </table>
@@ -123,6 +129,10 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <li><kbd>Ctrl+K, Ctrl+D</kbd> จัดรูปแบบโค้ดทั้งไฟล์ด้วย rustfmt</li>
   <li>แถบบนตัวแก้โค้ด (breadcrumb) บอกว่าเคอร์เซอร์อยู่ในไฟล์ไหน และอยู่ใน <code>mod</code> / <code>impl</code> / <code>fn</code> ไหน</li>
   <li>หลายเคอร์เซอร์: <kbd>Ctrl+Alt+คลิก</kbd> เพิ่มเคอร์เซอร์, <kbd>Alt+ลาก</kbd> ได้เคอร์เซอร์ทุกบรรทัดเป็นกล่อง</li>
+  <li><kbd>Shift+Alt+=</kbd> ขยายส่วนที่เลือกทีละขั้น (คำ → ในวงเล็บ → รวมวงเล็บ → ทั้งบรรทัด), <kbd>Shift+Alt+-</kbd> หดกลับ</li>
+  <li><kbd>Ctrl+K, Ctrl+S</kbd> ครอบบรรทัดที่เลือกด้วย <code>if</code> / <code>for</code> / <code>while</code> / <code>loop</code> / บล็อก แล้วเลือกคำที่ต้องพิมพ์ทับให้</li>
+  <li><kbd>Ctrl+Shift+V</kbd> วางของที่เคยคัดลอกก่อนหน้า (15 อย่างล่าสุด จากโปรแกรมไหนก็ได้)</li>
+  <li>เมนู <b>View</b>: ตัดบรรทัดอัตโนมัติ (<kbd>Ctrl+E, Ctrl+W</kbd>), แสดงช่องว่าง, เส้นย่อหน้า, เส้นที่คอลัมน์ 100, แสดงชนิดตัวแปรท้ายบรรทัด (จาก rust-analyzer), สีวงเล็บเป็นคู่, หัวฟังก์ชันค้างด้านบนตอนเลื่อน (คลิกเพื่อไปที่หัว), แผนที่บนแถบเลื่อน (จุด error / การแก้ / breakpoint คลิกเพื่อไปตรงนั้น)</li>
   <li>แถบสีที่ขอบข้างบรรทัดบอกว่าแก้อะไรไปตั้งแต่ git commit ล่าสุด: <span style="color:#2ea043">เขียว</span> = เพิ่ม, <span style="color:#1c6fd1">น้ำเงิน</span> = แก้, <span style="color:#d13438">แดง</span> = ลบบรรทัดใต้ตรงนี้</li>
 </ul>
 
@@ -152,6 +162,14 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <li>เดินทีละบรรทัดด้วย <kbd>F10</kbd> (ข้ามฟังก์ชัน) หรือ <kbd>F11</kbd> (เข้าไปในฟังก์ชัน), <kbd>Shift+F11</kbd> ออกจากฟังก์ชัน</li>
   <li>กด <kbd>F5</kbd> อีกครั้งเพื่อไปต่อ หรือ <kbd>Shift+F5</kbd> เพื่อหยุด</li>
 </ol>
+<h3>ไปต่อแบบอื่น</h3>
+<ul>
+  <li><kbd>Ctrl+F10</kbd> <b>Run To Cursor</b>: วางเคอร์เซอร์ที่บรรทัดไหนก็ได้ แล้วรันจนถึงบรรทัดนั้น</li>
+  <li><kbd>Ctrl+Shift+F10</kbd> <b>Set Next Statement</b>: ให้โปรแกรมไปต่อจากบรรทัดที่เคอร์เซอร์อยู่ (ข้ามหรือทำซ้ำบรรทัดได้ เฉพาะในฟังก์ชันเดียวกัน)</li>
+  <li><b>Debug &gt; Insert Tracepoint...</b>: แทนที่จะหยุด ให้เขียนข้อความลง Output แล้วไปต่อ เช่น <code>total is {total}</code> ขอบซ้ายเป็นรูปข้าวหลามตัดสีแดง</li>
+  <li>เมื่อ panic หรือ exception: กล่องแดงขึ้นใต้บรรทัดในโค้ดของคุณที่ทำให้เกิด บอกว่าเกิดอะไร และข้อความของ panic</li>
+  <li>แท็บ Locals มีตัวเลือก <b>Autos</b>: แสดงเฉพาะตัวแปรที่บรรทัดนี้และบรรทัดก่อนใช้</li>
+</ul>
 <h3>เครื่องมือดีบักเพิ่มเติม</h3>
 <table>
   <tr><th>เครื่องมือ</th><th>ปุ่มลัด</th><th>ใช้เมื่อ</th></tr>
@@ -166,6 +184,7 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td>Memory / Disassembly</td><td><kbd>Ctrl+Alt+M</kbd> / <kbd>Ctrl+Alt+D</kbd></td><td>ดูไบต์ในหน่วยความจำ และภาษาเครื่อง (สำหรับผู้ชำนาญ)</td></tr>
   <tr><td>Diagnostic Tools</td><td><kbd>Ctrl+Alt+F2</kbd></td><td>กราฟหน่วยความจำและ CPU ของโปรแกรมที่รันอยู่</td></tr>
   <tr><td>Attach to Process</td><td><kbd>Ctrl+Alt+P</kbd></td><td>ดีบักโปรแกรมที่รันอยู่แล้ว</td></tr>
+  <tr><td>Modules</td><td><kbd>Ctrl+Alt+U</kbd></td><td>DLL ทุกตัวที่โปรแกรมโหลด และตำแหน่งในหน่วยความจำ</td></tr>
 </table>
 
 <h2>เทสต์</h2>
@@ -179,6 +198,7 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <h2>Git</h2>
 <ul>
   <li>เมนู Git อยู่ที่ <b>Tools &gt; Git</b></li>
+  <li>มุมขวาของแถบสถานะบอกสาขาปัจจุบัน คลิกเพื่อสลับสาขา สร้างสาขาใหม่ เก็บการแก้ไว้ก่อน (Stash) หรือเอาคืน (Pop Stash) ไฟล์ที่เปิดอยู่จะอ่านใหม่ให้</li>
   <li><b>Git Changes</b> (<kbd>Ctrl+Alt+G</kbd>) ดูไฟล์ที่แก้ เลือก Stage แล้ว Commit พร้อม push/pull</li>
   <li><b>View History of This File</b> ดูทุกครั้งที่ไฟล์นี้ถูกแก้ และแก้อะไรไป</li>
   <li><b>Show Line Blame</b> บอกว่าใครแก้บรรทัดที่เคอร์เซอร์อยู่ เมื่อไร</li>
