@@ -1160,9 +1160,13 @@ fn build_menu() -> HMENU {
         }
         sub(t("&Git"), gitm);
         let data = wm::CreatePopupMenu().unwrap_or_default();
-        // Connecting is Tools > Connect to Database, Server Explorer is in View - each once.
+        // In the order the work goes: connect, ask, design a table. (Server Explorer is in View.)
+        add(data, ID_ADD_CONNECTION, t("Connect to Database..."), "");
+        sep(data);
         add(data, ID_NEW_QUERY, t("New Query"), "");
         add(data, ID_EXECUTE, t("Execute Query"), "Ctrl+Shift+E");
+        sep(data);
+        add(data, ID_TABLE_DESIGNER, t("Table Designer..."), "");
         sub(t("D&ata"), data);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         // The project's style sheets, the form's own ticked - choose one to use it.
@@ -1190,12 +1194,9 @@ fn build_menu() -> HMENU {
         // Tools, as Visual Studio has them: connecting to a database, a new GUID, the look, a
         // command line in the project's folder, Options.
         let tools = wm::CreatePopupMenu().unwrap_or_default();
-        add(tools, ID_ADD_CONNECTION, t("Connect to Database..."), "");
-        sep(tools);
         // The editors, each in this one place (a form's menu bar and toolbar are edited from the
         // Toolbox and by double-clicking them on the form).
         add(tools, ID_THEME_EDITOR, t("Theme Editor..."), "");
-        add(tools, ID_TABLE_DESIGNER, t("Table Designer..."), "");
         add(tools, ID_CUSTOM_STD, t("Customize Toolbar..."), "");
         sep(tools);
         add(tools, ID_CREATE_GUID, t("Create GUID"), "");
