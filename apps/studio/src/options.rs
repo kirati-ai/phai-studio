@@ -550,7 +550,10 @@ fn import_settings(h: HWND) -> bool {
         let _ = std::fs::create_dir_all(dir);
     }
     match std::fs::write(&to, text) {
-        Ok(()) => true,
+        Ok(()) => {
+            crate::keymap::reload();
+            true
+        }
         Err(e) => {
             win::message(Some(h), &e.to_string(), t("Import Settings"), wm::MB_ICONWARNING);
             false

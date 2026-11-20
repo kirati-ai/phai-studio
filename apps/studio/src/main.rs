@@ -3869,7 +3869,9 @@ impl Studio {
         // Its module's path, so `--exact` finds it: `tests::name` in the usual place.
         let text = phai_editor::view::text(editor);
         let module = if text.contains("mod tests") { "tests::" } else { "" };
-        let path = self.doc.path.as_deref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).filter(|s| s != "main" && s != "lib");
+        let doc = self.doc.path.as_deref();
+        let integration = doc.and_then(|p| p.parent()).and_then(|d| d.file_name()).is_some_and(|n| n == "tests");
+        let path = doc.and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).filter(|s| s != "main" && s != "lib" && s != "mod" && !integration);
         let full = match path {
             Some(file) => format!("{file}::{module}{name}"),
             None => format!("{module}{name}"),
@@ -4669,7 +4671,7 @@ impl Studio {
                         }
                     },
                     // Served to the network once; a later build only changes the files, and the
-                    // phone's page reloads by itself - the window is shown again only if closed.
+                    // phone's page reloads by itself - the window shows the address again.
                     WebRun::Phone => match web::serve_lan(b.folder.clone()) {
                         Ok(port) => {
                             let host = web::lan_address().map(|a| a.to_string()).unwrap_or_else(|| "localhost".into());
@@ -7506,7 +7508,6 @@ fn remember_setting(name: &str, value: &str) {
     let _ = std::fs::write(path, lines.join("\n"));
 }
 
-/// The forms opened last, newest first, those still there.
 /// A recent file taken off the list (the start window's Remove from the list).
 pub fn forget_recent_pub(path: &Path) {
     let Some(dir) = settings_dir() else { return };
@@ -7515,6 +7516,7 @@ pub fn forget_recent_pub(path: &Path) {
     let _ = std::fs::write(&file, kept.join("\n") + "\n");
 }
 
+/// The forms opened last, newest first, those still there.
 fn recent_files() -> Vec<PathBuf> {
     let Some(dir) = settings_dir() else { return vec![] };
     std::fs::read_to_string(dir.join("recent.txt")).unwrap_or_default().lines().map(PathBuf::from).filter(|p| p.is_file()).take(recent_max()).collect()

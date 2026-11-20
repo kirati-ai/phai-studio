@@ -123,6 +123,11 @@ fn map() -> Vec<(i32, Combo)> {
     m.get_or_insert_with(|| read(&crate::setting_pub("keymap").unwrap_or_default())).clone()
 }
 
+/// Read again from the settings - after Options > Import.
+pub fn reload() {
+    *MAP.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 /// The command given the key down now, if one was.
 pub fn command_for(vk: u16) -> Option<i32> {
     let down = |k: i32| unsafe { km::GetKeyState(k) } < 0;
