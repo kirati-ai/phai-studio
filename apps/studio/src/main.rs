@@ -45,6 +45,7 @@ mod qr;
 mod phone;
 mod devices;
 mod search;
+mod winlayout;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -219,6 +220,10 @@ const ID_SEARCH: i32 = 299;
 const ID_PIN_TAB: i32 = 670;
 /// File > Close All But Pinned.
 const ID_CLOSE_UNPINNED: i32 = 671;
+/// View > Window Layouts: Save Window Layout..., Reset Window Layout, and Apply (Ctrl+Alt+1 to 0).
+const ID_SAVE_LAYOUT: i32 = 672;
+const ID_RESET_LAYOUT: i32 = 673;
+const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
 
@@ -1041,6 +1046,17 @@ fn build_menu() -> HMENU {
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
         add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
+        let layouts = wm::CreatePopupMenu().unwrap_or_default();
+        add(layouts, ID_SAVE_LAYOUT, t("Save Window Layout..."), "");
+        for i in 0..winlayout::SLOTS {
+            let (name_key, _) = winlayout::keys(i);
+            if let Some(name) = setting(&name_key).filter(|n| !n.is_empty()) {
+                add(layouts, ID_APPLY_LAYOUT + i as i32, &name, &winlayout::shortcut(i));
+            }
+        }
+        add(layouts, ID_RESET_LAYOUT, t("Reset Window Layout"), "");
+        let wl = win::wide(t("Window Layouts"));
+        let _ = wm::AppendMenuW(view, wm::MF_POPUP, layouts.0 as usize, PCWSTR(wl.as_ptr()));
         sep(view);
         add(view, ID_VIEW_TOOLBOX, t("Toolbox"), "");
         add(view, ID_VIEW_EXPLORER, t("Project explorer"), "");
@@ -3737,6 +3753,85 @@ impl Studio {
         let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         controls::tabs_relabel(self.tabbar, &refs);
         controls::tabs_select(self.tabbar, self.active);
+    }
+
+    fn standard_layout(&self) -> winlayout::Arrangement {
+        winlayout::Arrangement::standard(toolbox::WIDTH, ERRORS_HEIGHT)
+    }
+
+    /// The panes as they are now.
+    fn window_layout_now(&self) -> winlayout::Arrangement {
+        let (e, p) = explorer::side_panes(self.side);
+        winlayout::Arrangement {
+            toolbox: self.toolbox_on,
+            explorer: e,
+            properties: p,
+            bottom: self.bottom_on,
+            toolbox_dock: self.toolbox_dock,
+            side_dock: self.side_dock,
+            toolbox_w: self.toolbox_w,
+            toolbox_h: self.toolbox_h,
+            side_w: self.side_w,
+            side_h: self.side_h,
+            bottom_h: self.bottom_h,
+            toolbox_auto: self.is_auto(Pane::Toolbox),
+            explorer_auto: self.is_auto(Pane::Explorer),
+            properties_auto: self.is_auto(Pane::Properties),
+        }
+    }
+
+    /// View > Window Layouts > Save Window Layout: the panes as they are, kept by a name - the
+    /// same name again replaces it - in the first free one of Ctrl+Alt+1 to 0.
+    fn save_window_layout(&mut self) {
+        let names: Vec<Option<String>> = (0..winlayout::SLOTS).map(|i| setting(&winlayout::keys(i).0).filter(|n| !n.is_empty())).collect();
+        let first_free = names.iter().position(Option::is_none);
+        let suggested = tf("Layout {0}", &[&(first_free.unwrap_or(0) + 1)]);
+        let name = match std::env::var("PHAI_LAYOUT_NAME") {
+            Ok(n) => n,
+            Err(_) => match phai_ui::dialogs::ask(Some(self.hwnd), t("Save Window Layout"), t("Name of the layout:"), &suggested, false) {
+                Some(n) if !n.trim().is_empty() => n.trim().to_string(),
+                _ => return,
+            },
+        };
+        let slot = names.iter().position(|n| n.as_deref() == Some(name.as_str())).or(first_free).unwrap_or(winlayout::SLOTS - 1);
+        let (name_key, key) = winlayout::keys(slot);
+        remember_setting(&name_key, &name);
+        remember_setting(&key, &self.window_layout_now().to_text());
+        self.rebuild_menu();
+        controls::status_text(self.status, 0, &tf("Window layout {0} saved - {1}", &[&name, &winlayout::shortcut(slot)]));
+    }
+
+    /// The panes put as `a` says: shown or closed, docked, sized, hiding themselves or not.
+    fn apply_window_layout(&mut self, a: &winlayout::Arrangement) {
+        if self.toolbox_dock != a.toolbox_dock || self.toolbox_float.is_some() {
+            self.dock_toolbox(docking::Target::Edge(a.toolbox_dock));
+        }
+        if self.side_dock != a.side_dock || self.side_float.is_some() {
+            self.dock_side(docking::Target::Edge(a.side_dock));
+        }
+        self.toolbox_w = a.toolbox_w;
+        self.toolbox_h = a.toolbox_h;
+        self.side_w = a.side_w;
+        self.side_h = a.side_h;
+        self.bottom_h = a.bottom_h;
+        let bh = self.bottom.as_ref().map(|b| b.hwnd).unwrap_or_default();
+        if let Some(i) = self.item(bh) {
+            i.bounds.h = a.bottom_h;
+        }
+        for (pane, auto) in [(Pane::Toolbox, a.toolbox_auto), (Pane::Explorer, a.explorer_auto), (Pane::Properties, a.properties_auto)] {
+            if self.is_auto(pane) != auto {
+                self.set_auto_hide(pane, auto);
+            }
+        }
+        for (pane, on) in [(Pane::Toolbox, a.toolbox), (Pane::Explorer, a.explorer), (Pane::Properties, a.properties), (Pane::Output, a.bottom)] {
+            if !self.is_auto(pane) {
+                self.show_pane(pane, on);
+            }
+        }
+        self.size_toolbox(a.toolbox);
+        self.size_side(a.explorer || a.properties);
+        self.layout.apply(self.hwnd);
+        self.rebuild_menu();
     }
 
     /// File > Pin Tab: the document pinned (or unpinned), the pinned ones kept at the left in the
@@ -6532,6 +6627,15 @@ impl Studio {
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
+            ID_SAVE_LAYOUT => self.save_window_layout(),
+            ID_RESET_LAYOUT => self.apply_window_layout(&self.standard_layout()),
+            id if (ID_APPLY_LAYOUT..ID_APPLY_LAYOUT + winlayout::SLOTS as i32).contains(&id) => {
+                let (_, key) = winlayout::keys((id - ID_APPLY_LAYOUT) as usize);
+                if let Some(text) = setting(&key) {
+                    let a = winlayout::Arrangement::from_text(&text, &self.standard_layout());
+                    self.apply_window_layout(&a);
+                }
+            }
             ID_CLOSE_UNPINNED => self.close_unpinned(),
             ID_ATTACH => self.attach_to_process(),
             ID_EXCEPTIONS => self.exception_settings(),
@@ -7659,6 +7763,14 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     if msg.message == wm::WM_KEYDOWN {
         let shift = unsafe { km::GetKeyState(0x10) } < 0;
         let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+        // Ctrl+Alt+1 to 0: a window layout kept (View > Window Layouts).
+        let alt = unsafe { km::GetKeyState(0x12) } < 0;
+        if ctrl && alt && (0x30..=0x39).contains(&msg.wParam.0) {
+            let slot = (msg.wParam.0 - 0x30 + 9) % 10;
+            if setting(&winlayout::keys(slot).0).is_some_and(|n| !n.is_empty()) {
+                return Some(ID_APPLY_LAYOUT + slot as i32);
+            }
+        }
         // Chords: Ctrl+K, then a second key.
         // The chord's first key (K or R), or 0.
         static CHORD: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
