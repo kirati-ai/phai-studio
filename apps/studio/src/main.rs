@@ -9949,6 +9949,11 @@ fn bound_id(table: &str) -> String {
 
 /// What a person typed as a form's name, as a Rust type name: letters and digits only, the first
 /// a capital - "settings window" is `SettingsWindow`.
+/// A typed form name made a Rust type's name - for the Project pane's New form too.
+pub fn form_type_name_pub(typed: &str) -> String {
+    form_type_name(typed)
+}
+
 fn form_type_name(typed: &str) -> String {
     let mut out = String::new();
     let mut up = true;
@@ -10026,6 +10031,7 @@ impl AEvents for A {
         assert_eq!(form_type_name("settings window"), "SettingsWindow");
         assert_eq!(form_type_name("Form2"), "Form2");
         assert_eq!(form_type_name("2nd"), "Form2nd");
+        assert_eq!(form_type_name("frmAboutUs"), "FrmAboutUs", "a VB-style name: its type's name begins with a capital");
         let main = "//! app
 
 mod main_window;

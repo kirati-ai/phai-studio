@@ -1013,14 +1013,25 @@ pub fn add_mods(main_rs: &str, file: &str) -> Option<String> {
 }
 
 impl crate::Studio {
+    /// A form's name made a Rust type's: said on the status bar.
+    fn say_renamed(&mut self, typed: &str, name: &str) {
+        self.say_status(&tf("{0} is named {1} - a Rust type's name begins with a capital", &[&typed, &name]));
+    }
+
     /// Right-click, New form: asks a name, writes the form and its code into `src`, makes them part
     /// of the program, and opens the form in a tab.
     pub fn new_form(&mut self, root: &Path, template: Option<phai_design::templates::Template>) {
         let Some(name) = phai_ui::dialogs::ask(Some(self.hwnd), t("New form"), t("Name of the new form, like CustomerWindow"), "", false) else { return };
-        let name = name.trim().to_string();
+        // As Project > Add Form takes it: frmAboutUs is FrmAboutUs, about us AboutUs - a Rust
+        // type's name; only a name with no letters at all is refused.
+        let typed = name.trim().to_string();
+        let name = crate::form_type_name_pub(&typed);
         if !is_form_name(&name) {
-            win::message(Some(self.hwnd), &tf("{0} is not a form name - PascalCase letters and digits, like CustomerWindow", &[&name]), "Phai Studio", wm::MB_ICONWARNING);
+            win::message(Some(self.hwnd), &tf("{0} is not a form name - PascalCase letters and digits, like CustomerWindow", &[&typed]), "Phai Studio", wm::MB_ICONWARNING);
             return;
+        }
+        if name != typed {
+            self.say_renamed(&typed, &name);
         }
         let src = root.join("src");
         let file = snake(&name);
