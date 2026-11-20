@@ -81,6 +81,75 @@ pub fn tests_in(text: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// What View shows besides the text: spaces and tabs as dots and arrows, a line at each indent
+/// level, a line at a column (0 none) - as Visual Studio's View White Space, indent guides and
+/// column guide.
+pub fn set_view_options(white_space: bool, indent_guides: bool, column: usize) {
+    WHITE_SPACE.store(white_space, std::sync::atomic::Ordering::Relaxed);
+    INDENT_GUIDES.store(indent_guides, std::sync::atomic::Ordering::Relaxed);
+    COLUMN_GUIDE.store(column, std::sync::atomic::Ordering::Relaxed);
+}
+
+static WHITE_SPACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static INDENT_GUIDES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static COLUMN_GUIDE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Expand Selection: the selection grown one step (the word, inside the brackets, the brackets...).
+pub fn expand_selection(h: HWND) {
+    let Some(v) = view(h) else { return };
+    let (a, b) = v.model.selection();
+    let text = v.model.buf.text();
+    let (x, y) = crate::tools::expand(&text, a, b);
+    if (x, y) == (a, b) {
+        return;
+    }
+    v.grown.push((a, b));
+    v.model.extra.clear();
+    v.model.anchor = x;
+    v.model.caret = y;
+    moved(h);
+}
+
+/// Shrink Selection: back to what Expand Selection grew it from.
+pub fn shrink_selection(h: HWND) {
+    let Some(v) = view(h) else { return };
+    let Some((a, b)) = v.grown.pop() else { return };
+    v.model.anchor = a;
+    v.model.caret = b;
+    moved(h);
+}
+
+/// Surround With: the lines the selection touches put in `head`'s block, its placeholder chosen.
+pub fn surround(h: HWND, head: &str) {
+    let Some(v) = view(h) else { return };
+    let (a, b) = v.model.selection();
+    let (la, _) = v.model.buf.position(a);
+    let (lb, cb) = v.model.buf.position(b);
+    // A selection ending at a line's very start does not take that line.
+    let lb = if cb == 0 && lb > la { lb - 1 } else { lb };
+    let start = v.model.buf.line_start(la);
+    let end = v.model.buf.line_start(lb) + v.model.buf.line(lb).len();
+    let text = v.model.buf.text();
+    let new = crate::tools::surround(&text[start..end], head, &crate::prefs::indent());
+    v.model.anchor = start;
+    v.model.caret = end;
+    v.model.edit_many(&[(start, end, &new)]);
+    // The placeholder - `condition`, `items`... - chosen to type over.
+    let word = head.split_whitespace().find(|w| ["condition", "items", "option"].contains(&w.trim_end_matches('{')));
+    if let Some(at) = word.and_then(|w| new.find(w).map(|i| (i, w.len()))) {
+        v.model.anchor = start + at.0;
+        v.model.caret = start + at.0 + at.1;
+    }
+    changed(h);
+}
+
+/// `text` typed in at the caret, in place of what is chosen.
+pub fn insert_text(h: HWND, text: &str) {
+    let Some(v) = view(h) else { return };
+    v.model.insert(text);
+    changed(h);
+}
+
 /// Tracepoints to show, lines from 1: a red diamond in the margin, as Visual Studio draws them.
 pub fn set_tracepoints(h: HWND, lines: &[u32]) {
     if let Some(v) = view(h) {
@@ -222,6 +291,8 @@ struct View {
     clicked_test: Option<String>,
     /// Tracepoints' lines (from 0).
     tracepoints: Vec<usize>,
+    /// The selections Expand Selection grew from, for Shrink Selection.
+    grown: Vec<(usize, usize)>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -393,7 +464,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1459,6 +1530,45 @@ fn paint(h: HWND, v: &mut View) {
                     let _ = Gdi::ExtTextOutW(dc, x, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
                 }
                 x += pw;
+            }
+            // Indent guides, white space, the column guide - drawn over the text, quietly.
+            let guide = muted.mix(bg, 0.55);
+            let tab_cols = crate::prefs::get().tab_size.max(1);
+            if INDENT_GUIDES.load(std::sync::atomic::Ordering::Relaxed) {
+                let lead: usize = s.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { tab_cols } else { 1 }).sum();
+                let mut col = tab_cols;
+                while col < lead {
+                    let gx = gutter + col as i32 * v.char_w - v.left;
+                    if gx >= gutter {
+                        win::fill(dc, &RECT { left: gx, top: y, right: gx + 1, bottom: y + v.line_h }, guide);
+                    }
+                    col += tab_cols;
+                }
+            }
+            if WHITE_SPACE.load(std::sync::atomic::Ordering::Relaxed) {
+                for (i, c) in s.char_indices().filter(|(_, c)| *c == ' ' || *c == '\t') {
+                    let x0 = gutter + v.width_of(dc, &s[..i]) - v.left;
+                    if x0 < gutter {
+                        continue;
+                    }
+                    if c == ' ' {
+                        let d = win::px(h, 2).max(2);
+                        let cx = x0 + v.char_w / 2 - d / 2;
+                        let cy = y + v.line_h / 2 - d / 2;
+                        win::fill(dc, &RECT { left: cx, top: cy, right: cx + d, bottom: cy + d }, guide);
+                    } else {
+                        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(guide.colorref()));
+                        let arrow = wide_of("\u{2192}");
+                        let _ = Gdi::ExtTextOutW(dc, x0, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(arrow.as_ptr()), arrow.len() as u32, None);
+                    }
+                }
+            }
+            let column = COLUMN_GUIDE.load(std::sync::atomic::Ordering::Relaxed);
+            if column > 0 {
+                let gx = gutter + column as i32 * v.char_w - v.left;
+                if gx >= gutter {
+                    win::fill(dc, &RECT { left: gx, top: y, right: gx + 1, bottom: y + v.line_h }, guide);
+                }
             }
             // Code lenses after the line, quiet, as Visual Studio shows them above it.
             // Reference counts only while Options shows them; a line's blame always.
