@@ -168,6 +168,24 @@ impl Canvas {
         live::set_user_controls(move |name| crate::user_control_form(folder.as_deref()?, name));
         let built = live::build(self.surface, f, s.font, 0);
         built.layout.apply(self.surface);
+        // Design-time sample data (View > Sample Data in Designer): a few rows in each list and
+        // grid, guessed from its columns - shown here only, the program starts empty.
+        if crate::setting_pub("design_samples").as_deref() != Some("0") {
+            for (c, h) in f.control.iter().zip(&built.controls) {
+                if c.columns.is_empty() || c.bind.is_some() {
+                    continue;
+                }
+                let names: Vec<String> = c.columns.iter().map(|(n, _)| n.clone()).collect();
+                for row in phai_form::sample::rows(&names) {
+                    let cells: Vec<&str> = row.iter().map(String::as_str).collect();
+                    match c.kind {
+                        Kind::List => win::list_add(*h, &cells),
+                        Kind::Grid => phai_ui::grid::grid_add(*h, &cells),
+                        _ => {}
+                    }
+                }
+            }
+        }
         live::arrange(f, &built.controls);
         for h in built.controls.iter().copied().chain(built.toolbar) {
             ghost(h);
