@@ -34,8 +34,8 @@
 
 | สิ่งที่ IDE ใหญ่ทำ | VS | AS | Xcode | Phai |
 |---|---|---|---|---|
-| หน้าต่างเริ่มต้น: ล่าสุด (ค้นหา, ปักหมุด) + New / Open / Clone | ✓ | ✓ | ✓ | 🟡 มีล่าสุด/New/Open แต่ไม่มี Clone, ค้นหา, ปักหมุด |
-| แม่แบบเป็นการ์ดมีรูป + ตัวกรอง (ภาษา/แพลตฟอร์ม/ชนิด) | ✓ | ✓ | ✓ | 🟡 มีแม่แบบ 3 แบบ ไม่มีรูป |
+| หน้าต่างเริ่มต้น: ล่าสุด (ค้นหา, ปักหมุด) + New / Open / Clone | ✓ | ✓ | ✓ | ✅ ค้นหา, ปักหมุด (คลิกขวา), Clone, เคล็ดลับ |
+| แม่แบบเป็นการ์ดมีรูป + ตัวกรอง (ภาษา/แพลตฟอร์ม/ชนิด) | ✓ | ✓ | ✓ | ✅ การ์ดมีรูป: โปรแกรม Windows / แอปมือถือ (PWA) |
 | ขั้นตอน: เลือกแบบ → ชื่อ/ที่เก็บ → ตัวเลือก (เช่น "สร้าง git repo") | ✓ | ✓ | ✓ | 🟡 |
 | "ช่วยเลือก" สำหรับค่าที่ตัดสินยาก (AS: Min SDK บอก % เครื่องที่รองรับ) | | ✓ | | ⬜ |
 
@@ -43,20 +43,20 @@
 
 | | VS | AS | Xcode | Phai |
 |---|---|---|---|---|
-| ค้นหาทุกอย่าง (คำสั่ง, ไฟล์, ค่าตั้ง) ช่องเดียว | Ctrl+Q | Shift Shift / Ctrl+Shift+A | Shift+Cmd+O | 🟡 มี Go to All (โค้ด) แต่หาคำสั่ง/ค่าตั้งไม่ได้ |
-| แท็บพรีวิว / ปักหมุดแท็บ | ✓ | ✓ | ✓ (26) | ⬜ |
-| บันทึก/เรียก layout หน้าต่าง (Ctrl+Alt+1..0), Reset layout | ✓ | ✓ | Behaviors | ⬜ |
+| ค้นหาทุกอย่าง (คำสั่ง, ไฟล์, ค่าตั้ง) ช่องเดียว | Ctrl+Q | Shift Shift / Ctrl+Shift+A | Shift+Cmd+O | ✅ Ctrl+Q ค้นคำสั่ง, หน้า Options, ไฟล์ |
+| แท็บพรีวิว / ปักหมุดแท็บ | ✓ | ✓ | ✓ (26) | ✅ คลิกเดียว = แท็บพรีวิว, File > Pin Tab, Close All But Pinned |
+| บันทึก/เรียก layout หน้าต่าง (Ctrl+Alt+1..0), Reset layout | ✓ | ✓ | Behaviors | ✅ View > Window Layouts (Ctrl+Alt+1..0) + Reset |
 | โหมดลอย/ปักหมุด/ซ่อนอัตโนมัติ ทีละแผง | ✓ | 5 โหมด | — | ✅ (ลอยได้เฉพาะบางแผง) |
-| breadcrumb เหนือ editor (โปรเจกต์ › ไฟล์ › ฟังก์ชัน) กดเลือกได้ | — | ✓ | Jump bar | ⬜ |
-| แถบสถานะ: จำนวน error/warning คลิกไปรายการได้, สาขา git | ✓ | ✓ | Activity pill | 🟡 |
+| breadcrumb เหนือ editor (โปรเจกต์ › ไฟล์ › ฟังก์ชัน) กดเลือกได้ | — | ✓ | Jump bar | ✅ breadcrumb: โฟลเดอร์ › ไฟล์ › mod/impl/fn ตาม caret (ยังกดเลือกไม่ได้) |
+| แถบสถานะ: จำนวน error/warning คลิกไปรายการได้, สาขา git | ✓ | ✓ | Activity pill | ✅ จำนวน error/warning บนแถบสถานะ คลิกเปิด Error List (สาขา git ยังไม่มี) |
 | Compact mode / Distraction free / เต็มจอ | ✓ | ✓ | Cmd+Return | ⬜ |
 
 ### 2.3 หน้าต่างเครื่องมือ
 
 | | IDE ใหญ่ | Phai |
 |---|---|---|
-| Error List: ตัวกรองขอบเขต (ทั้งโปรเจกต์/ไฟล์ที่เปิด/ไฟล์นี้), แหล่ง (build/ขณะพิมพ์), เรียงคอลัมน์, F1 เปิดคำอธิบาย error | VS | 🟡 มี error/warning กรองได้ |
-| Output: เลือกช่อง (Build / Debug / Git / Tests) ไม่ปนกัน, ไปข้อความถัดไป | VS | ⬜ ปนกันช่องเดียว |
+| Error List: ตัวกรองขอบเขต (ทั้งโปรเจกต์/ไฟล์ที่เปิด/ไฟล์นี้), แหล่ง (build/ขณะพิมพ์), เรียงคอลัมน์, F1 เปิดคำอธิบาย error | VS | ✅ ขอบเขต (ทั้งโซลูชัน/เอกสารนี้/ที่เปิด), คลิกหัวคอลัมน์เรียง |
+| Output: เลือกช่อง (Build / Debug / Git / Tests) ไม่ปนกัน, ไปข้อความถัดไป | VS | ✅ Show output from: Build / Debug / Tests / Data |
 | Output กรองแบบ query (`level:` `tag:` regex) + บันทึกตัวกรอง | AS Logcat | ⬜ |
 | Terminal หลายแท็บ, profile | VS, AS | 🟡 มีแท็บเดียว |
 | ประวัติ build/run ทุกครั้ง พร้อม log | Xcode Report navigator | ⬜ |
@@ -67,14 +67,14 @@
 | | IDE ใหญ่ | Phai |
 |---|---|---|
 | snapline, smart tag, Format menu, tab order, component tray, lock, document outline | VS | ✅ |
-| **ดูหลายขนาดพร้อมกัน** (มือถือ/แท็บเล็ต/คอม, DPI, ธีมสว่าง/มืด, ภาษา, ขนาดตัวอักษร, ตาบอดสี) | AS, Xcode | ⬜ ← สำคัญสำหรับ PWA |
-| เลือกเครื่องที่ดู (iPhone/Pixel/ขนาดเอง) + หมุนจอ | AS, Xcode | ⬜ |
-| ข้อมูลตัวอย่างตอนออกแบบ (ไม่ติดไปกับโปรแกรมจริง) | AS `tools:` | ⬜ |
-| วางอิสระแล้ว "Infer" เป็น anchor/dock ทีเดียว, ดึงขอบไปจับ control อื่น | AS, Xcode | ⬜ |
+| **ดูหลายขนาดพร้อมกัน** (มือถือ/แท็บเล็ต/คอม, DPI, ธีมสว่าง/มืด, ภาษา, ขนาดตัวอักษร, ตาบอดสี) | AS, Xcode | ✅ View > Device Preview (Shift+F4): มือถือ แนวนอน แท็บเล็ต เรียงกัน |
+| เลือกเครื่องที่ดู (iPhone/Pixel/ขนาดเอง) + หมุนจอ | AS, Xcode | ✅ เลือกเครื่อง + หมุนจอ |
+| ข้อมูลตัวอย่างตอนออกแบบ (ไม่ติดไปกับโปรแกรมจริง) | AS `tools:` | ✅ View > Sample Data in Designer |
+| วางอิสระแล้ว "Infer" เป็น anchor/dock ทีเดียว, ดึงขอบไปจับ control อื่น | AS, Xcode | ✅ Format > Infer Anchors |
 | ป้ายปัญหา layout บน outline (ซ้อน/ล้นจอ) + แก้ทีเดียว | Xcode, AS | ⬜ |
-| หน้าแจ้ง error ของ designer (ลิงก์ไปบรรทัด, "ข้ามแล้วเปิดต่อ") | VS | ⬜ |
-| Ctrl+ลาก control เข้าโค้ด → สร้าง event/field | Xcode | ⬜ (มีดับเบิลคลิกแบบ VS) |
-| Data Sources: ลากตาราง/คอลัมน์ลงฟอร์ม → grid หรือช่องกรอก + binding + ปุ่มเลื่อนแถว | VS | 🟡 มี BindingSource / Add to Form จาก Server Explorer |
+| หน้าแจ้ง error ของ designer (ลิงก์ไปบรรทัด, "ข้ามแล้วเปิดต่อ") | VS | ✅ เปิดเป็นข้อความที่บรรทัดผิด + Error List |
+| Ctrl+ลาก control เข้าโค้ด → สร้าง event/field | Xcode | ✅ ลากด้วยปุ่มขวาจาก control → เมนูอีเวนต์ / คัดลอก ui.id |
+| Data Sources: ลากตาราง/คอลัมน์ลงฟอร์ม → grid หรือช่องกรอก + binding + ปุ่มเลื่อนแถว | VS | ✅ ลากตารางจาก Server Explorer ลงฟอร์ม |
 | Properties: ค่าที่ตั้งเองเป็นตัวหนา, Reset, ค้นหา, เรียงตามหมวด (ตั้งแล้ว → layout → ทั่วไป → ทั้งหมด) | VS, AS | 🟡 |
 | Toolbox: รายการโปรด, กลุ่ม UserControl ของโปรเจกต์อัตโนมัติ | VS, AS | 🟡 |
 | Library แบบ popup ค้นหาได้ (Ctrl+Shift+L) แทนที่ Toolbox บนจอเล็ก | Xcode | ⬜ |
@@ -85,9 +85,9 @@
 | | IDE ใหญ่ | Phai |
 |---|---|---|
 | completion, quick actions (Ctrl+.), rename, peek, references, CodeLens, bookmarks, format | ทั้งสาม | ✅ (ผ่าน rust-analyzer) |
-| หลาย cursor (Ctrl+Alt+คลิก, Alt+Shift+.) | VS, Xcode | ⬜ |
-| แถบเปลี่ยนแปลงข้างบรรทัด (git) คลิกดู/ย้อนเฉพาะก้อน | ทั้งสาม | 🟡 มี blame |
-| ปุ่ม ▶ ข้างเทสต์ในขอบซ้าย, เป็นเขียว/แดงหลังรัน | AS, Xcode | ⬜ |
+| หลาย cursor (Ctrl+Alt+คลิก, Alt+Shift+.) | VS, Xcode | ✅ มีอยู่แล้ว (Ctrl+Alt+คลิก, Alt+ลาก) |
+| แถบเปลี่ยนแปลงข้างบรรทัด (git) คลิกดู/ย้อนเฉพาะก้อน | ทั้งสาม | ✅ แถบเขียว/น้ำเงิน/แดงตาม git diff (ย้อนเฉพาะก้อนยังไม่มี) |
+| ปุ่ม ▶ ข้างเทสต์ในขอบซ้าย, เป็นเขียว/แดงหลังรัน | AS, Xcode | ✅ ▶ ข้าง #[test] รันเทสต์นั้น |
 | ตัวช่วยเรียนรู้บน error: hover แล้วมีปุ่มแก้ | ทั้งสาม | 🟡 |
 | แผนผังย่อ (minimap), sticky scroll | Xcode, VS | ⬜ |
 
@@ -98,17 +98,17 @@
 | Debug/Release, Start, Attach, breakpoint หลายแบบ, watch, memory, disassembly, exception settings, diagnostic tools | VS | ✅ |
 | logpoint (พิมพ์ข้อความแล้วไปต่อ ไม่หยุด) | ทั้งสาม | 🟡 มี condition |
 | Hot Reload / Apply Changes | VS, AS | ⬜ (Rust ทำยาก — มี Live Inspector แทนสำหรับหน้าตา) |
-| "รันบนมือถือ" เลือกเครื่องจากแถบบน | AS, Xcode | ⬜ ← สำหรับ PWA: QR code |
+| "รันบนมือถือ" เลือกเครื่องจากแถบบน | AS, Xcode | ✅ Build > Run on Phone: QR code + รีโหลดเอง |
 | ถามเมื่อ build ไม่ผ่าน "รันตัวล่าสุดที่ผ่านไหม" | VS | ⬜ |
 
 ### 2.7 ค่าตั้ง
 
 | | IDE ใหญ่ | Phai |
 |---|---|---|
-| ต้นไม้หมวด + ค้นหาในค่าตั้ง (ไฮไลต์ตัวที่ตรง) | ทั้งสาม | 🟡 มีต้นไม้ 15 หน้า ยังค้นหาไม่ได้ |
-| แก้ปุ่มลัด (keymap) + preset "Visual Studio" + ค้นด้วยการกดปุ่ม | ทั้งสาม | ⬜ |
-| Behaviors: build ไม่ผ่าน → แสดง Error List + ไป error แรก + เสียง | Xcode | 🟡 (Options > Error List) |
-| นำเข้า/ส่งออกค่าตั้ง | VS | ⬜ |
+| ต้นไม้หมวด + ค้นหาในค่าตั้ง (ไฮไลต์ตัวที่ตรง) | ทั้งสาม | ✅ ช่อง Search Options |
+| แก้ปุ่มลัด (keymap) + preset "Visual Studio" + ค้นด้วยการกดปุ่ม | ทั้งสาม | ✅ Tools > Keyboard Shortcuts (กดเพื่อกำหนด บอกว่าใครใช้อยู่) |
+| Behaviors: build ไม่ผ่าน → แสดง Error List + ไป error แรก + เสียง | Xcode | ✅ เปิด error แรก, เสียง, กะพริบแถบงาน |
+| นำเข้า/ส่งออกค่าตั้ง | VS | ✅ Options > Export... / Import... |
 
 ### 2.8 ข้อมูล
 
@@ -123,7 +123,7 @@
 | | IDE ใหญ่ | Phai |
 |---|---|---|
 | Git Changes (stage, commit, push), history, blame, merge 3 ทาง | VS | ✅ |
-| Clone repository จากหน้าเริ่มต้น | ทั้งสาม | ⬜ |
+| Clone repository จากหน้าเริ่มต้น | ทั้งสาม | ✅ หน้าเริ่มต้น > Clone a repository |
 | สาขาและจำนวนการเปลี่ยนแปลงที่แถบสถานะ | VS, AS | ⬜ |
 | Test Explorer + รันเฉพาะที่ล้มเหลว + coverage | ทั้งสาม | ✅ (ยังไม่มี "รันเฉพาะที่ล้ม") |
 
@@ -132,7 +132,7 @@
 | | IDE ใหญ่ | Phai |
 |---|---|---|
 | F1 ตามบริบท (control/property/error ที่เลือก) | VS | 🟡 F1 เปิดคู่มือ |
-| Tip of the day, บทเรียนในตัว (ทำตามแล้วตรวจให้) | AS | ⬜ |
+| Tip of the day, บทเรียนในตัว (ทำตามแล้วตรวจให้) | AS | ✅ เคล็ดลับบนหน้าเริ่มต้น (บทเรียนในตัวยังไม่มี) |
 | คู่มือภาษาไทย | — | ✅ (จุดแข็งของ Phai) |
 
 ---
@@ -155,6 +155,11 @@
 ---
 
 ## 4. แผน เรียงตามความสำคัญ
+
+> **ทำครบทั้ง 4 ระยะแล้ว (2026-11-20)** - รายละเอียดแต่ละข้อดูช่อง "Phai" ในตารางข้างบน
+> ที่ยังต้องทดสอบด้วยมือ: สแกน QR ด้วยมือถือจริง, ลากตารางจาก Server Explorer (ต้องมีฐานข้อมูล),
+> ลากด้วยปุ่มขวาเข้าโค้ด, Clone จาก GitHub จริง
+
 
 ### ระยะ 1 — มือถือ (PWA) ให้ใช้ได้จริง  ← ทางที่เจ้านายเลือก
 1. กรอบมือถือ/แท็บเล็ตใน designer + หมุนจอ + ดูหลายขนาดพร้อมกัน
