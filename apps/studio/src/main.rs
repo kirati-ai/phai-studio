@@ -47,6 +47,7 @@ mod devices;
 mod search;
 mod winlayout;
 mod changes;
+mod keymap;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -228,6 +229,8 @@ const ID_RESET_LAYOUT: i32 = 673;
 const ID_INFER_ANCHORS: i32 = 674;
 /// View > Sample Data in Designer: made-up rows in the designer's lists and grids.
 const ID_DESIGN_SAMPLES: i32 = 675;
+/// Tools > Keyboard Shortcuts...: a key of one's own for any command.
+const ID_KEYMAP: i32 = 676;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -963,6 +966,9 @@ fn build_menu() -> HMENU {
     unsafe {
         let bar = wm::CreateMenu().unwrap_or_default();
         let add = |m: HMENU, id: i32, label: &str, key: &str| {
+            // A key given in Tools > Keyboard Shortcuts shows in place of the menu's own.
+            let own = keymap::key_of(id);
+            let key = own.as_deref().unwrap_or(key);
             let text = if key.is_empty() { label.to_string() } else { format!("{label}\t{key}") };
             let w = wide(&text);
             let _ = wm::AppendMenuW(m, wm::MF_STRING, id as usize, PCWSTR(w.as_ptr()));
@@ -1293,6 +1299,7 @@ fn build_menu() -> HMENU {
         add(cmd, ID_POWERSHELL, "PowerShell", "");
         sub_of(tools, t("Command Line"), cmd);
         sep(tools);
+        add(tools, ID_KEYMAP, t("Keyboard Shortcuts..."), "");
         add(tools, ID_OPTIONS, t("Options..."), "");
         sub(t("T&ools"), tools);
         let help = wm::CreatePopupMenu().unwrap_or_default();
@@ -6795,6 +6802,13 @@ impl Studio {
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
             ID_INFER_ANCHORS => self.infer_anchors(),
+            ID_KEYMAP => {
+                let menu = unsafe { wm::GetMenu(self.hwnd) };
+                let mut all = search::commands(menu, &|id| id != ID_KEYMAP);
+                // The recent files and projects change: not commands to give a key.
+                all.retain(|f| !f.place.contains(t("Recent Files")) && !f.place.contains(t("Recent Projects")));
+                keymap::run(self.hwnd, all);
+            }
             ID_DESIGN_SAMPLES => {
                 let on = setting("design_samples").as_deref() == Some("0");
                 remember_setting("design_samples", if on { "1" } else { "0" });
@@ -7924,6 +7938,12 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
 
 /// Shortcuts, before a box can take the key: Ctrl+N/O/S/Z/Y and F5.
 fn shortcut(msg: &wm::MSG) -> Option<i32> {
+    // A key given in Tools > Keyboard Shortcuts comes first.
+    if msg.message == wm::WM_KEYDOWN || msg.message == wm::WM_SYSKEYDOWN {
+        if let Some(id) = keymap::command_for(msg.wParam.0 as u16) {
+            return Some(id);
+        }
+    }
     // Alt+F11: Run Code Analysis on Solution. F10 comes as a system key: Step Over.
     // Alt+F7: the project's properties.
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x76 {
