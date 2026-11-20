@@ -260,6 +260,8 @@ const ID_CLIP_RING: i32 = 699;
 const ID_WHITE_SPACE: i32 = 1990;
 const ID_INDENT_GUIDES: i32 = 1991;
 const ID_COLUMN_GUIDE: i32 = 1992;
+/// View > Word Wrap (Ctrl+E, Ctrl+W).
+const ID_WORD_WRAP: i32 = 1993;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -1116,10 +1118,11 @@ fn build_menu() -> HMENU {
         add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
         add(view, ID_DESIGN_SAMPLES, t("Sample Data in Designer"), "");
         add(view, ID_FULL_SCREEN, t("Full Screen"), "Shift+Alt+Enter");
+        add(view, ID_WORD_WRAP, t("Word Wrap"), "Ctrl+E, Ctrl+W");
         add(view, ID_WHITE_SPACE, t("White Space"), "");
         add(view, ID_INDENT_GUIDES, t("Indent Guides"), "");
         add(view, ID_COLUMN_GUIDE, t("Column Guide at 100"), "");
-        for (id, key, default) in [(ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
+        for (id, key, default) in [(ID_WORD_WRAP, "word_wrap", false), (ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
             if setting(key).map(|v| v == "1").unwrap_or(default) {
                 wm::CheckMenuItem(view, id as u32, wm::MF_CHECKED.0);
             }
@@ -7220,8 +7223,9 @@ impl Studio {
                 }
             }
             ID_CLIP_RING => self.clipboard_ring(),
-            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE => {
+            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE | ID_WORD_WRAP => {
                 let (key, default) = match id {
+                    ID_WORD_WRAP => ("word_wrap", false),
                     ID_WHITE_SPACE => ("white_space", false),
                     ID_INDENT_GUIDES => ("indent_guides", true),
                     _ => ("column_guide", false),
@@ -8012,6 +8016,7 @@ fn ring_add(owner: HWND) {
 fn apply_view_options() {
     let on = |k: &str, d: bool| setting(k).map(|v| v == "1").unwrap_or(d);
     phai_editor::view::set_view_options(on("white_space", false), on("indent_guides", true), if on("column_guide", false) { 100 } else { 0 });
+    phai_editor::view::set_word_wrap(on("word_wrap", false));
 }
 
 fn get_clipboard(owner: HWND) -> Option<String> {
@@ -8479,6 +8484,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     (0x4B, 0x50, true) => Some(ID_BM_PREV),    // Ctrl+K, Ctrl+P
                     (0x4B, 0x4C, true) => Some(ID_BM_CLEAR),   // Ctrl+K, Ctrl+L
                     (0x4B, 0x53, true) => Some(ID_SURROUND),   // Ctrl+K, Ctrl+S
+                    (0x45, 0x57, true) => Some(ID_WORD_WRAP),  // Ctrl+E, Ctrl+W
                     (0x4D, 0x4D, true) => Some(ID_FOLD),       // Ctrl+M, Ctrl+M
                     (0x4D, 0x4C, true) => Some(ID_FOLD_ALL),   // Ctrl+M, Ctrl+L
                     (0x52, 0x41, _) => Some(ID_RUN_ALL_TESTS), // Ctrl+R, A
@@ -8486,7 +8492,9 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     _ => Some(ID_CHORD_END),
                 };
             }
-            if (k == 0x4B || k == 0x52 || (k == 0x4D && studio().is_some_and(|s| s.code_shown().is_some()))) && ctrl && !shift {
+            let in_code = studio().is_some_and(|s| s.code_shown().is_some());
+            let alt = unsafe { km::GetKeyState(0x12) } < 0;
+            if (k == 0x4B || k == 0x52 || ((k == 0x4D || k == 0x45) && in_code && !alt)) && ctrl && !shift {
                 CHORD.store(k, Ordering::Relaxed);
                 return Some(ID_CHORD);
             }
