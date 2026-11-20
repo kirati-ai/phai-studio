@@ -386,16 +386,22 @@ pub fn glyph_icon(glyph: u16, size: i32, colour: Color) -> Option<HICON> {
 /// A glyph as a menu item's picture (`MENUITEMINFOW::hbmpItem`): the size of a menu's check mark,
 /// in Windows' icon grey. Made once per glyph and kept - menus are built again often.
 pub fn menu_bitmap(glyph: u16) -> Option<Gdi::HBITMAP> {
+    menu_bitmap_in(glyph, Color::rgb(0x3c, 0x3c, 0x3c))
+}
+
+/// [`menu_bitmap`] in a colour of its own, as Visual Studio colours its menus' pictures.
+pub fn menu_bitmap_in(glyph: u16, colour: Color) -> Option<Gdi::HBITMAP> {
     use std::collections::HashMap;
     use std::sync::Mutex;
-    static MADE: Mutex<Option<HashMap<u16, isize>>> = Mutex::new(None);
+    static MADE: Mutex<Option<HashMap<(u16, u32), isize>>> = Mutex::new(None);
     let mut made = MADE.lock().unwrap_or_else(|e| e.into_inner());
     let map = made.get_or_insert_with(HashMap::new);
-    if let Some(h) = map.get(&glyph) {
+    let key = (glyph, colour.colorref());
+    if let Some(h) = map.get(&key) {
         return Some(Gdi::HBITMAP(*h as *mut _));
     }
     let size = unsafe { wm::GetSystemMetrics(wm::SM_CXMENUCHECK) }.max(16);
-    let pixels = glyph_pixels(glyph, size, Color::rgb(0x3c, 0x3c, 0x3c))?;
+    let pixels = glyph_pixels(glyph, size, colour)?;
     unsafe {
         let info = Gdi::BITMAPINFO {
             bmiHeader: Gdi::BITMAPINFOHEADER { biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32, biWidth: size, biHeight: -size, biPlanes: 1, biBitCount: 32, biCompression: 0, ..Default::default() },
@@ -415,14 +421,19 @@ pub fn menu_bitmap(glyph: u16) -> Option<Gdi::HBITMAP> {
             o[2] = (p[2] as u32 * a / 255) as u8;
             o[3] = p[3];
         }
-        map.insert(glyph, bmp.0 as isize);
+        map.insert(key, bmp.0 as isize);
         Some(bmp)
     }
 }
 
 /// Puts a glyph beside a menu item, found by its command id.
 pub fn set_menu_glyph(menu: wm::HMENU, id: u32, glyph: u16) {
-    if let Some(bmp) = menu_bitmap(glyph) {
+    set_menu_glyph_in(menu, id, glyph, Color::rgb(0x3c, 0x3c, 0x3c));
+}
+
+/// [`set_menu_glyph`] in a colour of its own.
+pub fn set_menu_glyph_in(menu: wm::HMENU, id: u32, glyph: u16, colour: Color) {
+    if let Some(bmp) = menu_bitmap_in(glyph, colour) {
         let info = wm::MENUITEMINFOW { cbSize: std::mem::size_of::<wm::MENUITEMINFOW>() as u32, fMask: wm::MIIM_BITMAP, hbmpItem: bmp, ..Default::default() };
         unsafe {
             let _ = wm::SetMenuItemInfoW(menu, id, false, &info);

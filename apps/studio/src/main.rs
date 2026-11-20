@@ -33,6 +33,7 @@ mod githistory;
 mod merge;
 mod coverage;
 mod themeedit;
+mod menuicons;
 mod web;
 
 use std::path::{Path, PathBuf};
@@ -1211,6 +1212,8 @@ fn build_menu() -> HMENU {
         sep(help);
         add(help, ID_ABOUT, t("About Phai Studio"), "");
         sub(t("&Help"), help);
+        // A coloured picture beside every command.
+        menuicons::apply(bar);
         bar
     }
 }
