@@ -262,6 +262,8 @@ const ID_INDENT_GUIDES: i32 = 1991;
 const ID_COLUMN_GUIDE: i32 = 1992;
 /// View > Word Wrap (Ctrl+E, Ctrl+W).
 const ID_WORD_WRAP: i32 = 1993;
+/// View > Inline Hints: the types the code does not write, after their lines.
+const ID_INLAY_HINTS: i32 = 1994;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -444,6 +446,8 @@ enum Ask {
     /// Code lenses: the file's symbols, then the uses of each (the round, its line and place).
     LensSymbols,
     LensUses(u64, u32, (u32, u32)),
+    /// Inlay hints: the types the file does not write.
+    Hints,
     /// Call Hierarchy: the function at the caret, then who calls it.
     PrepareCalls,
     Calls(String),
@@ -1119,10 +1123,11 @@ fn build_menu() -> HMENU {
         add(view, ID_DESIGN_SAMPLES, t("Sample Data in Designer"), "");
         add(view, ID_FULL_SCREEN, t("Full Screen"), "Shift+Alt+Enter");
         add(view, ID_WORD_WRAP, t("Word Wrap"), "Ctrl+E, Ctrl+W");
+        add(view, ID_INLAY_HINTS, t("Inline Hints"), "");
         add(view, ID_WHITE_SPACE, t("White Space"), "");
         add(view, ID_INDENT_GUIDES, t("Indent Guides"), "");
         add(view, ID_COLUMN_GUIDE, t("Column Guide at 100"), "");
-        for (id, key, default) in [(ID_WORD_WRAP, "word_wrap", false), (ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
+        for (id, key, default) in [(ID_INLAY_HINTS, "inlay_hints", true), (ID_WORD_WRAP, "word_wrap", false), (ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
             if setting(key).map(|v| v == "1").unwrap_or(default) {
                 wm::CheckMenuItem(view, id as u32, wm::MF_CHECKED.0);
             }
@@ -2022,6 +2027,18 @@ impl Studio {
             let id = l.document_symbols(&path);
             self.asked.insert(id, (h, Ask::LensSymbols));
         }
+        // Inlay hints, when View shows them.
+        if setting("inlay_hints").as_deref() != Some("0") {
+            let text = phai_editor::view::text(h);
+            let last = text.split('\n').count().saturating_sub(1) as u32;
+            let end = (last, text.split('\n').next_back().map(|l| l.encode_utf16().count()).unwrap_or(0) as u32);
+            if let Some(l) = self.lsp_for(&path) {
+                let id = l.inlay_hints(&path, end);
+                self.asked.insert(id, (h, Ask::Hints));
+            }
+        } else {
+            phai_editor::view::set_inlay_hints(h, vec![]);
+        }
     }
 
     /// Document Outline again from the form, when it shows.
@@ -2709,6 +2726,13 @@ impl Studio {
 
     fn lsp_answer(&mut self, h: HWND, ask: Ask, result: serde_json::Value, error: Option<String>) {
         match ask {
+            Ask::Hints => {
+                let hints = phai_editor::lsp::type_hints_of(&result, &phai_editor::view::text(h));
+                if std::env::var_os("PHAI_HINTS_TEST").is_some() {
+                    println!("hints: {:?} (answer {}, error {:?})", hints.iter().take(5).collect::<Vec<_>>(), result.to_string().chars().take(300).collect::<String>(), error);
+                }
+                phai_editor::view::set_inlay_hints(h, hints);
+            }
             Ask::Hover => {
                 if let Some(text) = phai_editor::lsp::hover_text(&result) {
                     phai_editor::view::show_tip(h, &text);
@@ -7223,8 +7247,9 @@ impl Studio {
                 }
             }
             ID_CLIP_RING => self.clipboard_ring(),
-            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE | ID_WORD_WRAP => {
+            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE | ID_WORD_WRAP | ID_INLAY_HINTS => {
                 let (key, default) = match id {
+                    ID_INLAY_HINTS => ("inlay_hints", true),
                     ID_WORD_WRAP => ("word_wrap", false),
                     ID_WHITE_SPACE => ("white_space", false),
                     ID_INDENT_GUIDES => ("indent_guides", true),
@@ -7234,6 +7259,9 @@ impl Studio {
                 remember_setting(key, if on { "1" } else { "0" });
                 apply_view_options();
                 self.rebuild_menu();
+                if id == ID_INLAY_HINTS {
+                    self.refresh_lenses();
+                }
                 if let Some(h) = self.doc.code {
                     unsafe {
                         let _ = Gdi::InvalidateRect(Some(h), None, false);

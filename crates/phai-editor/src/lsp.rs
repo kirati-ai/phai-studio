@@ -167,6 +167,7 @@ impl Lsp {
                         "hover": { "contentFormat": ["plaintext", "markdown"] },
                         "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
                         "codeLens": {},
+                        "inlayHint": {},
                         "completion": { "completionItem": { "snippetSupport": false } },
                         "publishDiagnostics": {},
                         "definition": { "linkSupport": true },
@@ -183,7 +184,7 @@ impl Lsp {
                 },
                 "workspaceFolders": [{ "uri": uri_of(root), "name": "project" }],
                 // Type mistakes as you type, not only after `cargo check`.
-                "initializationOptions": { "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } }, "lens": { "enable": true, "references": { "adt": { "enable": true }, "method": { "enable": true }, "trait": { "enable": true }, "enumVariant": { "enable": true } } } }
+                "initializationOptions": { "inlayHints": { "typeHints": { "enable": true }, "parameterHints": { "enable": false }, "chainingHints": { "enable": false } }, "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } }, "lens": { "enable": true, "references": { "adt": { "enable": true }, "method": { "enable": true }, "trait": { "enable": true }, "enumVariant": { "enable": true } } } }
             }),
         );
         // rust-analyzer takes the notification as soon as it has answered `initialize`.
@@ -276,6 +277,12 @@ impl Lsp {
     }
 
     /// A file's code lenses - "3 references" by a function - still to resolve.
+    /// Inlay hints for the whole file: types not written, parameters' names.
+    /// `end`: the file's last line (from 0) and its length in UTF-16.
+    pub fn inlay_hints(&mut self, path: &Path, end: (u32, u32)) -> i64 {
+        self.request("textDocument/inlayHint", json!({ "textDocument": { "uri": uri_of(path) }, "range": { "start": { "line": 0, "character": 0 }, "end": { "line": end.0, "character": end.1 } } }))
+    }
+
     pub fn code_lenses(&mut self, path: &Path) -> i64 {
         self.request("textDocument/codeLens", json!({ "textDocument": { "uri": uri_of(path) } }))
     }
@@ -335,6 +342,40 @@ pub struct Diagnostic {
 }
 
 /// The file and diagnostics of a `publishDiagnostics` notification.
+/// The type hints in an inlay hint answer, as the editor shows them after their lines: each line
+/// (from 0) with `name: Type` for every variable on it whose type the code does not write. The
+/// name is read from `text` just before the hint.
+pub fn type_hints_of(result: &Value, text: &str) -> Vec<(usize, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out: Vec<(usize, String)> = Vec::new();
+    for h in result.as_array().into_iter().flatten() {
+        // Type hints only (kind 1); parameter names (2) belong inside calls.
+        if h["kind"].as_u64() != Some(1) {
+            continue;
+        }
+        let label = match &h["label"] {
+            Value::String(s) => s.clone(),
+            Value::Array(parts) => parts.iter().filter_map(|p| p["value"].as_str()).collect(),
+            _ => continue,
+        };
+        let (Some(line), Some(ch)) = (h["position"]["line"].as_u64(), h["position"]["character"].as_u64()) else { continue };
+        let line = line as usize;
+        let Some(s) = lines.get(line) else { continue };
+        let at = from_lsp(s, ch as u32).min(s.len());
+        let name: String = s[..at].chars().rev().take_while(|c| c.is_alphanumeric() || *c == '_').collect::<Vec<_>>().into_iter().rev().collect();
+        let label = label.trim().to_string();
+        let said = if name.is_empty() { label.trim_start_matches(':').trim().to_string() } else { format!("{name}{label}") };
+        match out.iter_mut().find(|(l, _)| *l == line) {
+            Some((_, words)) => {
+                words.push_str(", ");
+                words.push_str(&said);
+            }
+            None => out.push((line, said)),
+        }
+    }
+    out
+}
+
 pub fn diagnostics_of(msg: &Value) -> Option<(PathBuf, Vec<Diagnostic>)> {
     if msg.get("method")?.as_str()? != "textDocument/publishDiagnostics" {
         return None;

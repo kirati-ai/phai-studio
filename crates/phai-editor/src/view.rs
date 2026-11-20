@@ -227,6 +227,17 @@ pub fn insert_text(h: HWND, text: &str) {
     changed(h);
 }
 
+/// Inlay hints to show after their lines (lines from 0): `total: i32` for a type the code does
+/// not write - quiet, as Visual Studio's inline hints.
+pub fn set_inlay_hints(h: HWND, hints: Vec<(usize, String)>) {
+    if let Some(v) = view(h) {
+        v.hints = hints;
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
 /// Tracepoints to show, lines from 1: a red diamond in the margin, as Visual Studio draws them.
 pub fn set_tracepoints(h: HWND, lines: &[u32]) {
     if let Some(v) = view(h) {
@@ -375,6 +386,8 @@ struct View {
     tracepoints: Vec<usize>,
     /// The selections Expand Selection grew from, for Shrink Selection.
     grown: Vec<(usize, usize)>,
+    /// Inlay hints by line (from 0).
+    hints: Vec<(usize, String)>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -614,7 +627,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1735,6 +1748,14 @@ fn paint(h: HWND, v: &mut View) {
                 if gx >= gutter {
                     win::fill(dc, &RECT { left: gx, top: y, right: gx + 1, bottom: y + v.line_h }, guide);
                 }
+            }
+            // Inlay hints after the line: the types it does not write, quiet.
+            if let Some((_, words)) = v.hints.iter().find(|(l, _)| *l == line) {
+                let x0 = x + v.char_w * 2;
+                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.mix(bg, 0.25).colorref()));
+                let text = wide_of(words);
+                let _ = Gdi::ExtTextOutW(dc, x0, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
+                x = x0 + v.width_of(dc, words);
             }
             // Code lenses after the line, quiet, as Visual Studio shows them above it.
             // Reference counts only while Options shows them; a line's blame always.
