@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>รายงานพิมพ์ - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<a href="report.html" class="here">รายงานพิมพ์</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>รายงานพิมพ์ (Report Designer)</h1>
+<p class="lead">ออกแบบรายงานสำหรับพิมพ์ เช่น ใบสรุปยอดขาย รายชื่อลูกค้า ใบแจ้งหนี้ โดยลากวางบนหน้ากระดาษ ดึงข้อมูลจริงจากตารางในฐานข้อมูล มีหัวกลุ่ม ผลรวม เลขหน้า ดูตัวอย่างก่อนพิมพ์ และบันทึกเป็น PDF ได้ แนวเดียวกับ FastReport หรือ DevExpress XtraReports แต่ฟรี</p>
+
+<h2>รายงานคือแถบเรียงกัน</h2>
+<p>รายงานแบ่งเป็น <b>แถบ</b> (band) แต่ละแถบพิมพ์ในจังหวะของมัน แล้วในแถบมีข้อความ ฟิลด์ ผลรวม เส้น กรอบ หรือรูปภาพ</p>
+<table>
+  <tr><th>แถบ</th><th>พิมพ์เมื่อไร</th><th>มักใส่อะไร</th></tr>
+  <tr><td>หัวรายงาน (Report Header)</td><td>ครั้งเดียวที่ต้นรายงาน</td><td>ชื่อรายงาน โลโก้</td></tr>
+  <tr><td>หัวกระดาษ (Page Header)</td><td>บนสุดของทุกหน้า</td><td>หัวคอลัมน์</td></tr>
+  <tr><td>หัวกลุ่ม (Group Header)</td><td>ก่อนแถวของแต่ละกลุ่ม</td><td>ชื่อกลุ่ม เช่น "ภาค: ภาคเหนือ"</td></tr>
+  <tr><td>รายละเอียด (Detail)</td><td>ทุกแถวของตาราง</td><td>ฟิลด์ของแถว</td></tr>
+  <tr><td>ท้ายกลุ่ม (Group Footer)</td><td>หลังแถวของแต่ละกลุ่ม</td><td>ผลรวมของกลุ่ม</td></tr>
+  <tr><td>ท้ายรายงาน (Report Footer)</td><td>ครั้งเดียวท้ายรายงาน</td><td>ผลรวมทั้งหมด</td></tr>
+  <tr><td>ท้ายกระดาษ (Page Footer)</td><td>ล่างสุดของทุกหน้า</td><td>วันที่พิมพ์ เลขหน้า</td></tr>
+</table>
+
+<h2>สร้างรายงาน</h2>
+<ol>
+  <li>เปิดฟอร์มของโปรเจกต์ แล้วเลือกเมนู Project &gt; เพิ่มรายงาน... ตั้งชื่อ เช่น <code>SalesReport</code></li>
+  <li>หน้าต่างตัวออกแบบรายงานเปิดขึ้น กดปุ่ม <b>ข้อมูล...</b> เลือกการเชื่อมต่อ ฐานข้อมูล และตาราง จาก Server Explorer (ต้องเพิ่มการเชื่อมต่อใน <a href="database.html">Server Explorer</a> ก่อน)</li>
+  <li>ถ้าแถบรายละเอียดยังว่าง ตัวออกแบบวางทุกคอลัมน์ให้ พร้อมหัวคอลัมน์ในหัวกระดาษ</li>
+  <li>กด <b>Preview</b> ดูหน้ากระดาษจริงกับข้อมูลจริง แล้วกด <b>บันทึก</b> (<kbd>Ctrl</kbd>+<kbd>S</kbd>)</li>
+</ol>
+<p>รายงานที่มีอยู่แล้ว ดับเบิลคลิกไฟล์ <code>.phaireport</code> ในหน้าต่าง Project เพื่อเปิด</p>
+
+<h2>หน้าต่างตัวออกแบบ</h2>
+<ul>
+  <li><b>ซ้าย</b> คอลัมน์ของตาราง ดับเบิลคลิกคอลัมน์ = วางฟิลด์ในแถบรายละเอียด และหัวคอลัมน์ในหัวกระดาษ</li>
+  <li><b>กลาง</b> หน้ากระดาษ แต่ละแถบมีแถบสีบอกชื่อ ลากสิ่งของเพื่อย้าย (ลากไปปล่อยในแถบอื่นได้) ลากมุมขวาล่างเพื่อปรับขนาด ลากขอบล่างของแถบเพื่อปรับความสูง ฟิลด์แสดงเป็น <code>[ชื่อคอลัมน์]</code> ผลรวมแสดงเป็น <code>sum(คอลัมน์)</code></li>
+  <li><b>ขวา</b> คุณสมบัติของสิ่งที่เลือก ดับเบิลคลิกแถวเพื่อแก้ ค่าที่มีตัวเลือก (จัดแนว ฟังก์ชัน คอลัมน์) ขึ้นเป็นเมนู คลิกที่ว่างเพื่อดูคุณสมบัติของทั้งรายงาน</li>
+</ul>
+<table>
+  <tr><th>ปุ่ม</th><th>ทำอะไร</th></tr>
+  <tr><td>ป้าย / ฟิลด์ / เส้น / กรอบ / รูปภาพ</td><td>เพิ่มลงแถบที่เลือกอยู่ (ไม่ได้เลือก = แถบรายละเอียด)</td></tr>
+  <tr><td>ผลรวม</td><td>เลือกฟิลด์ก่อนแล้วกด ได้ผลรวมของคอลัมน์นั้นลงท้ายกลุ่ม (หรือท้ายรายงานถ้าไม่มีกลุ่ม) เปลี่ยนเป็นนับ เฉลี่ย ต่ำสุด สูงสุด ได้ที่คุณสมบัติ "ฟังก์ชัน"</td></tr>
+  <tr><td>ข้อมูล...</td><td>เลือกตาราง</td></tr>
+  <tr><td>กลุ่ม...</td><td>จัดกลุ่มตามคอลัมน์ ได้หัวกลุ่มและท้ายกลุ่มให้ หรือเอากลุ่มออก</td></tr>
+  <tr><td>แถบ...</td><td>เปิดหรือปิดหัว/ท้ายรายงาน และหัว/ท้ายกระดาษ</td></tr>
+  <tr><td>Preview / พิมพ์... / PDF...</td><td>ดูตัวอย่าง พิมพ์ หรือบันทึกเป็น PDF (ใช้เครื่องพิมพ์ Microsoft Print to PDF ที่มากับ Windows)</td></tr>
+</table>
+<p>แป้นพิมพ์: <kbd>Delete</kbd> ลบ, ลูกศรขยับทีละนิด (<kbd>Ctrl</kbd> = ทีละมาก, <kbd>Shift</kbd> = ปรับขนาด), <kbd>Ctrl</kbd>+<kbd>Z</kbd> เลิกทำ, <kbd>Ctrl</kbd>+<kbd>Y</kbd> ทำซ้ำ</p>
+
+<h2>ข้อความที่เติมให้</h2>
+<p>ในป้าย (label) ใส่คำในวงเล็บปีกกา แล้วตอนพิมพ์จะถูกแทนด้วยค่าจริง</p>
+<table>
+  <tr><th>เขียน</th><th>ได้</th></tr>
+  <tr><td><code>{page}</code> / <code>{pages}</code></td><td>หน้านี้ / จำนวนหน้าทั้งหมด เช่น <code>หน้า {page} / {pages}</code></td></tr>
+  <tr><td><code>{date}</code> <code>{time}</code></td><td>วันที่และเวลาที่พิมพ์</td></tr>
+  <tr><td><code>{title}</code></td><td>ชื่อรายงาน</td></tr>
+  <tr><td><code>{row}</code></td><td>ลำดับแถว</td></tr>
+  <tr><td><code>{ชื่อคอลัมน์}</code></td><td>ค่าของคอลัมน์ในแถวนั้น เช่น <code>ภาค: {region}</code> ในหัวกลุ่ม</td></tr>
+</table>
+<p>ตัวเลขจัดรูปแบบได้ที่คุณสมบัติ "รูปแบบ" เช่น <code>#,##0.00</code> (มีจุลภาคหลักพัน ทศนิยมสองตำแหน่ง) หรือ <code>฿#,##0</code></p>
+
+<h2>หน้าตาด้วย CSS</h2>
+<p>เหมือนฟอร์ม หน้าตาของรายงานมาจาก CSS ค่าเริ่มต้นมีหัวรายงานตัวใหญ่ หัวคอลัมน์ตัวหนามีเส้นใต้ แถวสลับสีจาง ๆ และผลรวมตัวหนา แต่งเพิ่มได้ที่คุณสมบัติ CSS ของรายงาน:</p>
+<pre><code>band.group_footer   { background: #fdf6e3; }
+label.report_header { color: #12855f; }
+band.detail.odd     { background: #ffffff; }   /* ไม่เอาแถวสลับสี */</code></pre>
+<p>ชื่อชนิดคือ <code>label</code> <code>field</code> <code>total</code> <code>line</code> <code>box</code> และแถบคือ <code>band</code> โดยมี class เป็นชื่อแถบ (<code>.page_header</code>, <code>.detail</code> ...)</p>
+
+<h2>เรียกรายงานจากโปรแกรม</h2>
+<p>บันทึกแล้ว Phai Studio สร้างไฟล์ <code>src/sales_report.rs</code> ให้ (อย่าแก้ไฟล์นี้ มันถูกเขียนใหม่ทุกครั้งที่บันทึก) เรียกจากปุ่มบนฟอร์มได้เลย:</p>
+<pre><code>fn print_click(&amp;mut self, ui: &amp;MainWindowUi) {
+    if let Err(e) = crate::sales_report::preview(ui.hwnd) {
+        phai_ui::win::message(Some(ui.hwnd), &amp;e, "รายงาน", Default::default());
+    }
+}</code></pre>
+<table>
+  <tr><th>คำสั่ง</th><th>ทำอะไร</th></tr>
+  <tr><td><code>sales_report::preview(hwnd)</code></td><td>หน้าต่างดูตัวอย่าง มีปุ่มพิมพ์</td></tr>
+  <tr><td><code>sales_report::print(hwnd)</code></td><td>หน้าต่าง Print ของ Windows แล้วพิมพ์</td></tr>
+  <tr><td><code>sales_report::export_pdf(hwnd, path)</code></td><td>บันทึกเป็น PDF</td></tr>
+  <tr><td><code>sales_report::report()</code></td><td>ตัวรายงาน ใส่แถวของตัวเองได้ด้วย <code>phai_ui::report::Data::new(คอลัมน์, แถว)</code></td></tr>
+</table>
+<div class="note">รายละเอียดรูปแบบไฟล์ <code>.phaireport</code> อยู่ใน <code>docs/phaireport.md</code> ของ repo</div>
+<div class="pager"><a href="web.html">← เว็บและมือถือ (PWA)</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+</main>
+</div>
+</body>
+</html>

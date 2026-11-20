@@ -744,7 +744,9 @@ impl Explorer {
         items.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.to_lowercase().cmp(&b.1.to_lowercase())));
         // A form's two Rust files go under it, as a WinForms form's code and designer files do.
         let forms: Vec<String> = items.iter().filter_map(|(_, n, _)| n.strip_suffix(".phaiform").map(str::to_string)).collect();
-        let under_form = |n: &str| forms.iter().any(|f| n == format!("{f}.rs") || n == format!("{f}_ui.rs"));
+        // A report's generated code goes under the report.
+        let reports: Vec<String> = items.iter().filter_map(|(_, n, _)| n.strip_suffix(".phaireport").map(str::to_string)).collect();
+        let under_form = |n: &str| forms.iter().any(|f| n == format!("{f}.rs") || n == format!("{f}_ui.rs")) || reports.iter().any(|r| n == format!("{r}.rs"));
         let filter = self.filter.clone();
         let matches = |n: &str| filter.is_empty() || n.to_lowercase().contains(&filter);
         for (is_dir, name, path) in items {
@@ -759,7 +761,7 @@ impl Explorer {
             }
             let icon = if is_dir {
                 0
-            } else if name.ends_with(".phaiform") {
+            } else if name.ends_with(".phaiform") || name.ends_with(".phaireport") {
                 2
             } else if name.ends_with(".rs") {
                 3
@@ -774,6 +776,12 @@ impl Explorer {
                 self.add_folder(item, &path, depth + 1);
                 if name == "src" || !filter.is_empty() {
                     win::tree_expand(self.tree, item);
+                }
+            } else if let Some(stem) = name.strip_suffix(".phaireport").filter(|_| filter.is_empty()) {
+                let p = dir.join(format!("{stem}.rs"));
+                if p.is_file() {
+                    self.entries.push(p);
+                    win::tree_add(self.tree, item, &format!("{stem}.rs"), 3, self.entries.len() as isize - 1);
                 }
             } else if let Some(stem) = name.strip_suffix(".phaiform").filter(|_| filter.is_empty()) {
                 for child in [format!("{stem}.rs"), format!("{stem}_ui.rs")] {
@@ -801,6 +809,8 @@ impl Explorer {
         let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
         if ext == "phaiform" {
             s.open_path(&path);
+        } else if ext == "phaireport" {
+            crate::repdesign::open(Some(s.hwnd), &path);
         } else if ["rs", "toml", "css", "md", "txt", "json", "gitignore"].contains(&ext.as_str()) || path.file_name().is_some_and(|n| n == ".gitignore") {
             s.open_code(&path);
         } else {

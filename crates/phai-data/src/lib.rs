@@ -358,6 +358,36 @@ impl Connection {
     pub fn query(&self, database: Option<&str>, sql: &str) -> Result<Grid, String> {
         Ok(to_grid(self.run(database, sql, MAX_ROWS)?))
     }
+
+    /// As [`Connection::query`], every row kept however many there are - what a report prints.
+    pub fn query_all(&self, database: Option<&str>, sql: &str) -> Result<Grid, String> {
+        Ok(to_grid(self.run(database, sql, usize::MAX)?))
+    }
+
+    /// The SELECT a report reads its rows with: `columns` of `table` (every one when none),
+    /// `filter` its WHERE when not empty, sorted by `order` - each a column, `desc` after it to
+    /// sort from the largest.
+    pub fn select_sql(&self, database: &str, table: &str, columns: &[&str], filter: &str, order: &[&str]) -> String {
+        let cols = if columns.is_empty() { "*".to_string() } else { columns.iter().map(|c| self.q(c)).collect::<Vec<_>>().join(", ") };
+        let mut sql = format!("SELECT {cols} FROM {}", self.table_ref(database, table));
+        if !filter.trim().is_empty() {
+            sql.push_str(&format!(" WHERE {}", filter.trim()));
+        }
+        let keys: Vec<String> = order
+            .iter()
+            .map(|o| o.trim())
+            .filter(|o| !o.is_empty())
+            .map(|o| match o.rsplit_once(' ') {
+                Some((c, d)) if d.eq_ignore_ascii_case("desc") => format!("{} DESC", self.q(c.trim())),
+                Some((c, d)) if d.eq_ignore_ascii_case("asc") => self.q(c.trim()),
+                _ => self.q(o),
+            })
+            .collect();
+        if !keys.is_empty() {
+            sql.push_str(&format!(" ORDER BY {}", keys.join(", ")));
+        }
+        sql
+    }
 }
 
 /// Code for a program to read `table` (or to connect, with none) - with the `mysql` crate, the
@@ -674,6 +704,21 @@ impl Binding {
 #[cfg(test)]
 mod binding_tests {
     use super::*;
+
+    #[test]
+    fn a_report_selects_its_rows_sorted() {
+        let c = Connection { kind: Kind::Sqlite, ..Default::default() };
+        assert_eq!(c.select_sql("main", "orders", &["region", "amount"], "amount > 0", &["region", "amount desc"]), "SELECT \"region\", \"amount\" FROM \"orders\" WHERE amount > 0 ORDER BY \"region\", \"amount\" DESC");
+        let m = Connection { kind: Kind::MySql, ..Default::default() };
+        assert_eq!(m.select_sql("shop", "orders", &[], "", &[]), "SELECT * FROM `shop`.`orders`");
+        let path = std::env::temp_dir().join(format!("phai-all-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let s = Connection { host: path.to_string_lossy().to_string(), kind: Kind::Sqlite, ..Default::default() };
+        s.query(None, "CREATE TABLE n (v INTEGER); WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM r WHERE x < 1500) INSERT INTO n SELECT x FROM r;").unwrap();
+        assert_eq!(s.query(None, "SELECT v FROM n").unwrap().rows.len(), MAX_ROWS);
+        assert_eq!(s.query_all(None, "SELECT v FROM n").unwrap().rows.len(), 1500, "a report has every row");
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn a_bound_table_saves_what_the_grid_holds() {

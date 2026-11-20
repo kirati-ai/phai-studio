@@ -136,6 +136,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         // Project
         ID_ADD_FORM => (glyph::FORM, GREEN),
         ID_ADD_USER_CONTROL => (glyph::GROUP, GREEN),
+        ID_ADD_REPORT => (0xE749, GREEN), // Print
         ID_MANAGE_CRATES => (0xE7B8, BLUE), // Package
         ID_PROJECT_PROPS => (glyph::BUILD, GREY),
         // Test
