@@ -6434,6 +6434,7 @@ impl Studio {
                 b.show_tab(0);
             }
         }
+        self.behave_after_build(out.ok, out.job == cargo::Job::Clean);
         if out.ok && out.job == cargo::Job::Clean {
             controls::status_text(self.status, 0, &tf("Cleaned in {0} s", &[&format!("{:.1}", out.seconds)]));
         } else if out.ok && out.job == cargo::Job::Analyse {
@@ -6538,6 +6539,30 @@ impl Studio {
         // On the status bar too, as Visual Studio's: a click opens the Error List.
         let counts = if self.diagnostics.is_empty() { String::new() } else { format!("\u{2297} {e}   \u{26A0} {}", self.diagnostics.len() - e) };
         controls::status_text(self.status, 3, &counts);
+    }
+
+    /// Behaviors (Tools > Options > Environment > Error List): what a build's end does - the
+    /// first error opened, a sound, the taskbar button flashed when Studio is behind.
+    fn behave_after_build(&mut self, ok: bool, clean: bool) {
+        let on = |k: &str, default: bool| setting(k).map(|v| v == "1").unwrap_or(default);
+        if !ok && !clean && on("first_error", false) && self.diagnostics.iter().any(|d| d.error && d.file.is_some()) {
+            // From the top: the first error that leads somewhere.
+            if let Some(row) = self.diag_rows.iter().position(|&i| self.diagnostics.get(i).is_some_and(|d| d.error && d.file.is_some())) {
+                win::list_select(self.errors, row);
+                self.open_diagnostic(row);
+            }
+        }
+        if on("build_sound", false) {
+            unsafe {
+                let _ = windows::Win32::System::Diagnostics::Debug::MessageBeep(if ok { wm::MB_OK } else { wm::MB_ICONHAND });
+            }
+        }
+        if on("build_flash", true) && unsafe { wm::GetForegroundWindow() } != self.hwnd {
+            let fi = wm::FLASHWINFO { cbSize: std::mem::size_of::<wm::FLASHWINFO>() as u32, hwnd: self.hwnd, dwFlags: wm::FLASHW_TRAY | wm::FLASHW_TIMERNOFG, uCount: 3, dwTimeout: 0 };
+            unsafe {
+                let _ = wm::FlashWindowEx(&fi);
+            }
+        }
     }
 
     fn step_diagnostic(&mut self, forward: bool) {
