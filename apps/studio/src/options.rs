@@ -69,6 +69,11 @@ pub struct Values {
     /// Errors and warnings shown in it to begin with (its two ticks).
     pub show_errors: bool,
     pub show_warnings: bool,
+    /// Behaviors, as Xcode's: when a build ends - the first error opened, a sound, the taskbar
+    /// button flashed when Studio is behind another window.
+    pub first_error: bool,
+    pub build_sound: bool,
+    pub build_flash: bool,
     // Environment > Other Windows
     /// The tabs of the panel below open when Studio starts, by the order of `bottom::labels`.
     pub start_tabs: Vec<usize>,
@@ -141,6 +146,9 @@ impl Values {
             errors_forward: tick(get("errors_forward"), true),
             show_errors: tick(get("show_errors"), true),
             show_warnings: tick(get("show_warnings"), true),
+            first_error: tick(get("first_error"), false),
+            build_sound: tick(get("build_sound"), false),
+            build_flash: tick(get("build_flash"), true),
             start_tabs: tabs_of(get("bottom_tabs")),
             remember_tabs: tick(get("remember_tabs"), false),
         }
@@ -185,6 +193,9 @@ impl Values {
             ("errors_forward", one(self.errors_forward)),
             ("show_errors", one(self.show_errors)),
             ("show_warnings", one(self.show_warnings)),
+            ("first_error", one(self.first_error)),
+            ("build_sound", one(self.build_sound)),
+            ("build_flash", one(self.build_flash)),
             ("bottom_tabs", self.start_tabs.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",")),
             ("remember_tabs", one(self.remember_tabs)),
         ]
@@ -269,6 +280,9 @@ struct Controls {
     errors_forward: HWND,
     show_errors: HWND,
     show_warnings: HWND,
+    first_error: HWND,
+    build_sound: HWND,
+    build_flash: HWND,
     /// One tick per tab of `START_TABS`.
     start_tabs: Vec<HWND>,
     remember_tabs: HWND,
@@ -378,6 +392,9 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             errors_forward: check(t("Bring the Error List forward when a build has errors or warnings"), now.errors_forward),
             show_errors: check(t("Show errors in it"), now.show_errors),
             show_warnings: check(t("Show warnings in it"), now.show_warnings),
+            first_error: check(t("Open the first error when a build fails"), now.first_error),
+            build_sound: check(t("Play a sound when a build ends"), now.build_sound),
+            build_flash: check(t("Flash Phai Studio on the taskbar when a build ends behind other windows"), now.build_flash),
             start_tabs: START_TABS.iter().map(|k| check(crate::bottom::labels()[*k], now.start_tabs.contains(k))).collect(),
             remember_tabs: check(t("Open the tabs I left open, instead"), now.remember_tabs),
         };
@@ -386,7 +403,16 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             vec![Row::Pair(label(t("On startup, open:")), c.startup)],
             vec![Row::Check(c.tabbed)],
             vec![Row::Check(c.detect), Row::Check(c.reload)],
-            vec![Row::Check(c.errors_forward), Row::Check(c.show_errors), Row::Check(c.show_warnings), note(t("The two ticks are the Error List's own Errors and Warnings - changed there, they are kept too."))],
+            vec![
+                Row::Check(c.errors_forward),
+                Row::Check(c.show_errors),
+                Row::Check(c.show_warnings),
+                note(t("The two ticks are the Error List's own Errors and Warnings - changed there, they are kept too.")),
+                note(t("When a build ends (Behaviors):")),
+                Row::Check(c.first_error),
+                Row::Check(c.build_sound),
+                Row::Check(c.build_flash),
+            ],
             {
                 let mut v = vec![note(t("Open in the panel below when Phai Studio starts:"))];
                 v.extend(c.start_tabs.iter().map(|h| Row::Check(*h)));
@@ -525,6 +551,9 @@ fn read(c: &Controls) -> Values {
         errors_forward: win::is_checked(c.errors_forward),
         show_errors: win::is_checked(c.show_errors),
         show_warnings: win::is_checked(c.show_warnings),
+        first_error: win::is_checked(c.first_error),
+        build_sound: win::is_checked(c.build_sound),
+        build_flash: win::is_checked(c.build_flash),
         start_tabs: {
             let t: Vec<usize> = START_TABS.iter().zip(&c.start_tabs).filter(|(_, h)| win::is_checked(**h)).map(|(k, _)| *k).collect();
             if t.is_empty() { vec![0] } else { t }
@@ -622,6 +651,9 @@ mod tests {
             errors_forward: false,
             show_errors: true,
             show_warnings: false,
+            first_error: true,
+            build_sound: true,
+            build_flash: false,
             start_tabs: vec![0, 1, 6],
             remember_tabs: true,
         };
