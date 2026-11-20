@@ -929,7 +929,8 @@ pub fn draw_item(l: LPARAM) -> bool {
     let fg = s.color_or(window_text_for(h));
     match kind {
         Kind::Checkbox | Kind::Radio => {
-            let size = px(h, 18);
+            // The box as Windows and Visual Studio size it beside 9-point text; the tick scales with it.
+            let size = px(h, 14);
             let top = r.top + (r.bottom - r.top - size) / 2;
             let bx = RECT { left: r.left, top, right: r.left + size, bottom: top + size };
             let bg = s.background_or(Color::rgb(255, 255, 255));
@@ -976,7 +977,7 @@ pub fn draw_item(l: LPARAM) -> bool {
                 }
             }
             let label_fg = if state.disabled { fg } else { style_of(h, kind, State::default()).color_or(window_text_for(h)) };
-            let mut tr = RECT { left: bx.right + px(h, 8), ..r };
+            let mut tr = RECT { left: bx.right + px(h, 6), ..r };
             draw_text_styled(dc, h, &text, &mut tr, label_fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
             if state.focus {
                 let mut fr = tr;

@@ -228,6 +228,8 @@ const ID_RECENT_PROJECT: i32 = 622;
 const ID_CREATE_GUID: i32 = 631;
 const ID_CMD_PROMPT: i32 = 632;
 const ID_POWERSHELL: i32 = 633;
+/// View > Other Windows: `ID_OTHER_WINDOW + n`, each tab of the bottom panel in its order.
+const ID_OTHER_WINDOW: i32 = 640;
 const ID_RELEASE: i32 = 144;
 const ID_EDIT_MENUS: i32 = 113;
 const ID_CUT: i32 = 115;
@@ -997,6 +999,12 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
+        // Every tab of the panel below, each one closable on its own, opened again from here.
+        let other = wm::CreatePopupMenu().unwrap_or_default();
+        for (k, name) in bottom::labels().iter().enumerate() {
+            add(other, ID_OTHER_WINDOW + k as i32, name, "");
+        }
+        sub_of(view, t("Other Windows"), other);
         add(view, ID_SPLIT, t("Split"), "");
         add(view, ID_NEW_WINDOW, t("New Window"), "");
         if studio().is_some_and(|s| s.split_view.is_some()) {
@@ -6412,6 +6420,14 @@ impl Studio {
             r if (ID_RECENT_PROJECT..ID_RECENT_PROJECT + RECENT_MAX as i32).contains(&r) => {
                 if let Some(p) = recent_projects().get((r - ID_RECENT_PROJECT) as usize).cloned() {
                     self.open_project(&p);
+                }
+            }
+            r if (ID_OTHER_WINDOW..ID_OTHER_WINDOW + 15).contains(&r) => {
+                if !self.bottom_on {
+                    self.show_pane(Pane::Output, true);
+                }
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab((r - ID_OTHER_WINDOW) as usize);
                 }
             }
             ID_CREATE_GUID => {
