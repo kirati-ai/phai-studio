@@ -121,6 +121,50 @@ pub fn surround(lines: &str, head: &str, unit: &str) -> String {
     out
 }
 
+/// The brackets of a line - `(`, `[`, `{` and their closers, not in strings, characters or the
+/// comment at its end - each with how deep it is, from `depth` at the line's start; and the depth
+/// at its end. A closer is as deep as its opener: the pair the same colour.
+pub fn brackets(line: &str, depth: i32) -> (Vec<(usize, i32)>, i32) {
+    let mut out = Vec::new();
+    let mut d = depth;
+    let mut chars = line.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '/' if chars.peek().is_some_and(|(_, n)| *n == '/') => break,
+            '"' => {
+                while let Some((_, n)) = chars.next() {
+                    if n == '\\' {
+                        chars.next();
+                    } else if n == '"' {
+                        break;
+                    }
+                }
+            }
+            '\'' => {
+                // A character ('{', '\''), not a lifetime ('a).
+                let rest: Vec<char> = line[i + 1..].chars().take(3).collect();
+                if rest.first() == Some(&'\\') || rest.get(1) == Some(&'\'') {
+                    for (_, n) in chars.by_ref() {
+                        if n == '\'' {
+                            break;
+                        }
+                    }
+                }
+            }
+            '(' | '[' | '{' => {
+                out.push((i, d));
+                d += 1;
+            }
+            ')' | ']' | '}' => {
+                d = (d - 1).max(0);
+                out.push((i, d));
+            }
+            _ => {}
+        }
+    }
+    (out, d)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +185,14 @@ mod tests {
         assert_eq!(&t[s.0..s.1], "(total, items[i + 1])");
         let s = expand(t, s.0, s.1);
         assert_eq!(&t[s.0..s.1], t, "the line");
+    }
+
+    #[test]
+    fn brackets_coloured_by_depth_strings_passed_over() {
+        let (b, end) = brackets("f(a[1], \"(\", '{') { // (", 0);
+        assert_eq!(b, vec![(1, 0), (3, 1), (5, 1), (16, 0), (18, 0)]);
+        assert_eq!(end, 1);
+        assert_eq!(brackets("}", 1), (vec![(0, 0)], 0));
     }
 
     #[test]

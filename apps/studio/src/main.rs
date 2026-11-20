@@ -264,6 +264,10 @@ const ID_COLUMN_GUIDE: i32 = 1992;
 const ID_WORD_WRAP: i32 = 1993;
 /// View > Inline Hints: the types the code does not write, after their lines.
 const ID_INLAY_HINTS: i32 = 1994;
+/// View > Bracket Pair Colours, Sticky Scroll, Scroll Bar Map.
+const ID_BRACKET_COLOURS: i32 = 1995;
+const ID_STICKY_SCROLL: i32 = 1996;
+const ID_SCROLL_MAP: i32 = 1997;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -1124,10 +1128,13 @@ fn build_menu() -> HMENU {
         add(view, ID_FULL_SCREEN, t("Full Screen"), "Shift+Alt+Enter");
         add(view, ID_WORD_WRAP, t("Word Wrap"), "Ctrl+E, Ctrl+W");
         add(view, ID_INLAY_HINTS, t("Inline Hints"), "");
+        add(view, ID_BRACKET_COLOURS, t("Bracket Pair Colours"), "");
+        add(view, ID_STICKY_SCROLL, t("Sticky Scroll"), "");
+        add(view, ID_SCROLL_MAP, t("Scroll Bar Map"), "");
         add(view, ID_WHITE_SPACE, t("White Space"), "");
         add(view, ID_INDENT_GUIDES, t("Indent Guides"), "");
         add(view, ID_COLUMN_GUIDE, t("Column Guide at 100"), "");
-        for (id, key, default) in [(ID_INLAY_HINTS, "inlay_hints", true), (ID_WORD_WRAP, "word_wrap", false), (ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
+        for (id, key, default) in [(ID_BRACKET_COLOURS, "bracket_colours", true), (ID_STICKY_SCROLL, "sticky_scroll", true), (ID_SCROLL_MAP, "scroll_map", true), (ID_INLAY_HINTS, "inlay_hints", true), (ID_WORD_WRAP, "word_wrap", false), (ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
             if setting(key).map(|v| v == "1").unwrap_or(default) {
                 wm::CheckMenuItem(view, id as u32, wm::MF_CHECKED.0);
             }
@@ -7247,8 +7254,11 @@ impl Studio {
                 }
             }
             ID_CLIP_RING => self.clipboard_ring(),
-            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE | ID_WORD_WRAP | ID_INLAY_HINTS => {
+            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE | ID_WORD_WRAP | ID_INLAY_HINTS | ID_BRACKET_COLOURS | ID_STICKY_SCROLL | ID_SCROLL_MAP => {
                 let (key, default) = match id {
+                    ID_BRACKET_COLOURS => ("bracket_colours", true),
+                    ID_STICKY_SCROLL => ("sticky_scroll", true),
+                    ID_SCROLL_MAP => ("scroll_map", true),
                     ID_INLAY_HINTS => ("inlay_hints", true),
                     ID_WORD_WRAP => ("word_wrap", false),
                     ID_WHITE_SPACE => ("white_space", false),
@@ -8045,6 +8055,7 @@ fn apply_view_options() {
     let on = |k: &str, d: bool| setting(k).map(|v| v == "1").unwrap_or(d);
     phai_editor::view::set_view_options(on("white_space", false), on("indent_guides", true), if on("column_guide", false) { 100 } else { 0 });
     phai_editor::view::set_word_wrap(on("word_wrap", false));
+    phai_editor::view::set_view_extras(on("bracket_colours", true), on("sticky_scroll", true), on("scroll_map", true));
 }
 
 fn get_clipboard(owner: HWND) -> Option<String> {
