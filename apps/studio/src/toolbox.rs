@@ -1,5 +1,7 @@
 //! The toolbox, as Visual Studio's: a caption with a close button, a search box, and the controls
-//! by group - Common controls, Containers, Menus and toolbars - each an icon and its name, the
+//! by group as Visual Studio has them - All controls, Common controls, Containers, Menus and
+//! toolbars, Data, Components, Printing, Dialogs; only Common controls open at first, the folding
+//! remembered - each an icon and its name, the
 //! Pointer first in every group. A click chooses the tool, a double-click puts it on the form at
 //! once; a group's heading folds it. What is typed in the search box keeps only the controls whose
 //! names have it.
@@ -34,17 +36,33 @@ enum Line {
     Tool(i32, u16),
 }
 
-/// The groups, in order; a kind's group is where [`group_of`] puts it.
-fn groups() -> [&'static str; 4] {
-    [t("Common controls"), t("Containers"), t("Menus and toolbars"), t("Components")]
+/// The groups, in Visual Studio's order: every tool, then by kind. A kind's own group is where
+/// [`group_of`] puts it; every tool is in the first one too.
+fn groups() -> [&'static str; 8] {
+    [t("All controls"), t("Common controls"), t("Containers"), t("Menus and toolbars"), t("Data"), t("Components"), t("Printing"), t("Dialogs")]
 }
+
+/// Open to begin with, as in Visual Studio: Common controls only.
+const OPEN_AT_FIRST: usize = 1;
 
 fn group_of(k: Kind) -> usize {
     match k {
-        Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel | Kind::Split | Kind::UserControl => 1,
-        Kind::Statusbar => 2,
-        k if k.is_component() => 3,
-        _ => 0,
+        Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel | Kind::Split | Kind::UserControl => 2,
+        Kind::Statusbar | Kind::ContextMenu => 3,
+        Kind::Grid | Kind::BindingSource => 4,
+        Kind::Timer | Kind::ErrorProvider => 5,
+        Kind::PrintDocument => 6,
+        Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog => 7,
+        // Notify icon is with the common controls in Visual Studio too.
+        _ => 1,
+    }
+}
+
+/// The groups folded as they were left (a setting); at first every one but Common controls.
+fn folded_at_start() -> Vec<usize> {
+    match crate::setting_pub("toolbox_folded") {
+        Some(v) => v.split(',').filter_map(|n| n.trim().parse().ok()).filter(|g| *g < groups().len()).collect(),
+        None => (0..groups().len()).filter(|g| *g != OPEN_AT_FIRST).collect(),
     }
 }
 
@@ -74,7 +92,7 @@ pub fn new(parent: HWND, id: i32, font: HFONT) -> HWND {
         let caption = phai_ui::controls::caption(h, t("Toolbox"), ID_CAPTION, font);
         let search = win::edit(h, "", ID_SEARCH, font, false);
         let bold = win::font(h, 0, true);
-        win::set_state(h, Box::new(Toolbox { caption, search, lines: vec![], folded: vec![], chosen: crate::ID_TOOL_PUB, hover: None, top: 0, font, bold, icons: HashMap::new() }));
+        win::set_state(h, Box::new(Toolbox { caption, search, lines: vec![], folded: folded_at_start(), chosen: crate::ID_TOOL_PUB, hover: None, top: 0, font, bold, icons: HashMap::new() }));
         relabel(h);
         h
     }
@@ -110,10 +128,12 @@ fn fill(h: HWND) {
         // The group's tools by name, as Visual Studio sorts them; the Pointer above them.
         // Menu bar and Toolbar are no kind of control: they belong with the menus.
         let group = |id: i32| match id {
-            crate::ID_TOOL_MENUBAR | crate::ID_TOOL_TOOLBAR => Some(2),
+            crate::ID_TOOL_MENUBAR | crate::ID_TOOL_TOOLBAR => Some(3),
             _ => crate::tool_kind(id).map(group_of),
         };
-        let mut mine: Vec<(i32, String, u16)> = tools.iter().filter(|(id, _, _)| group(*id) == Some(g)).map(|(id, n, gl)| (*id, n.to_string(), *gl)).collect();
+        // The first group has every tool; the others their own.
+        let mine_of = |id: i32| if g == 0 { id != crate::ID_TOOL_PUB } else { group(id) == Some(g) };
+        let mut mine: Vec<(i32, String, u16)> = tools.iter().filter(|(id, _, _)| mine_of(*id)).map(|(id, n, gl)| (*id, n.to_string(), *gl)).collect();
         if !query.is_empty() {
             mine.retain(|(id, n, _)| n.to_lowercase().contains(&query) || crate::tool_kind(*id).is_some_and(|k| k.name().contains(&query)));
             if mine.is_empty() {
@@ -280,6 +300,8 @@ fn click(h: HWND, _x: i32, y: i32, double: bool) {
             } else {
                 st.folded.push(g);
             }
+            // Folded as left, next time too.
+            crate::remember_setting_pub("toolbox_folded", &st.folded.iter().map(|g| g.to_string()).collect::<Vec<_>>().join(","));
             fill(h);
         }
         Line::Tool(id, _) => {
