@@ -447,6 +447,9 @@ pub struct Studio {
     lenses: Vec<(u32, (u32, u32), String)>,
     /// The Error List's rows as filtered: each one's diagnostic.
     diag_rows: Vec<usize>,
+    /// The Error List's order: the column clicked (0 kind, 1 message, 2 file, 3 line) and
+    /// whether it goes up; none as the build gave them.
+    error_sort: Option<(usize, bool)>,
     /// The last Find All References, as its list shows them.
     references: Vec<phai_editor::lsp::Location>,
     building: bool,
@@ -6393,14 +6396,39 @@ impl Studio {
     pub fn fill_errors(&mut self) {
         use windows::Win32::UI::Controls as cc;
         let (errs, warns) = self.bottom.as_ref().map(|b| (win::is_checked(b.show_errors), win::is_checked(b.show_warnings))).unwrap_or((true, true));
+        let scope = self.bottom.as_ref().map(|b| win::combo_selected(b.error_scope)).unwrap_or(0);
+        // The documents open: the one shown (Current Document), or every tab's (Open Documents).
+        let open: Vec<PathBuf> = match scope {
+            1 => self.doc.path.iter().cloned().collect(),
+            2 => self.doc.path.iter().cloned().chain(self.tabs.iter().filter_map(|t| t.doc.path.clone())).collect(),
+            _ => Vec::new(),
+        };
         unsafe {
             wm::SendMessageW(self.errors, cc::LVM_DELETEALLITEMS, None, None);
         }
         self.diag_rows.clear();
-        for (i, d) in self.diagnostics.iter().enumerate() {
-            if (d.error && !errs) || (!d.error && !warns) {
-                continue;
-            }
+        let mut rows: Vec<usize> = (0..self.diagnostics.len())
+            .filter(|&i| {
+                let d = &self.diagnostics[i];
+                let kind = (d.error && errs) || (!d.error && warns);
+                kind && (scope == 0 || d.file.as_deref().is_some_and(|f| open.iter().any(|o| phai_editor::lsp::same_path(o, f))))
+            })
+            .collect();
+        if let Some((col, up)) = self.error_sort {
+            let ds = &self.diagnostics;
+            rows.sort_by(|&a, &b| {
+                let (x, y) = (&ds[a], &ds[b]);
+                let o = match col {
+                    0 => y.error.cmp(&x.error),
+                    1 => x.message.to_lowercase().cmp(&y.message.to_lowercase()),
+                    2 => x.file.as_ref().and_then(|f| f.file_name()).cmp(&y.file.as_ref().and_then(|f| f.file_name())).then(x.line.cmp(&y.line)),
+                    _ => x.line.cmp(&y.line),
+                };
+                if up { o } else { o.reverse() }
+            });
+        }
+        for i in rows {
+            let d = &self.diagnostics[i];
             let file = d.file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let line = if d.line > 0 { d.line.to_string() } else { String::new() };
             let first = d.message.lines().next().unwrap_or_default();
@@ -6412,6 +6440,9 @@ impl Studio {
             win::set_text(b.show_errors, &tf("Errors ({0})", &[&e]));
             win::set_text(b.show_warnings, &tf("Warnings ({0})", &[&(self.diagnostics.len() - e)]));
         }
+        // On the status bar too, as Visual Studio's: a click opens the Error List.
+        let counts = if self.diagnostics.is_empty() { String::new() } else { format!("\u{2297} {e}   \u{26A0} {}", self.diagnostics.len() - e) };
+        controls::status_text(self.status, 3, &counts);
     }
 
     fn step_diagnostic(&mut self, forward: bool) {
@@ -7329,7 +7360,14 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         }
         wm::WM_COMMAND => {
             let id = win::loword(w.0) as i32;
-            if id == ID_TABS {
+            if id == ID_STATUS && win::hiword(w.0) == controls::STATUS_CLICK + 3 {
+                // The errors and warnings on the status bar: the Error List.
+                s.show_pane(Pane::Output, true);
+                if let Some(b) = s.bottom.as_ref() {
+                    b.show_tab(0);
+                }
+            } else if id == ID_STATUS {
+            } else if id == ID_TABS {
                 let i = win::hiword(w.0) as usize;
                 if i & phai_ui::controls::TAB_PIN != 0 {
                     // A pinned tab's pin: unpinned.
@@ -7480,6 +7518,16 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 if it.iItem >= 0 {
                     s.open_reference(it.iItem as usize);
                 }
+                return LRESULT(0);
+            }
+            if hdr.hwndFrom == s.errors && hdr.code == cc::LVN_COLUMNCLICK {
+                // A column's heading: sorted by it; again, the other way.
+                let col = unsafe { &*(l.0 as *const cc::NMLISTVIEW) }.iSubItem as usize;
+                s.error_sort = match s.error_sort {
+                    Some((c, up)) if c == col => Some((c, !up)),
+                    _ => Some((col, true)),
+                };
+                s.fill_errors();
                 return LRESULT(0);
             }
             if hdr.hwndFrom == s.errors && hdr.code == cc::NM_DBLCLK {
@@ -7832,7 +7880,8 @@ fn main() {
         let bottom_hwnd = bottom.hwnd;
         let bottom_split = controls::splitter(hwnd, ID_SPLIT_BOTTOM, false);
         win::show(bottom_split, false);
-        controls::status_parts(status, &[260, 80]);
+        // The last part: the errors and warnings - a click opens the Error List.
+        controls::status_parts(status, &[260, 80, 110]);
         controls::status_text(status, 2, "Debug");
         controls::status_text(status, 0, t("Ready"));
         let dpi = win::dpi(hwnd);
@@ -7859,6 +7908,7 @@ fn main() {
             release: chosen.remember_config && setting("config").as_deref() == Some("release"),
             diagnostics: vec![],
             diag_rows: vec![],
+            error_sort: None,
             lens_round: 0,
             sampler: None,
             lenses: vec![],

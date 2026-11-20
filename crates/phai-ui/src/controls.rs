@@ -366,6 +366,10 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
 
 // --- status bar -------------------------------------------------------------------------------
 
+/// A click on a status bar's part: `WM_COMMAND` to its parent with its id, and this plus the
+/// part's index in the high word.
+pub const STATUS_CLICK: u16 = 0x100;
+
 struct Status {
     font: HFONT,
     /// Widths in design pixels; the first part takes what the others leave.
@@ -444,6 +448,25 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
                     x += width;
                 }
                 let _ = Gdi::EndPaint(h, &ps);
+                LRESULT(0)
+            }
+            wm::WM_LBUTTONUP => {
+                let mut r = RECT::default();
+                let _ = wm::GetClientRect(h, &mut r);
+                let (cx, _) = win::point_of(l);
+                let rest: i32 = s.widths.iter().skip(1).map(|w| px(h, *w)).sum();
+                let mut x = r.left;
+                for (i, part) in s.widths.iter().enumerate() {
+                    let width = if i == 0 { r.right - rest } else { px(h, *part) };
+                    if cx >= x && cx < x + width {
+                        let id = wm::GetDlgCtrlID(h) as usize & 0xFFFF;
+                        if let Ok(p) = wm::GetParent(h) {
+                            let _ = wm::PostMessageW(Some(p), wm::WM_COMMAND, WPARAM(((STATUS_CLICK as usize + i) << 16) | id), LPARAM(h.0 as isize));
+                        }
+                        break;
+                    }
+                    x += width;
+                }
                 LRESULT(0)
             }
             wm::WM_NCDESTROY => {
