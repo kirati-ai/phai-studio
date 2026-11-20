@@ -250,6 +250,16 @@ const ID_RUN_TO_CURSOR: i32 = 692;
 const ID_SET_NEXT: i32 = 693;
 const ID_TRACEPOINT: i32 = 694;
 const ID_MODULES: i32 = 695;
+/// Edit > Advanced: Expand Selection (Shift+Alt+=), Shrink Selection (Shift+Alt+-), Surround
+/// With (Ctrl+K, Ctrl+S), Paste from Clipboard Ring (Ctrl+Shift+V).
+const ID_EXPAND_SEL: i32 = 696;
+const ID_SHRINK_SEL: i32 = 697;
+const ID_SURROUND: i32 = 698;
+const ID_CLIP_RING: i32 = 699;
+/// View: White Space, Indent Guides, Column Guide.
+const ID_WHITE_SPACE: i32 = 1990;
+const ID_INDENT_GUIDES: i32 = 1991;
+const ID_COLUMN_GUIDE: i32 = 1992;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -1079,6 +1089,12 @@ fn build_menu() -> HMENU {
         add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
         add(edit, ID_REPLACE_IN_FILES, t("Replace in Files..."), "Ctrl+Shift+H");
+        let adv = wm::CreatePopupMenu().unwrap_or_default();
+        add(adv, ID_EXPAND_SEL, t("Expand Selection"), "Shift+Alt+=");
+        add(adv, ID_SHRINK_SEL, t("Shrink Selection"), "Shift+Alt+-");
+        add(adv, ID_SURROUND, t("Surround With..."), "Ctrl+K, Ctrl+S");
+        add(adv, ID_CLIP_RING, t("Paste from Clipboard Ring..."), "Ctrl+Shift+V");
+        sub_of(edit, t("Advanced"), adv);
         add(edit, ID_GO_TO_ALL, t("Go to All..."), "Ctrl+T");
         add(edit, ID_GO_TO_LINE, t("Go to Line..."), "Ctrl+G");
         add(edit, ID_SWITCHER, t("Next Document"), "Ctrl+Tab");
@@ -1100,6 +1116,14 @@ fn build_menu() -> HMENU {
         add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
         add(view, ID_DESIGN_SAMPLES, t("Sample Data in Designer"), "");
         add(view, ID_FULL_SCREEN, t("Full Screen"), "Shift+Alt+Enter");
+        add(view, ID_WHITE_SPACE, t("White Space"), "");
+        add(view, ID_INDENT_GUIDES, t("Indent Guides"), "");
+        add(view, ID_COLUMN_GUIDE, t("Column Guide at 100"), "");
+        for (id, key, default) in [(ID_WHITE_SPACE, "white_space", false), (ID_INDENT_GUIDES, "indent_guides", true), (ID_COLUMN_GUIDE, "column_guide", false)] {
+            if setting(key).map(|v| v == "1").unwrap_or(default) {
+                wm::CheckMenuItem(view, id as u32, wm::MF_CHECKED.0);
+            }
+        }
         add(view, ID_TRACK_ACTIVE, t("Track Active Item in Project"), "");
         if setting("track_active").as_deref() != Some("0") {
             wm::CheckMenuItem(view, ID_TRACK_ACTIVE as u32, wm::MF_CHECKED.0);
@@ -4094,6 +4118,26 @@ impl Studio {
                 let _ = wm::DestroyWindow(self.helper);
             }
             self.helper = HWND::default();
+        }
+    }
+
+    /// Edit > Advanced > Paste from Clipboard Ring (Ctrl+Shift+V): the last things copied - here
+    /// or anywhere - to choose one to paste at the caret.
+    fn clipboard_ring(&mut self) {
+        let Some(h) = self.doc.code else { return };
+        let ring = CLIP_RING.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if ring.is_empty() {
+            self.say_status(t("Nothing copied yet"));
+            return;
+        }
+        let labels: Vec<String> = ring.iter().map(|s| {
+            let one: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+            if one.chars().count() > 60 { format!("{}...", one.chars().take(60).collect::<String>()) } else { one }
+        }).collect();
+        let items: Vec<(u32, &str)> = labels.iter().enumerate().map(|(i, l)| (i as u32 + 1, l.as_str())).collect();
+        let pick = win::popup(self.hwnd, &items) as usize;
+        if let Some(text) = pick.checked_sub(1).and_then(|i| ring.get(i)) {
+            phai_editor::view::insert_text(h, text);
         }
     }
 
@@ -7154,6 +7198,44 @@ impl Studio {
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
             ID_INFER_ANCHORS => self.infer_anchors(),
+            ID_EXPAND_SEL | ID_SHRINK_SEL => {
+                if let Some(h) = self.doc.code {
+                    if id == ID_EXPAND_SEL {
+                        phai_editor::view::expand_selection(h);
+                    } else {
+                        phai_editor::view::shrink_selection(h);
+                    }
+                }
+            }
+            ID_SURROUND => {
+                if let Some(h) = self.doc.code {
+                    let items: Vec<(u32, &str)> = phai_editor::tools::SURROUNDS.iter().enumerate().map(|(i, (name, _))| (i as u32 + 1, *name)).collect();
+                    let pick = match std::env::var("PHAI_SURROUND_TEST") {
+                        Ok(v) => v.parse().unwrap_or(0),
+                        Err(_) => win::popup(self.hwnd, &items),
+                    };
+                    if let Some((_, head)) = phai_editor::tools::SURROUNDS.get((pick as usize).wrapping_sub(1)) {
+                        phai_editor::view::surround(h, head);
+                    }
+                }
+            }
+            ID_CLIP_RING => self.clipboard_ring(),
+            ID_WHITE_SPACE | ID_INDENT_GUIDES | ID_COLUMN_GUIDE => {
+                let (key, default) = match id {
+                    ID_WHITE_SPACE => ("white_space", false),
+                    ID_INDENT_GUIDES => ("indent_guides", true),
+                    _ => ("column_guide", false),
+                };
+                let on = !setting(key).map(|v| v == "1").unwrap_or(default);
+                remember_setting(key, if on { "1" } else { "0" });
+                apply_view_options();
+                self.rebuild_menu();
+                if let Some(h) = self.doc.code {
+                    unsafe {
+                        let _ = Gdi::InvalidateRect(Some(h), None, false);
+                    }
+                }
+            }
             ID_RUN_TO_CURSOR | ID_SET_NEXT => {
                 let at = self.doc.code.zip(self.doc.path.clone()).map(|(h, p)| (p, phai_editor::view::caret_position(h).0 as u32));
                 match (&self.debug, self.paused, at) {
@@ -7913,6 +7995,25 @@ fn set_clipboard(owner: HWND, text: &str) {
 }
 
 /// The clipboard's text, if it holds some.
+/// The Clipboard Ring: the last texts copied, newest first.
+static CLIP_RING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// The clipboard changed: its text, if any, first in the ring.
+fn ring_add(owner: HWND) {
+    let Some(text) = get_clipboard(owner).filter(|t| !t.trim().is_empty()) else { return };
+    let text = text.replace("\r\n", "\n");
+    let mut ring = CLIP_RING.lock().unwrap_or_else(|e| e.into_inner());
+    ring.retain(|t| *t != text);
+    ring.insert(0, text);
+    ring.truncate(15);
+}
+
+/// View's White Space, Indent Guides and Column Guide, as the settings have them, given to the editor.
+fn apply_view_options() {
+    let on = |k: &str, d: bool| setting(k).map(|v| v == "1").unwrap_or(d);
+    phai_editor::view::set_view_options(on("white_space", false), on("indent_guides", true), if on("column_guide", false) { 100 } else { 0 });
+}
+
 fn get_clipboard(owner: HWND) -> Option<String> {
     use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
     use windows::Win32::Foundation::HGLOBAL;
@@ -8004,6 +8105,11 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         // A menu about to open: what cannot be used now greyed (see `avail`).
         wm::WM_INITMENUPOPUP => {
             avail::grey_menu(wm::HMENU(w.0 as *mut _), &avail::Now::of(s));
+            LRESULT(0)
+        }
+        // WM_CLIPBOARDUPDATE: copied, here or elsewhere - into the Clipboard Ring.
+        0x031D => {
+            ring_add(hwnd);
             LRESULT(0)
         }
         wm::WM_TIMER if w.0 == TIMER_CRUMB => {
@@ -8333,6 +8439,10 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             _ => ID_STEP_OVER,
         });
     }
+    // Shift+Alt+= and Shift+Alt+-: Expand and Shrink Selection.
+    if msg.message == wm::WM_SYSKEYDOWN && (msg.wParam.0 == 0xBB || msg.wParam.0 == 0xBD) && unsafe { km::GetKeyState(0x10) } < 0 {
+        return Some(if msg.wParam.0 == 0xBB { ID_EXPAND_SEL } else { ID_SHRINK_SEL });
+    }
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x78 {
         return Some(ID_BP_CONDITION);
     }
@@ -8368,6 +8478,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
                     (0x4B, 0x4E, true) => Some(ID_BM_NEXT),    // Ctrl+K, Ctrl+N
                     (0x4B, 0x50, true) => Some(ID_BM_PREV),    // Ctrl+K, Ctrl+P
                     (0x4B, 0x4C, true) => Some(ID_BM_CLEAR),   // Ctrl+K, Ctrl+L
+                    (0x4B, 0x53, true) => Some(ID_SURROUND),   // Ctrl+K, Ctrl+S
                     (0x4D, 0x4D, true) => Some(ID_FOLD),       // Ctrl+M, Ctrl+M
                     (0x4D, 0x4C, true) => Some(ID_FOLD_ALL),   // Ctrl+M, Ctrl+L
                     (0x52, 0x41, _) => Some(ID_RUN_ALL_TESTS), // Ctrl+R, A
@@ -8424,6 +8535,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         (b'T', true) if !shift => Some(ID_GO_TO_ALL),
         (b'G', true) if !shift => Some(ID_GO_TO_LINE),
         (b'H', true) if shift => Some(ID_REPLACE_IN_FILES),
+        (b'V', true) if shift => Some(ID_CLIP_RING),
         (0x09, true) => Some(ID_SWITCHER),
         (0x0D, false) if shift && unsafe { km::GetKeyState(0x12) } < 0 => Some(ID_FULL_SCREEN),
         (b'Q', true) if !shift => Some(ID_SEARCH),
@@ -8535,6 +8647,7 @@ fn main() {
     // The look and language Tools > Options chose; `--thai` and `--dark` say so for a test.
     let chosen = options::Values::load(setting);
     phai_editor::prefs::set(chosen.editor());
+    apply_view_options();
     canvas::set_designer(chosen.grid, chosen.snap_to_grid, chosen.snaplines);
     words::set_thai(args.iter().any(|a| a == "--thai") || chosen.thai);
     if args.iter().any(|a| a == "--dark") || chosen.theme == 2 || (chosen.theme == 0 && options::windows_dark()) {
@@ -8726,6 +8839,8 @@ fn main() {
         s.props = Some(props);
         s.explorer = Some(explorer);
         s.canvas = Some(canvas);
+        // Each copy, here or elsewhere, into the Clipboard Ring (Ctrl+Shift+V).
+        let _ = windows::Win32::System::DataExchange::AddClipboardFormatListener(hwnd);
         s.restore_hidden();
         win::theme_frame(hwnd);
         let mut r = RECT { left: 0, top: 0, right: win::px(hwnd, 1100), bottom: win::px(hwnd, 700) };

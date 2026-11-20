@@ -5,6 +5,7 @@ pub mod buffer;
 pub mod crumbs;
 pub mod model;
 pub mod syntax;
+pub mod tools;
 pub mod view;
 pub mod lsp;
 pub mod popup;
