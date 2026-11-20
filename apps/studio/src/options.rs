@@ -208,7 +208,7 @@ pub fn windows_dark() -> bool {
 }
 
 /// The pages, in the tree's order: (the group it is under, its name).
-fn pages() -> Vec<(&'static str, &'static str)> {
+pub fn pages() -> Vec<(&'static str, &'static str)> {
     vec![
         (t("Environment"), t("General")),
         (t("Environment"), t("Startup")),
