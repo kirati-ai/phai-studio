@@ -3193,9 +3193,49 @@ impl Studio {
                     self.open_code(&p);
                 }
             }
+            startwin::Choice::Clone => self.clone_repository(),
             startwin::Choice::OpenFile => self.command(ID_OPEN),
             startwin::Choice::NewProject => self.new_project(),
             startwin::Choice::Continue => {}
+        }
+    }
+
+    /// Clone a repository, as Visual Studio's start window has it: the address asked for, the
+    /// folder beside the other projects, `git clone` waited for, then the project opened.
+    fn clone_repository(&mut self) {
+        let Some(url) = phai_ui::dialogs::ask(Some(self.hwnd), t("Clone a Repository"), t("The repository's address (https://... or git@...):"), "", false).map(|u| u.trim().to_string()).filter(|u| !u.is_empty()) else { return };
+        let parent = recent_projects().first().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join("source").join("repos"))).unwrap_or_else(|| PathBuf::from("."));
+        let suggested = startwin::clone_folder(&parent, &url);
+        let Some(dir) = phai_ui::dialogs::ask(Some(self.hwnd), t("Clone a Repository"), t("Into the folder:"), &suggested.display().to_string(), false).map(|d| PathBuf::from(d.trim())) else { return };
+        if dir.exists() && std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()) {
+            win::message(Some(self.hwnd), &tf("{0} is there already.", &[&dir.display()]), t("Clone a Repository"), wm::MB_ICONWARNING);
+            return;
+        }
+        if let Some(p) = dir.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+        let (u, d) = (url.clone(), dir.clone());
+        let done = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Clone a Repository"), &tf("Cloning {0}...", &[&url]), move |_| {
+            use std::os::windows::process::CommandExt;
+            std::process::Command::new("git").args(["clone", "--", &u]).arg(&d).creation_flags(0x0800_0000).output()
+        });
+        match done {
+            Some(Ok(o)) if o.status.success() => {
+                self.say_status(&tf("Cloned into {0}", &[&dir.display()]));
+                if dir.join("Cargo.toml").is_file() {
+                    self.open_project(&dir);
+                } else {
+                    // Not a Rust project: its folder shown, to choose from.
+                    open_with_windows(&dir.to_string_lossy());
+                }
+            }
+            Some(Ok(o)) => {
+                win::message(Some(self.hwnd), String::from_utf8_lossy(&o.stderr).trim(), t("Clone a Repository"), wm::MB_ICONWARNING);
+            }
+            Some(Err(e)) => {
+                win::message(Some(self.hwnd), &format!("git: {e}"), t("Clone a Repository"), wm::MB_ICONWARNING);
+            }
+            None => {}
         }
     }
 
@@ -7460,6 +7500,14 @@ fn remember_setting(name: &str, value: &str) {
 }
 
 /// The forms opened last, newest first, those still there.
+/// A recent file taken off the list (the start window's Remove from the list).
+pub fn forget_recent_pub(path: &Path) {
+    let Some(dir) = settings_dir() else { return };
+    let file = dir.join("recent.txt");
+    let kept: Vec<String> = std::fs::read_to_string(&file).unwrap_or_default().lines().filter(|l| Path::new(l) != path).map(str::to_string).collect();
+    let _ = std::fs::write(&file, kept.join("\n") + "\n");
+}
+
 fn recent_files() -> Vec<PathBuf> {
     let Some(dir) = settings_dir() else { return vec![] };
     std::fs::read_to_string(dir.join("recent.txt")).unwrap_or_default().lines().map(PathBuf::from).filter(|p| p.is_file()).take(recent_max()).collect()
