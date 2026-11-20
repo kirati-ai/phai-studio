@@ -33,6 +33,7 @@ mod githistory;
 mod merge;
 mod coverage;
 mod themeedit;
+mod colortray;
 mod menuicons;
 mod options;
 mod web;
@@ -1187,11 +1188,10 @@ fn build_menu() -> HMENU {
         let tools = wm::CreatePopupMenu().unwrap_or_default();
         add(tools, ID_ADD_CONNECTION, t("Connect to Database..."), "");
         sep(tools);
-        // The editors, each in this one place.
+        // The editors, each in this one place (a form's menu bar and toolbar are edited from the
+        // Toolbox and by double-clicking them on the form).
         add(tools, ID_THEME_EDITOR, t("Theme Editor..."), "");
         add(tools, ID_TABLE_DESIGNER, t("Table Designer..."), "");
-        add(tools, ID_EDIT_MENUS, t("Menu Editor..."), "");
-        add(tools, ID_EDIT_TOOLBAR, t("Toolbar Editor..."), "");
         add(tools, ID_CUSTOM_STD, t("Customize Toolbar..."), "");
         sep(tools);
         add(tools, ID_CREATE_GUID, t("Create GUID"), "");
@@ -6795,6 +6795,10 @@ fn hex_dump(addr: u64, bytes: &[Option<u8>]) -> String {
 
 /// A remembered setting, `name=value` lines in `settings.txt`.
 /// A remembered setting, for the other modules.
+pub fn remember_setting_pub(name: &str, value: &str) {
+    remember_setting(name, value)
+}
+
 pub fn setting_pub(name: &str) -> Option<String> {
     setting(name)
 }

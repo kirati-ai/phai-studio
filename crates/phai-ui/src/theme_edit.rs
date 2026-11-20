@@ -22,7 +22,8 @@ pub fn vars(css: &str) -> Vec<(String, String)> {
 
 /// The built-in theme the file starts from - `phai:light` or `phai:dark` - if it imports one.
 pub fn base(css: &str) -> Option<&'static str> {
-    for line in css.lines() {
+    // Lines outside comments: an `@import` in a comment is an example, not the file's.
+    for line in plain(css).lines() {
         let l = line.trim();
         if l.starts_with("@import") {
             if l.contains("phai:dark") {
@@ -40,10 +41,12 @@ pub fn base(css: &str) -> Option<&'static str> {
 /// put first.
 pub fn set_base(css: &str, to: &str) -> String {
     let mut done = false;
+    let code = plain(css);
     let mut out: Vec<String> = css
         .lines()
-        .map(|line| {
-            let l = line.trim();
+        .zip(code.lines())
+        .map(|(line, bare)| {
+            let l = bare.trim();
             if !done && l.starts_with("@import") && (l.contains("phai:light") || l.contains("phai:dark")) {
                 done = true;
                 format!("@import \"{to}\";")
@@ -101,7 +104,8 @@ pub fn set_prop(css: &str, selector: &str, prop: &str, value: &str) -> String {
     if selector == ":root" {
         // After the imports, so the variable recolours what they say.
         let mut lines: Vec<&str> = css.lines().collect();
-        let at = lines.iter().rposition(|l| l.trim_start().starts_with("@import")).map(|i| i + 1).unwrap_or(0);
+        let code = plain(css);
+        let at = code.lines().collect::<Vec<_>>().iter().rposition(|l| l.trim_start().starts_with("@import")).map(|i| i + 1).unwrap_or(0);
         lines.insert(at, &rule);
         let mut s = lines.join("\n");
         if css.ends_with('\n') || css.is_empty() {
@@ -176,23 +180,28 @@ fn name_of(k: &str) -> String {
     out.trim().to_string()
 }
 
-/// Every `selector { body }` of the file outside comments: the selector, the body, and where the
-/// body starts in the file.
-fn blocks(css: &str) -> Vec<(&str, &str, usize)> {
-    // Comments blanked, places kept, so `{` and `}` in them do not count.
+/// The file with its comments blanked - every place kept, line breaks too - so what is in a
+/// comment (a `{`, an example `@import`) does not count.
+fn plain(css: &str) -> String {
     let mut plain: Vec<u8> = css.as_bytes().to_vec();
     let mut i = 0;
     while let Some(s) = css[i..].find("/*") {
         let s = i + s;
         let e = css[s + 2..].find("*/").map(|e| s + 2 + e + 2).unwrap_or(css.len());
         for b in plain.iter_mut().take(e).skip(s) {
-            if *b != b'\n' {
+            if *b != b'\n' && *b < 0x80 {
                 *b = b' ';
             }
         }
         i = e;
     }
-    let plain = String::from_utf8_lossy(&plain).to_string();
+    String::from_utf8_lossy(&plain).to_string()
+}
+
+/// Every `selector { body }` of the file outside comments: the selector, the body, and where the
+/// body starts in the file.
+fn blocks(css: &str) -> Vec<(String, &str, usize)> {
+    let plain = plain(css);
     let mut out = Vec::new();
     let mut pos = 0;
     while let Some(open) = plain[pos..].find('{') {
@@ -200,7 +209,8 @@ fn blocks(css: &str) -> Vec<(&str, &str, usize)> {
         let Some(close) = plain[open..].find('}') else { break };
         let close = open + close;
         let sel_start = plain[..open].rfind(['}', ';']).map(|p| p + 1).unwrap_or(0).max(pos);
-        out.push((&css[sel_start..open], &css[open + 1..close], open + 1));
+        // The selector as the plain text has it: a comment before it is no part of it.
+        out.push((plain[sel_start..open].trim().to_string(), &css[open + 1..close], open + 1));
         pos = close + 1;
     }
     out
@@ -223,6 +233,19 @@ mod tests {
         let s = set_var("@import \"phai:dark\";\nbutton { color: red; }\n", "--accent", "#f00");
         assert_eq!(s, "@import \"phai:dark\";\n:root { --accent: #f00; }\nbutton { color: red; }\n");
         assert!(crate::theme::Theme::parse(&set_var(SHEET, "--accent", "#2563eb")).is_ok());
+    }
+
+    #[test]
+    fn examples_in_a_comment_are_not_the_files_own() {
+        // The standard theme opens with a comment that shows `@import` and `:root { }`.
+        let css = crate::theme::LIGHT_CSS;
+        assert_eq!(base(css), None, "the @import in its comment is an example");
+        assert!(vars(css).iter().any(|(k, v)| k == "--accent" && v == "#12855f"), "its own :root, after the comment");
+        let s = set_var(css, "--accent", "#4f9cf5");
+        assert!(crate::theme::Theme::parse(&s).unwrap().var_color("--accent") == crate::theme::parse_color("#4f9cf5"), "changed where it is");
+        let s = set_base(css, "phai:dark");
+        assert!(s.starts_with("@import \"phai:dark\";\n/*"), "put first, the comment left as it was");
+        assert_eq!(base(&s), Some("phai:dark"));
     }
 
     #[test]
