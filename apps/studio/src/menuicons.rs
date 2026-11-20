@@ -159,6 +159,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         ID_CREATE_GUID => (glyph::NUMBER, PURPLE),
         ID_CMD_PROMPT => (0xE756, GREY),
         ID_POWERSHELL => (0xE756, BLUE),
+        ID_OPTIONS => (glyph::SETTINGS, GREY),
         // Help
         ID_HELP_STUDIO => (0xE897, BLUE), // Help
         ID_HELP_RUST => (0xE736, AMBER), // ReadingMode: a book

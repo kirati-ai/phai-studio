@@ -34,6 +34,7 @@ mod merge;
 mod coverage;
 mod themeedit;
 mod menuicons;
+mod options;
 mod web;
 
 use std::path::{Path, PathBuf};
@@ -229,6 +230,8 @@ const ID_RECENT_PROJECT: i32 = 622;
 const ID_CREATE_GUID: i32 = 631;
 const ID_CMD_PROMPT: i32 = 632;
 const ID_POWERSHELL: i32 = 633;
+/// Tools > Options.
+const ID_OPTIONS: i32 = 634;
 /// View > Other Windows: `ID_OTHER_WINDOW + n`, each tab of the bottom panel in its order.
 const ID_OTHER_WINDOW: i32 = 640;
 const ID_RELEASE: i32 = 144;
@@ -1002,7 +1005,8 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
         // Every tab of the panel below, each one closable on its own, opened again from here.
         let other = wm::CreatePopupMenu().unwrap_or_default();
-        for (k, name) in bottom::labels().iter().enumerate() {
+        // The debugger's own windows (Immediate to Disassembly) are in the Debug menu.
+        for (k, name) in bottom::labels().iter().enumerate().filter(|(k, _)| !(8..=13).contains(k)) {
             add(other, ID_OTHER_WINDOW + k as i32, name, "");
         }
         sub_of(view, t("Other Windows"), other);
@@ -1012,7 +1016,6 @@ fn build_menu() -> HMENU {
             wm::CheckMenuItem(view, ID_SPLIT as u32, wm::MF_CHECKED.0);
         }
         add(view, ID_TASK_LIST, t("Task List"), "");
-        add(view, ID_START_WINDOW, t("Start Window"), "");
         if studio().is_some_and(|s| explorer::servers_shown(s.side)) {
             wm::CheckMenuItem(view, ID_VIEW_SERVERS as u32, wm::MF_CHECKED.0);
         }
@@ -1027,13 +1030,10 @@ fn build_menu() -> HMENU {
                 }
             }
         }
-        sep(view);
-        add(view, ID_LIGHT, t("Light"), "");
-        add(view, ID_DARK, t("Dark"), "");
+        // Light and Dark are in Tools > Theme, as Visual Studio has them.
         sep(view);
         add(view, ID_THAI, "ไทย", "");
         add(view, ID_ENGLISH, "English", "");
-        wm::CheckMenuItem(view, if theme::current().is_dark() { ID_DARK } else { ID_LIGHT } as u32, wm::MF_CHECKED.0);
         wm::CheckMenuItem(view, if words::is_thai() { ID_THAI } else { ID_ENGLISH } as u32, wm::MF_CHECKED.0);
         sub(t("&View"), view);
         // As Visual Studio's Format menu: each kind of arranging in a menu of its own, by the
@@ -1155,9 +1155,7 @@ fn build_menu() -> HMENU {
         }
         sub(t("&Git"), gitm);
         let data = wm::CreatePopupMenu().unwrap_or_default();
-        add(data, ID_ADD_CONNECTION, t("Add Connection..."), "");
-        add(data, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
-        sep(data);
+        // Connecting is Tools > Connect to Database, Server Explorer is in View - each once.
         add(data, ID_NEW_QUERY, t("New Query"), "");
         add(data, ID_EXECUTE, t("Execute Query"), "Ctrl+Shift+E");
         sub(t("D&ata"), data);
@@ -1185,25 +1183,24 @@ fn build_menu() -> HMENU {
             wm::CheckMenuItem(th, ID_THEME_NONE as u32, wm::MF_CHECKED.0);
         }
         sub(t("&Theme"), th);
-        // Tools, as Visual Studio has them: the database and servers, snippets, crates (its NuGet),
-        // a new GUID, the look, a command line in the project's folder.
+        // Tools, as Visual Studio has them: connecting to a database, a new GUID, the look, a
+        // command line in the project's folder, Options.
         let tools = wm::CreatePopupMenu().unwrap_or_default();
         add(tools, ID_ADD_CONNECTION, t("Connect to Database..."), "");
-        add(tools, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
-        sep(tools);
-        add(tools, ID_SNIPPET, t("Insert Snippet..."), "Ctrl+K, Ctrl+X");
-        add(tools, ID_MANAGE_CRATES, t("Manage Crates..."), "");
         sep(tools);
         add(tools, ID_CREATE_GUID, t("Create GUID"), "");
         sep(tools);
         let look = wm::CreatePopupMenu().unwrap_or_default();
         add(look, ID_LIGHT, t("Light"), "");
         add(look, ID_DARK, t("Dark"), "");
+        wm::CheckMenuItem(look, if theme::current().is_dark() { ID_DARK } else { ID_LIGHT } as u32, wm::MF_CHECKED.0);
         sub_of(tools, t("Theme"), look);
         let cmd = wm::CreatePopupMenu().unwrap_or_default();
         add(cmd, ID_CMD_PROMPT, t("Command Prompt"), "");
         add(cmd, ID_POWERSHELL, "PowerShell", "");
         sub_of(tools, t("Command Line"), cmd);
+        sep(tools);
+        add(tools, ID_OPTIONS, t("Options..."), "");
         sub(t("T&ools"), tools);
         let help = wm::CreatePopupMenu().unwrap_or_default();
         add(help, ID_HELP_STUDIO, t("Phai Studio Guide"), "F1");
@@ -3955,6 +3952,50 @@ impl Studio {
 
     // --- projects, building and running --------------------------------------------------------
 
+    /// Tools > Options: Phai Studio's settings in one window, opened on `page`; what is chosen is
+    /// saved and takes effect at once.
+    fn options(&mut self, page: usize) {
+        let mut now = options::Values::load(setting);
+        // As things are now, where they can change elsewhere too.
+        now.thai = words::is_thai();
+        now.tabbed = explorer::tabbed(self.side);
+        now.font_pt = phai_editor::view::font_size();
+        let chosen = match std::env::var("PHAI_OPTIONS_TEST") {
+            // `PHAI_OPTIONS_TEST=theme,thai,recent,startup,tabbed,font,git`: chosen without the window.
+            Ok(v) => {
+                let n: Vec<usize> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                (n.len() == 7).then(|| options::Values { theme: n[0], thai: n[1] == 1, recent: n[2], startup: n[3], tabbed: n[4] == 1, font_pt: n[5] as i32, git: n[6] == 1 })
+            }
+            Err(_) => options::choose(self.hwnd, &now, page),
+        };
+        let Some(v) = chosen else { return };
+        for (name, value) in v.pairs() {
+            remember_setting(name, &value);
+        }
+        let dark = match v.theme {
+            0 => options::windows_dark(),
+            1 => false,
+            _ => true,
+        };
+        if dark != theme::current().is_dark() {
+            win::unwatch_theme(self.hwnd);
+            theme::set(if dark { Theme::dark() } else { Theme::light() });
+            self.after_theme();
+        }
+        if v.thai != words::is_thai() {
+            words::set_thai(v.thai);
+            self.relabel();
+        }
+        explorer::set_tabbed(self.side, v.tabbed);
+        phai_editor::view::set_font_size(v.font_pt);
+        for h in self.tabs.iter().filter_map(|t| t.doc.code).chain(self.doc.code) {
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(h), None, true);
+            }
+        }
+        self.rebuild_menu();
+    }
+
     /// Opens a project, as File > Open > Project does: its main form (or its first), else its
     /// `main.rs`, else its `Cargo.toml` - and its files in Project. A folder inside a project
     /// opens that project.
@@ -6382,10 +6423,12 @@ impl Studio {
                 let dark = if id == ID_THEME_TOGGLE { !theme::current().is_dark() } else { id == ID_DARK };
                 theme::set(if dark { Theme::dark() } else { Theme::light() });
                 self.after_theme();
+                remember_setting("theme", if dark { "dark" } else { "light" });
             }
             ID_THAI | ID_ENGLISH | ID_LANG => {
                 words::set_thai(if id == ID_LANG { !words::is_thai() } else { id == ID_THAI });
                 self.relabel();
+                remember_setting("lang", if words::is_thai() { "th" } else { "en" });
             }
             id if (ID_THEME_FILE..ID_THEME_FILE + THEME_FILES_MAX as i32).contains(&id) => {
                 if let Some(name) = self.theme_files().get((id - ID_THEME_FILE) as usize).cloned() {
@@ -6433,6 +6476,7 @@ impl Studio {
                     b.show_tab((r - ID_OTHER_WINDOW) as usize);
                 }
             }
+            ID_OPTIONS => self.options(0),
             ID_CREATE_GUID => {
                 let g = new_guid();
                 set_clipboard(self.hwnd, &g);
@@ -6711,7 +6755,7 @@ fn remember_setting(name: &str, value: &str) {
 /// The forms opened last, newest first, those still there.
 fn recent_files() -> Vec<PathBuf> {
     let Some(dir) = settings_dir() else { return vec![] };
-    std::fs::read_to_string(dir.join("recent.txt")).unwrap_or_default().lines().map(PathBuf::from).filter(|p| p.is_file()).take(RECENT_MAX).collect()
+    std::fs::read_to_string(dir.join("recent.txt")).unwrap_or_default().lines().map(PathBuf::from).filter(|p| p.is_file()).take(recent_max()).collect()
 }
 
 /// The projects opened last, newest first, those still there: the ones remembered, then the
@@ -6726,8 +6770,13 @@ fn recent_projects() -> Vec<PathBuf> {
             seen.push(p);
         }
     }
-    seen.truncate(RECENT_MAX);
+    seen.truncate(recent_max());
     seen
+}
+
+/// How many files and projects File > Recent lists (Tools > Options), at most `RECENT_MAX`.
+fn recent_max() -> usize {
+    setting("recent_max").and_then(|v| v.parse().ok()).unwrap_or(RECENT_MAX).clamp(1, RECENT_MAX)
 }
 
 fn remember_project(root: &Path) {
@@ -7339,8 +7388,10 @@ fn main() {
     if let Some(pt) = setting("editor_font_pt").and_then(|v| v.parse().ok()) {
         phai_editor::view::set_font_size(pt);
     }
-    words::set_thai(args.iter().any(|a| a == "--thai"));
-    if args.iter().any(|a| a == "--dark") {
+    // The look and language Tools > Options chose; `--thai` and `--dark` say so for a test.
+    let chosen = options::Values::load(setting);
+    words::set_thai(args.iter().any(|a| a == "--thai") || chosen.thai);
+    if args.iter().any(|a| a == "--dark") || chosen.theme == 2 || (chosen.theme == 0 && options::windows_dark()) {
         theme::set(Theme::dark());
     }
     win::init();
@@ -7522,7 +7573,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -7531,8 +7582,12 @@ fn main() {
             let testing = args.iter().skip(1).any(|a| a.starts_with("--") && a != "--start") || std::env::var_os("PHAI_SHOT").is_some();
             // `--nothing`: so for a test too - checked by picture.
             s.nothing = !testing || args.iter().any(|a| a == "--nothing");
-            if (args.iter().any(|a| a == "--start") || !testing) && setting("start_window").is_none_or(|v| v != "0") {
+            // On startup, open (Tools > Options): the start window, nothing, or the project opened last.
+            let startup = chosen.startup;
+            if args.iter().any(|a| a == "--start") || (!testing && startup == 0) {
                 let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_START_WINDOW as usize), LPARAM(0));
+            } else if !testing && startup == 2 && !recent_projects().is_empty() {
+                let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_RECENT_PROJECT as usize), LPARAM(0));
             }
         }
         for p in &forms {
@@ -7604,6 +7659,20 @@ fn main() {
         if let Some(n) = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
             if let Some(p) = s.props.as_mut() {
                 p.set_style_state(n);
+            }
+        }
+        // `--options N`: Tools > Options open on page N, photographed with PHAI_SHOT - checked by picture.
+        if let Some(page) = args.iter().position(|a| a == "--options").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            if let Ok(out) = std::env::var("PHAI_SHOT") {
+                let dlg = options::make(hwnd, &options::Values::load(setting), page);
+                win::show_top(dlg);
+                let mut msg = wm::MSG::default();
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&msg);
+                    wm::DispatchMessageW(&msg);
+                }
+                let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
+                std::process::exit(0);
             }
         }
         // `--print-menu FILE`: the menu bar's words, each menu within its menu indented, written to
