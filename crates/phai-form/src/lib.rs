@@ -7,6 +7,7 @@ pub mod events;
 pub mod live;
 pub mod model;
 pub mod props;
+pub mod web;
 
 pub use model::*;
 pub use toml;

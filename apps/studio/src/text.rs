@@ -893,6 +893,13 @@ pub static THAI: &[(&str, &str)] = &[
     ("Added {0} - put it on a form from the Toolbox (User control)", "เพิ่ม {0} แล้ว - วางบนฟอร์มได้จากกล่องเครื่องมือ (User control)"),
     ("Not a window but a control other forms of the project put on themselves (kind usercontrol).", "ไม่ใช่หน้าต่าง แต่เป็น control ที่ฟอร์มอื่นในโปรเจกต์วางได้ (kind usercontrol)"),
     ("The user control's name - a form of this project with UserControl on: AddressBox.", "ชื่อ user control - ฟอร์มในโปรเจกต์นี้ที่เปิด UserControl ไว้: AddressBox"),
+    ("Build for Web (PWA)", "สร้างสำหรับเว็บ (PWA)"),
+    ("Run in Browser", "รันในเบราว์เซอร์"),
+    ("Open a form of the project first.", "เปิดฟอร์มของโปรเจกต์ก่อน"),
+    ("Building for the web - the first time takes a few minutes...", "กำลังสร้างสำหรับเว็บ - ครั้งแรกใช้เวลาสักครู่..."),
+    ("The build for the web failed", "สร้างสำหรับเว็บไม่สำเร็จ"),
+    ("not on the web", "ไม่มีบนเว็บ"),
+    ("Built for the web in {0}", "สร้างสำหรับเว็บแล้วที่ {0}"),
 ];
 
 #[cfg(test)]

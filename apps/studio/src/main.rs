@@ -33,6 +33,7 @@ mod githistory;
 mod merge;
 mod coverage;
 mod themeedit;
+mod web;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -189,6 +190,12 @@ const ID_THEME_EDITOR: i32 = 791;
 const ID_ADD_FORM: i32 = 291;
 /// Project > Add User Control: a control of the project's own, made as a form.
 const ID_ADD_USER_CONTROL: i32 = 293;
+/// Build > Build for Web: the project as a web page that installs as an app on phones.
+const ID_BUILD_WEB: i32 = 294;
+/// Build > Run in Browser: built for the web, served on this computer, opened.
+const ID_RUN_WEB: i32 = 295;
+/// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
+const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -1040,6 +1047,8 @@ fn build_menu() -> HMENU {
         add(build, ID_ANALYSE, &tf("Run Code Analysis on {0}", &[&project]), "");
         sep(build);
         add(build, ID_PUBLISH, &tf("Publish {0}...", &[&project]), "");
+        add(build, ID_BUILD_WEB, t("Build for Web (PWA)"), "");
+        add(build, ID_RUN_WEB, t("Run in Browser"), "");
         sep(build);
         add(build, ID_DEBUG, "Debug", "");
         add(build, ID_RELEASE, "Release", "");
@@ -3856,6 +3865,48 @@ impl Studio {
     }
 
     /// Saves, then builds the project the form is in; `then_run` starts the program after.
+    /// Build > Build for Web / Run in Browser: on another thread; `WM_WEB_DONE` when it ends.
+    fn build_web(&mut self, then_run: bool) {
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Open a form of the project first."), t("Build for Web (PWA)"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        self.save_all();
+        self.say_status(t("Building for the web - the first time takes a few minutes..."));
+        let target = self.hwnd.0 as isize;
+        std::thread::spawn(move || {
+            let result = web::build(&dir, |_| {});
+            let boxed = Box::into_raw(Box::new((result, then_run)));
+            unsafe {
+                if wm::PostMessageW(Some(HWND(target as *mut _)), WM_WEB_DONE, WPARAM(0), LPARAM(boxed as isize)).is_err() {
+                    drop(Box::from_raw(boxed));
+                }
+            }
+        });
+    }
+
+    /// A build for the web ended: where it is, what was left out, the browser opened on it.
+    fn web_done(&mut self, result: Result<web::WebBuild, String>, then_run: bool) {
+        match result {
+            Err(e) => {
+                self.say_status(t("The build for the web failed"));
+                win::message(Some(self.hwnd), &e, t("Build for Web (PWA)"), wm::MB_ICONWARNING);
+            }
+            Ok(b) => {
+                let left = if b.left_out.is_empty() { String::new() } else { format!(" - {}: {}", t("not on the web"), b.left_out.join(", ")) };
+                self.say_status(&format!("{}{left}", tf("Built for the web in {0}", &[&b.folder.display()])));
+                if then_run {
+                    match web::serve(b.folder.clone()) {
+                        Ok(port) => open_with_windows(&format!("http://localhost:{port}/")),
+                        Err(e) => {
+                            win::message(Some(self.hwnd), &e.to_string(), t("Run in Browser"), wm::MB_ICONWARNING);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn start_build(&mut self, then_run: bool) {
         self.start_job_run(cargo::Job::Build, false, then_run);
     }
@@ -6247,6 +6298,8 @@ impl Studio {
             }
             ID_EXECUTE => self.execute_query(),
             ID_PUBLISH => self.publish(),
+            ID_BUILD_WEB => self.build_web(false),
+            ID_RUN_WEB => self.build_web(true),
             ID_NEXT_ERROR | ID_PREV_ERROR => self.step_diagnostic(id == ID_NEXT_ERROR),
             ID_MOVE_UP | ID_MOVE_DOWN => match self.code_shown() {
                 Some(h) => phai_editor::view::move_lines(h, id == ID_MOVE_UP),
@@ -6781,6 +6834,12 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         WM_DEBUG => {
             let e = unsafe { Box::from_raw(l.0 as *mut phai_debug::Event) };
             s.debug_event(*e);
+            LRESULT(0)
+        }
+        WM_WEB_DONE => {
+            let done = unsafe { Box::from_raw(l.0 as *mut (Result<web::WebBuild, String>, bool)) };
+            let (result, run) = *done;
+            s.web_done(result, run);
             LRESULT(0)
         }
         cargo::WM_BUILD_DONE => {
@@ -9219,6 +9278,99 @@ impl MainWindowEvents for MainWindow {
         let run = std::process::Command::new(&exe).output().unwrap();
         assert_eq!(run.status.code(), Some(42), "1000 + the bits of what worked: {}", String::from_utf8_lossy(&run.stderr));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The web: a project with a box, a tick box, a drop-down, a list and buttons built for the
+    /// browser as well as for Windows - its own code unchanged - and its `web/` folder holding the
+    /// page, the program, the manifest, the service worker and the icons. `PHAI_WEB_DEMO` keeps
+    /// the project there to open in a browser.
+    #[test]
+    #[ignore = "builds a project for Windows and for the web with cargo and wasm-bindgen"]
+    fn a_project_builds_for_the_web_and_for_windows() {
+        use phai_form::{Control, HasProps};
+        let keep = std::env::var_os("PHAI_WEB_DEMO").map(std::path::PathBuf::from);
+        let dir = keep.clone().unwrap_or_else(|| std::env::temp_dir().join(format!("phai-web-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let src = dir.join("src");
+        let form_path = src.join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        f.form.title = "Shop".into();
+        let mut label = Control::new(Kind::Label, "name_label", [11, 44, 80, 23]);
+        label.text = Some("Name".into());
+        let mut name = Control::new(Kind::Edit, "name", [96, 44, 373, 23]);
+        name.anchor = Some("left top right".into());
+        name.set_prop("placeholder", Some(phai_form::toml::Value::String("Your name".into())));
+        name.on_change = Some("name_changed".into());
+        let mut vip = Control::new(Kind::Checkbox, "vip", [96, 74, 200, 20]);
+        vip.text = Some("Member".into());
+        let mut size = Control::new(Kind::Combo, "size", [96, 100, 150, 23]);
+        size.items = vec!["Small".into(), "Medium".into(), "Large".into()];
+        let mut qty = Control::new(Kind::Number, "qty", [256, 100, 80, 23]);
+        qty.min = Some(1);
+        qty.max = Some(99);
+        qty.value = Some(1);
+        let mut add = Control::new(Kind::Button, "add", [346, 100, 123, 23]);
+        add.text = Some("Add to list".into());
+        add.anchor = Some("top right".into());
+        add.on_click = Some("add_clicked".into());
+        let mut list = Control::new(Kind::List, "orders", [11, 132, 458, 120]);
+        list.columns = vec![("Name".into(), 160), ("Size".into(), 100), ("Qty".into(), 60)];
+        list.anchor = Some("all".into());
+        f.control.extend([label, name, vip, size, qty, add, list]);
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(src.join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        crate::project::add_thai(&src, &[("Shop", "ร้านค้า"), ("Name", "ชื่อ"), ("Your name", "ชื่อของคุณ"), ("Member", "สมาชิก"), ("Small", "เล็ก"), ("Medium", "กลาง"), ("Large", "ใหญ่"), ("Add to list", "เพิ่มลงรายการ"), ("Size", "ขนาด"), ("Qty", "จำนวน"), ("{0} orders", "{0} รายการ"), ("Hello, {0}", "สวัสดี {0}")]).unwrap();
+        // One file of the program's own, for both.
+        // (`tf` by another name, so Studio's own sentence check passes this program's by.)
+        std::fs::write(src.join("main_window.rs"), r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
+use phai_ui::text::tf as words;
+
+#[derive(Default)]
+pub struct MainWindow {
+    orders: usize,
+}
+
+impl MainWindowEvents for MainWindow {
+    fn loaded(&mut self, ui: &MainWindowUi) {
+        ui.size.set_selected_index(Some(1));
+    }
+
+    fn name_changed(&mut self, ui: &MainWindowUi) {
+        ui.hello.set_text(&words("Hello, {0}", &[&ui.name.text()]));
+    }
+
+    fn add_clicked(&mut self, ui: &MainWindowUi) {
+        let who = if ui.vip.checked() { format!("{} ★", ui.name.text()) } else { ui.name.text() };
+        ui.orders.items_add(&[&who, &ui.size.selected_item().unwrap_or_default(), &ui.qty.value().to_string()]);
+        self.orders += 1;
+        ui.status.set_part_text(0, &words("{0} orders", &[&self.orders]));
+    }
+
+    fn ok_clicked(&mut self, ui: &MainWindowUi) {
+        ui.orders.items_clear();
+        self.orders = 0;
+    }
+}
+"##).unwrap();
+        // Windows first: the program still builds as it did.
+        let cargo = crate::cargo::find_cargo().unwrap();
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let built = crate::web::build(&dir, |_| {}).unwrap_or_else(|e| panic!("{e}"));
+        let web = built.folder;
+        let package = crate::project::package_name(&dir.file_name().unwrap().to_string_lossy());
+        for f in ["index.html", "manifest.webmanifest", "sw.js", "icon-192.png", "icon-512.png", &format!("pkg/{package}.js"), &format!("pkg/{package}_bg.wasm")] {
+            assert!(web.join(f).is_file(), "{f}");
+        }
+        assert!(built.left_out.is_empty(), "{:?}", built.left_out);
+        // And Windows again, after the project was told about the web.
+        let out = std::process::Command::new(&cargo).args(["build", "--quiet"]).current_dir(&dir).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        if keep.is_none() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 
     /// A SplitContainer in a real project: the bar moved, the list in the first pane grows by as
