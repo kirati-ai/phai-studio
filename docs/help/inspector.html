@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ตัวตรวจสด (F12) - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html" class="here">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>ตัวตรวจสด (F12)</h1>
+<p class="lead">ระหว่างรันโปรแกรมแบบ debug กด <kbd>F12</kbd> ในหน้าต่างโปรแกรม จะได้ตัวตรวจสดข้างหน้าต่าง ปรับหน้าตา control ดูผลทันที แล้วเก็บลงฟอร์มได้ เหมือน DevTools ของเบราว์เซอร์</p>
+
+<h2>เปิดตัวตรวจ</h2>
+<ol>
+  <li>กด <kbd>F5</kbd> ใน Phai Studio เพื่อรันโปรแกรม</li>
+  <li>ในหน้าต่างโปรแกรม กด <kbd>F12</kbd> (หรือ <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd>) ตัวตรวจเปิดข้างหน้าต่าง</li>
+  <li>กด <b>ชี้เลือก</b> แล้วคลิก control ในหน้าต่าง กรอบสีฟ้าบอกว่าเลือกตัวไหน กด <kbd>Esc</kbd> เพื่อเลิกชี้ หรือเลือกจากรายการก็ได้</li>
+</ol>
+
+<h2>ปรับอะไรได้</h2>
+<ul>
+  <li><b>หน้าตาทีละสถานะ</b> ปกติ, hover, pressed, focus, disabled, checked: สีพื้น สีตัวอักษร สีเส้นขอบ มุมมน ความหนาเส้น ตัวหนา gradient เงา พิมพ์แล้ว control ในโปรแกรมเปลี่ยนทันที</li>
+  <li>แต่ละค่าบอกว่ามาจากไหน เช่น <code>own :hover</code> (ของ control เอง) หรือ <code>button.primary:hover · phai:light</code> (จากธีม)</li>
+  <li><b>ข้อความ ใช้งานได้ มองเห็น</b> และ property อื่น เช่น tooltip, read only</li>
+</ul>
+
+<h2>เก็บลงฟอร์ม</h2>
+<ul>
+  <li><b>เก็บลงฟอร์ม</b> เขียนเฉพาะบรรทัดของ control นั้นในไฟล์ <code>.phaiform</code> คอมเมนต์และบรรทัดอื่นอยู่เหมือนเดิม</li>
+  <li>สลับกลับมาที่ Phai Studio ฟอร์มที่เปิดอยู่โหลดใหม่ให้เอง และ Undo ได้</li>
+  <li><b>ย้อนทั้งหมด</b> คืนทุกอย่างกลับเป็นตอนเปิดตัวตรวจ</li>
+</ul>
+<div class="note">ตัวตรวจมีเฉพาะโปรแกรมที่ build แบบ debug เท่านั้น โปรแกรมที่ build แบบ release เพื่อแจกจ่ายไม่มีตัวตรวจ และไม่มีโค้ดส่วนนี้ติดไปด้วย</div>
+<div class="try">รันโปรเจกต์แรก กด <kbd>F12</kbd> ชี้ที่ปุ่ม OK เลือกสถานะ hover แล้วเปลี่ยนสีพื้นเป็น <code>#2563eb</code> เอาเมาส์ไปชี้ปุ่มดู แล้วกดเก็บลงฟอร์ม</div>
+<div class="pager"><a href="winforms.html">← control และความสามารถเพิ่มเติม</a><a href="web.html">เว็บและมือถือ (PWA) →</a></div>
+</main>
+</div>
+</body>
+</html>

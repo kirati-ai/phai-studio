@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เว็บและมือถือ (PWA) - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html" class="here">เว็บและมือถือ (PWA)</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>เว็บและมือถือ (PWA)</h1>
+<p class="lead">ฟอร์มเดิมกับโค้ดเดิมของโปรแกรม รันในเบราว์เซอร์ได้ และติดตั้งลงมือถือ Android และ iPhone เป็นแอปได้ ไม่ต้องผ่าน Play Store หรือ App Store และไม่ต้องใช้ Mac</p>
+
+<h2>PWA คืออะไร</h2>
+<p>PWA (Progressive Web App) คือหน้าเว็บที่ติดตั้งลงเครื่องได้เหมือนแอป ได้ไอคอนบนหน้าจอ เปิดแล้วเต็มจอ ใช้ได้แม้ไม่มีเน็ต และเมื่ออัปโหลดเวอร์ชันใหม่ขึ้นเว็บ เครื่องผู้ใช้ได้เวอร์ชันใหม่เอง</p>
+
+<h2>ติดตั้งเครื่องมือ (ครั้งเดียว ฟรี)</h2>
+<pre><code>rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130</code></pre>
+
+<h2>สร้างและลองในเบราว์เซอร์</h2>
+<ol>
+  <li>เปิดฟอร์มของโปรเจกต์ใน Phai Studio</li>
+  <li>Build &gt; <b>รันในเบราว์เซอร์</b> ครั้งแรกใช้เวลาสักครู่ เสร็จแล้วเบราว์เซอร์ของเครื่องนี้เปิดโปรแกรมให้</li>
+  <li>หรือ Build &gt; <b>สร้างสำหรับเว็บ (PWA)</b> ได้โฟลเดอร์ <code>web/</code> ในโปรเจกต์ เอาไปขึ้นเว็บได้เลย</li>
+</ol>
+<p>แถบสถานะบอกว่าสร้างไว้ที่ไหน และถ้าฟอร์มมี control ที่ไม่มีบนเว็บ จะบอกชื่อไว้ด้วย</p>
+
+<h2>ขึ้นเว็บและติดตั้งลงมือถือ</h2>
+<ol>
+  <li>อัปโหลดทุกไฟล์ในโฟลเดอร์ <code>web/</code> ขึ้นเว็บไซต์ที่เป็น <b>HTTPS</b> (เว็บของเราเอง, GitHub Pages หรืออื่น ๆ)</li>
+  <li>Android: เปิดที่อยู่ใน Chrome แล้วกดเมนู ⋮ &gt; <b>ติดตั้งแอป</b> หรือ <b>เพิ่มลงหน้าจอหลัก</b></li>
+  <li>iPhone: เปิดใน Safari กดปุ่มแชร์ &gt; <b>เพิ่มลงหน้าจอโฮม</b></li>
+</ol>
+<div class="note">ลองตัวอย่างได้ที่ <a href="https://phai-studio.monrak.net/demo/shop/">phai-studio.monrak.net/demo/shop</a> ภาษาเป็นไทยเองเมื่อเครื่องตั้งภาษาไทย หรือต่อท้ายที่อยู่ด้วย <code>?lang=th</code> หรือ <code>?lang=en</code></div>
+<div class="warn">ต้องเป็น HTTPS เท่านั้น ถ้าเปิดจาก <code>http://</code> ที่ไม่ใช่เครื่องตัวเอง มือถือจะไม่ให้ติดตั้ง และใช้แบบไม่มีเน็ตไม่ได้</div>
+
+<h2>โค้ดไม่ต้องแก้</h2>
+<p>ไฟล์ <code>main_window.rs</code> ไฟล์เดียวใช้ได้ทั้ง Windows และเว็บ Phai Studio สร้างโค้ดหน้าต่างสำหรับเว็บไว้ใน <code>src/web/</code> และแก้ <code>Cargo.toml</code> กับ <code>main.rs</code> ให้ครั้งแรกที่สร้างสำหรับเว็บ หลังจากนั้นโปรแกรมยัง build สำหรับ Windows ได้เหมือนเดิม</p>
+<ul>
+  <li>ตำแหน่ง control ใช้ anchor และ dock เหมือนบน Windows จอใหญ่กว่าก็ขยายตาม จอแคบกว่าที่ออกแบบ (มือถือ) ย่อทั้งหน้าให้พอดีความกว้าง</li>
+  <li>ฟอร์มที่สองที่เปิดด้วย <code>show</code> ขึ้นเป็นกล่องทับหน้า มีปุ่มปิดมุมขวาบน</li>
+  <li><code>show_dialog</code> บนเว็บไม่รอให้ปิดก่อน ใช้ปุ่มในฟอร์มนั้นทำงานแทน</li>
+</ul>
+
+<h2>มีบนเว็บแล้ว / ยังไม่มี</h2>
+<table>
+<tr><th>มีแล้ว</th><td>label, edit (รวมรหัสผ่าน), textarea, button, checkbox, radio, combo, listbox, checked list, list, grid, number, date, calendar, slider, progress, group, panel, tabs, link, picture, status bar, timer และ event หลักทั้งหมด (click, change, key, mouse, Shown)</td></tr>
+<tr><th>ยังไม่มี</th><td>เมนูบาร์, toolbar, เมนูคลิกขวา, tree, split container, user control, dialog เลือกไฟล์ สี ฟอนต์, ErrorProvider, NotifyIcon, การพิมพ์, binding source และตารางที่ผูกฐานข้อมูล</td></tr>
+</table>
+<p>โค้ดที่เรียกสิ่งที่ยังไม่มี จะ build สำหรับเว็บไม่ผ่าน แต่ build สำหรับ Windows ได้ตามปกติ</p>
+<div class="pager"><a href="inspector.html">← ตัวตรวจสด (F12)</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+</main>
+</div>
+</body>
+</html>
