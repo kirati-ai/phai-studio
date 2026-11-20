@@ -124,6 +124,18 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - เทสต์โปรเจกต์จริง (ignored, รันด้วย `cargo test -p phai-studio add_form_tests -- --include-ignored`):
   `winforms_properties_reach_the_running_program`, `events_reach_the_programmers_methods`, `control_methods_and_invoke_work`
 
+## ทำเสร็จ 2026-11-20: แผน 4 ระยะใน `docs/ide-research.md` ครบ
+- ระยะ 1 (PWA มือถือ): Build > Run on Phone (`phone.rs`, `qr.rs` ทำ QR เอง, `web::serve_lan` พอร์ต 8790 + รีโหลดเอง),
+  Project > Web App (PWA) (`[package.metadata.phai-web]` ใน Cargo.toml), View > Device Preview Shift+F4 (`devices.rs`),
+  PhoneLayout = stack (จอแคบเรียงลงมา, `phai-web` `stack_when_narrow`), `web.css` ของโปรเจกต์ต่อท้ายธีม
+- ระยะ 2: Ctrl+Q (`search.rs`), แท็บพรีวิว/ปักหมุด, Error List ขอบเขต+เรียง+จำนวนบนแถบสถานะ, Output แยกช่อง,
+  Window Layouts (`winlayout.rs`), Behaviors (Options > Error List)
+- ระยะ 3: หน้า error ของ designer, Infer Anchors (`arrange::infer_anchor`), ข้อมูลตัวอย่าง (`phai_form::sample`),
+  ลากตารางจาก Server Explorer ลงฟอร์ม, ลากปุ่มขวาจาก control → เมนูอีเวนต์
+- ระยะ 4: breadcrumb (`phai_editor::crumbs`), ▶ ข้างเทสต์ + แถบ git (`changes.rs`), Search Options + Export/Import,
+  Tools > Keyboard Shortcuts (`keymap.rs`), หน้าเริ่มต้น (ค้นหา/ปักหมุด/Clone/เคล็ดลับ), New Project การ์ดมีรูป (`newproj.rs`)
+- ยังไม่ได้ลองด้วยมือ: สแกน QR ด้วยมือถือจริง, ลากตาราง (ต้องมี DB), ลากปุ่มขวาเข้าโค้ด, Clone จริง
+
 ## งานถัดไป (เรียงตามความสำคัญ)
 
 ### 1. `docs/winforms-parity.md` ครบแล้ว (2026-11-19 รอบสอง) เหลือ 🟡 เดียว
