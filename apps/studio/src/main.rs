@@ -50,6 +50,7 @@ mod changes;
 mod keymap;
 mod newproj;
 mod switcher;
+mod dbgwin;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -243,6 +244,12 @@ const ID_SWITCHER: i32 = 679;
 const ID_FULL_SCREEN: i32 = 690;
 /// View > Track Active Item: the file open chosen in the Project pane.
 const ID_TRACK_ACTIVE: i32 = 691;
+/// Debug > Run To Cursor (Ctrl+F10), Set Next Statement (Ctrl+Shift+F10), Insert Tracepoint,
+/// Windows > Modules (Ctrl+Alt+U).
+const ID_RUN_TO_CURSOR: i32 = 692;
+const ID_SET_NEXT: i32 = 693;
+const ID_TRACEPOINT: i32 = 694;
+const ID_MODULES: i32 = 695;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -518,6 +525,13 @@ pub struct Studio {
     bps: std::collections::HashMap<PathBuf, Vec<u32>>,
     /// Breakpoints turned off in the Breakpoints window: kept, but the debugger is not given them.
     bp_off: Vec<(PathBuf, u32)>,
+    /// Tracepoints: file, line, message (`{expr}` filled in when written).
+    tracepoints: Vec<(PathBuf, u32, String)>,
+    /// The locals at the last stop, and where it was - for Locals and Autos.
+    locals_all: Vec<phai_debug::Var>,
+    stop_at: Option<(PathBuf, u32)>,
+    /// The Exception Helper shown at a panic or exception.
+    helper: HWND,
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
@@ -1229,6 +1243,8 @@ fn build_menu() -> HMENU {
         add(debug, ID_STEP_INTO, t("Step Into"), "F11");
         add(debug, ID_STEP_OVER, t("Step Over"), "F10");
         add(debug, ID_STEP_OUT, t("Step Out"), "Shift+F11");
+        add(debug, ID_RUN_TO_CURSOR, t("Run To Cursor"), "Ctrl+F10");
+        add(debug, ID_SET_NEXT, t("Set Next Statement"), "Ctrl+Shift+F10");
         sep(debug);
         add(debug, ID_ADD_WATCH, t("Add Watch..."), "Shift+F9");
         add(debug, ID_IMMEDIATE, t("Immediate Window"), "Ctrl+Alt+I");
@@ -1239,9 +1255,11 @@ fn build_menu() -> HMENU {
         add(debug, ID_MEMORY_WIN, t("Memory Window"), "Ctrl+Alt+M");
         add(debug, ID_DISASSEMBLY, t("Disassembly"), "Ctrl+Alt+D");
         add(debug, ID_DATA_BP, t("New Data Breakpoint..."), "");
+        add(debug, ID_MODULES, t("Modules"), "Ctrl+Alt+U");
         sep(debug);
         add(debug, ID_TOGGLE_BP, t("Toggle Breakpoint"), "F9");
         add(debug, ID_BP_CONDITION, t("Breakpoint Condition..."), "Alt+F9");
+        add(debug, ID_TRACEPOINT, t("Insert Tracepoint..."), "");
         add(debug, ID_CLEAR_BPS, t("Delete All Breakpoints"), "Ctrl+Shift+F9");
         sub(t("&Debug"), debug);
         let proj = wm::CreatePopupMenu().unwrap_or_default();
@@ -4025,6 +4043,60 @@ impl Studio {
         self.start_job(cargo::Job::Test, false);
     }
 
+    /// Debug > Insert Tracepoint: at the caret's line, a message written to Output each time the
+    /// program passes - `{expr}` in it made the value - without stopping. Its message emptied: gone.
+    fn insert_tracepoint(&mut self) {
+        let (Some(h), Some(p)) = (self.doc.code, self.doc.path.clone()) else { return };
+        let line = phai_editor::view::caret_position(h).0 as u32;
+        let now = self.tracepoints.iter().find(|(q, l, _)| phai_editor::lsp::same_path(q, &p) && *l == line).map(|(_, _, m)| m.clone());
+        let start = now.clone().unwrap_or_else(|| tf("line {0}: ", &[&line]));
+        let answer = match std::env::var("PHAI_TRACE_TEST") {
+            Ok(m) => Some(m),
+            Err(_) => phai_ui::dialogs::ask(Some(self.hwnd), t("Insert Tracepoint"), t("Message to write to Output - {name} for a value, as in total is {total}; empty takes the tracepoint away:"), &start, false),
+        };
+        let Some(msg) = answer else { return };
+        self.tracepoints.retain(|(q, l, _)| !(phai_editor::lsp::same_path(q, &p) && *l == line));
+        if !msg.trim().is_empty() {
+            self.tracepoints.push((p, line, msg));
+        }
+        self.mark_breakpoints();
+        if let Some(d) = &self.debug {
+            d.send(phai_debug::Command::Tracepoints(self.tracepoints.clone()));
+        }
+    }
+
+    /// The Locals tab: every local, or Autos - those the line stopped at and the line before use.
+    pub fn fill_locals(&mut self) {
+        let Some(b) = self.bottom.as_ref() else { return };
+        let mut shown: Vec<&phai_debug::Var> = self.locals_all.iter().collect();
+        if b.autos() {
+            if let Some((p, line)) = &self.stop_at {
+                let text = self.editor_of(p).map(phai_editor::view::text).or_else(|| std::fs::read_to_string(p).ok()).unwrap_or_default();
+                let lines: Vec<&str> = text.lines().collect();
+                let near: String = [line.saturating_sub(2) as usize, line.saturating_sub(1) as usize].iter().filter_map(|i| lines.get(*i)).copied().collect::<Vec<_>>().join(" ");
+                let words: std::collections::HashSet<&str> = near.split(|c: char| !(c.is_alphanumeric() || c == '_')).filter(|w| !w.is_empty()).collect();
+                shown.retain(|v| words.contains(v.name.as_str()));
+            }
+        }
+        use windows::Win32::UI::Controls as cc;
+        unsafe {
+            wm::SendMessageW(b.locals, cc::LVM_DELETEALLITEMS, None, None);
+        }
+        for v in shown {
+            win::list_add(b.locals, &[&v.name, &v.value, &v.ty]);
+        }
+    }
+
+    /// The Exception Helper closed - the program goes on, or ended.
+    fn close_helper(&mut self) {
+        if !self.helper.is_invalid() {
+            unsafe {
+                let _ = wm::DestroyWindow(self.helper);
+            }
+            self.helper = HWND::default();
+        }
+    }
+
     /// Format > Infer Anchors, as Android Studio's Infer Constraints: the controls chosen (all of
     /// them when none is) anchored as where they are suggests - across, to the right, down, to the
     /// bottom - within the form or the group they are in. One step of Undo.
@@ -5362,6 +5434,8 @@ impl Studio {
         for (p, h) in open {
             let off: Vec<u32> = self.bp_off.iter().filter(|(q, _)| phai_editor::lsp::same_path(q, &p)).map(|(_, l)| *l).collect();
             phai_editor::view::set_disabled(h, &off);
+            let traces: Vec<u32> = self.tracepoints.iter().filter(|(q, _, _)| phai_editor::lsp::same_path(q, &p)).map(|(_, l, _)| *l).collect();
+            phai_editor::view::set_tracepoints(h, &traces);
         }
     }
 
@@ -5548,6 +5622,11 @@ impl Studio {
                 d.send(phai_debug::Command::Conditions(self.conds.clone()));
             }
         }
+        if !self.tracepoints.is_empty() {
+            if let Some(d) = &self.debug {
+                d.send(phai_debug::Command::Tracepoints(self.tracepoints.clone()));
+            }
+        }
         if let Some(d) = &self.debug {
             d.send(Self::exceptions());
         }
@@ -5614,20 +5693,39 @@ impl Studio {
                 self.ask_disassembly();
                 self.paused = true;
                 self.clear_debug_line();
+                self.close_helper();
+                // A panic stops inside the standard library: shown at the program's own line that
+                // led there, as Visual Studio's Just My Code does.
+                let project = self.doc.path.as_deref().and_then(cargo::project_of).or_else(|| file.as_deref().and_then(cargo::project_of));
+                let mine = |f: &Path| project.as_deref().is_some_and(|p| f.starts_with(p)) && f.is_file();
+                let (file, line) = if reason.starts_with("panic") && !file.as_deref().is_some_and(mine) {
+                    match frames.iter().find(|fr| fr.file.as_deref().is_some_and(mine)) {
+                        Some(fr) => (fr.file.clone(), fr.line),
+                        None => (file, line),
+                    }
+                } else {
+                    (file, line)
+                };
                 if let Some(f) = file.as_ref().filter(|f| f.is_file()) {
                     self.open_code(f);
                     if let Some(h) = self.doc.code {
                         phai_editor::view::set_current(h, Some(line));
+                        // A panic or an exception: the Exception Helper under its line.
+                        if reason.starts_with("panic") || reason.contains("exception") {
+                            let words = self.bottom.as_ref().map(|b| b.last_lines(bottom::OUT_DEBUG, 40)).and_then(|l| dbgwin::panic_words(&l));
+                            if let Some(at) = phai_editor::view::line_screen(h, line) {
+                                self.helper = dbgwin::helper(self.hwnd, at, &reason, words);
+                            }
+                        }
                     }
                 }
+                self.locals_all = locals.clone();
+                self.stop_at = file.clone().map(|f| (f, line));
                 if let Some(b) = self.bottom.as_ref() {
                     use windows::Win32::UI::Controls as cc;
                     unsafe {
                         wm::SendMessageW(b.locals, cc::LVM_DELETEALLITEMS, None, None);
                         wm::SendMessageW(b.stack, cc::LVM_DELETEALLITEMS, None, None);
-                    }
-                    for v in &locals {
-                        win::list_add(b.locals, &[&v.name, &v.value, &v.ty]);
                     }
                     for f in &frames {
                         let file = f.file.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -5636,6 +5734,7 @@ impl Studio {
                     }
                 }
                 self.frames = frames;
+                self.fill_locals();
                 self.refresh_watch();
                 self.show_pane(Pane::Output, true);
                 if let Some(b) = self.bottom.as_ref() {
@@ -5659,6 +5758,7 @@ impl Studio {
                 self.rebuild_menu();
             }
             Event::Running => {
+                self.close_helper();
                 self.paused = false;
                 self.clear_debug_line();
                 controls::status_text(self.status, 0, t("Running"));
@@ -5667,6 +5767,12 @@ impl Studio {
             Event::Output(text) => {
                 if let Some(b) = self.bottom.as_ref() {
                     b.add_line_from(bottom::OUT_DEBUG, text.trim_end());
+                    // A panic's words come after the stop: into the Exception Helper.
+                    if !self.helper.is_invalid() {
+                        if let Some(words) = dbgwin::panic_words(&b.last_lines(bottom::OUT_DEBUG, 40)) {
+                            dbgwin::set_words(self.helper, words);
+                        }
+                    }
                 }
             }
             Event::BreakpointAt { file, asked, line } => {
@@ -5682,7 +5788,17 @@ impl Studio {
                     phai_editor::view::set_breakpoints(h, &lines);
                 }
             }
+            Event::Modules(list) => {
+                dbgwin::modules(self.hwnd, &list);
+            }
+            Event::CannotSetNext(why) => {
+                self.say_status(&why);
+                if DEBUG_TEST.load(Ordering::Relaxed) == 0 {
+                    win::message(Some(self.hwnd), &why, "Phai Studio", wm::MB_ICONINFORMATION);
+                }
+            }
             Event::Exited(code) => {
+                self.close_helper();
                 self.debug = None;
                 self.paused = false;
                 self.clear_debug_line();
@@ -5841,6 +5957,28 @@ impl Studio {
                         b.show_tab(std::env::var("PHAI_DEBUG_TAB").ok().and_then(|v| v.parse().ok()).unwrap_or(6));
                     }
                 }
+                // `PHAI_DEBUG_ACTION=runto:LINE | setnext:LINE | modules`: that at the first stop.
+                if n == 1 {
+                    if let (Ok(a), Some(p)) = (std::env::var("PHAI_DEBUG_ACTION"), self.doc.path.clone()) {
+                        let (what, at) = a.split_once(':').unwrap_or((a.as_str(), "0"));
+                        let line: u32 = at.parse().unwrap_or(0);
+                        // `stay`: paused there, for a picture.
+                        if what == "stay" {
+                            return;
+                        }
+                        if let Some(d) = &self.debug {
+                            d.send(match what {
+                                "runto" => phai_debug::Command::RunTo(p, line),
+                                "setnext" => phai_debug::Command::SetNext(p, line),
+                                _ => phai_debug::Command::Modules,
+                            });
+                            if what == "setnext" {
+                                d.send(phai_debug::Command::StepOver);
+                            }
+                        }
+                        return;
+                    }
+                }
                 if let Some(d) = &self.debug {
                     if n == 1 {
                         d.send(phai_debug::Command::StepOver);
@@ -5849,6 +5987,14 @@ impl Studio {
                     }
                 }
             }
+            phai_debug::Event::Output(text) => print!("out: {text}"),
+            phai_debug::Event::Modules(list) => {
+                println!("modules: {} - {}", list.len(), list.iter().take(3).map(|(p, _)| p.file_name().unwrap_or_default().to_string_lossy().to_string()).collect::<Vec<_>>().join(", "));
+                if let Some(d) = &self.debug {
+                    d.send(phai_debug::Command::Stop);
+                }
+            }
+            phai_debug::Event::CannotSetNext(why) => println!("cannot: {why}"),
             phai_debug::Event::Exited(code) => {
                 println!("ended {code}");
                 std::process::exit(0);
@@ -7008,6 +7154,18 @@ impl Studio {
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
             ID_INFER_ANCHORS => self.infer_anchors(),
+            ID_RUN_TO_CURSOR | ID_SET_NEXT => {
+                let at = self.doc.code.zip(self.doc.path.clone()).map(|(h, p)| (p, phai_editor::view::caret_position(h).0 as u32));
+                match (&self.debug, self.paused, at) {
+                    (Some(d), true, Some((p, line))) => d.send(if id == ID_RUN_TO_CURSOR { phai_debug::Command::RunTo(p, line) } else { phai_debug::Command::SetNext(p, line) }),
+                    _ => self.say_status(t("Stop at a breakpoint first (F9, then F5) - then the caret's line can be run to or made next")),
+                }
+            }
+            ID_TRACEPOINT => self.insert_tracepoint(),
+            ID_MODULES => match &self.debug {
+                Some(d) => d.send(phai_debug::Command::Modules),
+                None => self.say_status(t("Modules are the running program's: start debugging first (F5)")),
+            },
             ID_KEYMAP => {
                 let menu = unsafe { wm::GetMenu(self.hwnd) };
                 let mut all = search::commands(menu, &|id| id != ID_KEYMAP);
@@ -8167,7 +8325,13 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         return Some(ID_ANALYSE_ALL);
     }
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x79 {
-        return Some(ID_STEP_OVER);
+        // Ctrl+F10 Run To Cursor, Ctrl+Shift+F10 Set Next Statement, F10 alone Step Over.
+        let (ctrl, shift) = (unsafe { km::GetKeyState(0x11) } < 0, unsafe { km::GetKeyState(0x10) } < 0);
+        return Some(match (ctrl, shift) {
+            (true, true) => ID_SET_NEXT,
+            (true, false) => ID_RUN_TO_CURSOR,
+            _ => ID_STEP_OVER,
+        });
     }
     if msg.message == wm::WM_SYSKEYDOWN && msg.wParam.0 == 0x78 {
         return Some(ID_BP_CONDITION);
@@ -8175,6 +8339,10 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     if msg.message == wm::WM_KEYDOWN {
         let shift = unsafe { km::GetKeyState(0x10) } < 0;
         let ctrl = unsafe { km::GetKeyState(0x11) } < 0;
+        // Ctrl+Alt+U: the Modules window.
+        if ctrl && unsafe { km::GetKeyState(0x12) } < 0 && msg.wParam.0 == b'U' as usize {
+            return Some(ID_MODULES);
+        }
         // Ctrl+Alt+1 to 0: a window layout kept (View > Window Layouts).
         let alt = unsafe { km::GetKeyState(0x12) } < 0;
         if ctrl && alt && (0x30..=0x39).contains(&msg.wParam.0) {
@@ -8460,6 +8628,10 @@ fn main() {
             debug_after_build: false,
             bps: std::collections::HashMap::new(),
             bp_off: vec![],
+            tracepoints: vec![],
+            locals_all: vec![],
+            stop_at: None,
+            helper: HWND::default(),
             bp_rows: vec![],
             bp_filling: false,
             thread_ids: vec![],
@@ -9244,6 +9416,12 @@ fn main() {
         if args.iter().any(|a| a == "--debugtest") {
             DEBUG_TEST.store(1, Ordering::Relaxed);
             let line = std::env::var("PHAI_DEBUG_LINE").ok().and_then(|l| l.parse().ok()).unwrap_or(7);
+            // `PHAI_TRACE=LINE:message`: a tracepoint there too.
+            if let (Ok(t), Some(p)) = (std::env::var("PHAI_TRACE"), s.doc.path.clone()) {
+                if let Some((l, m)) = t.split_once(':') {
+                    s.tracepoints.push((p, l.parse().unwrap_or(0), m.to_string()));
+                }
+            }
             if let Some(h) = s.doc.code {
                 phai_editor::view::set_breakpoints(h, &[line]);
             }

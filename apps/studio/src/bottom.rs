@@ -29,6 +29,8 @@ pub const ID_SHOW_WARNINGS: i32 = 521;
 pub const ID_ERROR_SCOPE: i32 = 545;
 /// Output's "Show output from": all of it, or one source's.
 pub const ID_OUT_SOURCE: i32 = 546;
+/// The Locals tab's Locals or Autos.
+pub const ID_LOCALS_MODE: i32 = 547;
 /// Output's sources, in the drop-down's order after All.
 pub const OUT_BUILD: usize = 1;
 pub const OUT_DEBUG: usize = 2;
@@ -64,7 +66,7 @@ pub fn labels() -> [&'static str; 16] {
 }
 
 /// Code's font for the windows' words: Cascadia Mono at `points`.
-fn mono_font(h: HWND, points: i32) -> HFONT {
+pub fn mono_font(h: HWND, points: i32) -> HFONT {
     use windows::Win32::Graphics::Gdi;
     let mut lf = Gdi::LOGFONTW { lfHeight: -(points * win::dpi(h) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
     for (i, u) in "Cascadia Mono".encode_utf16().enumerate() {
@@ -113,6 +115,7 @@ pub struct Bottom {
     /// Output's lines, each with its source ([`OUT_BUILD`]...).
     lines: std::cell::RefCell<Vec<(usize, String)>>,
     pub out_source: HWND,
+    pub locals_mode: HWND,
 }
 
 impl Bottom {
@@ -131,6 +134,12 @@ impl Bottom {
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
         // Visual Studio's "Show output from": one source, or all of them.
         let out_source = win::combo(hwnd, ID_OUT_SOURCE, bar_font, &[t("All output"), t("Build"), t("Debug"), t("Tests"), t("Data")]);
+        // Visual Studio's Locals and Autos: every local, or only those the line stopped at and the
+        // one before it use.
+        let locals_mode = win::combo(hwnd, ID_LOCALS_MODE, bar_font, &[t("Locals"), t("Autos")]);
+        unsafe {
+            wm::SendMessageW(locals_mode, wm::CB_SETCURSEL, Some(WPARAM(0)), None);
+        }
         unsafe {
             wm::SendMessageW(out_source, wm::CB_SETCURSEL, Some(WPARAM(0)), None);
         }
@@ -170,6 +179,7 @@ impl Bottom {
         }
         layout.add(error_scope, Item { bounds: Rect::new(380, 3, 144, 200), dock: Dock::None, anchor: right });
         layout.add(out_source, Item { bounds: Rect::new(620, 3, 144, 200), dock: Dock::None, anchor: right });
+        layout.add(locals_mode, Item { bounds: Rect::new(620, 3, 144, 200), dock: Dock::None, anchor: right });
         // Close, as every Visual Studio tool window has; View > Errors and output brings it back, and
         // a build or a run shows it again.
         let close = win::toolbar(hwnd, ID_CLOSE + 100, &[(ID_CLOSE, t("Close"), 0xE711)]);
@@ -178,7 +188,7 @@ impl Bottom {
             let _ = wm::SetWindowPos(close, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
         }
         unsafe {
-            for c in [show_errors, show_warnings, error_scope, out_source] {
+            for c in [show_errors, show_warnings, error_scope, out_source, locals_mode] {
                 let _ = wm::SetWindowPos(c, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
             }
         }
@@ -242,7 +252,7 @@ impl Bottom {
             let _ = windows::Win32::UI::Shell::SetWindowSubclass(term_input, Some(input_proc), 33, 0);
         }
         layout.add(term_input, Item { bounds: Rect::new(0, 116, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, error_scope, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), lines: std::cell::RefCell::new(Vec::new()), out_source, open: std::cell::Cell::new({
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, error_scope, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), lines: std::cell::RefCell::new(Vec::new()), out_source, locals_mode, open: std::cell::Cell::new({
             // The tabs Options opens at start (Errors and Output unless it says other).
             let start = crate::options::tabs_of(crate::setting_pub("bottom_tabs"));
             std::array::from_fn(|k| start.contains(&k))
@@ -310,6 +320,7 @@ impl Bottom {
         win::show(self.errors, i == 0);
         win::show(self.output, i == 1);
         win::show(self.out_source, i == 1);
+        win::show(self.locals_mode, i == 3);
         win::show(self.refs, i == 2);
         win::show(self.locals, i == 3);
         win::show(self.stack, i == 4);
@@ -475,6 +486,18 @@ impl Bottom {
         }
     }
 
+    /// The last `n` lines `source` wrote, oldest first.
+    pub fn last_lines(&self, source: usize, n: usize) -> Vec<String> {
+        let lines = self.lines.borrow();
+        let mine: Vec<&String> = lines.iter().filter(|(s, _)| *s == source).map(|(_, l)| l).collect();
+        mine[mine.len().saturating_sub(n)..].iter().map(|l| l.to_string()).collect()
+    }
+
+    /// Whether the Locals tab shows Autos.
+    pub fn autos(&self) -> bool {
+        win::combo_selected(self.locals_mode) == 1
+    }
+
     /// Output's text again: the lines of the source chosen, or all.
     pub fn refill_output(&self) {
         let shown = win::combo_selected(self.out_source).max(0) as usize;
@@ -579,6 +602,12 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             crate::remember_setting_pub("show_warnings", if win::is_checked(b.show_warnings) { "1" } else { "0" });
             if let Some(s) = crate::studio() {
                 s.fill_errors();
+            }
+            LRESULT(0)
+        }
+        (wm::WM_COMMAND, Some(_)) if win::loword(w.0) as i32 == ID_LOCALS_MODE && win::hiword(w.0) as u32 == wm::CBN_SELCHANGE => {
+            if let Some(s) = crate::studio() {
+                s.fill_locals();
             }
             LRESULT(0)
         }

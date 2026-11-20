@@ -61,6 +61,16 @@ pub enum Command {
     /// While paused: a number, `bool` or `char` given a new value, as Visual Studio lets a
     /// value in Locals be typed over. Answered by [`Event::ValueSet`].
     SetValue { expr: String, value: String },
+    /// While paused: Run to Cursor - on until this file and line (or a breakpoint on the way).
+    RunTo(PathBuf, u32),
+    /// While paused: Set Next Statement - the program goes on from this line of the same
+    /// function, the lines between not run (or run again). Said by a new [`Event::Stopped`].
+    SetNext(PathBuf, u32),
+    /// Tracepoints - file, line, message - each writing its message to Output, `{expr}` in it
+    /// replaced by the value, and going on without stopping.
+    Tracepoints(Vec<(PathBuf, u32, String)>),
+    /// The DLLs and the program loaded now: answered by [`Event::Modules`].
+    Modules,
 }
 
 /// An instruction of the Disassembly window.
@@ -133,6 +143,10 @@ pub enum Event {
     Values { id: u64, vars: Vec<Var> },
     /// [`Command::SetValue`] done - the locals as they are now - or why not.
     ValueSet { expr: String, result: Result<Vec<Var>, String> },
+    /// [`Command::Modules`] answered: each module's file and where it is loaded, in load order.
+    Modules(Vec<(PathBuf, u64)>),
+    /// [`Command::SetNext`] could not be done: why.
+    CannotSetNext(String),
 }
 
 /// A program running under the debugger.
@@ -210,6 +224,10 @@ enum Kind {
     Panic,
     /// Step Over's or Step Out's: where a call returns to, and the stack it returns with.
     Temp(u64),
+    /// Run to Cursor's: stops once, then is gone.
+    RunTo,
+    /// A tracepoint: its message written, and on.
+    Trace,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -273,6 +291,11 @@ struct Engine {
     first_chance: Vec<u32>,
     /// Data breakpoints: address, length (1, 2, 4 or 8) and what was asked - in DR0 to DR3.
     watched: Vec<(u64, u64, String)>,
+    /// Tracepoints by file and line, and by the address their breakpoint landed at.
+    traces: Vec<(PathBuf, u32, String)>,
+    trace_at: HashMap<u64, String>,
+    /// The program and its DLLs: file and base, in the order they were loaded.
+    modules: Vec<(PathBuf, u64)>,
 }
 
 /// The program file of a running process, if it may be looked at.
@@ -457,7 +480,7 @@ impl Engine {
     }
 
     fn new(process: HANDLE, exe: &Path, cwd: &Path, wanted: Vec<(PathBuf, u32)>, rx: Receiver<Command>, say: Say, attached: bool) -> Engine {
-        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![], watched: vec![], printed: None }
+        Engine { process, exe: exe.to_path_buf(), cwd: cwd.to_path_buf(), threads: HashMap::new(), bps: HashMap::new(), wanted, rearm: None, step: None, loaded: false, rx, say, pausing: false, conds: vec![], cond_at: HashMap::new(), hits: HashMap::new(), attached, detaching: false, main_thread: 0, break_on_panic: true, first_chance: vec![], watched: vec![], traces: vec![], trace_at: HashMap::new(), modules: vec![], printed: None }
     }
 
     /// Attach to Process: the debugger joins a program already running. Windows then tells of its
@@ -540,6 +563,12 @@ impl Engine {
                         let w = self.wanted.clone();
                         self.set_breakpoints(w);
                     }
+                    Ok(Command::Tracepoints(list)) => {
+                        self.traces = list;
+                        let w = self.wanted.clone();
+                        self.set_breakpoints(w);
+                    }
+                    Ok(Command::Modules) => (self.say)(Event::Modules(self.modules.clone())),
                     Ok(_) => {}
                     Err(TryRecvError::Disconnected) if self.attached => return self.detach(),
                     Err(TryRecvError::Disconnected) => {
@@ -563,6 +592,7 @@ impl Engine {
                         let info = ev.u.CreateProcessInfo;
                         self.threads.insert(tid, info.hThread);
                         self.main_thread = tid;
+                        self.modules.push((self.exe.clone(), info.lpBaseOfImage as u64));
                         self.load_symbols(info.hFile, info.lpBaseOfImage as u64);
                         if !info.hFile.is_invalid() {
                             let _ = CloseHandle(info.hFile);
@@ -587,10 +617,15 @@ impl Engine {
                         // and its functions have names.
                         if !f.is_invalid() {
                             let _ = SymLoadModuleExW(self.process, Some(f), PCWSTR::null(), PCWSTR::null(), ev.u.LoadDll.lpBaseOfDll as u64, 0, None, None);
+                            self.modules.push((file_of_handle(f), ev.u.LoadDll.lpBaseOfDll as u64));
                         }
                         if !f.is_invalid() {
                             let _ = CloseHandle(f);
                         }
+                    }
+                    UNLOAD_DLL_DEBUG_EVENT => {
+                        let base = ev.u.UnloadDll.lpBaseOfDll as u64;
+                        self.modules.retain(|(_, b)| *b != base);
                     }
                     OUTPUT_DEBUG_STRING_EVENT => {
                         let d = ev.u.DebugString;
@@ -752,7 +787,7 @@ impl Engine {
     }
 
     fn set_breakpoints(&mut self, list: Vec<(PathBuf, u32)>) {
-        let old: Vec<u64> = self.bps.iter().filter(|(_, b)| b.kind == Kind::User).map(|(a, _)| *a).collect();
+        let old: Vec<u64> = self.bps.iter().filter(|(_, b)| matches!(b.kind, Kind::User | Kind::Trace)).map(|(a, _)| *a).collect();
         for a in old {
             if self.rearm == Some(a) {
                 self.rearm = None;
@@ -765,6 +800,14 @@ impl Engine {
             return;
         }
         self.cond_at.clear();
+        self.trace_at.clear();
+        // Tracepoints first: a breakpoint on the same line is a breakpoint still.
+        for (file, line, msg) in self.traces.clone() {
+            if let Some((addr, _)) = self.line_address(&file, line) {
+                self.arm(addr, Kind::Trace);
+                self.trace_at.insert(addr, msg);
+            }
+        }
         for (file, line) in &list {
             match self.line_address(file, *line) {
                 Some((addr, at)) => {
@@ -854,6 +897,26 @@ impl Engine {
                         }
                         DBG_CONTINUE
                     }
+                    Kind::RunTo => {
+                        // Run to Cursor reached: stopped here, its breakpoint gone.
+                        self.bps.remove(&addr);
+                        self.set_context(tid, &c);
+                        self.forget_temps();
+                        self.step = None;
+                        self.pause(tid, "cursor");
+                        DBG_CONTINUE
+                    }
+                    Kind::Trace => {
+                        // Its message, `{expr}` filled in, then on - written again after this one instruction.
+                        c.0.EFlags |= TRAP_FLAG;
+                        self.rearm = Some(addr);
+                        self.set_context(tid, &c);
+                        if let Some(msg) = self.trace_at.get(&addr).cloned() {
+                            let said = fill_message(&msg, |e| self.evaluate(tid, e).value);
+                            (self.say)(Event::Output(format!("{said}{}", char::from(10))));
+                        }
+                        DBG_CONTINUE
+                    }
                     Kind::User | Kind::Panic => {
                         // Written again after this one instruction.
                         c.0.EFlags |= TRAP_FLAG;
@@ -921,7 +984,7 @@ impl Engine {
     }
 
     fn forget_temps(&mut self) {
-        let temps: Vec<u64> = self.bps.iter().filter(|(_, b)| matches!(b.kind, Kind::Temp(_))).map(|(a, _)| *a).collect();
+        let temps: Vec<u64> = self.bps.iter().filter(|(_, b)| matches!(b.kind, Kind::Temp(_) | Kind::RunTo)).map(|(a, _)| *a).collect();
         for a in temps {
             self.disarm(a);
         }
@@ -1013,6 +1076,15 @@ impl Engine {
     /// The program paused on thread `tid`: where, and what it holds, said; then what is asked.
     fn pause(&mut self, tid: u32, reason: &str) {
         let mut tid = tid;
+        // What it printed before stopping, said first - a panic's own words, written just before
+        // it reaches rust_panic, waited for a moment.
+        if let Some(lines) = &self.printed {
+            let wait = if reason == "panic" { 300 } else { 0 };
+            let until = std::time::Instant::now() + std::time::Duration::from_millis(wait);
+            while let Ok(line) = lines.recv_timeout(until.saturating_duration_since(std::time::Instant::now())) {
+                (self.say)(Event::Output(format!("{line}{}", char::from(10))));
+            }
+        }
         self.say_stopped(tid, reason);
         loop {
             let got = self.rx.recv();
@@ -1055,6 +1127,32 @@ impl Engine {
                     continue;
                 }
                 Command::Pause => continue,
+                Command::Tracepoints(list) => {
+                    self.traces = list;
+                    let w = self.wanted.clone();
+                    self.set_breakpoints(w);
+                    continue;
+                }
+                Command::Modules => {
+                    (self.say)(Event::Modules(self.modules.clone()));
+                    continue;
+                }
+                Command::SetNext(file, line) => {
+                    match self.set_next(tid, &file, line) {
+                        Ok(()) => self.say_stopped(tid, "set next statement"),
+                        Err(e) => (self.say)(Event::CannotSetNext(e)),
+                    }
+                    continue;
+                }
+                Command::RunTo(file, line) => {
+                    match self.line_address(&file, line) {
+                        Some((addr, _)) => self.arm(addr, Kind::RunTo),
+                        None => {
+                            (self.say)(Event::CannotSetNext(format!("line {line} has no code to run to")));
+                            continue;
+                        }
+                    }
+                }
                 Command::Memory { id, at, len } => {
                     let result = self.memory(tid, &at, len);
                     (self.say)(Event::Memory { id, result });
@@ -1123,6 +1221,25 @@ impl Engine {
             (self.say)(Event::Running);
             return;
         }
+    }
+
+    /// Set Next Statement: the thread's next instruction made the first of `line`, when it is in
+    /// the function stopped in.
+    fn set_next(&mut self, tid: u32, file: &Path, line: u32) -> Result<(), String> {
+        let mut c = self.context(tid).ok_or("the thread cannot be read")?;
+        let (addr, at) = self.line_address(file, line).ok_or_else(|| format!("line {line} has no code"))?;
+        let function = |a: u64| -> Option<u64> {
+            let mut buf = SymBuf::new();
+            let mut disp = 0u64;
+            unsafe { SymFromAddrW(self.process, a, Some(&mut disp), buf.info()) }.ok()?;
+            Some(unsafe { (*buf.info()).Address })
+        };
+        if function(addr).is_none() || function(addr) != function(c.0.Rip) {
+            return Err(format!("line {at} is in another function - the next statement stays in this one"));
+        }
+        c.0.Rip = addr;
+        self.set_context(tid, &c);
+        Ok(())
     }
 
     /// Where an address or a variable is: `0x...` as written, else the variable's place, and how
@@ -1489,6 +1606,39 @@ impl Engine {
 }
 
 /// `\"`, `\\`, `\n`, `\t` as the characters they stand for.
+/// A tracepoint's message with each `{expr}` made its value; `{{` and `}}` are braces.
+pub fn fill_message(msg: &str, value: impl Fn(&str) -> String) -> String {
+    let mut out = String::new();
+    let mut chars = msg.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' if chars.peek() == Some(&'{') => {
+                chars.next();
+                out.push('{');
+            }
+            '}' if chars.peek() == Some(&'}') => {
+                chars.next();
+                out.push('}');
+            }
+            '{' => {
+                let expr: String = chars.by_ref().take_while(|d| *d != '}').collect();
+                out.push_str(&value(expr.trim()));
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// The file behind an open handle, as Windows names it.
+fn file_of_handle(h: HANDLE) -> PathBuf {
+    use windows::Win32::Storage::FileSystem::{GetFinalPathNameByHandleW, FILE_NAME_NORMALIZED};
+    let mut buf = [0u16; 1024];
+    let n = unsafe { GetFinalPathNameByHandleW(h, &mut buf, FILE_NAME_NORMALIZED) } as usize;
+    let s = String::from_utf16_lossy(&buf[..n.min(buf.len())]);
+    PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s))
+}
+
 fn unescape(s: &str) -> String {
     let mut out = String::new();
     let mut it = s.chars();
@@ -1899,6 +2049,13 @@ fn rust_name(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tracepoint_s_message_filled_in() {
+        let v = |e: &str| if e == "total" { "10".to_string() } else { format!("<{e}>") };
+        assert_eq!(fill_message("total is {total}, i {i}", v), "total is 10, i <i>");
+        assert_eq!(fill_message("{{literal}} {total}", v), "{literal} 10");
+    }
 
     #[test]
     fn numbers_read_as_rust_writes_them() {
