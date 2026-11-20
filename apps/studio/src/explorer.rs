@@ -18,6 +18,16 @@ use windows::Win32::UI::WindowsAndMessaging::{self as wm, HMENU};
 use crate::studio;
 
 /// After a click in the tree: the file it chose, in the preview tab.
+/// A table of Server Explorer being dragged towards the designer.
+static DRAGGING_TABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the screen point is over the form being designed.
+fn over_designer(pt: windows::Win32::Foundation::POINT) -> bool {
+    let Some(c) = studio().and_then(|s| s.canvas.as_ref()) else { return false };
+    let hit = unsafe { wm::WindowFromPoint(pt) };
+    hit == c.hwnd || unsafe { wm::IsChild(c.hwnd, hit) }.as_bool()
+}
+
 const WM_PREVIEW_SELECTED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 0x0E20;
 const ID_TREE: i32 = 400;
 const CMD_NEW_FORM: u32 = 1;
@@ -563,6 +573,36 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             }
             LRESULT(0)
         }
+        wm::WM_MOUSEMOVE if DRAGGING_TABLE.load(std::sync::atomic::Ordering::Relaxed) => {
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            unsafe {
+                let _ = wm::GetCursorPos(&mut pt);
+                let cur = if over_designer(pt) { wm::IDC_HAND } else { wm::IDC_NO };
+                if let Ok(c) = wm::LoadCursorW(None, cur) {
+                    wm::SetCursor(Some(c));
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_LBUTTONUP if DRAGGING_TABLE.load(std::sync::atomic::Ordering::Relaxed) => {
+            DRAGGING_TABLE.store(false, std::sync::atomic::Ordering::Relaxed);
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            unsafe {
+                let _ = wm::GetCursorPos(&mut pt);
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture();
+            }
+            if over_designer(pt) {
+                let owner = studio().map(|s| s.hwnd).unwrap_or(h);
+                if let Some(sv) = studio().and_then(|s| s.servers.as_mut()) {
+                    sv.add_selected_to_form(owner);
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_CAPTURECHANGED => {
+            DRAGGING_TABLE.store(false, std::sync::atomic::Ordering::Relaxed);
+            win::def(h, msg, w, l)
+        }
         WM_PREVIEW_SELECTED => {
             if let Some(e) = studio().and_then(|s| s.explorer.as_mut()) {
                 e.preview_selected();
@@ -586,6 +626,7 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             }
             if hdr.idFrom == crate::servers::ID_SERVERS_TREE as usize {
                 const TVN_ITEMEXPANDINGW: u32 = (-454i32) as u32;
+                const TVN_BEGINDRAGW: u32 = (-456i32) as u32;
                 if let Some(sv) = studio().and_then(|s| s.servers.as_mut()) {
                     match hdr.code {
                         cc::NM_DBLCLK => {
@@ -605,6 +646,20 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                             }
                             sv.menu(h);
                             return LRESULT(1);
+                        }
+                        // A table dragged: onto the designer it goes as a bound grid (Data Sources).
+                        TVN_BEGINDRAGW => {
+                            let nm = unsafe { &*(l.0 as *const cc::NMTREEVIEWW) };
+                            unsafe {
+                                wm::SendMessageW(hdr.hwndFrom, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9)), Some(LPARAM(nm.itemNew.hItem.0)));
+                            }
+                            if sv.table_chosen() {
+                                DRAGGING_TABLE.store(true, std::sync::atomic::Ordering::Relaxed);
+                                unsafe {
+                                    windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(h);
+                                }
+                            }
+                            return LRESULT(0);
                         }
                         TVN_ITEMEXPANDINGW => {
                             let nm = unsafe { &*(l.0 as *const cc::NMTREEVIEWW) };
