@@ -43,6 +43,7 @@ mod web;
 mod repdesign;
 mod qr;
 mod phone;
+mod devices;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -209,6 +210,8 @@ const ID_RUN_WEB: i32 = 295;
 const ID_RUN_PHONE: i32 = 296;
 /// Project > Web App (PWA): its name, short name, colours, orientation and icon on a phone.
 const ID_WEB_APP: i32 = 297;
+/// View > Device Preview: the form on a phone's and a tablet's screen.
+const ID_DEVICES: i32 = 298;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
 
@@ -1019,6 +1022,7 @@ fn build_menu() -> HMENU {
         sub(t("&Edit"), edit);
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
+        add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
         sep(view);
         add(view, ID_VIEW_TOOLBOX, t("Toolbox"), "");
         add(view, ID_VIEW_EXPLORER, t("Project explorer"), "");
@@ -6640,6 +6644,7 @@ impl Studio {
             ID_REDO => self.undo_redo(false),
             ID_DELETE => self.delete_selected(),
             ID_PREVIEW => preview::open(self.hwnd, &self.doc.form),
+            ID_DEVICES => devices::open(self.hwnd, &self.doc.form),
             ID_LIGHT | ID_DARK | ID_THEME_TOGGLE => {
                 win::unwatch_theme(self.hwnd);
                 let dark = if id == ID_THEME_TOGGLE { !theme::current().is_dark() } else { id == ID_DARK };
@@ -7564,6 +7569,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         (b'D', true) if !in_box => Some(ID_DUPLICATE),
         (b'A', true) if !in_box => Some(ID_SELECT_ALL),
         (b'B', true) => Some(ID_BUILD),
+        (0x73, _) if unsafe { km::GetKeyState(0x10) } < 0 => Some(ID_DEVICES),
         (0x73, _) => Some(ID_PREVIEW),
         (0x74, _) if unsafe { km::GetKeyState(0x10) } < 0 => Some(ID_STOP),
         (0x74, _) => Some(ID_RUN),
@@ -7843,7 +7849,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -7950,6 +7956,26 @@ fn main() {
                 while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
                     let _ = wm::TranslateMessage(&msg);
                     wm::DispatchMessageW(&msg);
+                }
+                let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
+                std::process::exit(0);
+            }
+        }
+        // `--devices N[,turned][,side]`: Device Preview on device N, photographed with PHAI_SHOT.
+        if let Some(spec) = args.iter().position(|a| a == "--devices").and_then(|i| args.get(i + 1)) {
+            if let Ok(out) = std::env::var("PHAI_SHOT") {
+                let device = spec.split(',').next().and_then(|n| n.parse().ok()).unwrap_or(0);
+                let dlg = devices::make(hwnd, &s.doc.form, device, spec.contains("turned"), spec.contains("side"));
+                win::show_top(dlg);
+                // Two seconds of its life: the screens drawn and photographed again on its timer.
+                let until = std::time::Instant::now() + std::time::Duration::from_millis(2000);
+                let mut msg = wm::MSG::default();
+                while std::time::Instant::now() < until {
+                    while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                        let _ = wm::TranslateMessage(&msg);
+                        wm::DispatchMessageW(&msg);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
                 }
                 let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
                 std::process::exit(0);
