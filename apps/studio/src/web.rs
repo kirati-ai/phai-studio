@@ -259,10 +259,11 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
     let title = main_form.form.title.clone();
     let color = phai_form::web::theme_var(&theme, "--accent").unwrap_or_else(|| "#12855f".into());
     let background = phai_form::web::theme_var(&theme, "--surface").unwrap_or_else(|| "#ffffff".into());
+    let version = version_stamp();
     let files: Vec<(&str, Vec<u8>)> = vec![
-        ("index.html", phai_form::web::index_html(&title, &package, &phai_form::web::theme_css(&theme), &color).into_bytes()),
+        ("index.html", phai_form::web::index_html(&title, &package, &phai_form::web::theme_css(&theme), &color, &version).into_bytes()),
         ("manifest.webmanifest", phai_form::web::manifest(&title, &color, &background).into_bytes()),
-        ("sw.js", phai_form::web::service_worker(&package, &version_stamp()).into_bytes()),
+        ("sw.js", phai_form::web::service_worker(&package, &version).into_bytes()),
         ("icon-192.png", icon_png(192, hex(&color))),
         ("icon-512.png", icon_png(512, hex(&color))),
     ];
