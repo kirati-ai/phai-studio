@@ -27,6 +27,15 @@ pub const ID_SHOW_ERRORS: i32 = 520;
 pub const ID_SHOW_WARNINGS: i32 = 521;
 /// The Error List's scope: the entire solution, the document open now, or the open documents.
 pub const ID_ERROR_SCOPE: i32 = 545;
+/// Output's "Show output from": all of it, or one source's.
+pub const ID_OUT_SOURCE: i32 = 546;
+/// Output's sources, in the drop-down's order after All.
+pub const OUT_BUILD: usize = 1;
+pub const OUT_DEBUG: usize = 2;
+pub const OUT_TESTS: usize = 3;
+pub const OUT_DATA: usize = 4;
+/// Lines Output keeps; the oldest go first.
+const OUT_KEEP: usize = 20_000;
 pub const ID_IMMEDIATE: i32 = 522;
 pub const ID_IMMEDIATE_INPUT: i32 = 523;
 pub const ID_DIAGNOSTICS: i32 = 524;
@@ -101,6 +110,9 @@ pub struct Bottom {
     shell: std::cell::RefCell<Option<crate::terminal::Shell>>,
     history: std::cell::RefCell<Vec<String>>,
     history_at: std::cell::Cell<usize>,
+    /// Output's lines, each with its source ([`OUT_BUILD`]...).
+    lines: std::cell::RefCell<Vec<(usize, String)>>,
+    pub out_source: HWND,
 }
 
 impl Bottom {
@@ -117,6 +129,11 @@ impl Bottom {
         let mono = mono_font(hwnd, PANEL_POINTS);
         let errors = win::list(hwnd, errors_id, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
+        // Visual Studio's "Show output from": one source, or all of them.
+        let out_source = win::combo(hwnd, ID_OUT_SOURCE, bar_font, &[t("All output"), t("Build"), t("Debug"), t("Tests"), t("Data")]);
+        unsafe {
+            wm::SendMessageW(out_source, wm::CB_SETCURSEL, Some(WPARAM(0)), None);
+        }
         win::set_font(output, mono);
         let refs = win::list(hwnd, ID_REFS, font, &[(t("File"), 170), (t("Line"), 60), (t("Code"), 640)]);
         let locals = win::list(hwnd, ID_LOCALS, font, &[(t("Name"), 160), (t("Value"), 380), (t("Type"), 220)]);
@@ -152,6 +169,7 @@ impl Bottom {
             wm::SendMessageW(error_scope, wm::CB_SETCURSEL, Some(WPARAM(crate::setting_pub("error_scope").and_then(|v| v.parse().ok()).unwrap_or(0usize).min(2))), None);
         }
         layout.add(error_scope, Item { bounds: Rect::new(380, 3, 144, 200), dock: Dock::None, anchor: right });
+        layout.add(out_source, Item { bounds: Rect::new(620, 3, 144, 200), dock: Dock::None, anchor: right });
         // Close, as every Visual Studio tool window has; View > Errors and output brings it back, and
         // a build or a run shows it again.
         let close = win::toolbar(hwnd, ID_CLOSE + 100, &[(ID_CLOSE, t("Close"), 0xE711)]);
@@ -160,7 +178,7 @@ impl Bottom {
             let _ = wm::SetWindowPos(close, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
         }
         unsafe {
-            for c in [show_errors, show_warnings, error_scope] {
+            for c in [show_errors, show_warnings, error_scope, out_source] {
                 let _ = wm::SetWindowPos(c, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
             }
         }
@@ -224,7 +242,7 @@ impl Bottom {
             let _ = windows::Win32::UI::Shell::SetWindowSubclass(term_input, Some(input_proc), 33, 0);
         }
         layout.add(term_input, Item { bounds: Rect::new(0, 116, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, error_scope, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), open: std::cell::Cell::new({
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, error_scope, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), lines: std::cell::RefCell::new(Vec::new()), out_source, open: std::cell::Cell::new({
             // The tabs Options opens at start (Errors and Output unless it says other).
             let start = crate::options::tabs_of(crate::setting_pub("bottom_tabs"));
             std::array::from_fn(|k| start.contains(&k))
@@ -291,6 +309,7 @@ impl Bottom {
         self.restrip(i);
         win::show(self.errors, i == 0);
         win::show(self.output, i == 1);
+        win::show(self.out_source, i == 1);
         win::show(self.refs, i == 2);
         win::show(self.locals, i == 3);
         win::show(self.stack, i == 4);
@@ -419,17 +438,52 @@ impl Bottom {
         }
     }
 
+    /// A new build: the build's lines before it gone, the rest kept.
     pub fn clear_output(&self) {
-        win::set_text(self.output, "");
+        self.lines.borrow_mut().retain(|(s, _)| *s != OUT_BUILD);
+        self.refill_output();
     }
 
-    /// One more line at the end of the output, scrolled into view.
+    /// One more line of the build's at the end of the output, scrolled into view.
     pub fn add_line(&self, line: &str) {
+        self.add_line_from(OUT_BUILD, line);
+    }
+
+    /// One more line from `source`. Output showing another source's: turned to this one, as
+    /// Visual Studio's does.
+    pub fn add_line_from(&self, source: usize, line: &str) {
+        {
+            let mut lines = self.lines.borrow_mut();
+            lines.push((source, line.to_string()));
+            if lines.len() > OUT_KEEP {
+                let extra = lines.len() - OUT_KEEP;
+                lines.drain(..extra);
+            }
+        }
+        let shown = win::combo_selected(self.out_source).max(0) as usize;
+        if shown != 0 && shown != source {
+            unsafe {
+                wm::SendMessageW(self.out_source, wm::CB_SETCURSEL, Some(WPARAM(source)), None);
+            }
+            return self.refill_output();
+        }
         let w = win::wide(&format!("{line}\r\n"));
         unsafe {
             let n = wm::GetWindowTextLengthW(self.output) as usize;
             wm::SendMessageW(self.output, 0x00B1 /* EM_SETSEL */, Some(WPARAM(n)), Some(LPARAM(n as isize)));
             wm::SendMessageW(self.output, 0x00C2 /* EM_REPLACESEL */, Some(WPARAM(0)), Some(LPARAM(w.as_ptr() as isize)));
+        }
+    }
+
+    /// Output's text again: the lines of the source chosen, or all.
+    pub fn refill_output(&self) {
+        let shown = win::combo_selected(self.out_source).max(0) as usize;
+        let text: String = self.lines.borrow().iter().filter(|(s, _)| shown == 0 || *s == shown).map(|(_, l)| format!("{l}\r\n")).collect();
+        win::set_text(self.output, &text);
+        unsafe {
+            let n = wm::GetWindowTextLengthW(self.output) as usize;
+            wm::SendMessageW(self.output, 0x00B1 /* EM_SETSEL */, Some(WPARAM(n)), Some(LPARAM(n as isize)));
+            wm::SendMessageW(self.output, 0x00B7 /* EM_SCROLLCARET */, None, None);
         }
     }
 }
@@ -526,6 +580,10 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             if let Some(s) = crate::studio() {
                 s.fill_errors();
             }
+            LRESULT(0)
+        }
+        (wm::WM_COMMAND, Some(b)) if win::loword(w.0) as i32 == ID_OUT_SOURCE && win::hiword(w.0) as u32 == wm::CBN_SELCHANGE => {
+            b.refill_output();
             LRESULT(0)
         }
         (wm::WM_COMMAND, Some(_)) if win::loword(w.0) as i32 == ID_ERROR_SCOPE && win::hiword(w.0) as u32 == wm::CBN_SELCHANGE => {
