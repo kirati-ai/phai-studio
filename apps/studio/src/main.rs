@@ -220,6 +220,14 @@ const ID_RECENT: i32 = 160;
 /// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
 const ID_TEMPLATE: i32 = 170;
 const RECENT_MAX: usize = 9;
+/// File > Open > Project..., Close Project; File > Recent Projects: `ID_RECENT_PROJECT + n`.
+const ID_OPEN_PROJECT: i32 = 620;
+const ID_CLOSE_PROJECT: i32 = 621;
+const ID_RECENT_PROJECT: i32 = 622;
+/// Tools: Create GUID, and a command line in the project's folder.
+const ID_CREATE_GUID: i32 = 631;
+const ID_CMD_PROMPT: i32 = 632;
+const ID_POWERSHELL: i32 = 633;
 const ID_RELEASE: i32 = 144;
 const ID_EDIT_MENUS: i32 = 113;
 const ID_CUT: i32 = 115;
@@ -903,29 +911,43 @@ fn build_menu() -> HMENU {
             let w = wide(label);
             let _ = wm::AppendMenuW(bar, wm::MF_POPUP, m.0 as usize, PCWSTR(w.as_ptr()));
         };
+        // As Visual Studio's File menu: New and Open each with what they make or open, the start
+        // window, closing, saving, what was open lately.
         let file = wm::CreatePopupMenu().unwrap_or_default();
-        add(file, ID_NEW, t("New"), "Ctrl+N");
-        let tm = wm::CreatePopupMenu().unwrap_or_default();
+        let new = wm::CreatePopupMenu().unwrap_or_default();
+        add(new, ID_NEW_PROJECT, t("Project..."), "Ctrl+Shift+N");
+        add(new, ID_NEW, t("Form"), "Ctrl+N");
+        sep(new);
         for (k, tpl) in phai_design::templates::Template::ALL.iter().enumerate() {
-            add(tm, ID_TEMPLATE + k as i32, t(tpl.name()), "");
+            add(new, ID_TEMPLATE + k as i32, t(tpl.name()), "");
         }
-        sub_of(file, t("New from template"), tm);
-        add(file, ID_OPEN, t("Open..."), "Ctrl+O");
+        sub_of(file, t("New"), new);
+        let open = wm::CreatePopupMenu().unwrap_or_default();
+        add(open, ID_OPEN_PROJECT, t("Project..."), "Ctrl+Shift+O");
+        add(open, ID_OPEN, t("File..."), "Ctrl+O");
+        sub_of(file, t("Open"), open);
+        add(file, ID_START_WINDOW, t("Start Window"), "");
+        sep(file);
+        add(file, ID_CLOSE, t("Close"), "Ctrl+W");
+        add(file, ID_CLOSE_PROJECT, t("Close Project"), "");
+        sep(file);
         add(file, ID_SAVE, t("Save"), "Ctrl+S");
         add(file, ID_SAVE_AS, t("Save as..."), "");
-        add(file, ID_CLOSE, t("Close"), "Ctrl+W");
+        add(file, ID_SAVE_ALL, t("Save all"), "Ctrl+Shift+S");
         sep(file);
-        add(file, ID_NEW_PROJECT, t("New project..."), "");
-        let recent = recent_files();
-        if !recent.is_empty() {
-            let rm = wm::CreatePopupMenu().unwrap_or_default();
-            for (k, p) in recent.iter().enumerate() {
-                add(rm, ID_RECENT + k as i32, &format!("&{} {}", k + 1, p.display()), "");
-            }
-            sub_of(file, t("Recent"), rm);
+        let rm = wm::CreatePopupMenu().unwrap_or_default();
+        for (k, p) in recent_files().iter().enumerate() {
+            add(rm, ID_RECENT + k as i32, &format!("&{} {}", k + 1, p.display()), "");
         }
+        sub_of(file, t("Recent Files"), rm);
+        let rp = wm::CreatePopupMenu().unwrap_or_default();
+        for (k, p) in recent_projects().iter().enumerate() {
+            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            add(rp, ID_RECENT_PROJECT + k as i32, &format!("&{} {}\t{}", k + 1, name.replace('&', "&&"), p.display()), "");
+        }
+        sub_of(file, t("Recent Projects"), rp);
         sep(file);
-        add(file, ID_EXIT, t("Exit"), "");
+        add(file, ID_EXIT, t("Exit"), "Alt+F4");
         sub(t("&File"), file);
         let edit = wm::CreatePopupMenu().unwrap_or_default();
         add(edit, ID_UNDO, t("Undo"), "Ctrl+Z");
@@ -1005,27 +1027,42 @@ fn build_menu() -> HMENU {
         wm::CheckMenuItem(view, if theme::current().is_dark() { ID_DARK } else { ID_LIGHT } as u32, wm::MF_CHECKED.0);
         wm::CheckMenuItem(view, if words::is_thai() { ID_THAI } else { ID_ENGLISH } as u32, wm::MF_CHECKED.0);
         sub(t("&View"), view);
+        // As Visual Studio's Format menu: each kind of arranging in a menu of its own, by the
+        // place in `FORMATS` (0 = a line between), with the Layout bar's pictures beside them.
         let fmt = wm::CreatePopupMenu().unwrap_or_default();
-        let names = format_names();
-        for (k, name) in names.iter().enumerate() {
-            if matches!(k, 6 | 9 | 11 | 13 | 19) {
+        let glyphs: Vec<(i32, u16)> = layout_items().into_iter().filter(|(id, _, g)| *id != 0 && *g != 0).map(|(id, _, g)| (id, g)).collect();
+        let groups: [(&str, &[(i32, &str)]); 6] = [
+            (t("Align"), &[(ID_FORMAT, t("Lefts")), (ID_FORMAT + 1, t("Centers")), (ID_FORMAT + 2, t("Rights")), (0, ""), (ID_FORMAT + 3, t("Tops")), (ID_FORMAT + 4, t("Middles")), (ID_FORMAT + 5, t("Bottoms")), (0, ""), (ID_FORMAT + 11, t("to Grid"))]),
+            (t("Make Same Size"), &[(ID_FORMAT + 6, t("Width")), (ID_FORMAT + 7, t("Height")), (ID_FORMAT + 8, t("Both")), (0, ""), (ID_FORMAT + 12, t("Size to Grid"))]),
+            (t("Horizontal Spacing"), &[(ID_FORMAT + 9, t("Make Equal")), (ID_FORMAT + 13, t("Increase")), (ID_FORMAT + 14, t("Decrease")), (ID_FORMAT + 15, t("Remove"))]),
+            (t("Vertical Spacing"), &[(ID_FORMAT + 10, t("Make Equal")), (ID_FORMAT + 16, t("Increase")), (ID_FORMAT + 17, t("Decrease")), (ID_FORMAT + 18, t("Remove"))]),
+            (t("Center in Form"), &[(ID_FORMAT + 19, t("Horizontally")), (ID_FORMAT + 20, t("Vertically"))]),
+            (t("Order"), &[(ID_FRONT, t("Bring to Front")), (ID_BACK, t("Send to Back"))]),
+        ];
+        for (k, (label, items)) in groups.iter().enumerate() {
+            if k == 2 || k == 4 || k == 5 {
                 sep(fmt);
             }
-            add(fmt, ID_FORMAT + k as i32, name, "");
-        }
-        sep(fmt);
-        add(fmt, ID_FRONT, t("Bring to front"), "");
-        add(fmt, ID_BACK, t("Send to back"), "");
-        sep(fmt);
-        add(fmt, ID_LOCK, t("Lock controls"), "");
-        add(fmt, ID_TAB_ORDER, t("Tab order"), "");
-        // The Layout bar's pictures beside the same commands, as Visual Studio's Format menu has them.
-        for (id, _, g) in layout_items() {
-            if id != 0 && g != 0 {
-                phai_ui::icon::set_menu_glyph(fmt, id as u32, g);
+            let m = wm::CreatePopupMenu().unwrap_or_default();
+            for (id, name) in items.iter() {
+                if *id == 0 {
+                    sep(m);
+                } else {
+                    add(m, *id, name, "");
+                    if let Some((_, g)) = glyphs.iter().find(|(i, _)| i == id) {
+                        phai_ui::icon::set_menu_glyph(m, *id as u32, *g);
+                    }
+                }
             }
+            sub_of(fmt, label, m);
         }
+        sep(fmt);
+        add(fmt, ID_LOCK, t("Lock Controls"), "");
+        add(fmt, ID_TAB_ORDER, t("Tab Order"), "");
         phai_ui::icon::set_menu_glyph(fmt, ID_LOCK as u32, 0xE72E); // Lock
+        if let Some((_, g)) = glyphs.iter().find(|(i, _)| *i == ID_TAB_ORDER) {
+            phai_ui::icon::set_menu_glyph(fmt, ID_TAB_ORDER as u32, *g);
+        }
         if let Some(c) = studio().and_then(|s| s.canvas.as_ref()) {
             for (id, on) in [(ID_LOCK, c.locked), (ID_TAB_ORDER, c.tab_mode())] {
                 if on {
@@ -1139,6 +1176,26 @@ fn build_menu() -> HMENU {
             wm::CheckMenuItem(th, ID_THEME_NONE as u32, wm::MF_CHECKED.0);
         }
         sub(t("&Theme"), th);
+        // Tools, as Visual Studio has them: the database and servers, snippets, crates (its NuGet),
+        // a new GUID, the look, a command line in the project's folder.
+        let tools = wm::CreatePopupMenu().unwrap_or_default();
+        add(tools, ID_ADD_CONNECTION, t("Connect to Database..."), "");
+        add(tools, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
+        sep(tools);
+        add(tools, ID_SNIPPET, t("Insert Snippet..."), "Ctrl+K, Ctrl+X");
+        add(tools, ID_MANAGE_CRATES, t("Manage Crates..."), "");
+        sep(tools);
+        add(tools, ID_CREATE_GUID, t("Create GUID"), "");
+        sep(tools);
+        let look = wm::CreatePopupMenu().unwrap_or_default();
+        add(look, ID_LIGHT, t("Light"), "");
+        add(look, ID_DARK, t("Dark"), "");
+        sub_of(tools, t("Theme"), look);
+        let cmd = wm::CreatePopupMenu().unwrap_or_default();
+        add(cmd, ID_CMD_PROMPT, t("Command Prompt"), "");
+        add(cmd, ID_POWERSHELL, "PowerShell", "");
+        sub_of(tools, t("Command Line"), cmd);
+        sub(t("T&ools"), tools);
         let help = wm::CreatePopupMenu().unwrap_or_default();
         add(help, ID_HELP_STUDIO, t("Phai Studio Guide"), "F1");
         add(help, ID_HELP_RUST, t("Learn Rust"), "");
@@ -3887,6 +3944,29 @@ impl Studio {
 
     // --- projects, building and running --------------------------------------------------------
 
+    /// Opens a project, as File > Open > Project does: its main form (or its first), else its
+    /// `main.rs`, else its `Cargo.toml` - and its files in Project. A folder inside a project
+    /// opens that project.
+    pub fn open_project(&mut self, dir: &Path) {
+        let root = if dir.join("Cargo.toml").is_file() { Some(dir.to_path_buf()) } else { cargo::project_of(&dir.join("_")) };
+        let Some(root) = root else {
+            win::message(Some(self.hwnd), &tf("{0} is not a Rust project: it has no Cargo.toml.", &[&dir.display()]), "Phai Studio", wm::MB_ICONWARNING);
+            return;
+        };
+        remember_project(&root);
+        let mut forms: Vec<PathBuf> = [root.join("src"), root.clone()].iter().flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == "phaiform")).collect();
+        forms.sort();
+        let main_form = forms.iter().find(|p| p.file_name().is_some_and(|n| n == "main_window.phaiform")).or(forms.first()).cloned();
+        if let Some(f) = main_form {
+            self.open_path(&f);
+        } else if root.join("src").join("main.rs").is_file() {
+            self.open_code(&root.join("src").join("main.rs"));
+        } else {
+            self.open_code(&root.join("Cargo.toml"));
+        }
+        self.rebuild_menu();
+    }
+
     fn new_project(&mut self) {
         let Some(dir) = project::pick_folder(self.hwnd, t("Choose an empty folder for the new project")) else { return };
         match project::create(&dir) {
@@ -6310,6 +6390,36 @@ impl Studio {
             ID_THEME_NEW => self.theme_from_standard(),
             ID_THEME_IMPORT => self.theme_import(),
             ID_NEW_PROJECT => self.new_project(),
+            ID_OPEN_PROJECT => {
+                if let Some(dir) = project::pick_folder(self.hwnd, t("Open project")) {
+                    self.open_project(&dir);
+                }
+            }
+            ID_CLOSE_PROJECT => {
+                // Every tab, each asked to save, until nothing is open.
+                while !self.nothing {
+                    if !self.close_tab() {
+                        break;
+                    }
+                }
+            }
+            r if (ID_RECENT_PROJECT..ID_RECENT_PROJECT + RECENT_MAX as i32).contains(&r) => {
+                if let Some(p) = recent_projects().get((r - ID_RECENT_PROJECT) as usize).cloned() {
+                    self.open_project(&p);
+                }
+            }
+            ID_CREATE_GUID => {
+                let g = new_guid();
+                set_clipboard(self.hwnd, &g);
+                controls::status_text(self.status, 0, &tf("{0} copied", &[&g]));
+            }
+            ID_CMD_PROMPT | ID_POWERSHELL => {
+                use std::os::windows::process::CommandExt;
+                let dir = self.doc.path.as_deref().and_then(cargo::project_of).or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from)).unwrap_or_default();
+                let (exe, args): (&str, &[&str]) = if id == ID_CMD_PROMPT { ("cmd.exe", &["/k"]) } else { ("powershell.exe", &["-NoExit"]) };
+                // CREATE_NEW_CONSOLE: a window of its own.
+                let _ = std::process::Command::new(exe).args(args).current_dir(dir).creation_flags(0x10).spawn();
+            }
             ID_BUILD => self.start_build(false),
             ID_RUN_NODEBUG => self.start_build(true),
             ID_RUN => match (&self.debug, self.paused) {
@@ -6579,7 +6689,44 @@ fn recent_files() -> Vec<PathBuf> {
     std::fs::read_to_string(dir.join("recent.txt")).unwrap_or_default().lines().map(PathBuf::from).filter(|p| p.is_file()).take(RECENT_MAX).collect()
 }
 
+/// The projects opened last, newest first, those still there: the ones remembered, then the
+/// projects of the forms opened last.
+fn recent_projects() -> Vec<PathBuf> {
+    let Some(dir) = settings_dir() else { return vec![] };
+    let mut list: Vec<PathBuf> = std::fs::read_to_string(dir.join("recent_projects.txt")).unwrap_or_default().lines().map(PathBuf::from).collect();
+    list.extend(recent_files().iter().filter_map(|f| cargo::project_of(f)));
+    let mut seen = Vec::new();
+    for p in list {
+        if p.join("Cargo.toml").is_file() && !seen.contains(&p) {
+            seen.push(p);
+        }
+    }
+    seen.truncate(RECENT_MAX);
+    seen
+}
+
+fn remember_project(root: &Path) {
+    let Some(dir) = settings_dir() else { return };
+    let root = root.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or_else(|_| root.to_path_buf());
+    let mut list = recent_projects();
+    list.retain(|p| p != &root);
+    list.insert(0, root);
+    list.truncate(RECENT_MAX);
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(dir.join("recent_projects.txt"), list.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"));
+}
+
+/// A new GUID, as Tools > Create GUID gives it: `{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}`.
+fn new_guid() -> String {
+    let g = unsafe { windows::Win32::System::Com::CoCreateGuid() }.unwrap_or_default();
+    let d = g.data4;
+    format!("{{{:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}}}", g.data1, g.data2, g.data3, d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7])
+}
+
 fn remember_recent(path: &Path) {
+    if let Some(root) = cargo::project_of(path) {
+        remember_project(&root);
+    }
     let Some(dir) = settings_dir() else { return };
     let path = path.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or_else(|_| path.to_path_buf());
     let mut list = recent_files();
@@ -7065,9 +7212,12 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     let in_box = !unsafe { km::GetFocus() }.0.is_null() && win::kind_of(unsafe { km::GetFocus() }) == Some(win::Kind::Edit);
     match (msg.wParam.0 as u8, ctrl) {
         (b'T', true) if !shift => Some(ID_GO_TO_ALL),
+        (b'N', true) if shift => Some(ID_NEW_PROJECT),
         (b'N', true) => Some(ID_NEW),
+        (b'O', true) if shift => Some(ID_OPEN_PROJECT),
         (b'O', true) => Some(ID_OPEN),
         (b'W', true) => Some(ID_CLOSE),
+        (b'S', true) if shift => Some(ID_SAVE_ALL),
         (b'S', true) => Some(ID_SAVE),
         // In a box Ctrl+Z is the box's own undo.
         (b'Z', true) if !in_box => Some(ID_UNDO),
@@ -7347,7 +7497,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -7430,6 +7580,26 @@ fn main() {
             if let Some(p) = s.props.as_mut() {
                 p.set_style_state(n);
             }
+        }
+        // `--print-menu FILE`: the menu bar's words, each menu within its menu indented, written to
+        // FILE and the program ended - for checking the menus without pictures.
+        if let Some(out) = args.iter().position(|a| a == "--print-menu").and_then(|i| args.get(i + 1)) {
+            fn walk(m: wm::HMENU, depth: usize, text: &mut String) {
+                for i in 0..unsafe { wm::GetMenuItemCount(Some(m)) }.max(0) {
+                    let mut buf = [0u16; 256];
+                    let n = unsafe { wm::GetMenuStringW(m, i as u32, Some(&mut buf), wm::MF_BYPOSITION) }.max(0) as usize;
+                    let label = String::from_utf16_lossy(&buf[..n]);
+                    text.push_str(&format!("{}{}\n", "  ".repeat(depth), if label.is_empty() { "-".to_string() } else { label.replace('\t', "    ") }));
+                    let sub = unsafe { wm::GetSubMenu(m, i) };
+                    if !sub.is_invalid() {
+                        walk(sub, depth + 1, text);
+                    }
+                }
+            }
+            let mut text = String::new();
+            walk(wm::GetMenu(hwnd), 0, &mut text);
+            let _ = std::fs::write(out, text);
+            std::process::exit(0);
         }
         // `--pin project|properties` (more than once): that pane hidden at its edge on its own;
         // `--slide project|properties` slides it out - checked by picture.
