@@ -1050,7 +1050,8 @@ pub fn edit_lines(parent: HWND, text: &str, id: i32, f: HFONT) -> HWND {
     let h = child(parent, "EDIT", text, style, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::Edit);
     unsafe {
-        let mut lf = Gdi::LOGFONTW { lfHeight: -(10 * dpi(parent) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
+        // 9 points: as large as the window's own words look - Cascadia at 10 stood out above them.
+        let mut lf = Gdi::LOGFONTW { lfHeight: -(9 * dpi(parent) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
         for (i, u) in "Cascadia Mono".encode_utf16().enumerate() {
             lf.lfFaceName[i] = u;
         }
