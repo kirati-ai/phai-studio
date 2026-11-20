@@ -2,7 +2,7 @@
 //! a tree on the left - Environment, Text Editor, Form Designer, Projects and Solutions,
 //! Debugging, Source Control - each page's settings on the right.
 
-use phai_ui::text::t;
+use phai_ui::text::{t, tf};
 use phai_ui::win;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
@@ -10,6 +10,11 @@ use windows::Win32::UI::Controls as cc;
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
 const ID_TREE: i32 = 10;
+/// The box over the pages: Search Options, as Visual Studio's.
+const ID_FIND: i32 = 11;
+/// Export and Import of every setting, as a file - Visual Studio's Import and Export Settings.
+const ID_EXPORT: i32 = 12;
+const ID_IMPORT: i32 = 13;
 const ID_OK: i32 = 1;
 const ID_CANCEL: i32 = 2;
 
@@ -289,6 +294,9 @@ struct Controls {
 }
 
 struct Dialog {
+    find: HWND,
+    export: HWND,
+    import: HWND,
     tree: HWND,
     heading: HWND,
     rows: Vec<Vec<Row>>,
@@ -339,6 +347,9 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
         let hwnd = wm::CreateWindowExW(wm::WS_EX_DLGMODALFRAME, PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_POPUP | wm::WS_CAPTION | wm::WS_SYSMENU | wm::WS_THICKFRAME | wm::WS_CLIPCHILDREN, 0, 0, 100, 100, Some(owner), None, Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
         let bold = win::font(hwnd, 0, true);
+        let find = win::edit(hwnd, "", ID_FIND, font, false);
+        let cue = win::wide(t("Search Options"));
+        wm::SendMessageW(find, 0x1501 /* EM_SETCUEBANNER */, Some(WPARAM(1)), Some(LPARAM(cue.as_ptr() as isize)));
         let tree = win::tree(hwnd, ID_TREE, font);
         let heading = win::label(hwnd, "", 0, bold);
         let next = std::cell::Cell::new(100);
@@ -432,30 +443,131 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
         ];
         let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
         let cancel = win::button(hwnd, t("Cancel"), ID_CANCEL, font, false);
-        // The tree: each group, its pages under it; a group's own item opens its first page.
+        let export = win::button(hwnd, t("Export..."), ID_EXPORT, font, false);
+        let import = win::button(hwnd, t("Import..."), ID_IMPORT, font, false);
         let all = pages();
-        let mut items = vec![0isize; all.len()];
-        let mut group_item = 0isize;
-        for (k, (group, name)) in all.iter().enumerate() {
-            if k == 0 || all[k - 1].0 != *group {
-                if group_item != 0 {
-                    win::tree_expand(tree, group_item);
-                }
-                group_item = win::tree_add(tree, 0, group, -1, k as isize);
-            }
-            items[k] = win::tree_add(tree, group_item, name, -1, k as isize);
-        }
-        win::tree_expand(tree, group_item);
         let page = page.min(all.len() - 1);
-        win::set_state(hwnd, Box::new(Dialog { tree, heading, rows, page, c, ok, cancel, chosen: None, done: false }));
+        win::set_state(hwnd, Box::new(Dialog { find, export, import, tree, heading, rows, page, c, ok, cancel, chosen: None, done: false }));
+        let items = fill_tree(hwnd, "");
         let (w, h) = (win::px(hwnd, 800), win::px(hwnd, 540));
         let mut r = RECT::default();
         let _ = wm::GetWindowRect(owner, &mut r);
         let _ = wm::SetWindowPos(hwnd, None, r.left + (r.right - r.left - w) / 2, r.top + (r.bottom - r.top - h) / 2, w, h, wm::SWP_NOZORDER);
         win::theme_frame(hwnd);
-        wm::SendMessageW(tree, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9 /* TVGN_CARET */)), Some(LPARAM(items[page])));
+        if let Some(&(_, item)) = items.iter().find(|(k, _)| *k == page) {
+            wm::SendMessageW(tree, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9 /* TVGN_CARET */)), Some(LPARAM(item)));
+        }
         show_page(hwnd, page);
+        // `PHAI_OPTIONS_FIND=words`: typed in Search Options - for a picture.
+        if let Ok(q) = std::env::var("PHAI_OPTIONS_FIND") {
+            win::set_text(find, &q);
+            search(hwnd);
+        }
         hwnd
+    }
+}
+
+/// Whether page `k` has `query` in its name, its group's, or the words on it.
+fn page_matches(d: &Dialog, k: usize, query: &str) -> bool {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return true;
+    }
+    let (group, name) = pages()[k];
+    let mut words = format!("{group} {name}");
+    for r in &d.rows[k] {
+        let w = match r {
+            Row::Pair(a, _) => *a,
+            Row::Check(h) | Row::Note(h) => *h,
+        };
+        words.push(' ');
+        words.push_str(&win::text_of(w));
+    }
+    let words = words.to_lowercase();
+    q.split_whitespace().all(|part| words.contains(part))
+}
+
+/// The tree filled with the pages that match `query` (all of them for nothing): each group, its
+/// pages under it. Each page shown and its tree item.
+fn fill_tree(h: HWND, query: &str) -> Vec<(usize, isize)> {
+    let Some(d) = state(h) else { return Vec::new() };
+    unsafe {
+        wm::SendMessageW(d.tree, 0x1101 /* TVM_DELETEITEM */, Some(WPARAM(0)), Some(LPARAM(-0x10000 /* TVI_ROOT */)));
+    }
+    let all = pages();
+    let mut out = Vec::new();
+    let mut group_item = 0isize;
+    let mut group_now = "";
+    for (k, (group, name)) in all.iter().enumerate() {
+        if !page_matches(d, k, query) {
+            continue;
+        }
+        if group_item == 0 || group_now != *group {
+            if group_item != 0 {
+                win::tree_expand(d.tree, group_item);
+            }
+            group_item = win::tree_add(d.tree, 0, group, -1, k as isize);
+            group_now = group;
+        }
+        out.push((k, win::tree_add(d.tree, group_item, name, -1, k as isize)));
+    }
+    if group_item != 0 {
+        win::tree_expand(d.tree, group_item);
+    }
+    out
+}
+
+/// Export...: every setting, as Phai Studio keeps them, into a file of one's choosing - to take
+/// to another computer, or keep.
+fn export_settings(h: HWND) {
+    let Some(from) = crate::settings_dir_pub().map(|d| d.join("settings.txt")) else { return };
+    let Some(to) = crate::file_dialog_pub(h, true, t("Phai Studio settings"), "*.txt", "phai-studio-settings.txt") else { return };
+    match std::fs::copy(&from, &to) {
+        Ok(_) => {
+            win::message(Some(h), &tf("Every setting is in {0}.", &[&to.display()]), t("Export Settings"), wm::MB_ICONINFORMATION);
+        }
+        Err(e) => {
+            win::message(Some(h), &e.to_string(), t("Export Settings"), wm::MB_ICONWARNING);
+        }
+    }
+}
+
+/// Import...: the settings of a file exported before in place of these, asked first. Whether it
+/// was done.
+fn import_settings(h: HWND) -> bool {
+    let Some(to) = crate::settings_dir_pub().map(|d| d.join("settings.txt")) else { return false };
+    let Some(from) = crate::file_dialog_pub(h, false, t("Phai Studio settings"), "*.txt", "") else { return false };
+    let Ok(text) = std::fs::read_to_string(&from) else { return false };
+    // Each line `name=value`: anything else is not a settings file.
+    if text.lines().filter(|l| !l.trim().is_empty()).any(|l| !l.contains('=')) {
+        win::message(Some(h), t("That file is not Phai Studio's settings."), t("Import Settings"), wm::MB_ICONWARNING);
+        return false;
+    }
+    if win::message(Some(h), t("Put the file's settings in place of all of these? Some take effect when Phai Studio starts again."), t("Import Settings"), wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
+        return false;
+    }
+    if let Some(dir) = to.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match std::fs::write(&to, text) {
+        Ok(()) => true,
+        Err(e) => {
+            win::message(Some(h), &e.to_string(), t("Import Settings"), wm::MB_ICONWARNING);
+            false
+        }
+    }
+}
+
+/// Search Options typed: the pages that match, the first of them shown.
+fn search(h: HWND) {
+    let Some(d) = state(h) else { return };
+    let q = win::text_of(d.find);
+    let items = fill_tree(h, &q);
+    if let Some(&(k, item)) = items.first() {
+        unsafe {
+            wm::SendMessageW(d.tree, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9)), Some(LPARAM(item)));
+        }
+        show_page(h, k);
     }
 }
 
@@ -491,7 +603,8 @@ fn layout(h: HWND) {
     let (m, row, gap, bw) = (px(12), px(26), px(8), px(96));
     let tree_w = px(230);
     let bottom = r.bottom - m - row - gap;
-    win::move_to(d.tree, m, m, tree_w, bottom - m);
+    win::move_to(d.find, m, m, tree_w, row);
+    win::move_to(d.tree, m, m + row + gap, tree_w, bottom - m - row - gap);
     let x = m + tree_w + px(16);
     let right = r.right - m;
     win::move_to(d.heading, x, m, right - x, row);
@@ -513,6 +626,8 @@ fn layout(h: HWND) {
         y += row + gap;
     }
     let by = r.bottom - m - row;
+    win::move_to(d.export, m, by, bw, row);
+    win::move_to(d.import, m + bw + px(8), by, bw, row);
     win::move_to(d.ok, r.right - 2 * bw - m - px(8), by, bw, row);
     win::move_to(d.cancel, r.right - bw - m, by, bw, row);
 }
@@ -581,6 +696,14 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     d.done = true;
                 }
                 ID_CANCEL => d.done = true,
+                ID_FIND if win::hiword(w.0) as u32 == wm::EN_CHANGE => search(h),
+                ID_EXPORT => export_settings(h),
+                ID_IMPORT => {
+                    if import_settings(h) {
+                        // What was read takes the place of what this window shows: closed, as Cancel.
+                        d.done = true;
+                    }
+                }
                 _ => return win::def(h, msg, w, l),
             }
             LRESULT(0)
