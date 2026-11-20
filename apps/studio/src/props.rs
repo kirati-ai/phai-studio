@@ -705,13 +705,14 @@ impl Props {
         self.filling = true;
         // A retheme makes the bar's buttons again; their pressed state with them.
         self.say_bar();
-        let code = s.doc.code.is_some();
+        // A code file - or nothing open - has no properties to list.
+        let code = s.doc.code.is_some() || s.nothing;
         for h in [self.chooser, self.bar, self.grid, self.help_name, self.help_text] {
             win::show(h, !code);
         }
         win::show(self.heading, code);
         if code {
-            win::set_text(self.heading, &s.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+            win::set_text(self.heading, &s.doc.path.as_ref().filter(|_| !s.nothing).and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
             self.filling = false;
             self.layout();
             return;
