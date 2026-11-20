@@ -3447,7 +3447,7 @@ impl Studio {
         let n = |o: &str| tests.iter().filter(|t| t.outcome == o).count();
         let said = if tests.is_empty() && !out.ok { t("The tests could not be built - see Errors").to_string() } else { tf("{0} passed, {1} failed, {2} skipped ({3} s)", &[&n("ok"), &n("FAILED"), &n("ignored"), &format!("{:.1}", out.seconds)]) };
         if let Some(b) = self.bottom.as_ref() {
-            b.add_line(&said);
+            b.add_line_from(bottom::OUT_TESTS, &said);
             b.show_tab(if tests.is_empty() && !self.diagnostics.is_empty() { 0 } else { 7 });
         }
         self.show_pane(Pane::Output, true);
@@ -4547,7 +4547,7 @@ impl Studio {
             }
             Some(Err(e)) => {
                 if let Some(b) = self.bottom.as_ref() {
-                    b.add_line(&e);
+                    b.add_line_from(bottom::OUT_DATA, &e);
                     b.show_tab(1);
                 }
                 self.show_pane(Pane::Output, true);
@@ -5217,7 +5217,7 @@ impl Studio {
         controls::status_text(self.status, 0, &words);
         if let Some(b) = self.bottom.as_ref() {
             if pid.is_some() {
-                b.add_line(&words);
+                b.add_line_from(bottom::OUT_DEBUG, &words);
             }
         }
         self.rebuild_menu();
@@ -5323,7 +5323,7 @@ impl Studio {
             }
             Event::Output(text) => {
                 if let Some(b) = self.bottom.as_ref() {
-                    b.add_line(text.trim_end());
+                    b.add_line_from(bottom::OUT_DEBUG, text.trim_end());
                 }
             }
             Event::BreakpointAt { file, asked, line } => {
@@ -5346,7 +5346,7 @@ impl Studio {
                 self.show_debug_bar(false);
                 let said = tf("The program ended with code {0}", &[&code]);
                 if let Some(b) = self.bottom.as_ref() {
-                    b.add_line(&said);
+                    b.add_line_from(bottom::OUT_DEBUG, &said);
                 }
                 controls::status_text(self.status, 0, &said);
                 self.rebuild_menu();
@@ -5418,7 +5418,7 @@ impl Studio {
                         println!("{said}");
                     }
                     if let Some(b) = self.bottom.as_ref() {
-                        b.add_line(&said);
+                        b.add_line_from(bottom::OUT_DEBUG, &said);
                     }
                     self.say_status(&said);
                 }
@@ -5433,7 +5433,7 @@ impl Studio {
                 self.show_debug_bar(false);
                 let said = t("Detached: the program runs on without the debugger");
                 if let Some(b) = self.bottom.as_ref() {
-                    b.add_line(said);
+                    b.add_line_from(bottom::OUT_DEBUG, said);
                 }
                 controls::status_text(self.status, 0, said);
                 self.rebuild_menu();

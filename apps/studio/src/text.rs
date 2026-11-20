@@ -1092,6 +1092,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("All output", "ผลลัพธ์ทั้งหมด"),
+    ("Debug", "ดีบัก"),
     ("Open the first error when a build fails", "เปิด error แรกเมื่อ build ไม่ผ่าน"),
     ("Play a sound when a build ends", "ส่งเสียงเมื่อ build เสร็จ"),
     ("Flash Phai Studio on the taskbar when a build ends behind other windows", "กะพริบ Phai Studio บนแถบงานเมื่อ build เสร็จขณะอยู่หลังหน้าต่างอื่น"),
