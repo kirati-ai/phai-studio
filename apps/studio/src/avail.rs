@@ -106,7 +106,7 @@ impl Now {
             ID_SPLIT | ID_NEW_WINDOW => self.code,
             // Format
             ID_FRONT | ID_BACK => self.form && n >= 1,
-            ID_LOCK | ID_TAB_ORDER => self.form,
+            ID_LOCK | ID_TAB_ORDER | ID_INFER_ANCHORS => self.form,
             // Build
             ID_BUILD | ID_REBUILD | ID_CLEAN | ID_ANALYSE | ID_BUILD_ALL | ID_REBUILD_ALL | ID_CLEAN_ALL | ID_ANALYSE_ALL | ID_BATCH_BUILD | ID_PUBLISH | ID_BUILD_WEB | ID_RUN_WEB | ID_RUN_PHONE | ID_WEB_APP => self.project,
             // Debug

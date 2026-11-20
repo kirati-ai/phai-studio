@@ -9,6 +9,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Control, FormFile};
 
+/// The anchors a control at `r` in a frame `frame` wide and high most likely wants, as Android
+/// Studio's Infer Constraints guesses them: as wide as most of the frame - stretched across; at
+/// its right side - kept to the right; as tall as much of it and near its bottom - stretched
+/// down; in its lowest part - kept to the bottom. `None` is the default (left top).
+/// `grows`: a list, a grid or a box of lines - stretched down whenever little is below it.
+pub fn infer_anchor(r: [i32; 4], frame: [i32; 2], grows: bool) -> Option<String> {
+    let [x, y, w, h] = r;
+    let [fw, fh] = frame;
+    let (gap_right, gap_bottom) = (fw - (x + w), fh - (y + h));
+    let near = |gap: i32| (0..=24).contains(&gap);
+    let wide = w * 2 >= fw && near(gap_right);
+    let tall = (grows || h * 5 >= fh * 2) && gap_bottom <= (fh / 4).max(60);
+    let a = crate::model::Anchors {
+        left: wide || !(near(gap_right) && x * 2 > fw),
+        right: wide || (near(gap_right) && x * 2 > fw),
+        top: tall || y * 10 < fh * 7,
+        bottom: tall || y * 10 >= fh * 7,
+    };
+    crate::model::anchor_text(a)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Lefts,
@@ -242,6 +263,19 @@ pub fn from_clipboard(text: &str, form: &FormFile, offset: i32) -> Option<Vec<Co
 mod tests {
     use super::*;
     use crate::model::Kind;
+
+    #[test]
+    fn anchors_guessed_from_where_controls_are() {
+        let form = [480, 360];
+        assert_eq!(infer_anchor([12, 12, 80, 23], form, false), None, "a label at the top left: as it is");
+        assert_eq!(infer_anchor([100, 12, 368, 23], form, false).as_deref(), Some("left top right"), "a box across");
+        assert_eq!(infer_anchor([12, 50, 456, 250], form, false).as_deref(), Some("all"), "a list filling it");
+        assert_eq!(infer_anchor([393, 325, 75, 23], form, false).as_deref(), Some("right bottom"), "OK at the bottom right");
+        assert_eq!(infer_anchor([12, 325, 75, 23], form, false).as_deref(), Some("left bottom"), "a button at the bottom left");
+        assert_eq!(infer_anchor([393, 12, 75, 23], form, false).as_deref(), Some("top right"), "a button at the top right");
+        assert_eq!(infer_anchor([11, 166, 458, 120], form, true).as_deref(), Some("all"), "a list with buttons under it");
+        assert_eq!(infer_anchor([11, 166, 458, 120], form, false).as_deref(), Some("left top right"));
+    }
 
     fn r() -> Vec<[i32; 4]> {
         vec![[10, 10, 75, 23], [40, 50, 100, 30], [20, 100, 50, 20]]

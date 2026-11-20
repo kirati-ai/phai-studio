@@ -223,6 +223,8 @@ const ID_CLOSE_UNPINNED: i32 = 671;
 /// View > Window Layouts: Save Window Layout..., Reset Window Layout, and Apply (Ctrl+Alt+1 to 0).
 const ID_SAVE_LAYOUT: i32 = 672;
 const ID_RESET_LAYOUT: i32 = 673;
+/// Format > Infer Anchors: each control's anchors guessed from where it is.
+const ID_INFER_ANCHORS: i32 = 674;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -1128,6 +1130,7 @@ fn build_menu() -> HMENU {
             sub_of(fmt, label, m);
         }
         sep(fmt);
+        add(fmt, ID_INFER_ANCHORS, t("Infer Anchors"), "");
         add(fmt, ID_LOCK, t("Lock Controls"), "");
         add(fmt, ID_TAB_ORDER, t("Tab Order"), "");
         phai_ui::icon::set_menu_glyph(fmt, ID_LOCK as u32, 0xE72E); // Lock
@@ -3755,6 +3758,47 @@ impl Studio {
         controls::tabs_select(self.tabbar, self.active);
     }
 
+    /// Format > Infer Anchors, as Android Studio's Infer Constraints: the controls chosen (all of
+    /// them when none is) anchored as where they are suggests - across, to the right, down, to the
+    /// bottom - within the form or the group they are in. One step of Undo.
+    fn infer_anchors(&mut self) {
+        let f = &self.doc.form;
+        let chosen: Vec<usize> = match self.selected {
+            Some(i) => std::iter::once(i).chain(self.also.iter().copied()).collect(),
+            None => (0..f.control.len()).collect(),
+        };
+        let mut changes: Vec<(usize, Option<String>)> = Vec::new();
+        for i in chosen {
+            let Some(c) = f.control.get(i) else { continue };
+            if c.kind.is_component() || c.dock.as_deref().is_some_and(|d| d != "none") || c.kind == Kind::Statusbar {
+                continue;
+            }
+            let [x, y, w, h] = c.rect();
+            let (r, frame) = match f.container_of(i).and_then(|p| f.control.get(p)) {
+                Some(p) => {
+                    let [px, py, pw, ph] = p.rect();
+                    ([x - px, y - py, w, h], [pw, ph])
+                }
+                None => ([x, y, w, h], f.form.size),
+            };
+            let grows = matches!(c.kind, Kind::List | Kind::Grid | Kind::ListBox | Kind::CheckedList | Kind::Textarea | Kind::Rich | Kind::Tree | Kind::Picture);
+            let guess = phai_form::arrange::infer_anchor(r, frame, grows);
+            if guess != c.anchor {
+                changes.push((i, guess));
+            }
+        }
+        let n = changes.len();
+        if n > 0 {
+            self.edit(|f| {
+                for (i, a) in changes {
+                    f.control[i].anchor = a;
+                }
+            });
+            self.rebuild();
+        }
+        controls::status_text(self.status, 0, &tf("Anchors guessed for {0} controls - Undo takes them back", &[&n]));
+    }
+
     fn standard_layout(&self) -> winlayout::Arrangement {
         winlayout::Arrangement::standard(toolbox::WIDTH, ERRORS_HEIGHT)
     }
@@ -4027,6 +4071,14 @@ impl Studio {
 
     pub fn open_path(&mut self, path: &Path) {
         let name = path.display().to_string();
+        // A form the designer cannot read, as Visual Studio's designer error page: its text
+        // opened where the error is, the error in the Error List - fixed and saved, it opens again.
+        if let Ok(src) = std::fs::read_to_string(path) {
+            if let Err(e) = FormFile::parse(&src) {
+                self.form_error_page(path, &e);
+                return;
+            }
+        }
         match std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|src| FormFile::parse(&src).map_err(|e| e.to_string())) {
             Ok(f) => {
                 form_seen(path);
@@ -4038,6 +4090,23 @@ impl Studio {
                 win::message(Some(self.hwnd), &format!("{}\n\n{e}", tf("{0} cannot be opened", &[&name])), "Phai Studio", wm::MB_ICONWARNING);
             }
         }
+    }
+
+    /// A form that does not read: opened as text at the line, the error in the Error List and
+    /// the status bar. Saving it fixed and opening it again shows the designer.
+    fn form_error_page(&mut self, path: &Path, e: &phai_form::FormError) {
+        self.open_code(path);
+        self.diagnostics.retain(|d| d.file.as_deref().is_none_or(|f| !phai_editor::lsp::same_path(f, path)));
+        self.diagnostics.insert(0, cargo::Diagnostic { error: true, message: tf("The designer cannot show this form: {0}", &[&e.message]), file: Some(path.to_path_buf()), line: e.line.max(1) as u32, column: 1 });
+        self.fill_errors();
+        self.show_pane(Pane::Output, true);
+        if let Some(b) = self.bottom.as_ref() {
+            b.show_tab(0);
+        }
+        if let Some(h) = self.doc.code {
+            phai_editor::view::go_to(h, e.line.max(1), 1);
+        }
+        controls::status_text(self.status, 0, &tf("{0} has an error on line {1} - fix it, save, and open it again for the designer", &[&path.file_name().unwrap_or_default().to_string_lossy(), &e.line]));
     }
 
     /// The form open here changed on disk since Phai Studio last read or wrote it - the running
@@ -6652,6 +6721,7 @@ impl Studio {
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
+            ID_INFER_ANCHORS => self.infer_anchors(),
             ID_SAVE_LAYOUT => self.save_window_layout(),
             ID_RESET_LAYOUT => self.apply_window_layout(&self.standard_layout()),
             id if (ID_APPLY_LAYOUT..ID_APPLY_LAYOUT + winlayout::SLOTS as i32).contains(&id) => {
