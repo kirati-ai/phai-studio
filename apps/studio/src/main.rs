@@ -49,6 +49,7 @@ mod winlayout;
 mod changes;
 mod keymap;
 mod newproj;
+mod switcher;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -232,6 +233,16 @@ const ID_INFER_ANCHORS: i32 = 674;
 const ID_DESIGN_SAMPLES: i32 = 675;
 /// Tools > Keyboard Shortcuts...: a key of one's own for any command.
 const ID_KEYMAP: i32 = 676;
+/// Edit > Go To > Go To Line (Ctrl+G).
+const ID_GO_TO_LINE: i32 = 677;
+/// Edit > Find and Replace > Replace in Files (Ctrl+Shift+H).
+const ID_REPLACE_IN_FILES: i32 = 678;
+/// Window > Next Document (Ctrl+Tab): the IDE Navigator.
+const ID_SWITCHER: i32 = 679;
+/// View > Full Screen (Shift+Alt+Enter).
+const ID_FULL_SCREEN: i32 = 690;
+/// View > Track Active Item: the file open chosen in the Project pane.
+const ID_TRACK_ACTIVE: i32 = 691;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -375,11 +386,13 @@ pub struct Doc {
     pub preview: bool,
     /// Pinned: kept at the left, left open by Close All But Pinned.
     pub pinned: bool,
+    /// When it was last the one shown: Ctrl+Tab lists the documents by it.
+    pub seen: u64,
 }
 
 impl Doc {
     pub fn new(form: FormFile, path: Option<PathBuf>) -> Doc {
-        Doc { form, path, dirty: false, code: None, crlf: false, preview: false, pinned: false }
+        Doc { form, path, dirty: false, code: None, crlf: false, preview: false, pinned: false, seen: 0 }
     }
 }
 
@@ -449,6 +462,8 @@ pub struct Studio {
     /// Nothing open: Studio just started, or its last tab closed - no form, no project, as Visual
     /// Studio starts. Opening or making something ends it.
     pub nothing: bool,
+    /// View > Full Screen: how the window was before, to go back to.
+    full_screen: Option<(wm::WINDOWPLACEMENT, i32)>,
     /// The breadcrumb over the editor - folder, file, impl, fn - and the caret and version it
     /// was last worked out for.
     crumb: HWND,
@@ -1049,7 +1064,10 @@ fn build_menu() -> HMENU {
         add(edit, ID_FOLD, t("Toggle Outlining Expansion"), "Ctrl+M, Ctrl+M");
         add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
+        add(edit, ID_REPLACE_IN_FILES, t("Replace in Files..."), "Ctrl+Shift+H");
         add(edit, ID_GO_TO_ALL, t("Go to All..."), "Ctrl+T");
+        add(edit, ID_GO_TO_LINE, t("Go to Line..."), "Ctrl+G");
+        add(edit, ID_SWITCHER, t("Next Document"), "Ctrl+Tab");
         add(edit, ID_SEARCH, t("Search..."), "Ctrl+Q");
         add(edit, ID_SNIPPET, t("Insert Snippet..."), "Ctrl+K, Ctrl+X");
         add(edit, ID_BM_TOGGLE, t("Toggle Bookmark"), "Ctrl+K, Ctrl+K");
@@ -1067,6 +1085,14 @@ fn build_menu() -> HMENU {
         add(view, ID_PREVIEW, t("Preview"), "F4");
         add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
         add(view, ID_DESIGN_SAMPLES, t("Sample Data in Designer"), "");
+        add(view, ID_FULL_SCREEN, t("Full Screen"), "Shift+Alt+Enter");
+        add(view, ID_TRACK_ACTIVE, t("Track Active Item in Project"), "");
+        if setting("track_active").as_deref() != Some("0") {
+            wm::CheckMenuItem(view, ID_TRACK_ACTIVE as u32, wm::MF_CHECKED.0);
+        }
+        if studio().is_some_and(|s| s.full_screen.is_some()) {
+            wm::CheckMenuItem(view, ID_FULL_SCREEN as u32, wm::MF_CHECKED.0);
+        }
         if setting("design_samples").as_deref() != Some("0") {
             wm::CheckMenuItem(view, ID_DESIGN_SAMPLES as u32, wm::MF_CHECKED.0);
         }
@@ -3159,6 +3185,121 @@ impl Studio {
 
     /// Find in Files (Ctrl+Shift+F): every place some words are, in the solution's files - the
     /// References list shows them, a double-click opens each. `query` given: asked no question.
+    /// View > Track Active Item: the file open now chosen in the Project pane.
+    fn track_active(&mut self) {
+        if setting("track_active").as_deref() == Some("0") {
+            return;
+        }
+        if let (Some(p), Some(e)) = (self.doc.path.clone(), self.explorer.as_mut()) {
+            e.reveal(&p);
+        }
+    }
+
+    /// Edit > Go to Line (Ctrl+G): a line number asked for, the caret put there.
+    fn go_to_line(&mut self) {
+        let Some(h) = self.doc.code else { return };
+        let (now, _) = phai_editor::view::caret_position(h);
+        let count = phai_editor::view::text(h).lines().count().max(1);
+        let Some(answer) = phai_ui::dialogs::ask(Some(self.hwnd), t("Go to Line"), &tf("Line number (1 - {0}):", &[&count]), &now.to_string(), false) else { return };
+        match answer.trim().parse::<usize>() {
+            Ok(n) if n >= 1 => {
+                self.remember_place();
+                phai_editor::view::go_to(h, n.min(count), 1);
+            }
+            _ => {}
+        }
+    }
+
+    /// Ctrl+Tab: the open documents, the one shown last first; the one chosen shown.
+    fn switch_document(&mut self) {
+        let mut order: Vec<(u64, usize, String)> = (0..self.tabs.len())
+            .map(|i| {
+                let d = if i == self.active { &self.doc } else { &self.tabs[i].doc };
+                let name = d.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| t("Untitled").to_string());
+                (if i == self.active { u64::MAX } else { d.seen }, i, name)
+            })
+            .collect();
+        order.sort_by_key(|o| std::cmp::Reverse(o.0));
+        let names: Vec<String> = order.iter().map(|(_, _, n)| n.clone()).collect();
+        if let Some(k) = switcher::run(self.hwnd, names) {
+            if let Some(&(_, i, _)) = order.get(k) {
+                self.activate(i);
+            }
+        }
+    }
+
+    /// View > Full Screen (Shift+Alt+Enter): the window over the whole screen, no title bar; again,
+    /// as it was.
+    fn toggle_full_screen(&mut self) {
+        unsafe {
+            if let Some((place, style)) = self.full_screen.take() {
+                wm::SetWindowLongW(self.hwnd, wm::GWL_STYLE, style);
+                let _ = wm::SetWindowPlacement(self.hwnd, &place);
+                let _ = wm::SetWindowPos(self.hwnd, None, 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_FRAMECHANGED);
+            } else {
+                let mut place = wm::WINDOWPLACEMENT { length: std::mem::size_of::<wm::WINDOWPLACEMENT>() as u32, ..Default::default() };
+                let _ = wm::GetWindowPlacement(self.hwnd, &mut place);
+                let style = wm::GetWindowLongW(self.hwnd, wm::GWL_STYLE);
+                let mon = windows::Win32::Graphics::Gdi::MonitorFromWindow(self.hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST);
+                let mut mi = windows::Win32::Graphics::Gdi::MONITORINFO { cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32, ..Default::default() };
+                let _ = windows::Win32::Graphics::Gdi::GetMonitorInfoW(mon, &mut mi);
+                wm::SetWindowLongW(self.hwnd, wm::GWL_STYLE, style & !((wm::WS_CAPTION | wm::WS_THICKFRAME).0 as i32));
+                let r = mi.rcMonitor;
+                let _ = wm::SetWindowPos(self.hwnd, Some(wm::HWND_TOP), r.left, r.top, r.right - r.left, r.bottom - r.top, wm::SWP_FRAMECHANGED);
+                self.full_screen = Some((place, style));
+            }
+        }
+        self.rebuild_menu();
+    }
+
+    /// Edit > Replace in Files (Ctrl+Shift+H): every match in the solution's files replaced, asked
+    /// first; a file open here changed in its editor (Undo takes it back), the others on disk.
+    fn replace_in_files(&mut self) {
+        let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok());
+        let Some(root) = root else { return };
+        let root = std::path::absolute(if root.as_os_str().is_empty() { Path::new(".") } else { &root }).unwrap_or(root);
+        let start = self.doc.code.map(phai_editor::view::selected_text).filter(|t| !t.is_empty() && !t.contains('\n')).unwrap_or_default();
+        let fields = [phai_ui::dialogs::Field::Text(t("Find what:"), &start), phai_ui::dialogs::Field::Text(t("Replace with:"), ""), phai_ui::dialogs::Field::Check(t("Match case"), false)];
+        let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Replace in Files - {0}", &[&root.file_name().unwrap_or_default().to_string_lossy()]), &fields) else { return };
+        let (what, with, case) = (a[0].clone(), a[1].clone(), a[2] == "1");
+        if what.is_empty() {
+            return;
+        }
+        let found = find_in_tree(&root, &what, case, 100_000);
+        let mut files: Vec<PathBuf> = found.iter().map(|l| l.path.clone()).collect();
+        files.dedup();
+        if found.is_empty() {
+            self.say_status(&tf("{0} is not in the solution's files", &[&what]));
+            return;
+        }
+        if win::message(Some(self.hwnd), &tf("Replace {0} matches in {1} files with \"{2}\"?", &[&found.len(), &files.len(), &with]), t("Replace in Files"), wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
+            return;
+        }
+        let mut done = 0;
+        for f in &files {
+            if let Some(h) = self.editor_of(f) {
+                let (new, n) = switcher::replace_all(&phai_editor::view::text(h), &what, &with, case);
+                if n > 0 && phai_editor::view::replace_whole(h, &new) {
+                    done += n;
+                }
+                continue;
+            }
+            let Ok(raw) = std::fs::read_to_string(f) else { continue };
+            let crlf = raw.contains("\r\n");
+            let (new, n) = switcher::replace_all(&raw.replace("\r\n", "\n"), &what, &with, case);
+            if n > 0 && std::fs::write(f, if crlf { new.replace('\n', "\r\n") } else { new }).is_ok() {
+                done += n;
+            }
+        }
+        if let Some(h) = self.doc.code {
+            if phai_editor::view::is_dirty(h) != self.doc.dirty {
+                self.doc.dirty = true;
+                self.refresh_tabs();
+            }
+        }
+        self.say_status(&tf("Replaced {0} matches in {1} files - the open ones are not saved yet", &[&done, &files.len()]));
+    }
+
     fn find_in_files(&mut self, query: Option<String>) {
         let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok());
         let Some(root) = root else { return };
@@ -3795,6 +3936,9 @@ impl Studio {
         if self.nothing {
             return self.show_nothing();
         }
+        // Seen now: first for Ctrl+Tab.
+        static SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        self.doc.seen = SEEN.fetch_add(1, Ordering::Relaxed);
         if let Some(c) = self.canvas.as_ref() {
             win::show(c.hwnd, true);
         }
@@ -3816,6 +3960,7 @@ impl Studio {
         if let Some(e) = self.explorer.as_mut() {
             e.show_project_of(path.as_deref());
         }
+        self.track_active();
         // Last, so nothing shown above leaves the form's surface over the editor.
         self.show_code();
     }
@@ -6847,6 +6992,18 @@ impl Studio {
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
+            ID_REPLACE_IN_FILES => self.replace_in_files(),
+            ID_GO_TO_LINE => self.go_to_line(),
+            ID_SWITCHER => self.switch_document(),
+            ID_FULL_SCREEN => self.toggle_full_screen(),
+            ID_TRACK_ACTIVE => {
+                let on = setting("track_active").as_deref() == Some("0");
+                remember_setting("track_active", if on { "1" } else { "0" });
+                self.rebuild_menu();
+                if on {
+                    self.track_active();
+                }
+            }
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
@@ -8097,6 +8254,10 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     let in_box = !unsafe { km::GetFocus() }.0.is_null() && win::kind_of(unsafe { km::GetFocus() }) == Some(win::Kind::Edit);
     match (msg.wParam.0 as u8, ctrl) {
         (b'T', true) if !shift => Some(ID_GO_TO_ALL),
+        (b'G', true) if !shift => Some(ID_GO_TO_LINE),
+        (b'H', true) if shift => Some(ID_REPLACE_IN_FILES),
+        (0x09, true) => Some(ID_SWITCHER),
+        (0x0D, false) if shift && unsafe { km::GetKeyState(0x12) } < 0 => Some(ID_FULL_SCREEN),
         (b'Q', true) if !shift => Some(ID_SEARCH),
         // Ctrl+` : the Terminal, as Visual Studio has it.
         (0xC0, true) => Some(ID_VIEW_TERMINAL),
@@ -8355,6 +8516,7 @@ fn main() {
             also: vec![],
             tool: None,
             nothing: false,
+            full_screen: None,
             crumb: HWND::default(),
             crumb_for: (usize::MAX, -1, 0),
         });

@@ -758,6 +758,14 @@ impl Explorer {
     }
 
     /// Shows the project that holds `form` - or the form's folder, or nothing.
+    /// The file open in the editor chosen in the tree - Visual Studio's Track Active Item.
+    pub fn reveal(&mut self, path: &Path) {
+        let Some(i) = self.entries.iter().position(|e| phai_editor::lsp::same_path(e, path)) else { return };
+        if win::tree_selected(self.tree) != Some(i as isize) {
+            win::tree_select_data(self.tree, i as isize);
+        }
+    }
+
     pub fn show_project_of(&mut self, form: Option<&Path>) {
         let root = form.and_then(|f| crate::cargo::project_of(f).or_else(|| f.parent().map(Path::to_path_buf)));
         if root != self.root || self.entries.is_empty() {

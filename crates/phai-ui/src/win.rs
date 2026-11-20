@@ -1545,6 +1545,38 @@ pub fn tree_expand(h: HWND, item: isize) {
     }
 }
 
+/// The item kept with number `data` chosen and scrolled into view, its folders opened; whether
+/// there was one.
+pub fn tree_select_data(h: HWND, data: isize) -> bool {
+    use windows::Win32::UI::Controls as cc;
+    unsafe fn find(h: HWND, mut item: isize, data: isize) -> isize {
+        while item != 0 {
+            let mut it = cc::TVITEMW { mask: cc::TVIF_PARAM, hItem: cc::HTREEITEM(item), ..Default::default() };
+            wm::SendMessageW(h, 0x113E /* TVM_GETITEMW */, None, Some(LPARAM(&mut it as *mut _ as isize)));
+            if it.lParam.0 == data {
+                return item;
+            }
+            let child = wm::SendMessageW(h, 0x110A, Some(WPARAM(4 /* TVGN_CHILD */)), Some(LPARAM(item))).0;
+            let deeper = find(h, child, data);
+            if deeper != 0 {
+                return deeper;
+            }
+            item = wm::SendMessageW(h, 0x110A, Some(WPARAM(1 /* TVGN_NEXT */)), Some(LPARAM(item))).0;
+        }
+        0
+    }
+    unsafe {
+        let root = wm::SendMessageW(h, 0x110A, Some(WPARAM(0 /* TVGN_ROOT */)), None).0;
+        let item = find(h, root, data);
+        if item == 0 {
+            return false;
+        }
+        wm::SendMessageW(h, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9)), Some(LPARAM(item)));
+        wm::SendMessageW(h, 0x1114 /* TVM_ENSUREVISIBLE */, None, Some(LPARAM(item)));
+        true
+    }
+}
+
 /// The number kept with the chosen item, if one is chosen.
 pub fn tree_selected(h: impl Into<HWND>) -> Option<isize> {
     let h: HWND = h.into();
