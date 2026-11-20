@@ -1114,6 +1114,12 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::RUN_TEST => {
+            if let Some(s) = studio() {
+                s.run_one_test(HWND(l.0 as *mut _));
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::PEEK => {
             if let Some(s) = studio() {
                 s.lsp_peek(HWND(l.0 as *mut _));
