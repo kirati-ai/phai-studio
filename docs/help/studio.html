@@ -49,7 +49,28 @@
   <tr><td>Properties</td><td>ขวาล่าง</td><td>ข้อความ ขนาด สี ชื่อ และ event ของสิ่งที่เลือกบนฟอร์ม</td></tr>
   <tr><td>แผงล่าง</td><td>ล่าง</td><td>Errors, Output, ผลค้นหา, ค่าตัวแปรตอนดีบัก, เทสต์ ฯลฯ</td></tr>
 </table>
-<p>เปลี่ยนภาษาเมนูได้ที่ <b>View &gt; ไทย / English</b> และเปลี่ยนธีมสว่าง/มืดได้ที่ <b>View &gt; Light / Dark</b></p>
+<p>เปลี่ยนภาษาเมนูได้ที่ <b>View &gt; ไทย / English</b> และเปลี่ยนธีมสว่าง/มืดได้ที่ <b>Tools &gt; Studio Colours</b> หรือ <b>Tools &gt; Options &gt; Environment &gt; General</b></p>
+
+<h2>หน้าเริ่มต้นและโปรเจกต์ใหม่</h2>
+<ul>
+  <li>หน้าเริ่มต้นมีไฟล์ที่เปิดล่าสุด พิมพ์ในช่อง <b>Search recent</b> เพื่อกรอง คลิกขวาที่รายการเพื่อ <b>ปักหมุดไว้บนสุด</b> หรือ <b>เอาออกจากรายการ</b></li>
+  <li><b>Clone a repository...</b> ใส่ที่อยู่ของ repository (https://... หรือ git@...) แล้วเลือกโฟลเดอร์ Phai Studio รัน <code>git clone</code> ให้แล้วเปิดโปรเจกต์ต่อเลย</li>
+  <li>ด้านล่างมีเคล็ดลับวันละข้อ กด <b>เคล็ดลับถัดไป</b> เพื่อดูข้อต่อไป</li>
+  <li><b>File &gt; New project...</b> ถามก่อนว่าจะทำแบบไหน: <b>โปรแกรม Windows</b> หรือ <b>แอปมือถือ (PWA)</b> ซึ่งได้ฟอร์มขนาดมือถือ และเปิด Device Preview ให้ดูบนจอมือถือทันที (ดู <a href="web.html">เว็บและมือถือ</a>)</li>
+</ul>
+
+<h2>หาของให้เจอ</h2>
+<table>
+  <tr><th>อยากทำ</th><th>ใช้</th></tr>
+  <tr><td>หาคำสั่งในเมนู หน้าตั้งค่า หรือไฟล์ โดยไม่ต้องจำว่าอยู่ตรงไหน</td><td><kbd>Ctrl+Q</kbd> (Edit &gt; Search) พิมพ์ชื่อ เช่น <code>phone</code> หรือ <code>font</code> แล้วกด Enter</td></tr>
+  <tr><td>ไปที่ไฟล์ ฟังก์ชัน หรือชนิดใดก็ได้</td><td><kbd>Ctrl+T</kbd> (Go to All)</td></tr>
+  <tr><td>ดูไฟล์เร็ว ๆ โดยไม่เปิดแท็บค้างไว้</td><td>คลิกไฟล์ครั้งเดียวใน Project Explorer ได้ <b>แท็บพรีวิว</b> (ชื่อตัวเอียง) คลิกไฟล์อื่นจะแทนที่แท็บเดิม พอแก้ไฟล์หรือดับเบิลคลิก แท็บจะค้างไว้</td></tr>
+  <tr><td>เก็บแท็บสำคัญไว้ซ้ายสุด</td><td><b>File &gt; Pin Tab</b> แท็บที่ปักหมุดมีรูปหมุด คลิกหมุดเพื่อเลิกปัก, <b>File &gt; Close All But Pinned</b> ปิดที่เหลือทั้งหมด</td></tr>
+  <tr><td>จัดหน้าต่างแบบที่ชอบแล้วเรียกกลับมา</td><td><b>View &gt; Window Layouts &gt; Save Window Layout...</b> ตั้งชื่อ แล้วเรียกด้วย <kbd>Ctrl+Alt+1</kbd> ถึง <kbd>Ctrl+Alt+0</kbd>, <b>Reset Window Layout</b> คืนแบบเริ่มต้น</td></tr>
+  <tr><td>ตั้งปุ่มลัดเอง</td><td><b>Tools &gt; Keyboard Shortcuts...</b> เลือกคำสั่ง กดคีย์ในช่อง (บอกว่าคีย์นี้ใครใช้อยู่) แล้วกด <b>Assign</b>, <b>Remove</b> คืนคีย์เดิม, <b>Reset All</b> คืนทั้งหมด</td></tr>
+  <tr><td>หาค่าตั้ง</td><td><b>Tools &gt; Options</b> พิมพ์ในช่อง <b>Search Options</b> เหลือเฉพาะหน้าที่มีคำนั้น</td></tr>
+  <tr><td>ย้ายค่าตั้งไปเครื่องอื่น</td><td><b>Tools &gt; Options &gt; Export...</b> ได้ไฟล์เดียว แล้ว <b>Import...</b> ที่อีกเครื่อง</td></tr>
+</table>
 
 <h2>โปรเจกต์แรก: โปรแกรมทักทาย</h2>
 <ol>
@@ -71,7 +92,11 @@
   <li>ลากมุมของสิ่งที่เลือกเพื่อปรับขนาด ลากตรงกลางเพื่อย้าย จะมีเส้นช่วยจัดแนวให้</li>
   <li>เลือกหลายอันพร้อมกันได้ แล้วใช้แถบเครื่องมือจัดแนว (ชิดซ้าย จัดกลาง ระยะห่างเท่ากัน)</li>
   <li><b>Format</b> มี Bring to front, Send to back, Lock controls และ Tab order (ลำดับการกด Tab)</li>
-  <li>กด <kbd>F4</kbd> เพื่อดูตัวอย่างหน้าต่างจริงโดยไม่ต้อง build</li>
+  <li>กด <kbd>F4</kbd> เพื่อดูตัวอย่างหน้าต่างจริงโดยไม่ต้อง build, <kbd>Shift+F4</kbd> ดูบนจอมือถือและแท็บเล็ต (Device Preview)</li>
+  <li><b>Format &gt; เดา Anchor ให้</b> วาง control ตามใจแล้วสั่งทีเดียว Phai Studio เดาว่าแต่ละตัวควรยืดหรือชิดขอบไหนเมื่อหน้าต่างเปลี่ยนขนาด (ช่องยาวยืดตามความกว้าง ปุ่มมุมขวาล่างชิดมุมขวาล่าง รายการยืดลง) กด <kbd>Ctrl+Z</kbd> ย้อนได้</li>
+  <li>รายการและตารางในตัวออกแบบมีข้อมูลตัวอย่าง 3 แถว เดาจากชื่อคอลัมน์ (ชื่อ จำนวน ราคา วันที่ โทรศัพท์) ให้เห็นหน้าตาตอนมีข้อมูล ตัวโปรแกรมจริงเริ่มว่างเสมอ ปิดได้ที่ <b>View &gt; Sample Data in Designer</b></li>
+  <li><b>ลากด้วยปุ่มขวา</b>จาก control แล้วปล่อย จะมีเมนูอีเวนต์ของมัน เลือกแล้ว Phai Studio เขียนฟังก์ชันลงโค้ดและเปิดให้ หรือเลือก <b>คัดลอก ui.ชื่อ</b> ไปวางในโค้ด (คลิกขวาเฉย ๆ ยังเป็นเมนูเดิม)</li>
+  <li>ถ้าไฟล์ <code>.phaiform</code> เสีย (เช่น แก้มือแล้วพิมพ์ผิด) Phai Studio เปิดเป็นข้อความตรงบรรทัดที่ผิด พร้อมบอกใน Error List แก้แล้วบันทึก เปิดใหม่ก็ได้ตัวออกแบบกลับมา</li>
   <li>มี Menu bar, Context menu, Timer, Tree view, Picture, ตาราง (Grid), Rich text และแผงจัดวางอัตโนมัติ (Flow, Table)</li>
 </ul>
 
@@ -96,6 +121,9 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <li>เหนือฟังก์ชันจะบอกว่าถูกใช้กี่แห่ง (CodeLens) คลิกเพื่อดูรายการ</li>
   <li>Snippet: พิมพ์ <code>fn</code>, <code>for</code>, <code>match</code>, <code>test</code> แล้วกด <kbd>Tab</kbd> ได้โค้ดทั้งก้อน</li>
   <li><kbd>Ctrl+K, Ctrl+D</kbd> จัดรูปแบบโค้ดทั้งไฟล์ด้วย rustfmt</li>
+  <li>แถบบนตัวแก้โค้ด (breadcrumb) บอกว่าเคอร์เซอร์อยู่ในไฟล์ไหน และอยู่ใน <code>mod</code> / <code>impl</code> / <code>fn</code> ไหน</li>
+  <li>หลายเคอร์เซอร์: <kbd>Ctrl+Alt+คลิก</kbd> เพิ่มเคอร์เซอร์, <kbd>Alt+ลาก</kbd> ได้เคอร์เซอร์ทุกบรรทัดเป็นกล่อง</li>
+  <li>แถบสีที่ขอบข้างบรรทัดบอกว่าแก้อะไรไปตั้งแต่ git commit ล่าสุด: <span style="color:#2ea043">เขียว</span> = เพิ่ม, <span style="color:#1c6fd1">น้ำเงิน</span> = แก้, <span style="color:#d13438">แดง</span> = ลบบรรทัดใต้ตรงนี้</li>
 </ul>
 
 <h2>Build รัน และแจกจ่าย</h2>
@@ -109,6 +137,12 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td>Manage Crates</td><td>เมนู Project</td><td>ค้นหาและเพิ่มไลบรารีจาก crates.io</td></tr>
 </table>
 <p>ถ้า build ไม่ผ่าน ดับเบิลคลิกบรรทัดในแท็บ Errors เพื่อไปยังจุดที่ผิด หรือกด <kbd>F8</kbd> ไล่ไปทีละข้อ ไม่เข้าใจข้อความ? ดู <a href="rust-10.html">บทที่ 10</a></p>
+<ul>
+  <li>Error List เลือกขอบเขตได้: <b>ทั้งโซลูชัน</b>, <b>เอกสารปัจจุบัน</b> หรือ <b>เอกสารที่เปิดอยู่</b> และคลิกหัวคอลัมน์เพื่อเรียง (คลิกซ้ำเรียงกลับ)</li>
+  <li>มุมขวาของแถบสถานะบอกจำนวน error ⊗ และ warning ⚠ คลิกเพื่อเปิด Error List</li>
+  <li>แท็บ Output มีช่อง <b>Show output from</b> เลือกดูเฉพาะของ Build, Debug, Tests หรือ Data หรือดูทั้งหมด</li>
+  <li><b>Tools &gt; Options &gt; Environment &gt; Error List</b> ตั้งได้ว่าเมื่อ build เสร็จ ให้เปิด error แรกให้เลย ส่งเสียง หรือกะพริบที่แถบงานถ้า Phai Studio อยู่หลังหน้าต่างอื่น</li>
+</ul>
 
 <h2>ดีบัก: หาว่าโปรแกรมผิดตรงไหน</h2>
 <ol>
@@ -137,12 +171,14 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <h2>เทสต์</h2>
 <ul>
   <li><kbd>Ctrl+R, T</kbd> รันเทสต์ของโปรเจกต์, <kbd>Ctrl+R, A</kbd> รันทั้งหมด ผลขึ้นในแท็บ Tests</li>
-  <li><b>Test &gt; Analyze Code Coverage</b> บอกว่าเทสต์รันถึงบรรทัดไหนบ้าง แถบเขียวที่ขอบซ้ายคือรันถึง แถบแดงคือยังไม่มีเทสต์</li>
+  <li>ข้างฟังก์ชันที่มี <code>#[test]</code> มี <span style="color:#2ea043">▶</span> สีเขียวที่ขอบซ้าย คลิกเพื่อรันเทสต์นั้นเทสต์เดียว</li>
+  <li><b>Tools &gt; Test &gt; Analyze Code Coverage</b> บอกว่าเทสต์รันถึงบรรทัดไหนบ้าง แถบเขียวที่ขอบซ้ายคือรันถึง แถบแดงคือยังไม่มีเทสต์</li>
   <li>วิธีเขียนเทสต์ดูได้ใน <a href="rust-09.html">บทที่ 9</a></li>
 </ul>
 
 <h2>Git</h2>
 <ul>
+  <li>เมนู Git อยู่ที่ <b>Tools &gt; Git</b></li>
   <li><b>Git Changes</b> (<kbd>Ctrl+Alt+G</kbd>) ดูไฟล์ที่แก้ เลือก Stage แล้ว Commit พร้อม push/pull</li>
   <li><b>View History of This File</b> ดูทุกครั้งที่ไฟล์นี้ถูกแก้ และแก้อะไรไป</li>
   <li><b>Show Line Blame</b> บอกว่าใครแก้บรรทัดที่เคอร์เซอร์อยู่ เมื่อไร</li>
@@ -150,7 +186,8 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 </ul>
 
 <h2>ฐานข้อมูล</h2>
-<p><b>Data &gt; Add Connection...</b> ต่อ MySQL/MariaDB, PostgreSQL หรือไฟล์ SQLite ได้ ดูตารางใน Server Explorer (<kbd>Ctrl+Alt+S</kbd>) เขียน SQL แล้วกด <kbd>Ctrl+Shift+E</kbd> เพื่อรัน แก้ข้อมูลในตารางผลลัพธ์ได้โดยตรง</p>
+<p><b>Tools &gt; Data &gt; Add Connection...</b> เลือกการ์ดของฐานข้อมูลที่จะต่อ MySQL/MariaDB, PostgreSQL หรือไฟล์ SQLite ได้ ดูตารางใน Server Explorer (<kbd>Ctrl+Alt+S</kbd>) เขียน SQL แล้วกด <kbd>Ctrl+Shift+E</kbd> เพื่อรัน แก้ข้อมูลในตารางผลลัพธ์ได้โดยตรง</p>
+<p>ลากตารางจาก Server Explorer ไปวางบนฟอร์ม ได้ตารางที่ผูกกับตารางนั้นพร้อมโหลดและบันทึก (เหมือนคลิกขวา &gt; <b>Add to Form</b>)</p>
 <p>อ่านละเอียดที่ <a href="database.html">ทำงานกับฐานข้อมูล</a></p>
 
 <h2>ปุ่มลัดที่ใช้บ่อย</h2>
@@ -162,6 +199,8 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td><kbd>Alt+↑</kbd> <kbd>Alt+↓</kbd></td><td>ย้ายบรรทัดขึ้นลง</td><td><kbd>Ctrl+M, Ctrl+M</kbd></td><td>พับ/กางโค้ด</td></tr>
   <tr><td><kbd>Ctrl+K, Ctrl+K</kbd></td><td>คั่นหน้า (bookmark)</td><td><kbd>Ctrl+Alt+T</kbd></td><td>โครงร่างของไฟล์ (Document Outline)</td></tr>
   <tr><td><kbd>Alt+F7</kbd></td><td>ตั้งค่าโปรเจกต์</td><td><kbd>Ctrl+Shift+B</kbd></td><td>Build ทั้ง solution</td></tr>
+  <tr><td><kbd>Ctrl+Q</kbd></td><td>ค้นหาคำสั่ง ค่าตั้ง ไฟล์</td><td><kbd>Shift+F4</kbd></td><td>ดูฟอร์มบนมือถือ/แท็บเล็ต</td></tr>
+  <tr><td><kbd>Ctrl+Alt+1</kbd>…<kbd>0</kbd></td><td>เรียกการจัดหน้าต่างที่บันทึกไว้</td><td><kbd>Ctrl+`</kbd></td><td>Terminal</td></tr>
 </table>
 <div class="pager"><a href="index.html">← หน้าแรก</a><a href="css.html">ตกแต่งหน้าตาด้วย CSS →</a></div>
 </main>
