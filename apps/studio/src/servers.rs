@@ -10,7 +10,7 @@ use phai_data::{Column, Connection};
 use phai_ui::dialogs;
 use phai_ui::text::{t, tf};
 use phai_ui::win;
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
 use crate::studio;
@@ -270,11 +270,12 @@ impl Servers {
         const DESIGN: u32 = 8;
         const AS_SQL: u32 = 9;
         const TO_FORM: u32 = 10;
+        const CLOSE: u32 = 11;
         let sel = self.selected();
         let kind = sel.as_ref().map(|(_, n)| n.kind.clone()).unwrap_or(Kind::Root);
         let items: Vec<(u32, &str)> = match kind {
             Kind::Root | Kind::Waiting => vec![(ADD, t("Add Connection..."))],
-            Kind::Server => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete"))],
+            Kind::Server => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh")), (CLOSE, t("Close Connection")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete Connection"))],
             Kind::Database => vec![(QUERY, t("New Query")), (NEW_TABLE, t("New Table...")), (REFRESH, t("Refresh"))],
             Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (AS_SQL, t("Script as SQL")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (TO_FORM, t("Add to Form")), (REFRESH, t("Refresh"))],
             Kind::Table { view: true } => vec![(ROWS, t("Show Table Data")), (QUERY, t("New Query")), (REFRESH, t("Refresh"))],
@@ -334,6 +335,27 @@ impl Servers {
                     self.expanding(item, data);
                     win::tree_expand(self.tree, item);
                     let _ = n;
+                }
+            }
+            // Close Connection, as Visual Studio's: folded, what was read of it let go - read again
+            // when it is opened again. (Each look at the server is a connection of its own.)
+            CLOSE => {
+                if let Some((item, _)) = sel {
+                    let data = item_data(self.tree, item).unwrap_or(-1);
+                    if let Some(node) = self.node_of(data) {
+                        unsafe {
+                            wm::SendMessageW(self.tree, 0x1102 /* TVM_EXPAND */, Some(WPARAM(1 /* TVE_COLLAPSE */)), Some(LPARAM(item)));
+                        }
+                        delete_children(self.tree, item);
+                        if let Some(n) = self.nodes.get_mut(data as usize) {
+                            n.loaded = false;
+                        }
+                        self.nodes.push(Node { kind: Kind::Waiting, ..node });
+                        win::tree_add(self.tree, item, "…", 1, self.nodes.len() as isize - 1);
+                        if let Some(s) = studio() {
+                            s.say_status(t("Connection closed - open it again to read it"));
+                        }
+                    }
                 }
             }
             DELETE => {
@@ -412,6 +434,38 @@ impl Servers {
         let Some(c) = self.conns.first().cloned() else { return };
         let def = c.table_def("main", table).ok();
         crate::designer::open(owner, c, "main", def);
+    }
+
+    /// A click on the first connection's [+], as the mouse makes it (messages to the tree, the
+    /// mouse itself untouched) - for checking what a person's click does.
+    pub fn click_first(&self) {
+        use windows::Win32::UI::Controls as cc;
+        unsafe {
+            let root = wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(0)), None).0;
+            let first = wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(4)), Some(LPARAM(root))).0;
+            if first == 0 {
+                return;
+            }
+            let mut r = RECT::default();
+            *(&mut r as *mut RECT as *mut isize) = first;
+            wm::SendMessageW(self.tree, 0x1104 /* TVM_GETITEMRECT */, Some(WPARAM(1)), Some(LPARAM(&mut r as *mut _ as isize)));
+            let y = (r.top + r.bottom) / 2;
+            // The [+]: where the tree's own hit test says its button is.
+            let mut x = 0;
+            for cx in 0..r.left {
+                let mut ht = cc::TVHITTESTINFO { pt: windows::Win32::Foundation::POINT { x: cx, y }, ..Default::default() };
+                wm::SendMessageW(self.tree, 0x1111 /* TVM_HITTEST */, None, Some(LPARAM(&mut ht as *mut _ as isize)));
+                if ht.flags.0 & 0x0010 /* TVHT_ONITEMBUTTON */ != 0 {
+                    x = cx;
+                    break;
+                }
+            }
+            let at = LPARAM(((y as isize) << 16) | (x as isize & 0xFFFF));
+            println!("servers: click at {x},{y} (text from {}), item {first:#x}", r.left);
+            wm::SendMessageW(self.tree, wm::WM_LBUTTONDOWN, Some(WPARAM(1)), Some(at));
+            wm::SendMessageW(self.tree, wm::WM_LBUTTONUP, Some(WPARAM(0)), Some(at));
+            let _ = cc::NMHDR::default();
+        }
     }
 
     /// The first connection opened - for checking by picture.

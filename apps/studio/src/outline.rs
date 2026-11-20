@@ -9,7 +9,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::HFONT;
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
-pub const ID_OUTLINE_TREE: i32 = 420;
+/// Its own: Server Explorer's tree is 420, and a shared id sent its notes here.
+pub const ID_OUTLINE_TREE: i32 = 440;
 
 pub struct Outline {
     pub tree: HWND,

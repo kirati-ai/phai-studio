@@ -29,10 +29,15 @@ const ID_DEL_IDX: i32 = 26;
 const ID_ADD_FK: i32 = 27;
 const ID_EDIT_FK: i32 = 28;
 const ID_DEL_FK: i32 = 29;
+/// The database's tables at the left, as phpMyAdmin lists them: one chosen is designed.
+const ID_TABLES: i32 = 30;
 const ID_UPDATE: i32 = 1;
 const ID_CLOSE: i32 = 2;
 
 struct Designer {
+    tables: HWND,
+    /// The tables listed, after "(new table)".
+    names: Vec<String>,
     conn: Connection,
     db: String,
     old: Option<TableDef>,
@@ -86,6 +91,15 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
             labels.push(win::label(hwnd, l, 0, font));
         }
         let name = win::edit(hwnd, &name_text, ID_NAME, font, false);
+        // The database's tables, the one designed chosen.
+        let tables = win::list(hwnd, ID_TABLES, font, &[(&tf("Tables of {0}", &[&db]), 190)]);
+        let names: Vec<String> = conn.tables(db).map(|v| v.into_iter().filter(|(_, view)| !view).map(|(n, _)| n).collect()).unwrap_or_default();
+        win::list_add(tables, &[t("(new table)")]);
+        for n in &names {
+            win::list_add(tables, &[n]);
+        }
+        let at = existing.as_ref().and_then(|d| names.iter().position(|n| *n == d.name)).map(|i| i + 1).unwrap_or(0);
+        win::list_select(tables, at);
         let cols = win::list(hwnd, ID_COLS, font, &[(t("Column Name"), 170), (t("Data Type"), 150), (t("Allow Nulls"), 80), (t("Primary Key"), 85), (t("Identity"), 70), (t("Default"), 140)]);
         let idx = win::list(hwnd, ID_IDX, font, &[(t("Name"), 200), (t("Columns"), 260), (t("Unique"), 70)]);
         let fk = win::list(hwnd, ID_FK, font, &[(t("Name"), 160), (t("Columns"), 140), (t("References"), 220), (t("On Delete"), 100), (t("On Update"), 100)]);
@@ -113,7 +127,7 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
             columns: vec![ColDef { name: "id".into(), ty: phai_data::schema::types_for(conn.kind)[0].to_string(), nullable: false, pk: true, auto: true, ..Default::default() }],
             ..Default::default()
         });
-        win::set_state(hwnd, Box::new(Designer { conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, applied: false, font, mono }));
+        win::set_state(hwnd, Box::new(Designer { tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, applied: false, font, mono }));
         refresh(hwnd);
         let (w, h) = (win::px(hwnd, 900), win::px(hwnd, 720));
         let mut r = RECT::default();
@@ -139,6 +153,48 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         let _ = wm::DestroyWindow(hwnd);
         applied
     }
+}
+
+/// A table chosen at the left (0: a new one): its design loaded - what was changed and not yet
+/// updated asked about first.
+fn choose_table(h: HWND, k: usize) {
+    let Some(s) = state(h) else { return };
+    let now = s.old.as_ref().map(|d| d.name.clone());
+    let wanted = if k == 0 { None } else { s.names.get(k - 1).cloned() };
+    if now == wanted && (wanted.is_some() || s.old.is_none()) {
+        return;
+    }
+    if !s.conn.design_script(&s.db, s.old.as_ref(), &s.def).is_empty() && s.old.is_some() {
+        let ask = win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Table Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION);
+        if ask != wm::IDYES {
+            let back = now.and_then(|n| s.names.iter().position(|x| *x == n)).map(|i| i + 1).unwrap_or(0);
+            win::list_select(s.tables, back);
+            return;
+        }
+    }
+    let def = match &wanted {
+        Some(name) => match s.conn.table_def(&s.db, name) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                win::message(Some(h), &e, t("Table Designer"), wm::MB_ICONWARNING);
+                return;
+            }
+        },
+        None => None,
+    };
+    s.old = def.clone();
+    s.def = def.unwrap_or_else(|| TableDef {
+        name: "new_table".into(),
+        columns: vec![ColDef { name: "id".into(), ty: phai_data::schema::types_for(s.conn.kind)[0].to_string(), nullable: false, pk: true, auto: true, ..Default::default() }],
+        ..Default::default()
+    });
+    win::set_text(s.name, &s.def.name);
+    let title = match &s.old {
+        Some(d) => tf("Table Designer - {0}", &[&d.name]),
+        None => t("Table Designer - new table").to_string(),
+    };
+    win::set_text(h, &title);
+    refresh(h);
 }
 
 /// The lists and the script again, from the design.
@@ -190,11 +246,15 @@ fn layout(h: HWND) {
     }
     let px = |v| win::px(h, v);
     let (m, row, gap, bw) = (px(11), px(23), px(6), px(110));
-    let w = r.right - 2 * m;
+    // The tables down the left; the design beside them.
+    let side = px(210);
+    win::move_to(s.tables, m, m, side, r.bottom - 2 * m);
+    let x0 = m + side + gap * 2;
+    let w = r.right - x0 - m;
     let list_w = w - bw - gap;
     let mut y = m;
-    win::move_to(s.labels[0], m, y, px(100), row);
-    win::move_to(s.name, m + px(105), y, px(300), row);
+    win::move_to(s.labels[0], x0, y, px(100), row);
+    win::move_to(s.name, x0 + px(105), y, px(300), row);
     y += row + gap * 2;
     let rest = r.bottom - y - row - m * 2;
     let cols_h = rest * 36 / 100;
@@ -202,28 +262,28 @@ fn layout(h: HWND) {
     let script_h = rest - cols_h - small_h * 2 - (row + gap) * 4 + row;
     let button = |id: i32| s.buttons.iter().find(|(i, _)| *i == id).map(|(_, b)| *b).unwrap_or_default();
     // Columns, with Add / Delete / Up / Down at the right.
-    win::move_to(s.labels[1], m, y, list_w, row);
+    win::move_to(s.labels[1], x0, y, list_w, row);
     y += row;
-    win::move_to(s.cols, m, y, list_w, cols_h);
+    win::move_to(s.cols, x0, y, list_w, cols_h);
     for (k, id) in [ID_ADD_COL, ID_DEL_COL, ID_UP, ID_DOWN].iter().enumerate() {
-        win::move_to(button(*id), m + list_w + gap, y + k as i32 * (row + gap), bw, row);
+        win::move_to(button(*id), x0 + list_w + gap, y + k as i32 * (row + gap), bw, row);
     }
     y += cols_h + gap;
     for (label, list, ids) in [(s.labels[2], s.idx, [ID_ADD_IDX, ID_EDIT_IDX, ID_DEL_IDX]), (s.labels[3], s.fk, [ID_ADD_FK, ID_EDIT_FK, ID_DEL_FK])] {
-        win::move_to(label, m, y, list_w, row);
+        win::move_to(label, x0, y, list_w, row);
         y += row;
-        win::move_to(list, m, y, list_w, small_h);
+        win::move_to(list, x0, y, list_w, small_h);
         for (k, id) in ids.iter().enumerate() {
-            win::move_to(button(*id), m + list_w + gap, y + k as i32 * (row + gap), bw, row);
+            win::move_to(button(*id), x0 + list_w + gap, y + k as i32 * (row + gap), bw, row);
         }
         y += small_h + gap;
     }
-    win::move_to(s.labels[4], m, y, w, row);
+    win::move_to(s.labels[4], x0, y, w, row);
     y += row;
     let by = r.bottom - m - row;
     // The script takes what is left above the buttons.
     let _ = script_h;
-    win::move_to(s.script, m, y, w, (by - gap * 2 - y).max(px(60)));
+    win::move_to(s.script, x0, y, w, (by - gap * 2 - y).max(px(60)));
     win::move_to(button(ID_CLOSE), r.right - m - px(75), by, px(75), row);
     win::move_to(button(ID_UPDATE), r.right - m - px(75) * 2 - px(7), by, px(75), row);
 }
@@ -440,6 +500,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_NOTIFY => {
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
+            if hdr.hwndFrom == s.tables && hdr.code == cc::NM_CLICK {
+                let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
+                if it.iItem >= 0 {
+                    choose_table(h, it.iItem as usize);
+                }
+                return LRESULT(0);
+            }
             if hdr.hwndFrom == s.cols && hdr.code == cc::NM_CLICK {
                 let it = unsafe { &*(l.0 as *const cc::NMITEMACTIVATE) };
                 cell_click(h, it.iItem, it.iSubItem);
