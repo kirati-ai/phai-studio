@@ -225,6 +225,97 @@ pub fn with_package_field(text: &str, key: &str, value: &str, list: bool) -> Str
     out.join("\n") + "\n"
 }
 
+/// The table of Cargo.toml the web app's settings are kept in - cargo itself leaves it alone.
+pub const WEB_APP_TABLE: &str = "[package.metadata.phai-web]";
+
+/// A field of `table` (`[package.metadata.phai-web]`) in a Cargo.toml's text, without quotes.
+pub fn table_field(text: &str, table: &str, key: &str) -> Option<String> {
+    let mut inside = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            inside = line == table;
+        } else if inside {
+            let Some(rest) = line.strip_prefix(key) else { continue };
+            let Some(v) = rest.trim_start().strip_prefix('=') else { continue };
+            let v = v.trim();
+            let v = v.strip_prefix('"').and_then(|v| v.strip_suffix('"')).unwrap_or(v);
+            return Some(v.replace("\\\"", "\"").replace("\\\\", "\\"));
+        }
+    }
+    None
+}
+
+/// The text with `key` of `table` set (`value` empty: taken out); the table added at the end
+/// when there is none.
+pub fn with_table_field(text: &str, table: &str, key: &str, value: &str) -> String {
+    let line = format!("{key} = \"{}\"", value.trim().replace('\\', "\\\\").replace('"', "\\\""));
+    let set = !value.trim().is_empty();
+    let mut out: Vec<String> = Vec::new();
+    let (mut inside, mut found_table, mut done, mut last_field) = (false, false, false, None);
+    for l in text.lines() {
+        let t = l.trim();
+        if t.starts_with('[') {
+            if inside && !done && set {
+                let at = last_field.map(|i: usize| i + 1).unwrap_or(out.len());
+                out.insert(at, line.clone());
+                done = true;
+            }
+            inside = t == table;
+            if inside {
+                found_table = true;
+                last_field = Some(out.len());
+            }
+        } else if inside {
+            if t.strip_prefix(key).is_some_and(|r| r.trim_start().starts_with('=')) {
+                if set && !done {
+                    out.push(line.clone());
+                }
+                done = true;
+                continue;
+            }
+            if !t.is_empty() && !t.starts_with('#') {
+                last_field = Some(out.len());
+            }
+        }
+        out.push(l.to_string());
+    }
+    if inside && !done && set {
+        let at = last_field.map(|i| i + 1).unwrap_or(out.len());
+        out.insert(at, line.clone());
+        done = true;
+    }
+    if !found_table && set && !done {
+        while out.last().is_some_and(|l| l.trim().is_empty()) {
+            out.pop();
+        }
+        out.push(String::new());
+        out.push(table.to_string());
+        out.push(line);
+    }
+    out.join("\n") + "\n"
+}
+
+#[cfg(test)]
+mod web_app_tests {
+    use super::*;
+
+    #[test]
+    fn the_web_app_s_table_set_changed_and_taken_out() {
+        let toml = "[package]\nname = \"shop\"\n\n[dependencies]\nserde = \"1\"\n";
+        let t = with_table_field(toml, WEB_APP_TABLE, "name", "ร้าน \"ดี\"");
+        assert!(t.ends_with("[package.metadata.phai-web]\nname = \"ร้าน \\\"ดี\\\"\"\n"), "{t}");
+        assert_eq!(table_field(&t, WEB_APP_TABLE, "name").as_deref(), Some("ร้าน \"ดี\""));
+        let t = with_table_field(&t, WEB_APP_TABLE, "orientation", "portrait");
+        let t = with_table_field(&t, WEB_APP_TABLE, "name", "Shop");
+        assert!(t.contains("[package.metadata.phai-web]\nname = \"Shop\"\norientation = \"portrait\"\n"), "{t}");
+        assert!(t.contains("[dependencies]\nserde = \"1\"\n"), "the rest kept: {t}");
+        let t = with_table_field(&t, WEB_APP_TABLE, "name", "");
+        assert_eq!(table_field(&t, WEB_APP_TABLE, "name"), None);
+        assert_eq!(table_field(&t, WEB_APP_TABLE, "orientation").as_deref(), Some("portrait"));
+        assert_eq!(table_field(&t, "[package]", "name").as_deref(), Some("shop"));
+    }
+}
+
 /// Cargo's arguments for one step of a job: the subcommand and its flags. `whole` is every
 /// project of the workspace (Visual Studio's Solution), else the one project `package`.
 pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> Vec<Vec<String>> {

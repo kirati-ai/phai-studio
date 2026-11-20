@@ -257,21 +257,142 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
     say("index.html, manifest, service worker");
     let theme = std::fs::read_to_string(project.join("theme.css")).unwrap_or_else(|_| "@import \"phai:light\";".into());
     let main_form = all.iter().find(|(p, _)| p.file_stem().is_some_and(|s| s == "main_window")).or(all.first()).map(|(_, f)| f).ok_or("no form")?;
-    let title = main_form.form.title.clone();
-    let color = phai_form::web::theme_var(&theme, "--accent").unwrap_or_else(|| "#12855f".into());
-    let background = phai_form::web::theme_var(&theme, "--surface").unwrap_or_else(|| "#ffffff".into());
+    let app = WebApp::of(project, &main_form.form.title, &theme);
     let version = version_stamp();
+    let icon = |size: u32| app.icon_file(project).and_then(|f| scaled_icon(&f, size, hex(&app.color))).unwrap_or_else(|| icon_png(size, hex(&app.color)));
     let files: Vec<(&str, Vec<u8>)> = vec![
-        ("index.html", phai_form::web::index_html(&title, &package, &phai_form::web::theme_css(&theme), &color, &version).into_bytes()),
-        ("manifest.webmanifest", phai_form::web::manifest(&title, &color, &background).into_bytes()),
+        ("index.html", phai_form::web::index_html(&app.name, &package, &phai_form::web::theme_css(&theme), &app.color, &version).into_bytes()),
+        ("manifest.webmanifest", phai_form::web::manifest(&app.name, &app.short, &app.color, &app.background, &app.orientation).into_bytes()),
         ("sw.js", phai_form::web::service_worker(&package, &version).into_bytes()),
-        ("icon-192.png", icon_png(192, hex(&color))),
-        ("icon-512.png", icon_png(512, hex(&color))),
+        ("icon-192.png", icon(192)),
+        ("icon-512.png", icon(512)),
     ];
     for (name, data) in files {
         std::fs::write(web.join(name), data).map_err(|e| e.to_string())?;
     }
     Ok(WebBuild { folder: web, left_out })
+}
+
+/// How the program shows as an app on a phone - Project > Web App (PWA): kept in Cargo.toml's
+/// `[package.metadata.phai-web]`, each one the form's and the theme's when not set.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WebApp {
+    /// Its name: the page's title, the app's name when installed.
+    pub name: String,
+    /// The name under its icon on the home screen; the first 12 letters of `name` when empty.
+    pub short: String,
+    /// The bar's colour, `#rrggbb`.
+    pub color: String,
+    /// The screen while it starts.
+    pub background: String,
+    /// any, portrait or landscape.
+    pub orientation: String,
+    /// A PNG of the project's for its icon; the leaf in `color` when empty.
+    pub icon: String,
+}
+
+/// The keys in Cargo.toml, in [`WebApp`]'s order.
+pub const WEB_APP_KEYS: [&str; 6] = ["name", "short-name", "theme-color", "background-color", "orientation", "icon"];
+
+impl WebApp {
+    pub fn of(project: &Path, title: &str, theme: &str) -> WebApp {
+        let text = std::fs::read_to_string(project.join("Cargo.toml")).unwrap_or_default();
+        let get = |k: &str| crate::cargo::table_field(&text, crate::cargo::WEB_APP_TABLE, k).filter(|v| !v.trim().is_empty());
+        WebApp {
+            name: get("name").unwrap_or_else(|| title.to_string()),
+            short: get("short-name").unwrap_or_default(),
+            color: get("theme-color").filter(|c| is_colour(c)).or_else(|| phai_form::web::theme_var(theme, "--accent")).unwrap_or_else(|| "#12855f".into()),
+            background: get("background-color").filter(|c| is_colour(c)).or_else(|| phai_form::web::theme_var(theme, "--surface")).unwrap_or_else(|| "#ffffff".into()),
+            orientation: get("orientation").unwrap_or_else(|| "any".into()),
+            icon: get("icon").unwrap_or_default(),
+        }
+    }
+
+    /// The icon's file, when one is set and is there.
+    pub fn icon_file(&self, project: &Path) -> Option<PathBuf> {
+        let i = self.icon.trim();
+        if i.is_empty() {
+            return None;
+        }
+        let p = Path::new(i);
+        let p = if p.is_absolute() { p.to_path_buf() } else { project.join(p) };
+        p.is_file().then_some(p)
+    }
+}
+
+/// `#rrggbb`.
+pub fn is_colour(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|d| d.is_ascii_hexdigit())
+}
+
+/// A PNG of any size made a square icon of `size`: fitted in the middle on `back`.
+pub fn scaled_icon(file: &Path, size: u32, back: (u8, u8, u8)) -> Option<Vec<u8>> {
+    let mut decoder = png::Decoder::new(std::fs::File::open(file).ok()?);
+    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let (sw, sh) = (info.width as usize, info.height as usize);
+    let channels = match info.color_type {
+        png::ColorType::Rgba => 4,
+        png::ColorType::Rgb => 3,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Grayscale => 1,
+        _ => return None,
+    };
+    if sw == 0 || sh == 0 {
+        return None;
+    }
+    let src = |x: usize, y: usize| -> [f32; 4] {
+        let i = (y * sw + x) * channels;
+        let p = &buf[i..i + channels];
+        match channels {
+            4 => [p[0] as f32, p[1] as f32, p[2] as f32, p[3] as f32],
+            3 => [p[0] as f32, p[1] as f32, p[2] as f32, 255.0],
+            2 => [p[0] as f32, p[0] as f32, p[0] as f32, p[1] as f32],
+            _ => [p[0] as f32, p[0] as f32, p[0] as f32, 255.0],
+        }
+    };
+    let size_u = size as usize;
+    // Fitted: the longer side fills the icon.
+    let scale = sw.max(sh) as f32 / size as f32;
+    let (dw, dh) = ((sw as f32 / scale).round() as usize, (sh as f32 / scale).round() as usize);
+    let (ox, oy) = ((size_u - dw.min(size_u)) / 2, (size_u - dh.min(size_u)) / 2);
+    let mut px = vec![0u8; size_u * size_u * 4];
+    for y in 0..size_u {
+        for x in 0..size_u {
+            let mut c = [0f32; 4];
+            if x >= ox && x < ox + dw && y >= oy && y < oy + dh {
+                // The average of the source pixels this one covers.
+                let (x0, x1) = (((x - ox) as f32 * scale) as usize, ((((x - ox) + 1) as f32 * scale) as usize).clamp(1, sw));
+                let (y0, y1) = (((y - oy) as f32 * scale) as usize, ((((y - oy) + 1) as f32 * scale) as usize).clamp(1, sh));
+                let (x0, y0) = (x0.min(x1 - 1), y0.min(y1 - 1));
+                let n = ((x1 - x0) * (y1 - y0)) as f32;
+                for sy in y0..y1 {
+                    for sx in x0..x1 {
+                        let p = src(sx, sy);
+                        for k in 0..4 {
+                            c[k] += p[k] / n;
+                        }
+                    }
+                }
+            }
+            // On the background: a phone's icon has no see-through parts.
+            let a = c[3] / 255.0;
+            let i = (y * size_u + x) * 4;
+            let mix = |v: f32, b: u8| (v * a + b as f32 * (1.0 - a)).round().clamp(0.0, 255.0) as u8;
+            px[i..i + 4].copy_from_slice(&[mix(c[0], back.0), mix(c[1], back.1), mix(c[2], back.2), 255]);
+        }
+    }
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, size, size);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().ok()?;
+        w.write_image_data(&px).ok()?;
+    }
+    Some(out)
 }
 
 /// RUSTFLAGS that keep this computer's folders out of the program a web page hands to anyone:
@@ -477,6 +598,45 @@ mod tests {
         let mut out = String::new();
         c.read_to_string(&mut out).unwrap();
         out
+    }
+
+    #[test]
+    fn the_web_app_takes_what_the_project_set_else_the_form_and_theme() {
+        let dir = std::env::temp_dir().join(format!("phai-webapp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"shop\"\n").unwrap();
+        let theme = "@import \"phai:light\";";
+        let a = WebApp::of(&dir, "My Shop", theme);
+        assert_eq!((a.name.as_str(), a.short.as_str(), a.orientation.as_str()), ("My Shop", "", "any"));
+        assert!(is_colour(&a.color) && is_colour(&a.background));
+        let mut t = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        for (k, v) in [("name", "ร้านค้า"), ("theme-color", "#ff0000"), ("orientation", "portrait"), ("icon", "art/logo.png")] {
+            t = crate::cargo::with_table_field(&t, crate::cargo::WEB_APP_TABLE, k, v);
+        }
+        std::fs::write(dir.join("Cargo.toml"), t).unwrap();
+        let a = WebApp::of(&dir, "My Shop", theme);
+        assert_eq!((a.name.as_str(), a.color.as_str(), a.orientation.as_str()), ("ร้านค้า", "#ff0000", "portrait"));
+        assert_eq!(a.icon_file(&dir), None, "not there yet");
+        std::fs::create_dir_all(dir.join("art")).unwrap();
+        // A wide picture: fitted in the middle of a square on the colour.
+        let mut wide = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut wide, 40, 20);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().unwrap().write_image_data(&[0u8; 40 * 20 * 3]).unwrap();
+        }
+        std::fs::write(dir.join("art/logo.png"), wide).unwrap();
+        let file = a.icon_file(&dir).unwrap();
+        let icon = scaled_icon(&file, 192, (255, 0, 0)).unwrap();
+        let mut r = png::Decoder::new(std::io::Cursor::new(icon)).read_info().unwrap();
+        let mut buf = vec![0u8; r.output_buffer_size()];
+        let info = r.next_frame(&mut buf).unwrap();
+        assert_eq!((info.width, info.height), (192, 192));
+        let at = |x: usize, y: usize| &buf[(y * 192 + x) * 4..(y * 192 + x) * 4 + 3];
+        assert_eq!(at(96, 5), &[255, 0, 0], "above the picture: the colour");
+        assert_eq!(at(96, 96), &[0, 0, 0], "the picture");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

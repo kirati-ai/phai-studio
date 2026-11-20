@@ -264,6 +264,8 @@ struct Fields {
     answer: Option<Vec<String>>,
     done: bool,
     font: Gdi::HFONT,
+    /// The labels' column: as wide as the widest, in pixels.
+    label_w: i32,
 }
 
 extern "system" fn fields_proc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -273,7 +275,7 @@ extern "system" fn fields_proc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LR
             let cw = win::loword(l.0 as usize) as i32;
             let ch = win::hiword(l.0 as usize) as i32;
             let (m, row, gap) = (win::px(hwnd, 11), win::px(hwnd, 23), win::px(hwnd, 8));
-            let label_w = win::px(hwnd, 110);
+            let label_w = s.label_w;
             let mut y = m;
             for (label, b, check) in &s.boxes {
                 if *check {
@@ -348,9 +350,15 @@ pub fn ask_fields(owner: Option<HWND>, title: &str, fields: &[Field]) -> Option<
         let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
         let cancel = win::button(hwnd, t("Cancel"), ID_CANCEL, font, false);
         let first = boxes.first().map(|b| b.1).unwrap_or_default();
-        win::set_state(hwnd, Box::new(Fields { boxes, ok, cancel, answer: None, done: false, font }));
+        // The labels' column fits the longest label (110 to 300 design pixels); the window grows with it.
+        let widest = fields.iter().filter_map(|f| match f {
+            Field::Text(l, _) | Field::Password(l, _) => Some(win::measure(hwnd, font, l).0),
+            Field::Check(..) => None,
+        }).max().unwrap_or(0);
+        let label_w = (widest + win::px(hwnd, 12)).clamp(win::px(hwnd, 110), win::px(hwnd, 300));
+        win::set_state(hwnd, Box::new(Fields { boxes, ok, cancel, answer: None, done: false, font, label_w }));
         let rows = fields.len() as i32;
-        let (w, h) = (win::px(hwnd, 400), win::px(hwnd, 11 * 2 + rows * 31 + 23 + 50));
+        let (w, h) = (win::px(hwnd, 290) + label_w, win::px(hwnd, 11 * 2 + rows * 31 + 23 + 50));
         let mut r = Default::default();
         match owner {
             Some(o) => {
