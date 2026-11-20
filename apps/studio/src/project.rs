@@ -267,15 +267,45 @@ impl MainWindowEvents for MainWindow {
 }
 "#;
 
+/// The first form of a phone app (New Project > Phone app): phone-sized, its controls one under
+/// another as wide as the screen, finger-sized - and the same `ok` and status bar as a Windows
+/// program's, so the code made for it fits.
+pub fn phone_form() -> FormFile {
+    let mut f = FormFile::new("MainWindow");
+    f.form.title = "My app".into();
+    f.form.size = [390, 700];
+    f.form.theme = Some("../theme.css".into());
+    let mut hello = Control::new(Kind::Label, "hello", [16, 16, 358, 28]);
+    hello.text = Some("Hello".into());
+    let mut name_label = Control::new(Kind::Label, "name_label", [16, 56, 358, 22]);
+    name_label.text = Some("Your name".into());
+    let mut name = Control::new(Kind::Edit, "name", [16, 80, 358, 40]);
+    name.anchor = Some("left top right".into());
+    let mut ok = Control::new(Kind::Button, "ok", [16, 620, 358, 44]);
+    ok.text = Some("OK".into());
+    ok.class = Some("primary".into());
+    ok.anchor = Some("left right bottom".into());
+    ok.on_click = Some("ok_clicked".into());
+    let mut status = Control::new(Kind::Statusbar, "status", [0, 0, 0, 26]);
+    status.text = Some("Ready".into());
+    f.control = vec![hello, name_label, name, ok, status];
+    f
+}
+
 /// Writes a new project into `dir`; returns its first form's path. `dir` must have no Cargo.toml.
 pub fn create(dir: &Path) -> std::io::Result<PathBuf> {
+    create_with(dir, false)
+}
+
+/// As [`create`]; `phone`: a phone app's - its form phone-sized, the web app upright.
+pub fn create_with(dir: &Path, phone: bool) -> std::io::Result<PathBuf> {
     if dir.join("Cargo.toml").exists() {
         return Err(std::io::Error::other("this folder already has a Cargo.toml"));
     }
     let name = package_name(&dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
     let src = dir.join("src");
     std::fs::create_dir_all(&src)?;
-    let f = first_form();
+    let f = if phone { phone_form() } else { first_form() };
     let form_path = src.join("main_window.phaiform");
     let opts = codegen::Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phaiform".into()) };
     let files: [(PathBuf, String); 9] = [
@@ -291,6 +321,12 @@ pub fn create(dir: &Path) -> std::io::Result<PathBuf> {
     ];
     for (path, text) in files {
         std::fs::write(path, text)?;
+    }
+    if phone {
+        // The app as a phone shows it: upright, named as the form is.
+        let toml = std::fs::read_to_string(dir.join("Cargo.toml"))?;
+        let toml = crate::cargo::with_table_field(&toml, crate::cargo::WEB_APP_TABLE, "orientation", "portrait");
+        std::fs::write(dir.join("Cargo.toml"), toml)?;
     }
     Ok(form_path)
 }
@@ -370,6 +406,22 @@ pub fn mend_libraries(project: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_phone_app_s_form_is_whole_and_phone_sized() {
+        let f = phone_form();
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(f.form.size[0], 390);
+        // The code made for a new project answers its OK: the same control as a Windows program's.
+        assert!(f.control.iter().any(|c| c.id == "ok" && c.on_click.as_deref() == Some("ok_clicked")));
+        let dir = std::env::temp_dir().join(format!("phai-phone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        create_with(&dir, true).unwrap();
+        let toml = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        assert!(toml.contains("[package.metadata.phai-web]
+orientation = \"portrait\""), "{toml}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_library_path_that_leads_nowhere_is_named_again() {
