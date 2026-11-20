@@ -38,6 +38,63 @@ pub const SIGNATURE: u16 = 0x0308;
 pub const ACTIONS: u16 = 0x0309;
 /// Escape with nothing of the editor's own open - a peek window closes on it.
 pub const ESCAPE: u16 = 0x030A;
+/// A test's ▶ in the margin was clicked: [`test_clicked`] names it.
+pub const RUN_TEST: u16 = 0x030B;
+
+/// How a line differs from the file as git last had it: the bar in the margin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change {
+    Added,
+    Modified,
+    /// Lines taken out just below this one.
+    Removed,
+}
+
+/// The tests in `text`: each `fn` with `#[test]` above it (attributes between allowed) - its
+/// line from 0 and its name.
+pub fn tests_in(text: &str) -> Vec<(usize, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let t = l.trim_start();
+        let rest = t.strip_prefix("pub ").unwrap_or(t);
+        let rest = rest.strip_prefix("async ").unwrap_or(rest);
+        let Some(after) = rest.strip_prefix("fn ") else { continue };
+        let name: String = after.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        let mut j = i;
+        let mut is_test = false;
+        while j > 0 {
+            j -= 1;
+            let a = lines[j].trim();
+            if a.starts_with("#[") {
+                if a.starts_with("#[test]") || a.starts_with("#[tokio::test") {
+                    is_test = true;
+                }
+            } else if !a.starts_with("//") {
+                break;
+            }
+        }
+        if is_test && !name.is_empty() {
+            out.push((i, name));
+        }
+    }
+    out
+}
+
+/// The lines changed from the file as git last had it, lines from 0: the bar beside them.
+pub fn set_changes(h: HWND, changes: &[(usize, Change)]) {
+    if let Some(v) = view(h) {
+        v.changes = changes.iter().copied().collect();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// The test whose ▶ was clicked last.
+pub fn test_clicked(h: HWND) -> Option<String> {
+    view(h).and_then(|v| v.clicked_test.clone())
+}
 
 /// A diagnostic placed in the text: byte offsets, how bad, what it says.
 #[derive(Clone, Debug)]
@@ -127,6 +184,12 @@ struct View {
     disabled: Vec<usize>,
     /// Code coverage: each measured line (from 0) and whether the tests ran it.
     coverage: std::collections::HashMap<usize, bool>,
+    /// The lines changed since git's last commit of the file.
+    changes: std::collections::HashMap<usize, Change>,
+    /// The tests' lines and names, as of `tests_for` edits.
+    tests: Vec<(usize, String)>,
+    tests_for: usize,
+    clicked_test: Option<String>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -298,7 +361,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default() }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1263,6 +1326,11 @@ pub fn zoom(h: HWND, by: i32) {
 fn paint(h: HWND, v: &mut View) {
     refont(h, v);
     v.refresh_comments();
+    // The tests' ▶: found again when the text changed.
+    if v.tests_for != v.edits {
+        v.tests = if v.lang == Language::Rust { tests_in(&v.model.buf.text()) } else { Vec::new() };
+        v.tests_for = v.edits;
+    }
     refresh_hits(v);
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
@@ -1429,6 +1497,29 @@ fn paint(h: HWND, v: &mut View) {
             // A breakpoint: a red dot in the margin; the debugger's place: a yellow arrow.
             let d = v.line_h - win::px(h, 6);
             let (bx, by) = (win::px(h, 3), y + (v.line_h - d) / 2);
+            // Changed since git's last commit: a bar at the text's edge - green added, blue
+            // changed, a red notch where lines were taken out - as Visual Studio and Android Studio show.
+            if let Some(ch) = v.changes.get(&line) {
+                let gx = v.gutter() - win::px(h, 4);
+                match ch {
+                    Change::Added => win::fill(dc, &RECT { left: gx, top: y, right: gx + win::px(h, 3), bottom: y + v.line_h }, Color::rgb(0x2e, 0xa0, 0x43)),
+                    Change::Modified => win::fill(dc, &RECT { left: gx, top: y, right: gx + win::px(h, 3), bottom: y + v.line_h }, Color::rgb(0x1c, 0x6f, 0xd1)),
+                    Change::Removed => win::fill(dc, &RECT { left: gx, top: y + v.line_h - win::px(h, 3), right: gx + win::px(h, 6), bottom: y + v.line_h + win::px(h, 1) }, Color::rgb(0xd1, 0x34, 0x38)),
+                }
+            }
+            // A test: a green ▶ in the margin, where a breakpoint is not - a click runs it.
+            if v.tests.iter().any(|(l, _)| *l == line) && !v.breakpoints.contains(&line) && !v.bookmarks.contains(&line) {
+                let g = Color::rgb(0x2e, 0xa0, 0x43);
+                let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(g.colorref()));
+                let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, windows::Win32::Foundation::COLORREF(g.colorref()));
+                let (ob, op) = (Gdi::SelectObject(dc, brush.into()), Gdi::SelectObject(dc, pen.into()));
+                let pts = [windows::Win32::Foundation::POINT { x: bx + d / 6, y: by }, windows::Win32::Foundation::POINT { x: bx + d / 6, y: by + d }, windows::Win32::Foundation::POINT { x: bx + d / 6 + d * 5 / 6, y: by + d / 2 }];
+                let _ = Gdi::Polygon(dc, &pts);
+                Gdi::SelectObject(dc, ob);
+                Gdi::SelectObject(dc, op);
+                let _ = Gdi::DeleteObject(brush.into());
+                let _ = Gdi::DeleteObject(pen.into());
+            }
             // Code coverage: a bar at the very left, green where the tests ran the line, red not.
             if let Some(ran) = v.coverage.get(&line) {
                 let c = if *ran { Color::rgb(0x2e, 0xa0, 0x43) } else { Color::rgb(0xd1, 0x34, 0x38) };
@@ -1971,8 +2062,15 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 Gdi::SelectObject(dc, old);
                 Gdi::ReleaseDC(Some(h), dc);
                 if msg == wm::WM_LBUTTONDOWN && x < v.line_h + win::px(h, 4) {
-                    // A click in the margin: a breakpoint on that line, or none.
+                    // A click in the margin: a breakpoint on that line, or none - on a test's ▶, the test run.
                     let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize).min(v.model.buf.line_count().saturating_sub(1));
+                    if !v.breakpoints.contains(&line) {
+                        if let Some((_, name)) = v.tests.iter().find(|(l, _)| *l == line) {
+                            v.clicked_test = Some(name.clone());
+                            notify(h, RUN_TEST);
+                            return LRESULT(0);
+                        }
+                    }
                     toggle_line(h, v, line);
                     return LRESULT(0);
                 } else if msg == wm::WM_LBUTTONDOWN && lens_at(h, v, x, y).is_some() {

@@ -46,6 +46,7 @@ mod phone;
 mod devices;
 mod search;
 mod winlayout;
+mod changes;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -2478,6 +2479,8 @@ impl Studio {
             self.active = self.tabs.len() - 1;
         }
         self.doc = Doc { code: Some(h), crlf, ..Doc::new(FormFile::new("Code"), Some(path.to_path_buf())) };
+        // The lines changed since git's last commit: the bar beside them.
+        phai_editor::view::set_changes(h, &changes::of_file(path));
         if path.extension().is_some_and(|e| e == "rs") {
             if let Some(l) = self.lsp_for(path) {
                 l.did_open(path, &text);
@@ -3764,6 +3767,22 @@ impl Studio {
         controls::tabs_select(self.tabbar, self.active);
     }
 
+    /// A test's ▶ in the editor's margin: that one test run (`cargo test file::tests::name`),
+    /// its outcome in the Tests window as Run Tests shows it.
+    pub fn run_one_test(&mut self, editor: HWND) {
+        let Some(name) = phai_editor::view::test_clicked(editor) else { return };
+        // Its module's path, so `--exact` finds it: `tests::name` in the usual place.
+        let text = phai_editor::view::text(editor);
+        let module = if text.contains("mod tests") { "tests::" } else { "" };
+        let path = self.doc.path.as_deref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().to_string()).filter(|s| s != "main" && s != "lib");
+        let full = match path {
+            Some(file) => format!("{file}::{module}{name}"),
+            None => format!("{module}{name}"),
+        };
+        *cargo::TEST_FILTER.lock().unwrap_or_else(|e| e.into_inner()) = Some(full);
+        self.start_job(cargo::Job::Test, false);
+    }
+
     /// Format > Infer Anchors, as Android Studio's Infer Constraints: the controls chosen (all of
     /// them when none is) anchored as where they are suggests - across, to the right, down, to the
     /// bottom - within the form or the group they are in. One step of Undo.
@@ -4172,6 +4191,7 @@ impl Studio {
                         l.did_save(&path);
                     }
                     phai_editor::view::set_clean(h);
+                    phai_editor::view::set_changes(h, &changes::of_file(&path));
                     self.doc.dirty = false;
                     self.say_title();
                     self.refresh_tabs();

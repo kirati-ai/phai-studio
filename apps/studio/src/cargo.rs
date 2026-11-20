@@ -351,6 +351,9 @@ pub fn job_args(job: Job, whole: bool, package: Option<&str>, release: bool) -> 
     }
 }
 
+/// One test to run, for the next test job: a ▶ clicked in the editor's margin.
+pub static TEST_FILTER: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 /// Where Cargo is: on the PATH, in `CARGO_HOME`, in the usual place, or in `D:\Tools\Rust`.
 pub fn find_cargo() -> Option<PathBuf> {
     // The one Tools > Options names, when it is there.
@@ -513,7 +516,12 @@ pub fn run_job(window: HWND, project: PathBuf, job: Job, whole: bool, then_run: 
         let started = std::time::Instant::now();
         let mut out = Outcome { then_run, job, ok: true, ..Default::default() };
         let package = package_name(&project);
-        for args in job_args(job, whole, package.as_deref(), release) {
+        let one = if job == Job::Test { TEST_FILTER.lock().unwrap_or_else(|e| e.into_inner()).take() } else { None };
+        for mut args in job_args(job, whole, package.as_deref(), release) {
+            // One test only: its path ends so (`web::tests::name` in `app::web::tests::name`).
+            if let Some(name) = &one {
+                args.push(name.clone());
+            }
             step(target, &project, &args, &mut out);
             if !out.ok || out.no_cargo {
                 break;
