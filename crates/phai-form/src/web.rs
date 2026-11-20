@@ -599,7 +599,9 @@ textarea.phai-edit { padding: 4px 6px; resize: none; }
 "#;
 
 /// The page: the window's title, the theme, the program started.
-pub fn index_html(title: &str, package: &str, theme: &str, color: &str) -> String {
+/// `version` names this build on the program's files, so a browser never pairs a new page with
+/// an old program it kept.
+pub fn index_html(title: &str, package: &str, theme: &str, color: &str, version: &str) -> String {
     format!(
         r#"<!doctype html>
 <html lang="th">
@@ -618,8 +620,8 @@ pub fn index_html(title: &str, package: &str, theme: &str, color: &str) -> Strin
 </head>
 <body>
 <script type="module">
-import start from "./pkg/{package}.js";
-start();
+import start from "./pkg/{package}.js?v={version}";
+start({{ module_or_path: "./pkg/{package}_bg.wasm?v={version}" }});
 if ("serviceWorker" in navigator) {{
   navigator.serviceWorker.register("sw.js");
 }}
@@ -678,7 +680,7 @@ pub fn manifest(name: &str, color: &str, background: &str) -> String {
 pub fn service_worker(package: &str, version: &str) -> String {
     format!(
         r#"const CACHE = "phai-{package}-{version}";
-const FILES = [".", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "pkg/{package}.js", "pkg/{package}_bg.wasm"];
+const FILES = [".", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "pkg/{package}.js?v={version}", "pkg/{package}_bg.wasm?v={version}"];
 self.addEventListener("install", (e) => {{
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
 }});
@@ -688,7 +690,7 @@ self.addEventListener("activate", (e) => {{
 self.addEventListener("fetch", (e) => {{
   if (e.request.method !== "GET") return;
   // The network first, so a new version shows at once; what was kept when there is none.
-  e.respondWith(fetch(e.request).then((r) => {{
+  e.respondWith(fetch(e.request, {{ cache: "no-cache" }}).then((r) => {{
     const copy = r.clone();
     caches.open(CACHE).then((c) => c.put(e.request, copy));
     return r;
@@ -768,7 +770,8 @@ mod tests {
 
     #[test]
     fn the_pwa_files_name_the_program() {
-        let page = index_html("Shop <1>", "shop", ".phai-button { }", "#12855f");
+        let page = index_html("Shop <1>", "shop", ".phai-button { }", "#12855f", "7");
+        assert!(page.contains("./pkg/shop.js?v=7") && page.contains("module_or_path: \"./pkg/shop_bg.wasm?v=7\""), "{page}");
         assert!(page.contains("./pkg/shop.js") && page.contains("Shop &lt;1&gt;") && page.contains("manifest.webmanifest"));
         let m = manifest("ร้านค้าของฉันทั้งหมดเลย", "#12855f", "#ffffff");
         assert!(m.contains("\"short_name\": \"ร้านค้าของฉั\"") && m.contains("standalone") && !m.contains("\\u{"), "{m}");
