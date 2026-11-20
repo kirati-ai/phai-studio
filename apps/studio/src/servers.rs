@@ -194,7 +194,7 @@ impl Servers {
                 true
             }
             Some(Err(e)) => {
-                win::message(Some(owner), &e, t("Could not connect"), wm::MB_ICONWARNING);
+                win::message(Some(owner), &crate::connectdlg::said_of(&new, &e), t("Could not connect"), wm::MB_ICONWARNING);
                 false
             }
             None => false,

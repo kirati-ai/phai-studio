@@ -2002,6 +2002,42 @@ impl Studio {
 
     /// Double-click: give the control a handler if it has none, and put the empty method in the
     /// programmer's file if the form is saved and the method is not there yet.
+    /// The designer's right-click menu: for what is chosen (a control, several, a component) or
+    /// the form itself - only what can be used now (see `avail`).
+    pub fn designer_menu(&mut self, owner: HWND) {
+        const VIEW_CODE: u32 = 1;
+        const PROPERTIES: u32 = 2;
+        let now = avail::Now::of(self);
+        let chosen = !self.selection().is_empty();
+        let mut items: Vec<(u32, &str)> = vec![(VIEW_CODE, t("View Code")), (0, "")];
+        for (id, label) in [(ID_CUT, t("Cut")), (ID_COPY, t("Copy")), (ID_PASTE, t("Paste")), (ID_DELETE, t("Delete")), (ID_SELECT_ALL, t("Select all"))] {
+            if now.enabled(id) && (chosen || matches!(id, ID_PASTE | ID_SELECT_ALL)) {
+                items.push((id as u32, label));
+            }
+        }
+        if chosen {
+            items.push((0, ""));
+            items.push((ID_FRONT as u32, t("Bring to Front")));
+            items.push((ID_BACK as u32, t("Send to Back")));
+        }
+        items.push((0, ""));
+        items.push((ID_LOCK as u32, t("Lock Controls")));
+        items.push((PROPERTIES, t("Properties")));
+        match win::popup(owner, &items) {
+            0 => {}
+            VIEW_CODE => {
+                // The form's own code: its handlers, beside the form.
+                if let Some(code) = self.doc.path.as_ref().map(|p| p.with_extension("rs")).filter(|p| p.is_file()) {
+                    self.open_code(&code);
+                } else {
+                    self.add_handler_for_selected();
+                }
+            }
+            PROPERTIES => self.show_pane(Pane::Properties, true),
+            id => self.command(id as i32),
+        }
+    }
+
     pub fn add_handler_for_selected(&mut self) {
         // The form itself: its code, at the first method - or a new `loaded`, which runs as the
         // window opens, as a WinForms form's double-click writes Form_Load.
@@ -7784,6 +7820,10 @@ fn main() {
             if let Ok(out) = std::env::var("PHAI_SHOT") {
                 let dlg = connectdlg::make(hwnd, None);
                 connectdlg::show_kind(dlg, k);
+                // `PHAI_CONNECT_CLICK=N,M,..`: then those cards clicked in turn, as the mouse would.
+                for c in std::env::var("PHAI_CONNECT_CLICK").unwrap_or_default().split(',').filter_map(|v| v.trim().parse::<usize>().ok()) {
+                    connectdlg::click_card(dlg, c);
+                }
                 win::show_top(dlg);
                 let mut msg = wm::MSG::default();
                 while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
