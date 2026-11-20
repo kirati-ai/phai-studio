@@ -652,9 +652,14 @@ fn json_str(s: &str) -> String {
     o
 }
 
-/// What a phone reads to install the page as an app.
-pub fn manifest(name: &str, color: &str, background: &str) -> String {
-    let short = json_str(&name.chars().take(12).collect::<String>());
+/// What a phone reads to install the page as an app. `short` is the name under its icon (the
+/// first 12 letters of `name` when empty); `orientation` any, portrait or landscape.
+pub fn manifest(name: &str, short: &str, color: &str, background: &str, orientation: &str) -> String {
+    let short = json_str(&if short.trim().is_empty() { name.chars().take(12).collect::<String>() } else { short.trim().to_string() });
+    let orientation = json_str(match orientation.trim() {
+        "portrait" | "landscape" => orientation.trim(),
+        _ => "any",
+    });
     let (name, color, background) = (json_str(name), json_str(color), json_str(background));
     format!(
         r#"{{
@@ -663,6 +668,7 @@ pub fn manifest(name: &str, color: &str, background: &str) -> String {
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
+  "orientation": {orientation},
   "background_color": {background},
   "theme_color": {color},
   "icons": [
@@ -773,8 +779,10 @@ mod tests {
         let page = index_html("Shop <1>", "shop", ".phai-button { }", "#12855f", "7");
         assert!(page.contains("./pkg/shop.js?v=7") && page.contains("module_or_path: \"./pkg/shop_bg.wasm?v=7\""), "{page}");
         assert!(page.contains("./pkg/shop.js") && page.contains("Shop &lt;1&gt;") && page.contains("manifest.webmanifest"));
-        let m = manifest("ร้านค้าของฉันทั้งหมดเลย", "#12855f", "#ffffff");
-        assert!(m.contains("\"short_name\": \"ร้านค้าของฉั\"") && m.contains("standalone") && !m.contains("\\u{"), "{m}");
+        let m = manifest("ร้านค้าของฉันทั้งหมดเลย", "", "#12855f", "#ffffff", "");
+        assert!(m.contains("\"short_name\": \"ร้านค้าของฉั\"") && m.contains("standalone") && m.contains("\"orientation\": \"any\"") && !m.contains("\\u{"), "{m}");
+        let m = manifest("Shop", "ร้าน", "#12855f", "#ffffff", "portrait");
+        assert!(m.contains("\"short_name\": \"ร้าน\"") && m.contains("\"orientation\": \"portrait\""), "{m}");
         assert_eq!(json_str("a\"b\\c\n"), r#""a\"b\\c\u000a""#);
         assert!(service_worker("shop", "7").contains("pkg/shop_bg.wasm") && service_worker("shop", "7").contains("phai-shop-7"));
     }

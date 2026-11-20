@@ -207,6 +207,8 @@ const ID_BUILD_WEB: i32 = 294;
 const ID_RUN_WEB: i32 = 295;
 /// Build > Run on Phone: built for the web, served to this network, its address as a QR code.
 const ID_RUN_PHONE: i32 = 296;
+/// Project > Web App (PWA): its name, short name, colours, orientation and icon on a phone.
+const ID_WEB_APP: i32 = 297;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
 
@@ -1161,6 +1163,7 @@ fn build_menu() -> HMENU {
         add(proj, ID_MANAGE_CRATES, t("Manage Crates..."), "");
         sep(proj);
         add(proj, ID_PROJECT_PROPS, &tf("{0} Properties...", &[&project]), "Alt+F7");
+        add(proj, ID_WEB_APP, t("Web App (PWA)..."), "");
         sub(t("&Project"), proj);
         let test = wm::CreatePopupMenu().unwrap_or_default();
         add(test, ID_RUN_TESTS, &tf("Run Tests of {0}", &[&project]), "Ctrl+R, T");
@@ -3165,6 +3168,62 @@ impl Studio {
         }
         if std::env::var_os("PHAI_PROPS_TEST").is_some() {
             println!("description now: {}", cargo::package_field(&dir, "description").unwrap_or_default());
+        }
+    }
+
+    /// Project > Web App (PWA): how the program shows when a phone installs it - kept in
+    /// Cargo.toml's `[package.metadata.phai-web]`, read by the next build for the web.
+    fn web_app_settings(&mut self) {
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else { return };
+        let now: Vec<String> = web::WEB_APP_KEYS.iter().map(|k| cargo::table_field(&text, cargo::WEB_APP_TABLE, k).unwrap_or_default()).collect();
+        let answers: Vec<String> = match std::env::var("PHAI_WEB_APP_TEST") {
+            // `PHAI_WEB_APP_TEST=a|b|c|d|e|f`: those answers, as typed.
+            Ok(v) => v.split('|').map(str::to_string).chain(std::iter::repeat(String::new())).take(6).collect(),
+            Err(_) => {
+                let fields = [
+                    // Each one left empty: the form's or the theme's.
+                    phai_ui::dialogs::Field::Text(t("App name:"), &now[0]),
+                    phai_ui::dialogs::Field::Text(t("Name under the icon:"), &now[1]),
+                    phai_ui::dialogs::Field::Text(t("Bar colour (#rrggbb):"), &now[2]),
+                    phai_ui::dialogs::Field::Text(t("Colour as it opens (#rrggbb):"), &now[3]),
+                    phai_ui::dialogs::Field::Text(t("Screen (any, portrait, landscape):"), &now[4]),
+                    phai_ui::dialogs::Field::Text(t("Icon (a PNG in the project):"), &now[5]),
+                ];
+                let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Web App (PWA)"), &fields) else { return };
+                a
+            }
+        };
+        let answers: Vec<String> = answers.iter().map(|a| a.trim().to_string()).collect();
+        let wrong = if [&answers[2], &answers[3]].iter().any(|c| !c.is_empty() && !web::is_colour(c)) {
+            Some(t("A colour is # and six hex digits: #12855f."))
+        } else if !["", "any", "portrait", "landscape"].contains(&answers[4].as_str()) {
+            Some(t("The screen is any, portrait or landscape."))
+        } else if answers[1].chars().count() > 12 {
+            Some(t("The name under the icon is 12 letters or fewer - a phone cuts a longer one."))
+        } else if !answers[5].is_empty() && !answers[5].to_ascii_lowercase().ends_with(".png") {
+            Some(t("The icon is a PNG file - square, 512 x 512 or larger, looks best."))
+        } else {
+            None
+        };
+        if let Some(w) = wrong {
+            win::message(Some(self.hwnd), w, t("Web App (PWA)"), wm::MB_ICONWARNING);
+            return;
+        }
+        let mut text = text;
+        for (k, key) in web::WEB_APP_KEYS.iter().enumerate() {
+            if answers[k] != now[k] {
+                text = cargo::with_table_field(&text, cargo::WEB_APP_TABLE, key, &answers[k]);
+            }
+        }
+        match std::fs::write(dir.join("Cargo.toml"), &text) {
+            Ok(()) => controls::status_text(self.status, 0, &tf("Saved {0}", &[&"Cargo.toml"])),
+            Err(e) => {
+                win::message(Some(self.hwnd), &e.to_string(), "Phai Studio", wm::MB_ICONWARNING);
+            }
         }
     }
 
@@ -6406,6 +6465,7 @@ impl Studio {
             ID_TASK_LIST => self.task_list(),
             ID_BATCH_BUILD => self.batch_build(),
             ID_PROJECT_PROPS => self.project_properties(),
+            ID_WEB_APP => self.web_app_settings(),
             ID_ADD_FORM => self.add_form(false),
             ID_ADD_USER_CONTROL => self.add_form(true),
             ID_ADD_REPORT => match self.doc.path.as_deref().and_then(cargo::project_of) {

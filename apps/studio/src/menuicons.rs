@@ -111,6 +111,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         ID_BUILD_WEB => (0xE774, BLUE), // Globe
         ID_RUN_WEB => (0xE774, GREEN),
         ID_RUN_PHONE => (0xE8EA, GREEN),
+        ID_WEB_APP => (0xE8EA, BLUE),
         ID_DEBUG | ID_RELEASE => return None,
         // Debug
         ID_RUN => (glyph::PLAY, GREEN),
