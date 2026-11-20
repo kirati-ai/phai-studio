@@ -232,6 +232,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its width and height, at 100% scale.", "ความกว้างและความสูง ที่สเกล 100%"),
     ("Float", "ลอย"),
     ("Auto Hide", "ซ่อนอัตโนมัติ"),
+    ("Studio Colours", "สีของ Studio"),
     ("It answers: {0} {1}", "เชื่อมต่อได้: {0} {1}"),
     ("Name the server first", "ใส่ชื่อเซิร์ฟเวอร์ก่อน"),
     ("Choose or name a file first", "เลือกหรือตั้งชื่อไฟล์ก่อน"),
