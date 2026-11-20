@@ -232,6 +232,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its width and height, at 100% scale.", "ความกว้างและความสูง ที่สเกล 100%"),
     ("Float", "ลอย"),
     ("Auto Hide", "ซ่อนอัตโนมัติ"),
+    ("Cargo.toml: the Phai libraries' folder was gone - now named where this Phai Studio has them.", "Cargo.toml: โฟลเดอร์ไลบรารี Phai เดิมไม่อยู่แล้ว - เปลี่ยนไปใช้ที่ที่ Phai Studio ตัวนี้มี"),
     ("Align", "จัดแนว"),
     ("Lefts", "ชิดซ้าย"),
     ("Centers", "กึ่งกลางแนวตั้ง"),
