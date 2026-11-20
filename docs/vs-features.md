@@ -156,33 +156,33 @@
 | ★ | Code Coverage (Test > Analyze Code Coverage for All Tests): รันเทสต์ด้วย -C instrument-coverage ของ Rust แล้ววัดด้วย llvm-tools (ฟรี, เสนอติดตั้งให้ถ้ายังไม่มี) - % ต่อไฟล์ และแถบเขียว/แดงที่ขอบซ้ายของแต่ละบรรทัด - ทดสอบ: ฟังก์ชันที่ไม่มีเทสต์เป็นสีแดง | ✅ |
 | ★ | คู่มือภาษาไทย (Help > Phai Studio Guide, F1): วิธีใช้ Phai Studio และบทเรียน Rust 11 บทสำหรับมือใหม่ พร้อมแบบฝึกหัด เปิดได้โดยไม่ต้องต่อเน็ต ติดตั้งมากับตัวติดตั้ง - ตัวอย่างโค้ดตรวจคอมไพล์แล้ว | ✅ |
 
-## รอบสอง (2026-11-20): ที่ Visual Studio มี แต่ Phai Studio ยังไม่มี
+## รอบสอง (2026-11-20): ที่ Visual Studio มี แต่ Phai Studio ยังไม่มี - ทำแล้วทุกข้อ ยกเว้น Hot Reload
 
 ตรวจจากโค้ดจริงหลังทำแผน 4 ระยะใน `docs/ide-research.md` เสร็จ
 
 | | ความสามารถ | สถานะ |
 |---|---|---|
-| ★ | Go To Line (Ctrl+G): กล่องใส่เลขบรรทัด | ⬜ |
-| ★ | Run to Cursor (Ctrl+F10) และ Run to Click (ลูกศรเขียวข้างบรรทัดตอนหยุด) | ⬜ |
-| ★ | Set Next Statement (Ctrl+Shift+F10): ลากลูกศรเหลืองไปบรรทัดอื่น | ⬜ |
-| ★ | Replace in Files (Ctrl+Shift+H) | ⬜ |
-| ★ | Ctrl+Tab: หน้าต่างสลับเอกสาร/หน้าต่างเครื่องมือ | ⬜ |
-| | Tracepoint / Actions ของ breakpoint: พิมพ์ข้อความลง Output แล้วไปต่อ ไม่หยุด | ⬜ |
-| | หน้าต่าง Autos: เฉพาะตัวแปรที่บรรทัดนี้และบรรทัดก่อนใช้ | ⬜ |
-| | หน้าต่าง Modules: DLL ที่โหลด | ⬜ |
-| | Exception Helper: กล่องอธิบาย panic ตรงบรรทัดที่หยุด | ⬜ |
-| | Expand / Shrink Selection (Shift+Alt+= / Shift+Alt+-) | ⬜ |
-| | Surround With (Ctrl+K, Ctrl+S): ครอบโค้ดที่เลือกด้วย if / for / match | ⬜ |
-| | Clipboard Ring (Ctrl+Shift+V): วางของที่คัดลอกก่อนหน้า | ⬜ |
-| | Word Wrap, View White Space, เส้นแนวตั้งที่คอลัมน์ 100 | ⬜ |
-| | Inlay hints: ชนิดของตัวแปร และชื่อพารามิเตอร์ (จาก rust-analyzer) | ⬜ |
-| | สีวงเล็บเป็นคู่ (bracket pair colorization), เส้นแนวเยื้อง (indent guides) | ⬜ |
-| | Sticky scroll: บรรทัดหัวฟังก์ชันค้างด้านบนตอนเลื่อน | ⬜ |
-| | Scroll bar map: แถบเลื่อนแสดงตำแหน่ง error, การแก้, เคอร์เซอร์ | ⬜ |
-| | Track Active Item ใน Solution Explorer (ไฮไลต์ไฟล์ที่เปิดอยู่) | ⬜ |
-| | Git: สาขาปัจจุบันบนแถบสถานะ, สร้าง/สลับสาขา, stash | ⬜ |
-| | เทียบไฟล์สองไฟล์ (Compare Files / diff tool) | ⬜ |
-| | Full Screen (Shift+Alt+Enter) | ⬜ |
-| | Class View / Object Browser | ⬜ |
+| ★ | Go To Line (Ctrl+G): กล่องใส่เลขบรรทัด | ✅ |
+| ★ | Run to Cursor (Ctrl+F10) และ Run to Click (ลูกศรเขียวข้างบรรทัดตอนหยุด) | ✅ |
+| ★ | Set Next Statement (Ctrl+Shift+F10): ลากลูกศรเหลืองไปบรรทัดอื่น | ✅ |
+| ★ | Replace in Files (Ctrl+Shift+H) | ✅ |
+| ★ | Ctrl+Tab: หน้าต่างสลับเอกสาร/หน้าต่างเครื่องมือ | ✅ |
+| | Tracepoint / Actions ของ breakpoint: พิมพ์ข้อความลง Output แล้วไปต่อ ไม่หยุด | ✅ |
+| | หน้าต่าง Autos: เฉพาะตัวแปรที่บรรทัดนี้และบรรทัดก่อนใช้ | ✅ |
+| | หน้าต่าง Modules: DLL ที่โหลด | ✅ |
+| | Exception Helper: กล่องอธิบาย panic ตรงบรรทัดที่หยุด | ✅ |
+| | Expand / Shrink Selection (Shift+Alt+= / Shift+Alt+-) | ✅ |
+| | Surround With (Ctrl+K, Ctrl+S): ครอบโค้ดที่เลือกด้วย if / for / match | ✅ |
+| | Clipboard Ring (Ctrl+Shift+V): วางของที่คัดลอกก่อนหน้า | ✅ |
+| | Word Wrap, View White Space, เส้นแนวตั้งที่คอลัมน์ 100 | ✅ |
+| | Inlay hints: ชนิดของตัวแปร และชื่อพารามิเตอร์ (จาก rust-analyzer) | ✅ |
+| | สีวงเล็บเป็นคู่ (bracket pair colorization), เส้นแนวเยื้อง (indent guides) | ✅ |
+| | Sticky scroll: บรรทัดหัวฟังก์ชันค้างด้านบนตอนเลื่อน | ✅ |
+| | Scroll bar map: แถบเลื่อนแสดงตำแหน่ง error, การแก้, เคอร์เซอร์ | ✅ |
+| | Track Active Item ใน Solution Explorer (ไฮไลต์ไฟล์ที่เปิดอยู่) | ✅ |
+| | Git: สาขาปัจจุบันบนแถบสถานะ, สร้าง/สลับสาขา, stash | ✅ |
+| | เทียบไฟล์สองไฟล์ (Compare Files / diff tool) | ✅ |
+| | Full Screen (Shift+Alt+Enter) | ✅ |
+| | Class View / Object Browser | ✅ |
 | | Hot Reload / Edit and Continue | ⬜ Rust ทำยาก - มีตัวตรวจสด F12 สำหรับหน้าตาแทน |
 

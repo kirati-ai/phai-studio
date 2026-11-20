@@ -87,8 +87,11 @@ pub struct Place {
 
 /// The tree's nodes for `files`: each type, trait or module with its file and line, and its
 /// methods under it; the free functions under one node of their own. Sorted by name.
-pub fn class_tree(files: &[(PathBuf, String)]) -> Vec<(String, Option<Place>, Vec<(String, Place)>)> {
-    let mut types: Vec<(String, Option<Place>, Vec<(String, Place)>)> = Vec::new();
+/// A node of Class View: its name, where it is declared (when it is), and its methods.
+pub type Node = (String, Option<Place>, Vec<(String, Place)>);
+
+pub fn class_tree(files: &[(PathBuf, String)]) -> Vec<Node> {
+    let mut types: Vec<Node> = Vec::new();
     let mut free: Vec<(String, Place)> = Vec::new();
     for (path, text) in files {
         // A macro's `$name` is not a type of the program.
@@ -114,11 +117,11 @@ pub fn class_tree(files: &[(PathBuf, String)]) -> Vec<(String, Option<Place>, Ve
             }
         }
     }
-    types.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    types.sort_by_key(|a| a.0.to_lowercase());
     for t in &mut types {
-        t.2.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+        t.2.sort_by_key(|a| a.0.to_lowercase());
     }
-    free.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    free.sort_by_key(|a| a.0.to_lowercase());
     if !free.is_empty() {
         types.push((t("(functions)").to_string(), None, free));
     }
