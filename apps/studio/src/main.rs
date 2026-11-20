@@ -48,6 +48,7 @@ mod search;
 mod winlayout;
 mod changes;
 mod keymap;
+mod newproj;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -4611,10 +4612,16 @@ impl Studio {
     }
 
     fn new_project(&mut self) {
+        // Which kind first, as Visual Studio's New Project: a Windows program or a phone app.
+        let Some(template) = newproj::choose(self.hwnd) else { return };
         let Some(dir) = project::pick_folder(self.hwnd, t("Choose an empty folder for the new project")) else { return };
-        match project::create(&dir) {
+        match project::create_with(&dir, template == 1) {
             Ok(form) => {
                 self.open_path(&form);
+                if template == 1 {
+                    // A phone app: its form shown on a phone at once.
+                    devices::open(self.hwnd, &self.doc.form);
+                }
                 controls::status_text(self.status, 0, &tf("New project in {0}", &[&dir.display()]));
             }
             Err(e) => {
@@ -8511,6 +8518,24 @@ fn main() {
                 win::show_top(dlg);
                 // Two seconds of its life: the screens drawn and photographed again on its timer.
                 let until = std::time::Instant::now() + std::time::Duration::from_millis(2000);
+                let mut msg = wm::MSG::default();
+                while std::time::Instant::now() < until {
+                    while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                        let _ = wm::TranslateMessage(&msg);
+                        wm::DispatchMessageW(&msg);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
+                std::process::exit(0);
+            }
+        }
+        // `--templates`: New Project's templates, photographed with PHAI_SHOT.
+        if args.iter().any(|a| a == "--templates") {
+            if let Ok(out) = std::env::var("PHAI_SHOT") {
+                let dlg = newproj::make(hwnd);
+                win::show_top(dlg);
+                let until = std::time::Instant::now() + std::time::Duration::from_millis(700);
                 let mut msg = wm::MSG::default();
                 while std::time::Instant::now() < until {
                     while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
