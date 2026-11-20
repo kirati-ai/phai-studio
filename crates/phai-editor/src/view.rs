@@ -48,6 +48,8 @@ pub enum Change {
     Modified,
     /// Lines taken out just below this one.
     Removed,
+    /// A line that is not in the other file (Compare Files' left side).
+    Deleted,
 }
 
 /// The tests in `text`: each `fn` with `#[test]` above it (attributes between allowed) - its
@@ -1884,6 +1886,7 @@ fn paint(h: HWND, v: &mut View) {
                     Change::Added => win::fill(dc, &RECT { left: gx, top: y, right: gx + win::px(h, 3), bottom: y + v.line_h }, Color::rgb(0x2e, 0xa0, 0x43)),
                     Change::Modified => win::fill(dc, &RECT { left: gx, top: y, right: gx + win::px(h, 3), bottom: y + v.line_h }, Color::rgb(0x1c, 0x6f, 0xd1)),
                     Change::Removed => win::fill(dc, &RECT { left: gx, top: y + v.line_h - win::px(h, 3), right: gx + win::px(h, 6), bottom: y + v.line_h + win::px(h, 1) }, Color::rgb(0xd1, 0x34, 0x38)),
+                    Change::Deleted => win::fill(dc, &RECT { left: gx, top: y, right: gx + win::px(h, 3), bottom: y + v.line_h }, Color::rgb(0xd1, 0x34, 0x38)),
                 }
             }
             // A test: a green ▶ in the margin, where a breakpoint is not - a click runs it.
@@ -2016,7 +2019,7 @@ fn paint(h: HWND, v: &mut View) {
                 let colour = match c {
                     Change::Added => Color::rgb(0x2e, 0xa0, 0x43),
                     Change::Modified => Color::rgb(0x1c, 0x6f, 0xd1),
-                    Change::Removed => Color::rgb(0xd1, 0x34, 0x38),
+                    Change::Removed | Change::Deleted => Color::rgb(0xd1, 0x34, 0x38),
                 };
                 let y = at_line(*l);
                 win::fill(dc, &RECT { left: w - mw, top: y, right: w - mw + win::px(h, 3), bottom: y + win::px(h, 3) }, colour);

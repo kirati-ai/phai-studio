@@ -74,6 +74,63 @@ fn code_of(line: &str) -> String {
     out
 }
 
+/// An item of a file for Class View: its line (from 0), kind (`struct`, `enum`, `trait`, `fn`,
+/// `mod`), name, and the type it belongs to - a method's `impl` - if any.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Item {
+    pub line: usize,
+    pub kind: String,
+    pub name: String,
+    pub owner: Option<String>,
+}
+
+/// The items of `text`: types, traits, modules, functions, and methods with their type.
+pub fn items(text: &str) -> Vec<Item> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Option<String>> = Vec::new();
+    let mut pending: Option<String> = None;
+    for (i, l) in text.lines().enumerate() {
+        let code = code_of(l);
+        if let Some(d) = declared(&code) {
+            let (kind, rest) = d.split_once(' ').unwrap_or((d.as_str(), ""));
+            if kind == "impl" {
+                // `impl Trait for Type` belongs to Type; `impl Type` too.
+                let ty = rest.rsplit(" for ").next().unwrap_or(rest).split_whitespace().next().unwrap_or("").to_string();
+                pending = Some(ty);
+            } else {
+                let owner = stack.iter().rev().flatten().next().cloned();
+                let owner = if kind == "fn" { owner } else { None };
+                out.push(Item { line: i, kind: kind.to_string(), name: rest.to_string(), owner });
+                pending = None;
+                // A type's own block (struct fields) holds no methods.
+                if kind != "mod" {
+                    for c in code.chars() {
+                        match c {
+                            '{' => stack.push(None),
+                            '}' => {
+                                stack.pop();
+                            }
+                            _ => {}
+                        }
+                    }
+                    continue;
+                }
+            }
+        }
+        for c in code.chars() {
+            match c {
+                '{' => stack.push(pending.take()),
+                '}' => {
+                    stack.pop();
+                }
+                ';' => pending = None,
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
 /// The lines (from 0) that open the items around line `line` - for sticky scroll, outermost first.
 pub fn header_lines(text: &str, line: usize) -> Vec<usize> {
     let mut stack: Vec<Option<usize>> = Vec::new();
@@ -154,6 +211,16 @@ mod tests {
 }
 fn after() {}
 "#;
+
+    #[test]
+    fn items_with_their_types() {
+        let it = items(SRC);
+        let named: Vec<(String, String, Option<String>)> = it.iter().map(|i| (i.kind.clone(), i.name.clone(), i.owner.clone())).collect();
+        assert!(named.contains(&("struct".into(), "Cart".into(), None)));
+        assert!(named.contains(&("fn".into(), "next".into(), Some("Cart".into()))));
+        assert!(named.contains(&("fn".into(), "long".into(), Some("Cart".into()))));
+        assert!(named.contains(&("fn".into(), "after".into(), None)));
+    }
 
     #[test]
     fn the_lines_that_open_the_items_around() {

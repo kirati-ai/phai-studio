@@ -51,6 +51,7 @@ mod keymap;
 mod newproj;
 mod switcher;
 mod dbgwin;
+mod vsextra;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -268,6 +269,15 @@ const ID_INLAY_HINTS: i32 = 1994;
 const ID_BRACKET_COLOURS: i32 = 1995;
 const ID_STICKY_SCROLL: i32 = 1996;
 const ID_SCROLL_MAP: i32 = 1997;
+/// Tools > Compare Files..., View > Class View, Tools > Git's branches and stash.
+const ID_COMPARE: i32 = 2101;
+const ID_CLASS_VIEW: i32 = 2102;
+const ID_BRANCHES: i32 = 2103;
+const ID_NEW_BRANCH: i32 = 2104;
+const ID_STASH: i32 = 2105;
+const ID_STASH_POP: i32 = 2106;
+/// The branch menu's branches: from this up.
+const ID_SWITCH_BRANCH: i32 = 2200;
 const ID_APPLY_LAYOUT: i32 = 680;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
@@ -552,6 +562,8 @@ pub struct Studio {
     stop_at: Option<(PathBuf, u32)>,
     /// The Exception Helper shown at a panic or exception.
     helper: HWND,
+    /// The branches the branch menu listed last.
+    branches: Vec<String>,
     /// The Breakpoints window's rows, and whether it is being filled (its ticks then mean nothing).
     bp_rows: Vec<(PathBuf, u32)>,
     bp_filling: bool,
@@ -1124,6 +1136,7 @@ fn build_menu() -> HMENU {
         let view = wm::CreatePopupMenu().unwrap_or_default();
         add(view, ID_PREVIEW, t("Preview"), "F4");
         add(view, ID_DEVICES, t("Device Preview"), "Shift+F4");
+        add(view, ID_CLASS_VIEW, t("Class View"), "Ctrl+Shift+C");
         add(view, ID_DESIGN_SAMPLES, t("Sample Data in Designer"), "");
         add(view, ID_FULL_SCREEN, t("Full Screen"), "Shift+Alt+Enter");
         add(view, ID_WORD_WRAP, t("Word Wrap"), "Ctrl+E, Ctrl+W");
@@ -1318,6 +1331,10 @@ fn build_menu() -> HMENU {
         add(test, ID_COVERAGE, t("Analyze Code Coverage for All Tests"), "");
         let gitm = wm::CreatePopupMenu().unwrap_or_default();
         add(gitm, ID_GIT_CHANGES, t("Git Changes..."), "Ctrl+Alt+G");
+        add(gitm, ID_BRANCHES, t("Switch Branch..."), "");
+        add(gitm, ID_NEW_BRANCH, t("New Branch..."), "");
+        add(gitm, ID_STASH, t("Stash Changes"), "");
+        add(gitm, ID_STASH_POP, t("Pop Stash"), "");
         sep(gitm);
         add(gitm, ID_GIT_HISTORY, t("View History of This File..."), "");
         add(gitm, ID_MERGE, t("Resolve Merge Conflicts..."), "");
@@ -1383,6 +1400,7 @@ fn build_menu() -> HMENU {
         add(cmd, ID_POWERSHELL, "PowerShell", "");
         sub_of(tools, t("Command Line"), cmd);
         sep(tools);
+        add(tools, ID_COMPARE, t("Compare Files..."), "");
         add(tools, ID_KEYMAP, t("Keyboard Shortcuts..."), "");
         add(tools, ID_OPTIONS, t("Options..."), "");
         sub(t("T&ools"), tools);
@@ -4037,6 +4055,7 @@ impl Studio {
             e.show_project_of(path.as_deref());
         }
         self.track_active();
+        self.show_branch();
         // Last, so nothing shown above leaves the form's surface over the editor.
         self.show_code();
     }
@@ -4172,6 +4191,87 @@ impl Studio {
         let pick = win::popup(self.hwnd, &items) as usize;
         if let Some(text) = pick.checked_sub(1).and_then(|i| ring.get(i)) {
             phai_editor::view::insert_text(h, text);
+        }
+    }
+
+    /// The repository of the file open now.
+    fn repo(&self) -> Option<PathBuf> {
+        self.doc.path.as_deref().and_then(gitpane::repository_of)
+    }
+
+    /// The git branch on the status bar, as Visual Studio shows it.
+    fn show_branch(&mut self) {
+        let said = self.repo().map(|r| gitpane::git(&r, &["rev-parse", "--abbrev-ref", "HEAD"])).filter(|(ok, _)| *ok).map(|(_, b)| format!("\u{2387} {}", b.trim())).unwrap_or_default();
+        controls::status_text(self.status, 4, &said);
+    }
+
+    /// The branch menu - the status bar's branch clicked, or Tools > Git > Switch Branch: each
+    /// branch (the one now ticked), New Branch, Stash Changes, Pop Stash.
+    fn branch_menu(&mut self) {
+        let Some(repo) = self.repo() else {
+            self.say_status(t("The file open now is not in a git repository"));
+            return;
+        };
+        let (_, list) = gitpane::git(&repo, &["branch", "--format=%(HEAD)%(refname:short)"]);
+        self.branches.clear();
+        let mut labels = Vec::new();
+        for l in list.lines().filter(|l| !l.trim().is_empty()) {
+            let now = l.starts_with('*');
+            let name = l.trim_start_matches(['*', ' ']).to_string();
+            labels.push(if now { format!("\u{2713} {name}") } else { format!("    {name}") });
+            self.branches.push(name);
+        }
+        let mut items: Vec<(u32, &str)> = labels.iter().enumerate().take(100).map(|(i, l)| ((ID_SWITCH_BRANCH + i as i32) as u32, l.as_str())).collect();
+        items.push((0, ""));
+        items.push((ID_NEW_BRANCH as u32, t("New Branch...")));
+        items.push((ID_STASH as u32, t("Stash Changes")));
+        items.push((ID_STASH_POP as u32, t("Pop Stash")));
+        let pick = win::popup(self.hwnd, &items);
+        if pick != 0 {
+            self.command(pick as i32);
+        }
+    }
+
+    /// Tools > Git > New Branch: a name asked for, the branch made from here and switched to.
+    fn new_branch(&mut self) {
+        if self.repo().is_none() {
+            self.say_status(t("The file open now is not in a git repository"));
+            return;
+        }
+        let Some(name) = phai_ui::dialogs::ask(Some(self.hwnd), t("New Branch"), t("Name of the new branch (made from the one now):"), "", false).map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) else { return };
+        self.git_and_reload(&["switch", "-c", &name]);
+    }
+
+    /// A git command that changes the files - switch, stash: run, what it said shown when it
+    /// failed, then the open files read again where they changed and have no unsaved edits.
+    fn git_and_reload(&mut self, args: &[&str]) {
+        let Some(repo) = self.repo() else { return };
+        self.save_all();
+        let (ok, said) = gitpane::git(&repo, args);
+        if !ok {
+            win::message(Some(self.hwnd), said.trim(), &format!("git {}", args.join(" ")), wm::MB_ICONWARNING);
+        } else {
+            self.say_status(&tf("git {0}: done", &[&args.join(" ")]));
+        }
+        // Each open file as it is on disk now.
+        let open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).chain(self.doc.path.clone().zip(self.doc.code)).collect();
+        for (p, h) in open {
+            if phai_editor::view::is_dirty(h) {
+                continue;
+            }
+            if let Ok(raw) = std::fs::read_to_string(&p) {
+                let (text, _) = phai_editor::buffer::normalize(&raw);
+                if text != phai_editor::view::text(h) {
+                    phai_editor::view::replace_whole(h, &text);
+                    phai_editor::view::set_clean(h);
+                }
+            }
+        }
+        self.show_branch();
+        if let Some(h) = self.doc.code {
+            if let Some(p) = self.doc.path.clone() {
+                phai_editor::view::set_changes(h, &changes::of_file(&p));
+            }
         }
     }
 
@@ -7232,6 +7332,32 @@ impl Studio {
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
             ID_INFER_ANCHORS => self.infer_anchors(),
+            ID_COMPARE => {
+                // `PHAI_COMPARE=a|b`: those two, without the file dialogs.
+                if let Some((a, b)) = std::env::var("PHAI_COMPARE").ok().and_then(|v| v.split_once('|').map(|(a, b)| (PathBuf::from(a), PathBuf::from(b)))) {
+                    vsextra::compare(self.hwnd, &a, &b);
+                    return;
+                }
+                let start = self.doc.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+                let Some(a) = file_dialog(self.hwnd, false, t("Any file"), "*.*", &start) else { return };
+                let Some(b) = file_dialog(self.hwnd, false, t("Any file"), "*.*", &a.display().to_string()) else { return };
+                vsextra::compare(self.hwnd, &a, &b);
+            }
+            ID_CLASS_VIEW => match self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| self.doc.path.as_deref().and_then(cargo::project_of)) {
+                Some(root) => vsextra::class_view(self.hwnd, &root),
+                None => self.say_status(t("Open a file of the project first")),
+            },
+            ID_BRANCHES => self.branch_menu(),
+            ID_NEW_BRANCH => self.new_branch(),
+            ID_STASH | ID_STASH_POP => {
+                let args: &[&str] = if id == ID_STASH { &["stash", "push", "-m", "Phai Studio"] } else { &["stash", "pop"] };
+                self.git_and_reload(args);
+            }
+            id if (ID_SWITCH_BRANCH..ID_SWITCH_BRANCH + 100).contains(&id) => {
+                if let Some(b) = self.branches.get((id - ID_SWITCH_BRANCH) as usize).cloned() {
+                    self.git_and_reload(&["switch", &b]);
+                }
+            }
             ID_EXPAND_SEL | ID_SHRINK_SEL => {
                 if let Some(h) = self.doc.code {
                     if id == ID_EXPAND_SEL {
@@ -8184,6 +8310,8 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 if let Some(b) = s.bottom.as_ref() {
                     b.show_tab(0);
                 }
+            } else if id == ID_STATUS && win::hiword(w.0) == controls::STATUS_CLICK + 4 {
+                s.branch_menu();
             } else if id == ID_STATUS {
             } else if id == ID_TABS {
                 let i = win::hiword(w.0) as usize;
@@ -8583,6 +8711,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
         (b'G', true) if !shift => Some(ID_GO_TO_LINE),
         (b'H', true) if shift => Some(ID_REPLACE_IN_FILES),
         (b'V', true) if shift => Some(ID_CLIP_RING),
+        (b'C', true) if shift => Some(ID_CLASS_VIEW),
         (0x09, true) => Some(ID_SWITCHER),
         (0x0D, false) if shift && unsafe { km::GetKeyState(0x12) } < 0 => Some(ID_FULL_SCREEN),
         (b'Q', true) if !shift => Some(ID_SEARCH),
@@ -8737,7 +8866,8 @@ fn main() {
         let bottom_split = controls::splitter(hwnd, ID_SPLIT_BOTTOM, false);
         win::show(bottom_split, false);
         // The last part: the errors and warnings - a click opens the Error List.
-        controls::status_parts(status, &[260, 80, 110]);
+        // And the git branch: a click switches it, makes one, stashes.
+        controls::status_parts(status, &[260, 80, 110, 130]);
         controls::status_text(status, 2, "Debug");
         controls::status_text(status, 0, t("Ready"));
         let dpi = win::dpi(hwnd);
@@ -8792,6 +8922,7 @@ fn main() {
             locals_all: vec![],
             stop_at: None,
             helper: HWND::default(),
+            branches: vec![],
             bp_rows: vec![],
             bp_filling: false,
             thread_ids: vec![],
