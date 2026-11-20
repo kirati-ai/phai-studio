@@ -926,6 +926,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("The button Escape clicks.", "ปุ่มที่ถูกกดเมื่อกด Esc"),
     ("Sizable: its edges drag. Fixed: they do not. Dialog: a dialog's frame. Tool: a small title bar. None: no frame at all.", "Sizable: ลากขอบย่อขยายได้, Fixed: ลากไม่ได้, Dialog: กรอบแบบกล่องโต้ตอบ, Tool: แถบชื่อเล็ก, None: ไม่มีกรอบเลย"),
     ("The title bar's Maximize button.", "ปุ่มขยายเต็มจอบนแถบชื่อ"),
+    ("On a screen narrower than the form - a phone, on the web: stack puts its controls one under another, as wide as the screen, in the order they read, big enough for a finger; zoom shrinks the whole form to fit.", "บนจอที่แคบกว่าฟอร์ม (มือถือ บนเว็บ): stack เรียง control ลงมาทีละตัว กว้างเต็มจอ ตามลำดับการอ่าน ขนาดพอให้นิ้วกด; zoom ย่อทั้งฟอร์มให้พอดีจอ"),
     ("The title bar's Minimize button.", "ปุ่มย่อหน้าต่างบนแถบชื่อ"),
     ("The title bar's buttons and its menu; off, none of them.", "ปุ่มและเมนูบนแถบชื่อ ถ้าปิดจะไม่มีทั้งหมด"),
     ("It stays over every other window.", "อยู่เหนือหน้าต่างอื่นทุกหน้าต่างเสมอ"),

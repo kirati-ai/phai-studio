@@ -79,6 +79,28 @@ thread_local! {
     /// Each window's design size and the area its controls go in, to shrink it onto a phone.
     static WINDOWS: RefCell<Vec<Shown>> = const { RefCell::new(Vec::new()) };
     static STARTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// The areas whose controls stack on a narrow screen (PhoneLayout = stack).
+    static STACKED: RefCell<Vec<HWND>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The window's controls one under another when the screen is narrower than the form - a phone -
+/// rather than the whole form shrunk.
+pub fn stack_when_narrow(area: HWND) {
+    STACKED.with(|s| s.borrow_mut().push(area));
+    let size = WINDOWS.with(|w| w.borrow().iter().find(|x| x.1 == area).map(|x| x.2));
+    if let Some(size) = size {
+        fit(area, size);
+    }
+}
+
+/// Where a control comes when stacked: in the order a page is read - top to bottom, then left
+/// to right; what is docked at the top first, at the bottom last.
+pub fn stack_order(p: &Place) -> i32 {
+    match p.dock {
+        "top" => -1_000_000 + p.y,
+        "bottom" => 100_000_000,
+        _ => p.y.clamp(0, 9_999) * 10_000 + p.x.clamp(0, 9_999),
+    }
 }
 
 /// Once, before the first window: Thai when the page asks for it (`?lang=th`) or the browser
@@ -118,8 +140,17 @@ fn fit(area: HWND, (dw, dh): (i32, i32)) {
     if cw < 64.0 {
         return;
     }
-    let zoom = (cw / dw.max(1) as f64).min(1.0);
     let s = area.style();
+    let stacked = STACKED.with(|st| st.borrow().iter().any(|h| el(*h).is_some_and(|e| e == area)));
+    if stacked && cw < dw as f64 {
+        let _ = area.class_list().add_1("phai-stacked");
+        let _ = s.set_property("zoom", "1");
+        let _ = s.set_property("width", &format!("{}px", cw.floor()));
+        let _ = s.remove_property("height");
+        return;
+    }
+    let _ = area.class_list().remove_1("phai-stacked");
+    let zoom = (cw / dw.max(1) as f64).min(1.0);
     let _ = s.set_property("zoom", &format!("{zoom}"));
     let _ = s.set_property("width", &format!("{}px", (cw / zoom).floor()));
     let _ = s.set_property("height", &format!("{}px", (ch / zoom).max(dh as f64).floor()));
@@ -291,7 +322,7 @@ pub fn control(area: HWND, kind: &str, id: &str, class: &str, text: &str, p: Pla
     if !id.is_empty() {
         e.set_id(id);
     }
-    e.style().set_css_text(&place_css(&p));
+    e.style().set_css_text(&format!("{}order:{};", place_css(&p), stack_order(&p)));
     if let Some(a) = el(area) {
         let _ = a.append_child(&e);
     }

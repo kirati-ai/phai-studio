@@ -172,6 +172,7 @@ pub const FORM: &[Spec] = &[
     spec("cancel_button", "CancelButton", "Misc", Ty::Button, "", &[], How::Code, "The button Escape clicks."),
     spec("key_preview", "KeyPreview", "Misc", Ty::Bool, "false", &[], How::Code, "The window's KeyDown, KeyUp and KeyPress hear keys meant for its controls, first."),
     spec("border", "FormBorderStyle", "Appearance", Ty::Choice(BORDERS), "sizable", &[], How::Code, "Sizable: its edges drag. Fixed: they do not. Dialog: a dialog's frame. Tool: a small title bar. None: no frame at all."),
+    spec("phone", "PhoneLayout", "Layout", Ty::Choice(&["stack", "zoom"]), "stack", &[], How::Code, "On a screen narrower than the form - a phone, on the web: stack puts its controls one under another, as wide as the screen, in the order they read, big enough for a finger; zoom shrinks the whole form to fit."),
     spec("maximize_box", "MaximizeBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's Maximize button."),
     spec("minimize_box", "MinimizeBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's Minimize button."),
     spec("control_box", "ControlBox", "Window Style", Ty::Bool, "true", &[], How::Code, "The title bar's buttons and its menu; off, none of them."),
