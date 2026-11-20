@@ -374,6 +374,9 @@ impl Tab {
 
 pub struct Studio {
     pub hwnd: HWND,
+    /// Nothing open: Studio just started, or its last tab closed - no form, no project, as Visual
+    /// Studio starts. Opening or making something ends it.
+    pub nothing: bool,
     pub font: HFONT,
     pub toolbar: HWND,
     pub toolbox: HWND,
@@ -2254,6 +2257,7 @@ impl Studio {
 
     /// Opens a code file in an editor tab - or the tab it is already in.
     pub fn open_code(&mut self, path: &Path) {
+        self.nothing = false;
         let same = |q: &Option<PathBuf>| q.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
         if same(&self.doc.path) {
             return self.after_switch();
@@ -3397,6 +3401,12 @@ impl Studio {
 
     /// Everything that shows the active form, again.
     fn after_switch(&mut self) {
+        if self.nothing {
+            return self.show_nothing();
+        }
+        if let Some(c) = self.canvas.as_ref() {
+            win::show(c.hwnd, true);
+        }
         self.load_theme();
         if self.doc.code.is_none() {
             self.rebuild();
@@ -3419,7 +3429,28 @@ impl Studio {
         self.show_code();
     }
 
+    /// Nothing open: no tab, no form's surface, no project, no properties.
+    fn show_nothing(&mut self) {
+        self.nothing = true;
+        self.selected = None;
+        self.also.clear();
+        // The whole designer area away: the form, its grips and marks with it.
+        if let Some(c) = self.canvas.as_ref() {
+            win::show(c.hwnd, false);
+        }
+        controls::tabs_relabel(self.tabbar, &[]);
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(None);
+        }
+        self.refresh_props();
+        self.say_title();
+        controls::status_text(self.status, 1, "");
+    }
+
     fn refresh_tabs(&mut self) {
+        if self.nothing {
+            return controls::tabs_relabel(self.tabbar, &[]);
+        }
         let mut labels: Vec<String> = Vec::new();
         for (i, tab) in self.tabs.iter().enumerate() {
             labels.push(if i == self.active { Tab { doc: Doc { dirty: self.doc.dirty, ..Doc::new(FormFile::new("X"), self.doc.path.clone()) }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
@@ -3432,6 +3463,7 @@ impl Studio {
     /// A form in a tab of its own - or the tab it is already in. An untouched empty first tab is
     /// used rather than left behind.
     fn open_in_tab(&mut self, form: FormFile, path: Option<PathBuf>) {
+        self.nothing = false;
         if let Some(p) = &path {
             let same = |q: &Option<PathBuf>| q.as_ref().is_some_and(|q| q == p);
             if same(&self.doc.path) {
@@ -3472,6 +3504,8 @@ impl Studio {
             self.undo.clear();
             self.redo.clear();
             self.selected = None;
+            // The last tab closed leaves nothing open, as Visual Studio does.
+            self.nothing = true;
             self.after_switch();
             return true;
         }
@@ -3504,6 +3538,9 @@ impl Studio {
     // --- saying things --------------------------------------------------------------------------
 
     fn say_title(&self) {
+        if self.nothing {
+            return win::set_text(self.hwnd, "Phai Studio");
+        }
         let name = self.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| t("Untitled").to_string());
         win::set_text(self.hwnd, &format!("{}{name} - Phai Studio", if self.doc.dirty { "• " } else { "" }));
     }
@@ -5928,6 +5965,10 @@ impl Studio {
     // --- commands -----------------------------------------------------------------------------
 
     fn command(&mut self, id: i32) {
+        // Nothing open: nothing to save.
+        if self.nothing && matches!(id, ID_SAVE | ID_SAVE_AS | ID_SAVE_ALL) {
+            return;
+        }
         match id {
             ID_NEW => self.open_in_tab(FormFile::new("MainWindow"), None),
             ID_OPEN => {
@@ -7244,6 +7285,7 @@ fn main() {
             selected: None,
             also: vec![],
             tool: None,
+            nothing: false,
         });
         STUDIO.store(Box::into_raw(studio_box), Ordering::Relaxed);
         let s = studio().unwrap();
@@ -7286,9 +7328,12 @@ fn main() {
         let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
-            // Opened with nothing: the start window, once the window is up - unless switched off,
-            // or a test runs (`--start` asks for it anyway).
+            // Opened with nothing: nothing open (no form, no project) and the start window, once
+            // the window is up - unless switched off, or a test runs (`--start` asks for it anyway;
+            // tests keep the empty form they draw on).
             let testing = args.iter().skip(1).any(|a| a.starts_with("--") && a != "--start") || std::env::var_os("PHAI_SHOT").is_some();
+            // `--nothing`: so for a test too - checked by picture.
+            s.nothing = !testing || args.iter().any(|a| a == "--nothing");
             if (args.iter().any(|a| a == "--start") || !testing) && setting("start_window").is_none_or(|v| v != "0") {
                 let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_START_WINDOW as usize), LPARAM(0));
             }
@@ -7381,10 +7426,14 @@ fn main() {
         if let Some(n) = args.iter().position(|a| a == "--tab").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
             wm::SendMessageW(hwnd, wm::WM_COMMAND, Some(WPARAM((n << 16) | ID_TABS as usize)), Some(LPARAM(0)));
         }
-        win::show_top(hwnd);
+        // Studio fills the screen, as Visual Studio does.
+        win::show_maximized(hwnd);
         s.layout.apply(hwnd);
         s.rebuild();
         s.refresh_props();
+        if s.nothing {
+            s.show_nothing();
+        }
         // `--selftest out.phaiform`: draws, moves and sizes a control with the mouse messages a
         // `--one-row`: the Layout bar dragged up beside the Standard bar - checked by picture.
         if args.iter().any(|a| a == "--one-row") {

@@ -286,7 +286,7 @@ fn click(h: HWND, _x: i32, y: i32, double: bool) {
             let Some(s) = studio() else { return };
             if double {
                 if let Some(kind) = crate::tool_kind(id) {
-                    if s.doc.code.is_none() {
+                    if s.doc.code.is_none() && !s.nothing {
                         s.add_at_margin(kind);
                     }
                 }
