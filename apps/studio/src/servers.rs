@@ -187,6 +187,10 @@ impl Servers {
                 self.conns.push(new);
                 self.save();
                 self.fill();
+                // Data's commands can be used now.
+                if let Some(st) = studio() {
+                    st.say_bars();
+                }
                 true
             }
             Some(Err(e)) => {
