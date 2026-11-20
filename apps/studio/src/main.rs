@@ -9318,10 +9318,20 @@ impl MainWindowEvents for MainWindow {
         list.columns = vec![("Name".into(), 160), ("Size".into(), 100), ("Qty".into(), 60)];
         list.anchor = Some("all".into());
         f.control.extend([label, name, vip, size, qty, add, list]);
+        // A menu bar - a menu within a menu, a tick a click turns over, a greyed item, shortcut
+        // keys - and a toolbar whose button stays down with the menu's tick.
+        f.menu = phai_form::bars::menus_from_text("&File\n  new_order | &New order | Ctrl+N | NEW\n  -\n  Export\n    export_csv | As CSV | disabled\n&View\n  members_only | &Members only | check_on_click\n").unwrap();
+        f.toolbar = phai_form::bars::toolbar_from_text("new_order | New | NEW\nmembers_only | Members | SEARCH | toggle").unwrap();
+        f.form.size = [480, 360];
+        for c in f.control.iter_mut().filter(|c| c.kind != Kind::Statusbar) {
+            if let Some(b) = c.bounds.as_mut() {
+                b[1] += 34;
+            }
+        }
         assert!(f.check().is_empty(), "{:?}", f.check());
         std::fs::write(&form_path, f.to_toml()).unwrap();
         std::fs::write(src.join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
-        crate::project::add_thai(&src, &[("Shop", "ร้านค้า"), ("Name", "ชื่อ"), ("Your name", "ชื่อของคุณ"), ("Member", "สมาชิก"), ("Small", "เล็ก"), ("Medium", "กลาง"), ("Large", "ใหญ่"), ("Add to list", "เพิ่มลงรายการ"), ("Size", "ขนาด"), ("Qty", "จำนวน"), ("{0} orders", "{0} รายการ"), ("Hello, {0}", "สวัสดี {0}")]).unwrap();
+        crate::project::add_thai(&src, &[("File", "ไฟล์"), ("New order", "รายการใหม่"), ("Export", "ส่งออก"), ("As CSV", "เป็น CSV"), ("View", "มุมมอง"), ("Members only", "เฉพาะสมาชิก"), ("New", "ใหม่"), ("Members", "สมาชิก"), ("&File", "&ไฟล์"), ("&New order", "&รายการใหม่"), ("&View", "&มุมมอง"), ("&Members only", "เฉพาะ&สมาชิก"), ("Members only: {0}", "เฉพาะสมาชิก: {0}"), ("Shop", "ร้านค้า"), ("Name", "ชื่อ"), ("Your name", "ชื่อของคุณ"), ("Member", "สมาชิก"), ("Small", "เล็ก"), ("Medium", "กลาง"), ("Large", "ใหญ่"), ("Add to list", "เพิ่มลงรายการ"), ("Size", "ขนาด"), ("Qty", "จำนวน"), ("{0} orders", "{0} รายการ"), ("Hello, {0}", "สวัสดี {0}")]).unwrap();
         // One file of the program's own, for both.
         // (`tf` by another name, so Studio's own sentence check passes this program's by.)
         std::fs::write(src.join("main_window.rs"), r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
@@ -9351,6 +9361,16 @@ impl MainWindowEvents for MainWindow {
     fn ok_clicked(&mut self, ui: &MainWindowUi) {
         ui.orders.items_clear();
         self.orders = 0;
+    }
+
+    fn new_order(&mut self, ui: &MainWindowUi) {
+        ui.name.set_text("");
+        ui.vip.set_checked(false);
+        ui.name.focus();
+    }
+
+    fn members_only(&mut self, ui: &MainWindowUi) {
+        ui.status.set_part_text(0, &words("Members only: {0}", &[&ui.item_checked("members_only")]));
     }
 }
 "##).unwrap();

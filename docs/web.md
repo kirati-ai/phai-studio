@@ -40,12 +40,14 @@ worker ทำงานเฉพาะบน HTTPS หรือ localhost) แล
 
 ## มีบนเว็บ / ยังไม่มี
 
-มี: label, edit (รวม password, placeholder), textarea, richtext (เป็นข้อความธรรมดา), button, checkbox, radio, combo,
+มี: เมนูบาร์ (เมนูย่อยซ้อน, ติ๊ก, check_on_click, รายการสีเทา, ไอคอน, ปุ่มลัด Ctrl+...), toolbar (ปุ่มกดค้างติ๊กพร้อมเมนู;
+บนมือถือเป็นข้อความเพราะไม่มีฟอนต์ไอคอนของ Windows), `ui.item_checked`, `set_item_checked`, `set_item_enabled`,
+label, edit (รวม password, placeholder), textarea, richtext (เป็นข้อความธรรมดา), button, checkbox, radio, combo,
 listbox, checkedlist, list (ListView), grid (แก้ในช่องได้), number, date, calendar, slider, progress, group, panel,
 tabs, link, picture, statusbar, timer; event `on_click` `on_change` `on_select`, Click DoubleClick Enter Leave KeyDown
 KeyUp KeyPress MouseDown MouseUp MouseMove MouseEnter MouseLeave CheckedChanged TextChanged, Shown, `loaded`
 
-ยังไม่มี (Studio บอกชื่อ control ที่ไม่ขึ้นบนเว็บหลังสร้าง): เมนูบาร์, toolbar, context menu, tree, split container,
+ยังไม่มี (Studio บอกชื่อ control ที่ไม่ขึ้นบนเว็บหลังสร้าง): context menu, tree, split container,
 user control, dialog แบบ component (Open/Save/Folder/Color/Font), ErrorProvider, NotifyIcon, การพิมพ์, BindingSource,
 ตารางที่ผูกฐานข้อมูล (`bind`) — โค้ดที่เรียกสิ่งเหล่านี้จะ build สำหรับเว็บไม่ผ่าน
 
