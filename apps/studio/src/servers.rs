@@ -114,12 +114,25 @@ impl Servers {
         }
         delete_children(self.tree, item);
         let c = self.conns[node.conn].clone();
-        let failed = |e: String| {
+        let failed = |e: &str| {
+            if std::env::var_os("PHAI_SERVERS_TEST").is_some() {
+                println!("servers: {e}");
+            }
             if let Some(s) = studio() {
-                s.say_status(&e);
+                s.say_status(e);
             }
         };
         match &node.kind {
+            // A connection that names its database: that one only, as Visual Studio's Server
+            // Explorer shows the database chosen in Add Connection; none named, every one.
+            Kind::Server if !c.database.trim().is_empty() && c.kind != phai_data::Kind::Sqlite => {
+                let d = c.database.trim().to_string();
+                let db_item = self.add_node(item, &d, 2, Node { kind: Kind::Database, db: d.clone(), loaded: false, ..node.clone() });
+                let db_data = self.nodes.len() as isize - 2;
+                // Its tables at once: what was asked for.
+                self.expanding(db_item, db_data);
+                win::tree_expand(self.tree, db_item);
+            }
             Kind::Server => match c.databases() {
                 Ok(dbs) => {
                     for d in dbs {
@@ -127,8 +140,8 @@ impl Servers {
                     }
                 }
                 Err(e) => {
-                    failed(e);
-                    self.unload(item, data, &node);
+                    failed(&e);
+                    self.unload(item, data, &node, &e);
                 }
             },
             Kind::Database => match c.tables(&node.db) {
@@ -138,8 +151,8 @@ impl Servers {
                     }
                 }
                 Err(e) => {
-                    failed(e);
-                    self.unload(item, data, &node);
+                    failed(&e);
+                    self.unload(item, data, &node, &e);
                 }
             },
             Kind::Table { .. } => match c.columns(&node.db, &node.table) {
@@ -151,24 +164,39 @@ impl Servers {
                     }
                 }
                 Err(e) => {
-                    failed(e);
-                    self.unload(item, data, &node);
+                    failed(&e);
+                    self.unload(item, data, &node, &e);
                 }
             },
             _ => {}
         }
     }
 
-    /// A branch that could not be read: closed again, to be read another time.
-    fn unload(&mut self, item: isize, data: isize, node: &Node) {
+    /// A branch that could not be read: why, under it in the tree - read again when it is opened
+    /// again, or by Refresh.
+    fn unload(&mut self, item: isize, data: isize, node: &Node, why: &str) {
         if let Some(n) = self.nodes.get_mut(data as usize) {
             n.loaded = false;
         }
         self.nodes.push(Node { kind: Kind::Waiting, ..node.clone() });
-        win::tree_add(self.tree, item, "…", 1, self.nodes.len() as isize - 1);
+        let first = why.lines().next().unwrap_or(why);
+        win::tree_add(self.tree, item, &tf("⚠ {0} - right-click, Refresh", &[&first]), 1, self.nodes.len() as isize - 1);
+    }
+
+    /// The `index`th connection opened and read - as one just added shows.
+    pub fn open_connection(&mut self, index: usize) {
+        let Some(k) = self.nodes.iter().enumerate().filter(|(_, n)| n.kind == Kind::Server).nth(index).map(|(k, _)| k) else { return };
         unsafe {
-            // Closed: [+] again, to try another time.
-            wm::PostMessageW(Some(self.tree), 0x1102 /* TVM_EXPAND */, WPARAM(1 /* TVE_COLLAPSE */), LPARAM(item)).ok();
+            let root = wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(0 /* TVGN_ROOT */)), None).0;
+            let mut item = wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(4 /* TVGN_CHILD */)), Some(LPARAM(root))).0;
+            for _ in 0..index {
+                item = wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(1 /* TVGN_NEXT */)), Some(LPARAM(item))).0;
+            }
+            if item != 0 {
+                self.expanding(item, k as isize);
+                win::tree_expand(self.tree, item);
+                wm::SendMessageW(self.tree, 0x110B /* TVM_SELECTITEM */, Some(WPARAM(9)), Some(LPARAM(item)));
+            }
         }
     }
 
@@ -187,6 +215,8 @@ impl Servers {
                 self.conns.push(new);
                 self.save();
                 self.fill();
+                // Shown open, its databases read, as Visual Studio's Server Explorer shows one just added.
+                self.open_connection(self.conns.len() - 1);
                 // Data's commands can be used now.
                 if let Some(st) = studio() {
                     st.say_bars();
@@ -333,7 +363,19 @@ impl Servers {
     /// chosen - from the right-click menu and from Tools > Table Designer. False when neither is
     /// chosen.
     pub fn table_designer(&mut self, owner: HWND) -> bool {
-        let Some((item, n)) = self.selected() else { return false };
+        // Nothing chosen (or a connection): a new table in the database the connection names -
+        // its first one when it names none.
+        let chosen = self.selected().filter(|(_, n)| !matches!(n.kind, Kind::Root | Kind::Waiting | Kind::Server));
+        let Some((item, n)) = chosen else {
+            let conn = self.selected().map(|(_, n)| n.conn).filter(|c| *c < self.conns.len()).unwrap_or(0);
+            let Some(c) = self.conns.get(conn).cloned() else { return false };
+            let db = if c.database.trim().is_empty() { c.databases().ok().and_then(|d| d.into_iter().next()).unwrap_or_default() } else { c.database.clone() };
+            if db.is_empty() {
+                return false;
+            }
+            crate::designer::open(owner, c, &db, None);
+            return true;
+        };
         match n.kind {
             Kind::Database => {
                 // A new table; the database's tables read again after.
