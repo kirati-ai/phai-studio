@@ -499,6 +499,8 @@ pub struct Studio {
     /// Nothing open: Studio just started, or its last tab closed - no form, no project, as Visual
     /// Studio starts. Opening or making something ends it.
     pub nothing: bool,
+    /// File > Close Project closing the tabs: the last one takes the project with it.
+    closing_project: bool,
     /// View > Full Screen: how the window was before, to go back to.
     full_screen: Option<(wm::WINDOWPLACEMENT, i32)>,
     /// The breadcrumb over the editor - folder, file, impl, fn - and the caret and version it
@@ -4493,6 +4495,9 @@ impl Studio {
             }
         }
         if self.tabs.len() == 1 {
+            // The project stays in the Project pane, as Visual Studio's Solution Explorer keeps
+            // the solution when the last document closes - unless File > Close Project closes it.
+            let kept = self.doc.path.clone().filter(|_| !self.closing_project);
             self.doc = Doc::new(FormFile::new("MainWindow"), None);
             self.undo.clear();
             self.redo.clear();
@@ -4500,6 +4505,9 @@ impl Studio {
             // The last tab closed leaves nothing open, as Visual Studio does.
             self.nothing = true;
             self.after_switch();
+            if let (Some(p), Some(e)) = (kept, self.explorer.as_mut()) {
+                e.show_project_of(Some(&p));
+            }
             return true;
         }
         self.tabs.remove(self.active);
@@ -7749,10 +7757,17 @@ impl Studio {
                 }
             }
             ID_CLOSE_PROJECT => {
-                // Every tab, each asked to save, until nothing is open.
+                // Every tab, each asked to save, until nothing is open - the project with them.
+                self.closing_project = true;
                 while !self.nothing {
                     if !self.close_tab() {
                         break;
+                    }
+                }
+                self.closing_project = false;
+                if self.nothing {
+                    if let Some(e) = self.explorer.as_mut() {
+                        e.show_project_of(None);
                     }
                 }
             }
@@ -8980,6 +8995,7 @@ fn main() {
             tool: None,
             nothing: false,
             full_screen: None,
+            closing_project: false,
             crumb: HWND::default(),
             crumb_for: (usize::MAX, -1, 0),
         });
