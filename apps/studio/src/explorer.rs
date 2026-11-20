@@ -69,6 +69,22 @@ struct Side {
     /// Document Outline: shown, and its height when a pane lies below it.
     pub outline_on: bool,
     outline_h: i32,
+    /// Auto Hide, each pane on its own: Project, Properties.
+    explorer_auto: bool,
+    props_auto: bool,
+    /// The panes as tabs, one shown at a time, their tabs along the bottom - as Visual Studio
+    /// groups Solution Explorer and Properties. `active` is the pane shown (0 Project, 1 Server
+    /// Explorer, 2 Document Outline, 3 Properties).
+    tabbed: bool,
+    active: usize,
+    tabs: HWND,
+    /// The pane slid out over the form from its Auto Hide tab: its windows lent to the slide host.
+    sliding: Option<usize>,
+}
+
+/// The pane names on the tabs along the bottom, by pane.
+fn tab_name(k: usize) -> &'static str {
+    [t("Project"), t("Server Explorer"), t("Document Outline"), t("Properties")][k]
 }
 
 #[derive(Clone, Copy)]
@@ -89,6 +105,31 @@ struct SideParts {
 }
 
 impl Side {
+    /// Whether pane `k` is wanted (View menu ticked).
+    fn wanted(&self, p: &SideParts, k: usize) -> bool {
+        match k {
+            0 => self.explorer_on,
+            1 => self.servers_on,
+            2 => self.outline_on && !p.outline.is_invalid(),
+            _ => self.props_on,
+        }
+    }
+
+    fn auto(&self, k: usize) -> bool {
+        (k == 0 && self.explorer_auto) || (k == 3 && self.props_auto)
+    }
+
+    /// The panes in the side itself: wanted, not hidden at the edge, not slid out.
+    fn docked(&self) -> Vec<usize> {
+        let Some(p) = self.parts else { return vec![] };
+        (0..4).filter(|k| self.wanted(&p, *k) && !self.auto(*k) && self.sliding != Some(*k)).collect()
+    }
+
+    /// Whether the tabs show: tabbed, with two panes or more.
+    fn tabs_on(&self) -> bool {
+        self.tabbed && self.docked().len() > 1
+    }
+
     /// The panes again: those shown take their room, the last one shown fills the rest, a
     /// splitter between each two.
     fn arrange(&mut self, side: HWND) {
@@ -102,17 +143,37 @@ impl Side {
             (p.outline_caption, p.outline, self.outline_on && !p.outline.is_invalid(), self.outline_h),
             (p.props_caption, p.props, self.props_on, 0),
         ];
-        let shown: Vec<usize> = (0..4).filter(|k| panes[*k].2).collect();
-        for (k, (c, b, on, _)) in panes.iter().enumerate() {
-            let _ = k;
-            win::show(*c, *on);
-            win::show(*b, *on);
+        let mut shown = self.docked();
+        let tabbed = self.tabs_on();
+        if tabbed {
+            if !shown.contains(&self.active) {
+                self.active = shown[0];
+            }
+            shown = vec![self.active];
         }
-        win::show(p.explorer_bar, self.explorer_on);
-        win::show(p.explorer_search, self.explorer_on);
+        for (k, (c, b, _, _)) in panes.iter().enumerate() {
+            // A pane slid out is the slide host's to show.
+            if self.sliding == Some(k) {
+                continue;
+            }
+            let on = shown.contains(&k);
+            win::show(*c, on);
+            win::show(*b, on);
+            if k == 0 {
+                win::show(p.explorer_bar, on);
+                win::show(p.explorer_search, on);
+            }
+        }
         let splits = [p.split, p.split2, p.split3];
         for s in splits {
             win::show(s, false);
+        }
+        win::show(self.tabs, tabbed);
+        if tabbed {
+            l.add(self.tabs, item(26, Dock::Bottom));
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.tabs), None, false);
+            }
         }
         for (n, k) in shown.iter().enumerate() {
             let (c, b, _, h) = panes[*k];
@@ -137,14 +198,221 @@ impl Side {
     }
 }
 
-/// Shows or hides the explorer and properties panes; returns whether either is still shown.
+/// Shows or hides the explorer and properties panes; returns whether the side still has a pane
+/// in it. A pane just shown is the tab on top.
 pub fn show_side_panes(side: HWND, explorer: bool, props: bool) -> bool {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
+        if explorer && !s.explorer_on {
+            s.active = 0;
+        }
+        if props && !s.props_on {
+            s.active = 3;
+        }
         s.explorer_on = explorer;
         s.props_on = props;
         s.arrange(side);
     }
-    explorer || props
+    side_any(side)
+}
+
+/// Whether any pane lies in the side itself - not hidden at the edge, not slid out.
+pub fn side_any(side: HWND) -> bool {
+    unsafe { win::state::<Side>(side) }.is_some_and(|s| !s.docked().is_empty())
+}
+
+/// Auto Hide for Project (`explorer`) or Properties, each on its own; whether the side still has
+/// a pane in it.
+pub fn set_pane_auto(side: HWND, explorer: bool, on: bool) -> bool {
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        if explorer {
+            s.explorer_auto = on;
+        } else {
+            s.props_auto = on;
+        }
+        s.arrange(side);
+    }
+    side_any(side)
+}
+
+pub fn pane_auto(side: HWND, explorer: bool) -> bool {
+    unsafe { win::state::<Side>(side) }.is_some_and(|s| if explorer { s.explorer_auto } else { s.props_auto })
+}
+
+/// The panes as tabs along the bottom, or one above another.
+pub fn set_tabbed(side: HWND, on: bool) {
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        s.tabbed = on;
+        s.arrange(side);
+    }
+}
+
+pub fn tabbed(side: HWND) -> bool {
+    unsafe { win::state::<Side>(side) }.is_some_and(|s| s.tabbed)
+}
+
+/// The window that holds a pane slid out from its Auto Hide tab, over the form. What its pane's
+/// windows say goes on to the side, as if they were still in it.
+pub fn slide_host(parent: HWND) -> HWND {
+    let class = win::register("PhaiStudioSlide", Some(host_proc), None);
+    unsafe {
+        let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
+        win::set_state(h, Box::new(Host { side: HWND::default(), layout: Layout::new((280, 600)) }));
+        h
+    }
+}
+
+struct Host {
+    side: HWND,
+    layout: Layout,
+}
+
+/// Lends Project (`explorer`) or Properties to the slide host, laid out in it.
+pub fn slide_out_pane(side: HWND, explorer: bool, host: HWND) {
+    let Some(s) = (unsafe { win::state::<Side>(side) }) else { return };
+    let Some(p) = s.parts else { return };
+    s.sliding = Some(if explorer { 0 } else { 3 });
+    s.arrange(side);
+    let item = |h: i32, dock: Dock| Item { bounds: Rect::new(0, 0, 0, h), dock, anchor: Anchor::default() };
+    let mut l = Layout::new((280, 600));
+    let windows: Vec<(HWND, Item)> = if explorer {
+        vec![(p.explorer_caption, item(28, Dock::Top)), (p.explorer_bar, item(28, Dock::Top)), (p.explorer_search, item(24, Dock::Top)), (p.tree, item(0, Dock::Fill))]
+    } else {
+        vec![(p.props_caption, item(28, Dock::Top)), (p.props, item(0, Dock::Fill))]
+    };
+    for (w, it) in windows {
+        unsafe {
+            let _ = wm::SetParent(w, Some(host));
+        }
+        win::show(w, true);
+        l.add(w, it);
+    }
+    if let Some(hs) = unsafe { win::state::<Host>(host) } {
+        hs.side = side;
+        hs.layout = l;
+        hs.layout.apply(host);
+    }
+}
+
+/// The pane slid out comes home to the side.
+pub fn slide_in_pane(side: HWND, host: HWND) {
+    let Some(s) = (unsafe { win::state::<Side>(side) }) else { return };
+    let Some(p) = s.parts else { return };
+    let Some(k) = s.sliding.take() else { return };
+    let windows = if k == 0 { vec![p.explorer_caption, p.explorer_bar, p.explorer_search, p.tree] } else { vec![p.props_caption, p.props] };
+    for w in windows {
+        win::show(w, false);
+        unsafe {
+            let _ = wm::SetParent(w, Some(side));
+        }
+    }
+    if let Some(hs) = unsafe { win::state::<Host>(host) } {
+        hs.layout = Layout::new((280, 600));
+    }
+    s.arrange(side);
+}
+
+extern "system" fn host_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        wm::WM_SIZE => {
+            if let Some(s) = unsafe { win::state::<Host>(h) } {
+                s.layout.apply(h);
+            }
+            LRESULT(0)
+        }
+        wm::WM_COMMAND | wm::WM_NOTIFY => match unsafe { win::state::<Host>(h) }.map(|s| s.side) {
+            Some(side) if !side.is_invalid() => unsafe { wm::SendMessageW(side, msg, Some(w), Some(l)) },
+            _ => win::def(h, msg, w, l),
+        },
+        wm::WM_NCDESTROY => {
+            drop(unsafe { win::take_state::<Host>(h) });
+            win::def(h, msg, w, l)
+        }
+        _ => win::def(h, msg, w, l),
+    }
+}
+
+/// The tabs along the bottom: each pane in the side by name, the one shown marked. A click shows
+/// that pane.
+fn side_tabs(side: HWND, font: HFONT) -> HWND {
+    let class = win::register("PhaiStudioSideTabs", Some(tabs_proc), None);
+    unsafe {
+        let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(side), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
+        win::set_state(h, Box::new(font));
+        h
+    }
+}
+
+/// Each tab's pane and its left and right edge.
+fn tab_spans(h: HWND, s: &Side, font: HFONT) -> Vec<(usize, i32, i32)> {
+    let mut x = 0;
+    s.docked()
+        .into_iter()
+        .map(|k| {
+            let (w, _) = win::measure(h, font, tab_name(k));
+            let span = (k, x, x + w + win::px(h, 16));
+            x = span.2;
+            span
+        })
+        .collect()
+}
+
+extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    use phai_ui::theme::{self, Color, State};
+    use windows::Win32::Foundation::{COLORREF, RECT};
+    use windows::Win32::Graphics::Gdi;
+    let side = unsafe { wm::GetParent(h) }.unwrap_or_default();
+    match msg {
+        wm::WM_PAINT => unsafe {
+            let font = win::state::<HFONT>(h).map(|f| *f).unwrap_or_default();
+            let mut ps = Gdi::PAINTSTRUCT::default();
+            let dc = Gdi::BeginPaint(h, &mut ps);
+            let mut r = RECT::default();
+            let _ = wm::GetClientRect(h, &mut r);
+            let base = theme::style("tabs", State::default());
+            win::fill(dc, &r, base.background_or(win::window_background()));
+            let rule = base.border_or(Color::rgb(229, 229, 229));
+            win::fill(dc, &RECT { bottom: r.top + 1, ..r }, rule);
+            let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+            let muted = theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
+            if let Some(s) = win::state::<Side>(side) {
+                let old = Gdi::SelectObject(dc, font.into());
+                Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+                for (k, a, b) in tab_spans(h, s, font) {
+                    let on = k == s.active;
+                    let mut tr = RECT { left: a, right: b, top: r.top, bottom: r.bottom };
+                    if on {
+                        // As Visual Studio marks the tab shown: the page's own colour, joined to
+                        // the pane above, the accent along its edge.
+                        win::fill(dc, &tr, win::window_background());
+                        win::fill(dc, &RECT { top: tr.bottom - win::px(h, 2), ..tr }, accent);
+                    }
+                    Gdi::SetTextColor(dc, COLORREF(if on { accent } else { muted }.colorref()));
+                    let mut text: Vec<u16> = tab_name(k).encode_utf16().collect();
+                    Gdi::DrawTextW(dc, &mut text, &mut tr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                }
+                Gdi::SelectObject(dc, old);
+            }
+            let _ = Gdi::EndPaint(h, &ps);
+            LRESULT(0)
+        },
+        wm::WM_ERASEBKGND => LRESULT(1),
+        wm::WM_LBUTTONDOWN => {
+            let (x, _) = win::point_of(l);
+            let font = unsafe { win::state::<HFONT>(h) }.map(|f| *f).unwrap_or_default();
+            if let Some(s) = unsafe { win::state::<Side>(side) } {
+                if let Some((k, _, _)) = tab_spans(h, s, font).into_iter().find(|(_, a, b)| x >= *a && x < *b) {
+                    s.active = k;
+                    s.arrange(side);
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_NCDESTROY => {
+            drop(unsafe { win::take_state::<HFONT>(h) });
+            win::def(h, msg, w, l)
+        }
+        _ => win::def(h, msg, w, l),
+    }
 }
 
 /// Whether the explorer and properties panes are shown.
@@ -157,7 +425,7 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 260, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200 }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 260, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200, explorer_auto: false, props_auto: false, tabbed: false, active: 0, tabs: HWND::default(), sliding: None }));
         h
     }
 }
@@ -173,6 +441,7 @@ pub fn set_side_parts(side: HWND, explorer: &Explorer, props: HWND, servers: HWN
         let servers_caption = phai_ui::controls::caption(side, t("Server Explorer"), ID_SERVERS_CAPTION, font);
         let outline_caption = phai_ui::controls::caption(side, t("Document Outline"), ID_OUTLINE_CAPTION, font);
         let split3 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT3, false);
+        s.tabs = side_tabs(side, font);
         s.parts = Some(SideParts { explorer_caption: heading, explorer_bar: bar, explorer_search: search, tree, split, props_caption, props, servers_caption, servers, split2, outline_caption, outline, split3 });
         s.arrange(side);
     }
@@ -181,6 +450,9 @@ pub fn set_side_parts(side: HWND, explorer: &Explorer, props: HWND, servers: HWN
 /// Shows or hides Server Explorer; whether it shows now.
 pub fn show_servers(side: HWND, on: bool) -> bool {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
+        if on && !s.servers_on {
+            s.active = 1;
+        }
         s.servers_on = on;
         s.arrange(side);
     }
@@ -190,6 +462,9 @@ pub fn show_servers(side: HWND, on: bool) -> bool {
 /// Shows or hides Document Outline; whether it shows now.
 pub fn show_outline(side: HWND, on: bool) -> bool {
     if let Some(s) = unsafe { win::state::<Side>(side) } {
+        if on && !s.outline_on {
+            s.active = 2;
+        }
         s.outline_on = on;
         s.arrange(side);
     }
@@ -215,6 +490,11 @@ pub fn relabel_side(side: HWND) {
         win::set_text(p.props_caption, t("Properties"));
         win::set_text(p.servers_caption, t("Server Explorer"));
         win::set_text(p.outline_caption, t("Document Outline"));
+    }
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(s.tabs), None, false);
+        }
     }
 }
 
