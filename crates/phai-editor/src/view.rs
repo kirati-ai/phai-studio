@@ -81,6 +81,36 @@ pub fn tests_in(text: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// Tracepoints to show, lines from 1: a red diamond in the margin, as Visual Studio draws them.
+pub fn set_tracepoints(h: HWND, lines: &[u32]) {
+    if let Some(v) = view(h) {
+        v.tracepoints = lines.iter().filter(|l| **l > 0).map(|l| *l as usize - 1).collect();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(h), None, false);
+        }
+    }
+}
+
+/// Where line `line` (from 1) begins on the screen, its bottom - for a window put under it; none
+/// when it is not in view.
+pub fn line_screen(h: HWND, line: u32) -> Option<(i32, i32)> {
+    let v = view(h)?;
+    let row = v.row_of((line as usize).checked_sub(1)?);
+    if row < v.top {
+        return None;
+    }
+    let mut pt = windows::Win32::Foundation::POINT { x: v.gutter(), y: ((row - v.top) as i32 + 1) * v.line_h };
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut r);
+        if pt.y > r.bottom {
+            return None;
+        }
+        let _ = Gdi::ClientToScreen(h, &mut pt);
+    }
+    Some((pt.x, pt.y))
+}
+
 /// The lines changed from the file as git last had it, lines from 0: the bar beside them.
 pub fn set_changes(h: HWND, changes: &[(usize, Change)]) {
     if let Some(v) = view(h) {
@@ -190,6 +220,8 @@ struct View {
     tests: Vec<(usize, String)>,
     tests_for: usize,
     clicked_test: Option<String>,
+    /// Tracepoints' lines (from 0).
+    tracepoints: Vec<usize>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -361,7 +393,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1552,6 +1584,25 @@ fn paint(h: HWND, v: &mut View) {
                     win::fill(dc, &RECT { left: bx + d / 4, top: by + d / 2 - t / 2, right: bx + d - d / 4, bottom: by + d / 2 - t / 2 + t }, Color::rgb(255, 255, 255));
                     win::fill(dc, &RECT { left: bx + d / 2 - t / 2, top: by + d / 4, right: bx + d / 2 - t / 2 + t, bottom: by + d - d / 4 }, Color::rgb(255, 255, 255));
                 }
+            }
+            // A tracepoint: a red diamond, where a breakpoint is not.
+            if v.tracepoints.contains(&line) && !v.breakpoints.contains(&line) {
+                let red = Color::rgb(0xe5, 0x14, 0x00);
+                let brush = Gdi::CreateSolidBrush(windows::Win32::Foundation::COLORREF(red.colorref()));
+                let pen = Gdi::CreatePen(Gdi::PS_SOLID, 1, windows::Win32::Foundation::COLORREF(red.colorref()));
+                let (ob, op) = (Gdi::SelectObject(dc, brush.into()), Gdi::SelectObject(dc, pen.into()));
+                let (cx, cy) = (bx + d / 2, by + d / 2);
+                let pts = [
+                    windows::Win32::Foundation::POINT { x: cx, y: by },
+                    windows::Win32::Foundation::POINT { x: bx + d, y: cy },
+                    windows::Win32::Foundation::POINT { x: cx, y: by + d },
+                    windows::Win32::Foundation::POINT { x: bx, y: cy },
+                ];
+                let _ = Gdi::Polygon(dc, &pts);
+                Gdi::SelectObject(dc, ob);
+                Gdi::SelectObject(dc, op);
+                let _ = Gdi::DeleteObject(brush.into());
+                let _ = Gdi::DeleteObject(pen.into());
             }
             if v.current == Some(line) {
                 let arrow = Color::rgb(0xf2, 0xc8, 0x11);
