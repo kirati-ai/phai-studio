@@ -165,6 +165,50 @@ pub fn brackets(line: &str, depth: i32) -> (Vec<(usize, i32)>, i32) {
     (out, d)
 }
 
+/// Compare Files: which lines of `a` are not in `b` (each marked [`Change::Deleted`]) and which of
+/// `b` are new or changed - by their longest common run of lines. Files too big to compare line
+/// by line (more than 4 million pairs) are marked from where they first differ.
+/// Lines (from 0) and how each changed.
+pub type Changes = Vec<(usize, crate::view::Change)>;
+
+pub fn diff_lines(a: &str, b: &str) -> (Changes, Changes) {
+    use crate::view::Change;
+    let (la, lb): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
+    let (n, m) = (la.len(), lb.len());
+    let mut left = Vec::new();
+    let mut right = Vec::new();
+    if n * m > 4_000_000 {
+        let same = la.iter().zip(&lb).take_while(|(x, y)| x == y).count();
+        left.extend((same..n).map(|i| (i, Change::Deleted)));
+        right.extend((same..m).map(|i| (i, Change::Added)));
+        return (left, right);
+    }
+    // lcs[i][j]: the longest common run of a[i..] and b[j..].
+    let mut lcs = vec![0u32; (n + 1) * (m + 1)];
+    let at = |i: usize, j: usize| i * (m + 1) + j;
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            lcs[at(i, j)] = if la[i] == lb[j] { lcs[at(i + 1, j + 1)] + 1 } else { lcs[at(i + 1, j)].max(lcs[at(i, j + 1)]) };
+        }
+    }
+    let (mut i, mut j) = (0, 0);
+    while i < n || j < m {
+        if i < n && j < m && la[i] == lb[j] {
+            i += 1;
+            j += 1;
+        } else if j < m && (i == n || lcs[at(i, j + 1)] >= lcs[at(i + 1, j)]) {
+            // A line of b's own: new - or changed, when a line of a's own stands across from it.
+            let changed = i < n && lcs[at(i + 1, j)] == lcs[at(i, j + 1)];
+            right.push((j, if changed { Change::Modified } else { Change::Added }));
+            j += 1;
+        } else {
+            left.push((i, Change::Deleted));
+            i += 1;
+        }
+    }
+    (left, right)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,6 +237,16 @@ mod tests {
         assert_eq!(b, vec![(1, 0), (3, 1), (5, 1), (16, 0), (18, 0)]);
         assert_eq!(end, 1);
         assert_eq!(brackets("}", 1), (vec![(0, 0)], 0));
+    }
+
+    #[test]
+    fn two_files_compared_line_by_line() {
+        use crate::view::Change;
+        let (l, r) = diff_lines("a\nb\nc\nd", "a\nB\nc\nd\ne");
+        assert_eq!(l, vec![(1, Change::Deleted)]);
+        assert_eq!(r, vec![(1, Change::Modified), (4, Change::Added)]);
+        let (l, r) = diff_lines("same", "same");
+        assert!(l.is_empty() && r.is_empty());
     }
 
     #[test]
