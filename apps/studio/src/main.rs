@@ -41,6 +41,8 @@ mod options;
 mod terminal;
 mod web;
 mod repdesign;
+mod qr;
+mod phone;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -203,8 +205,18 @@ const ID_ADD_REPORT: i32 = 292;
 const ID_BUILD_WEB: i32 = 294;
 /// Build > Run in Browser: built for the web, served on this computer, opened.
 const ID_RUN_WEB: i32 = 295;
+/// Build > Run on Phone: built for the web, served to this network, its address as a QR code.
+const ID_RUN_PHONE: i32 = 296;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
+
+/// What follows a build for the web: nothing, the browser here, or a phone on the network.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WebRun {
+    No,
+    Browser,
+    Phone,
+}
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
 
@@ -1107,6 +1119,7 @@ fn build_menu() -> HMENU {
         add(build, ID_PUBLISH, &tf("Publish {0}...", &[&project]), "");
         add(build, ID_BUILD_WEB, t("Build for Web (PWA)"), "");
         add(build, ID_RUN_WEB, t("Run in Browser"), "");
+        add(build, ID_RUN_PHONE, t("Run on Phone..."), "");
         sep(build);
         add(build, ID_DEBUG, "Debug", "");
         add(build, ID_RELEASE, "Release", "");
@@ -4137,9 +4150,8 @@ impl Studio {
         }
     }
 
-    /// Saves, then builds the project the form is in; `then_run` starts the program after.
     /// Build > Build for Web / Run in Browser: on another thread; `WM_WEB_DONE` when it ends.
-    fn build_web(&mut self, then_run: bool) {
+    fn build_web(&mut self, then_run: WebRun) {
         let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
             win::message(Some(self.hwnd), t("Open a form of the project first."), t("Build for Web (PWA)"), wm::MB_ICONINFORMATION);
             return;
@@ -4159,7 +4171,7 @@ impl Studio {
     }
 
     /// A build for the web ended: where it is, what was left out, the browser opened on it.
-    fn web_done(&mut self, result: Result<web::WebBuild, String>, then_run: bool) {
+    fn web_done(&mut self, result: Result<web::WebBuild, String>, then_run: WebRun) {
         match result {
             Err(e) => {
                 self.say_status(t("The build for the web failed"));
@@ -4168,13 +4180,27 @@ impl Studio {
             Ok(b) => {
                 let left = if b.left_out.is_empty() { String::new() } else { format!(" - {}: {}", t("not on the web"), b.left_out.join(", ")) };
                 self.say_status(&format!("{}{left}", tf("Built for the web in {0}", &[&b.folder.display()])));
-                if then_run {
-                    match web::serve(b.folder.clone()) {
+                match then_run {
+                    WebRun::No => {}
+                    WebRun::Browser => match web::serve(b.folder.clone()) {
                         Ok(port) => open_with_windows(&format!("http://localhost:{port}/")),
                         Err(e) => {
                             win::message(Some(self.hwnd), &e.to_string(), t("Run in Browser"), wm::MB_ICONWARNING);
                         }
-                    }
+                    },
+                    // Served to the network once; a later build only changes the files, and the
+                    // phone's page reloads by itself - the window is shown again only if closed.
+                    WebRun::Phone => match web::serve_lan(b.folder.clone()) {
+                        Ok(port) => {
+                            let host = web::lan_address().map(|a| a.to_string()).unwrap_or_else(|| "localhost".into());
+                            let url = format!("http://{host}:{port}/");
+                            self.say_status(&tf("On the phone: {0}", &[&url]));
+                            phone::show(self.hwnd, &url);
+                        }
+                        Err(e) => {
+                            win::message(Some(self.hwnd), &e.to_string(), t("Run on Phone"), wm::MB_ICONWARNING);
+                        }
+                    },
                 }
             }
         }
@@ -6696,8 +6722,9 @@ impl Studio {
             }
             ID_EXECUTE => self.execute_query(),
             ID_PUBLISH => self.publish(),
-            ID_BUILD_WEB => self.build_web(false),
-            ID_RUN_WEB => self.build_web(true),
+            ID_BUILD_WEB => self.build_web(WebRun::No),
+            ID_RUN_WEB => self.build_web(WebRun::Browser),
+            ID_RUN_PHONE => self.build_web(WebRun::Phone),
             ID_NEXT_ERROR | ID_PREV_ERROR => self.step_diagnostic(id == ID_NEXT_ERROR),
             ID_MOVE_UP | ID_MOVE_DOWN => match self.code_shown() {
                 Some(h) => phai_editor::view::move_lines(h, id == ID_MOVE_UP),
@@ -7291,7 +7318,7 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             LRESULT(0)
         }
         WM_WEB_DONE => {
-            let done = unsafe { Box::from_raw(l.0 as *mut (Result<web::WebBuild, String>, bool)) };
+            let done = unsafe { Box::from_raw(l.0 as *mut (Result<web::WebBuild, String>, WebRun)) };
             let (result, run) = *done;
             s.web_done(result, run);
             LRESULT(0)
@@ -7756,7 +7783,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -7858,6 +7885,20 @@ fn main() {
                 if std::env::var_os("PHAI_CONNECT_TEST").is_some() {
                     connectdlg::press_test(dlg);
                 }
+                win::show_top(dlg);
+                let mut msg = wm::MSG::default();
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&msg);
+                    wm::DispatchMessageW(&msg);
+                }
+                let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
+                std::process::exit(0);
+            }
+        }
+        // `--phone URL`: Run on Phone's window for that address, photographed with PHAI_SHOT.
+        if let Some(url) = args.iter().position(|a| a == "--phone").and_then(|i| args.get(i + 1)) {
+            if let Ok(out) = std::env::var("PHAI_SHOT") {
+                let dlg = phone::make(hwnd, url);
                 win::show_top(dlg);
                 let mut msg = wm::MSG::default();
                 while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
