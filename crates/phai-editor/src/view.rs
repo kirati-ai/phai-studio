@@ -167,6 +167,20 @@ fn char_ends(dc: HDC, s: &str) -> Vec<(usize, char, i32)> {
     marks.into_iter().map(|(i, c, end)| (i, c, dx[end - 1])).collect()
 }
 
+static BRACKET_COLOURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static STICKY_SCROLL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+static SCROLL_MAP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Bracket pair colours, sticky scroll and the scroll bar map, as Visual Studio's options have them.
+pub fn set_view_extras(bracket_colours: bool, sticky_scroll: bool, scroll_map: bool) {
+    BRACKET_COLOURS.store(bracket_colours, std::sync::atomic::Ordering::Relaxed);
+    STICKY_SCROLL.store(sticky_scroll, std::sync::atomic::Ordering::Relaxed);
+    SCROLL_MAP.store(scroll_map, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The scroll bar map's width, design pixels.
+const MAP_W: i32 = 10;
+
 static WHITE_SPACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static INDENT_GUIDES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 static COLUMN_GUIDE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -388,6 +402,11 @@ struct View {
     grown: Vec<(usize, usize)>,
     /// Inlay hints by line (from 0).
     hints: Vec<(usize, String)>,
+    /// How deep in brackets each line begins, as of `depths_for` edits.
+    depths: Vec<i32>,
+    depths_for: usize,
+    /// The lines sticky scroll holds at the top now.
+    sticky: Vec<usize>,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -627,7 +646,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1628,6 +1647,18 @@ fn paint(h: HWND, v: &mut View) {
         let brace_bg = theme::current().var_color("--brace").unwrap_or(if dark { Color::rgb(0x3e, 0x52, 0x6b) } else { Color::rgb(0xdb, 0xe0, 0xe6) });
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         let page = v.visible_lines(h) + 1;
+        let colours = BRACKET_COLOURS.load(std::sync::atomic::Ordering::Relaxed) && v.lang == Language::Rust;
+        if colours && v.depths_for != v.edits {
+            let mut d = 0;
+            v.depths = (0..v.model.buf.line_count())
+                .map(|l| {
+                    let at = d;
+                    d = crate::tools::brackets(&v.model.buf.line(l), d).1;
+                    at
+                })
+                .collect();
+            v.depths_for = v.edits;
+        }
         v.set_wrap_width(h);
         v.refresh_rows();
         for row in v.top..(v.top + page).min(v.row_count()) {
@@ -1747,6 +1778,22 @@ fn paint(h: HWND, v: &mut View) {
                 let gx = gutter + column as i32 * v.char_w - left;
                 if gx >= gutter {
                     win::fill(dc, &RECT { left: gx, top: y, right: gx + 1, bottom: y + v.line_h }, guide);
+                }
+            }
+            // Bracket pairs in colours by how deep they are, as Visual Studio's bracket pair colorization.
+            if colours {
+                const PAIRS: [(u8, u8, u8); 3] = [(0xc0, 0x8a, 0x00), (0xa4, 0x3d, 0xbf), (0x1f, 0x6f, 0xd1)];
+                const PAIRS_DARK: [(u8, u8, u8); 3] = [(0xff, 0xd7, 0x00), (0xda, 0x70, 0xd6), (0x17, 0x9f, 0xff)];
+                let depth = v.depths.get(line).copied().unwrap_or(0);
+                for (i, d) in crate::tools::brackets(&s, depth).0 {
+                    let (r, g, b) = if dark { PAIRS_DARK[d as usize % 3] } else { PAIRS[d as usize % 3] };
+                    let bx = gutter + v.width_of(dc, &s[..i]) - left;
+                    if bx < gutter {
+                        continue;
+                    }
+                    Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(Color::rgb(r, g, b).colorref()));
+                    let ch = wide_of(&s[i..i + 1]);
+                    let _ = Gdi::ExtTextOutW(dc, bx, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(ch.as_ptr()), ch.len() as u32, None);
                 }
             }
             // Inlay hints after the line: the types it does not write, quiet.
@@ -1927,6 +1974,66 @@ fn paint(h: HWND, v: &mut View) {
             }
         }
         Gdi::SelectClipRgn(dc, None);
+        // Sticky scroll: the lines that open the items around the top line, held at the top.
+        v.sticky.clear();
+        if STICKY_SCROLL.load(std::sync::atomic::Ordering::Relaxed) && v.lang == Language::Rust && v.top > 0 {
+            let first = v.line_of(v.top);
+            let all = v.model.buf.text();
+            let heads = crate::crumbs::header_lines(&all, first);
+            let heads: Vec<usize> = heads.into_iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect();
+            let shade = bg.mix(muted, 0.08);
+            let text_colour = theme::style("edit", State::default()).color_or(win::window_text());
+            for (k, l) in heads.iter().enumerate() {
+                let y = k as i32 * v.line_h;
+                win::fill(dc, &RECT { left: 0, top: y, right: w, bottom: y + v.line_h }, shade);
+                let s = v.model.buf.line(*l);
+                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text_colour.colorref()));
+                let text = wide_of(&s.replace('\t', &tab));
+                let _ = Gdi::ExtTextOutW(dc, gutter - v.left, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
+                win::fill(dc, &RECT { left: 0, top: y, right: gutter - v.char_w / 2, bottom: y + v.line_h }, shade);
+                if prefs.line_numbers {
+                    Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
+                    let mut n = wide_of(&(l + 1).to_string());
+                    let mut nr = RECT { left: 0, top: y + win::px(h, 2), right: gutter - v.char_w * 3, bottom: y + v.line_h };
+                    Gdi::DrawTextW(dc, &mut n, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
+                }
+            }
+            if !heads.is_empty() {
+                let y = heads.len() as i32 * v.line_h;
+                win::fill(dc, &RECT { left: 0, top: y - 1, right: w, bottom: y }, muted.mix(bg, 0.5));
+            }
+            v.sticky = heads;
+        }
+        // The scroll bar map: where errors, warnings, changes, breakpoints and the caret are in the
+        // whole file, along the right edge - a click there goes there.
+        if SCROLL_MAP.load(std::sync::atomic::Ordering::Relaxed) {
+            let mw = win::px(h, MAP_W);
+            let strip = RECT { left: w - mw, top: 0, right: w, bottom: hgt };
+            win::fill(dc, &strip, bg.mix(muted, 0.08));
+            let rows = v.row_count().max(1) as i32;
+            let at_line = |l: usize| -> i32 { (v.row_of(l) as i32 * hgt / rows).min(hgt - 2) };
+            for (l, c) in v.changes.iter() {
+                let colour = match c {
+                    Change::Added => Color::rgb(0x2e, 0xa0, 0x43),
+                    Change::Modified => Color::rgb(0x1c, 0x6f, 0xd1),
+                    Change::Removed => Color::rgb(0xd1, 0x34, 0x38),
+                };
+                let y = at_line(*l);
+                win::fill(dc, &RECT { left: w - mw, top: y, right: w - mw + win::px(h, 3), bottom: y + win::px(h, 3) }, colour);
+            }
+            for l in &v.breakpoints {
+                let y = at_line(*l);
+                win::fill(dc, &RECT { left: w - mw / 2 - win::px(h, 2), top: y, right: w - mw / 2 + win::px(h, 2), bottom: y + win::px(h, 4) }, Color::rgb(0xe5, 0x14, 0x00));
+            }
+            for m in &v.marks {
+                let l = v.model.buf.position(m.from.min(v.model.buf.len())).0;
+                let y = at_line(l);
+                let colour = if m.error { Color::rgb(0xe5, 0x14, 0x00) } else { Color::rgb(0xbf, 0x88, 0x03) };
+                win::fill(dc, &RECT { left: w - win::px(h, 4), top: y, right: w, bottom: y + win::px(h, 3) }, colour);
+            }
+            let y = at_line(caret_line);
+            win::fill(dc, &RECT { left: w - mw, top: y, right: w, bottom: y + win::px(h, 2) }, muted);
+        }
         let _ = Gdi::BitBlt(screen, 0, 0, w, hgt, Some(dc), 0, 0, Gdi::SRCCOPY);
         Gdi::SelectObject(dc, old_font);
         Gdi::SelectObject(dc, old_bmp);
@@ -2407,6 +2514,34 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 hide_tip(v);
             }
             let (x, y) = win::point_of(l);
+            if msg == wm::WM_LBUTTONDOWN {
+                let mut r = RECT::default();
+                unsafe {
+                    let _ = wm::GetClientRect(h, &mut r);
+                }
+                // On the scroll bar map: that part of the file shown.
+                if SCROLL_MAP.load(std::sync::atomic::Ordering::Relaxed) && x >= r.right - win::px(h, MAP_W) {
+                    let rows = v.row_count();
+                    let page = v.visible_lines(h);
+                    let row = (y.max(0) as usize * rows) / (r.bottom.max(1) as usize);
+                    v.top = row.saturating_sub(page / 2).min(rows.saturating_sub(page));
+                    update_scroll(h);
+                    unsafe {
+                        let _ = Gdi::InvalidateRect(Some(h), None, false);
+                    }
+                    return LRESULT(0);
+                }
+                // On a sticky line: there.
+                let k = (y / v.line_h.max(1)) as usize;
+                if let Some(&line) = v.sticky.get(k) {
+                    v.model.caret = v.model.buf.line_start(line);
+                    v.model.anchor = v.model.caret;
+                    v.model.extra.clear();
+                    v.top = v.row_of(line);
+                    moved(h);
+                    return LRESULT(0);
+                }
+            }
             unsafe {
                 let dc = Gdi::GetDC(Some(h));
                 let old = Gdi::SelectObject(dc, v.font.into());

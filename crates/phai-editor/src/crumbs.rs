@@ -74,6 +74,32 @@ fn code_of(line: &str) -> String {
     out
 }
 
+/// The lines (from 0) that open the items around line `line` - for sticky scroll, outermost first.
+pub fn header_lines(text: &str, line: usize) -> Vec<usize> {
+    let mut stack: Vec<Option<usize>> = Vec::new();
+    let mut pending: Option<usize> = None;
+    for (i, l) in text.lines().enumerate() {
+        if i > line {
+            break;
+        }
+        let code = code_of(l);
+        if declared(&code).is_some() {
+            pending = Some(i);
+        }
+        for c in code.chars() {
+            match c {
+                '{' => stack.push(pending.take()),
+                '}' if i < line => {
+                    stack.pop();
+                }
+                ';' => pending = None,
+                _ => {}
+            }
+        }
+    }
+    stack.into_iter().flatten().filter(|h| *h < line).collect()
+}
+
 /// Where line `line` (from 0) of `text` is: the items around it, outermost first.
 pub fn scope_at(text: &str, line: usize) -> Vec<String> {
     let mut stack: Vec<Option<String>> = Vec::new();
@@ -128,6 +154,13 @@ mod tests {
 }
 fn after() {}
 "#;
+
+    #[test]
+    fn the_lines_that_open_the_items_around() {
+        assert_eq!(header_lines(SRC, 9), vec![0, 5, 6]);
+        assert_eq!(header_lines(SRC, 18), vec![0, 5, 15]);
+        assert!(header_lines(SRC, 0).is_empty());
+    }
 
     #[test]
     fn the_caret_s_place_read_from_the_braces() {
