@@ -90,6 +90,83 @@ pub fn set_view_options(white_space: bool, indent_guides: bool, column: usize) {
     COLUMN_GUIDE.store(column, std::sync::atomic::Ordering::Relaxed);
 }
 
+static WORD_WRAP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Word Wrap: long lines go on onto the rows below rather than past the window's edge.
+pub fn set_word_wrap(on: bool) {
+    WORD_WRAP.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Where each row begins, from each character's byte offset, the character, and where it ends
+/// across the line (pixels or columns): no row wider than `max`, broken after the last space that
+/// fits, else where it runs out.
+pub fn wrap_by(ends: &[(usize, char, i32)], max: i32) -> Vec<usize> {
+    let mut out = vec![0];
+    let mut row_x = 0;
+    let mut row_start = 0usize;
+    let mut last_space: Option<(usize, i32)> = None;
+    for (k, &(i, c, end)) in ends.iter().enumerate() {
+        if end - row_x > max && i > row_start {
+            let (at, x) = match last_space {
+                Some((sp, x)) if sp > row_start => (sp, x),
+                _ => (i, if k > 0 { ends[k - 1].2 } else { 0 }),
+            };
+            out.push(at);
+            row_start = at;
+            row_x = x;
+            last_space = None;
+        }
+        if c == ' ' {
+            if let Some(&(j, _, _)) = ends.get(k + 1) {
+                last_space = Some((j, end));
+            }
+        }
+    }
+    out
+}
+
+/// Where each row of `s` begins when no row holds more than `cols` columns (a tab to its stop, a
+/// Thai mark on the letter before it) - for a test; the editor measures with its font.
+pub fn wrap_points(s: &str, cols: usize, tab: usize) -> Vec<usize> {
+    let mut col = 0i32;
+    let ends: Vec<(usize, char, i32)> = s
+        .char_indices()
+        .map(|(i, c)| {
+            if !crate::model::joins_previous(c) {
+                col += if c == '\t' { tab.max(1) as i32 - col % tab.max(1) as i32 } else { 1 };
+            }
+            (i, c, col)
+        })
+        .collect();
+    wrap_by(&ends, cols as i32)
+}
+
+/// Each character of `s` with where it ends across the line, as the font draws it (a tab as the
+/// spaces it stands for).
+fn char_ends(dc: HDC, s: &str) -> Vec<(usize, char, i32)> {
+    let tab = crate::prefs::tab_spaces();
+    let mut wide: Vec<u16> = Vec::with_capacity(s.len());
+    let mut marks: Vec<(usize, char, usize)> = Vec::with_capacity(s.len());
+    for (i, c) in s.char_indices() {
+        if c == '\t' {
+            wide.extend(tab.encode_utf16());
+        } else {
+            let mut b = [0u16; 2];
+            wide.extend_from_slice(c.encode_utf16(&mut b));
+        }
+        marks.push((i, c, wide.len()));
+    }
+    if wide.is_empty() {
+        return Vec::new();
+    }
+    let mut dx = vec![0i32; wide.len()];
+    let mut size = SIZE::default();
+    unsafe {
+        let _ = Gdi::GetTextExtentExPointW(dc, PCWSTR(wide.as_ptr()), wide.len() as i32, i32::MAX, None, Some(dx.as_mut_ptr()), &mut size);
+    }
+    marks.into_iter().map(|(i, c, end)| (i, c, dx[end - 1])).collect()
+}
+
 static WHITE_SPACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static INDENT_GUIDES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 static COLUMN_GUIDE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -250,7 +327,12 @@ struct View {
     /// The folded ones, by first line: their lines after the first are hidden.
     folded: Vec<(usize, usize)>,
     /// The lines shown, one per row on screen, in order - every line when nothing is folded.
-    rows: Vec<usize>,
+    /// Each row on screen: its line, and where in the line it begins (past 0 when a long line
+    /// is wrapped onto rows below).
+    rows: Vec<(usize, usize)>,
+    /// Word Wrap: columns a row holds (0 off), and what the rows were worked out for.
+    wrap_cols: usize,
+    rows_cols: usize,
     /// The find bar's choices: case, whole word, regular expression - kept while the file is open.
     opts: crate::model::FindOpts,
     /// Code lenses: a line, the place they speak of, their words ("3 references").
@@ -344,7 +426,7 @@ impl View {
     /// The fold regions and the rows shown again, when the text changed.
     fn refresh_rows(&mut self) {
         let n = self.model.buf.line_count();
-        if self.regions_for != self.edits || self.rows.is_empty() || self.rows.last().is_some_and(|l| *l >= n) {
+        if self.regions_for != self.edits || self.rows.is_empty() || self.rows.last().is_some_and(|l| l.0 >= n) || self.rows_cols != self.wrap_cols {
             if self.regions_for != self.edits {
                 self.regions = crate::model::fold_regions(&self.model.buf.text());
                 self.regions_for = self.edits;
@@ -352,7 +434,32 @@ impl View {
                 let regions = &self.regions;
                 self.folded = self.folded.iter().filter_map(|(a, _)| regions.iter().find(|(r, _)| r == a).copied()).collect();
             }
-            self.rows = (0..n).filter(|l| !self.folded.iter().any(|(a, z)| l > a && l <= z)).collect();
+            let cols = self.wrap_cols;
+            let mut rows = Vec::with_capacity(n);
+            // Wrapped: each line measured with the editor's font, in pixels.
+            let measure = (cols > 0).then(|| unsafe {
+                let dc = Gdi::GetDC(None);
+                let old = Gdi::SelectObject(dc, self.font.into());
+                (dc, old)
+            });
+            let max = cols as i32 * self.char_w;
+            for l in (0..n).filter(|l| !self.folded.iter().any(|(a, z)| l > a && l <= z)) {
+                match measure {
+                    None => rows.push((l, 0)),
+                    Some((dc, _)) => {
+                        let s = self.model.buf.line(l);
+                        rows.extend(wrap_by(&char_ends(dc, &s), max).into_iter().map(|at| (l, at)));
+                    }
+                }
+            }
+            if let Some((dc, old)) = measure {
+                unsafe {
+                    Gdi::SelectObject(dc, old);
+                    Gdi::ReleaseDC(None, dc);
+                }
+            }
+            self.rows = rows;
+            self.rows_cols = cols;
         }
     }
 
@@ -362,9 +469,44 @@ impl View {
         if self.rows.is_empty() {
             return line;
         }
-        match self.rows.binary_search(&line) {
-            Ok(r) => r,
-            Err(r) => r.saturating_sub(1),
+        let r = self.rows.partition_point(|x| x.0 < line);
+        if self.rows.get(r).is_some_and(|x| x.0 == line) {
+            r
+        } else {
+            r.saturating_sub(1)
+        }
+    }
+
+    /// The row a place in a line is on - past the first when the line is wrapped.
+    fn row_of_pos(&self, line: usize, col: usize) -> usize {
+        let first = self.row_of(line);
+        let mut r = first;
+        while self.rows.get(r + 1).is_some_and(|x| x.0 == line && x.1 <= col) {
+            r += 1;
+        }
+        r
+    }
+
+    /// Where a row begins in its line, and where it ends.
+    fn seg_of(&self, row: usize) -> (usize, Option<usize>) {
+        let Some(&(line, at)) = self.rows.get(row) else { return (0, None) };
+        let end = self.rows.get(row + 1).filter(|x| x.0 == line).map(|x| x.1);
+        (at, end)
+    }
+
+    /// Word Wrap's columns for the window's width now (0 when it is off).
+    fn set_wrap_width(&mut self, h: HWND) {
+        self.wrap_cols = if WORD_WRAP.load(std::sync::atomic::Ordering::Relaxed) {
+            let mut r = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(h, &mut r);
+            }
+            (((r.right - self.gutter()) / self.char_w.max(1)) - 2).max(20) as usize
+        } else {
+            0
+        };
+        if self.wrap_cols > 0 {
+            self.left = 0;
         }
     }
 
@@ -373,7 +515,7 @@ impl View {
         if self.rows.is_empty() {
             return row.min(self.model.buf.line_count().saturating_sub(1));
         }
-        self.rows.get(row).or(self.rows.last()).copied().unwrap_or(0)
+        self.rows.get(row).or(self.rows.last()).map(|x| x.0).unwrap_or(0)
     }
 
     fn row_count(&self) -> usize {
@@ -413,19 +555,27 @@ impl View {
     fn caret_point(&self, dc: HDC) -> (i32, i32) {
         let (line, col) = self.model.buf.position(self.model.caret);
         let s = self.model.buf.line(line);
-        let x = self.gutter() + self.width_of(dc, &s[..col]) - self.left;
-        let y = (self.row_of(line) as i32 - self.top as i32) * self.line_h;
+        let row = self.row_of_pos(line, col);
+        let (seg, _) = self.seg_of(row);
+        let shift = if seg > 0 { self.width_of(dc, &s[..seg.min(s.len())]) } else { 0 };
+        let x = self.gutter() + self.width_of(dc, &s[..col]) - self.left - shift;
+        let y = (row as i32 - self.top as i32) * self.line_h;
         (x, y)
     }
 
     /// The byte offset under a point in the client area.
     fn offset_at(&self, dc: HDC, x: i32, y: i32) -> usize {
-        let line = self.line_of(self.top + (y / self.line_h.max(1)).max(0) as usize);
+        let row = self.top + (y / self.line_h.max(1)).max(0) as usize;
+        let line = self.line_of(row);
         let line = line.min(self.model.buf.line_count() - 1);
         let s = self.model.buf.line(line);
-        let target = x - self.gutter() + self.left;
-        let mut at = 0;
-        while at < s.len() {
+        // A wrapped line's row: only its own piece.
+        let (seg, end) = if self.rows.get(row).is_some_and(|x| x.0 == line) { self.seg_of(row) } else { (0, None) };
+        let seg = seg.min(s.len());
+        let end = end.unwrap_or(s.len()).min(s.len());
+        let target = x - self.gutter() + self.left + if seg > 0 { self.width_of(dc, &s[..seg]) } else { 0 };
+        let mut at = seg;
+        while at < end {
             let next = next_stop(&s, at);
             let mid = (self.width_of(dc, &s[..at]) + self.width_of(dc, &s[..next])) / 2;
             if target < mid {
@@ -464,7 +614,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1322,8 +1472,10 @@ fn place_caret(h: HWND) {
     if v.is_hidden(line) {
         unfold_at(v, line);
     }
+    v.set_wrap_width(h);
     v.refresh_rows();
-    let row = v.row_of(line);
+    let col = v.model.buf.position(v.model.caret).1;
+    let row = v.row_of_pos(line, col);
     let page = v.visible_lines(h);
     if row < v.top {
         v.top = row;
@@ -1337,7 +1489,9 @@ fn place_caret(h: HWND) {
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         let gutter = v.gutter();
-        if x < gutter {
+        if v.wrap_cols > 0 {
+            // Wrapped: nothing to scroll sideways.
+        } else if x < gutter {
             v.left = (v.left - (gutter - x) - v.char_w * 8).max(0);
         } else if x > r.right - v.char_w * 2 {
             v.left += x - (r.right - v.char_w * 2) + v.char_w * 8;
@@ -1461,12 +1615,24 @@ fn paint(h: HWND, v: &mut View) {
         let brace_bg = theme::current().var_color("--brace").unwrap_or(if dark { Color::rgb(0x3e, 0x52, 0x6b) } else { Color::rgb(0xdb, 0xe0, 0xe6) });
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         let page = v.visible_lines(h) + 1;
+        v.set_wrap_width(h);
         v.refresh_rows();
         for row in v.top..(v.top + page).min(v.row_count()) {
             let line = v.line_of(row);
             let y = (row - v.top) as i32 * v.line_h;
             let s = v.model.buf.line(line);
             let start = v.model.buf.line_start(line);
+            // A wrapped line's row: the line drawn shifted by where its piece begins - the gutter
+            // covers what is before it, the window's edge what is after.
+            let (seg, seg_end) = v.seg_of(row);
+            let seg = seg.min(s.len());
+            let left = v.left + if seg > 0 { v.width_of(dc, &s[..seg]) } else { 0 };
+            // What is past the row's break belongs to the row below.
+            Gdi::SelectClipRgn(dc, None);
+            if let Some(e) = seg_end {
+                let x_end = gutter + v.width_of(dc, &s[..e.min(s.len())]) - left;
+                let _ = Gdi::IntersectClipRect(dc, 0, y, x_end.max(gutter), y + v.line_h);
+            }
             // The line the debugger stopped at, in yellow, as Visual Studio shows it.
             if v.current == Some(line) {
                 let at = theme::current().var_color("--debug-line").unwrap_or(if dark { Color::rgb(0x5c, 0x52, 0x14) } else { Color::rgb(0xff, 0xf1, 0x9c) });
@@ -1477,16 +1643,16 @@ fn paint(h: HWND, v: &mut View) {
                 let hit_bg = theme::current().var_color("--find").unwrap_or(if dark { Color::rgb(0x61, 0x51, 0x1e) } else { Color::rgb(0xff, 0xe9, 0x8f) });
                 for &(a, b) in v.hits.iter().filter(|(a, b)| *b > start && *a <= start + s.len()) {
                     let (a, b) = (a.max(start) - start, b.min(start + s.len()) - start);
-                    let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
-                    let x1 = gutter + v.width_of(dc, &s[..b]) - v.left;
+                    let x0 = gutter + v.width_of(dc, &s[..a]) - left;
+                    let x1 = gutter + v.width_of(dc, &s[..b]) - left;
                     win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, hit_bg);
                 }
             }
             if let Some((p, q)) = braces {
                 for at in [p, q].into_iter().filter(|a| *a >= start && *a < start + s.len()) {
                     let a = at - start;
-                    let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
-                    let x1 = gutter + v.width_of(dc, &s[..a + 1]) - v.left;
+                    let x0 = gutter + v.width_of(dc, &s[..a]) - left;
+                    let x1 = gutter + v.width_of(dc, &s[..a + 1]) - left;
                     win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, brace_bg);
                 }
             }
@@ -1494,8 +1660,8 @@ fn paint(h: HWND, v: &mut View) {
             if sb > sa && sb >= start && sa <= start + s.len() {
                 let a = sa.max(start) - start;
                 let b = (sb.min(start + s.len())) - start;
-                let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
-                let mut x1 = gutter + v.width_of(dc, &s[..b]) - v.left;
+                let x0 = gutter + v.width_of(dc, &s[..a]) - left;
+                let mut x1 = gutter + v.width_of(dc, &s[..b]) - left;
                 if sb > start + s.len() {
                     x1 += v.char_w / 2;
                 }
@@ -1507,12 +1673,12 @@ fn paint(h: HWND, v: &mut View) {
                 if eb > ea && eb >= start && ea <= start + s.len() {
                     let a0 = ea.max(start) - start;
                     let b0 = eb.min(start + s.len()) - start;
-                    let x0 = gutter + v.width_of(dc, &s[..a0]) - v.left;
-                    let x1 = gutter + v.width_of(dc, &s[..b0]) - v.left;
+                    let x0 = gutter + v.width_of(dc, &s[..a0]) - left;
+                    let x1 = gutter + v.width_of(dc, &s[..b0]) - left;
                     win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: x1, bottom: y + v.line_h }, select_bg);
                 }
                 if c >= start && c <= start + s.len() {
-                    let cx = gutter + v.width_of(dc, &s[..c - start]) - v.left;
+                    let cx = gutter + v.width_of(dc, &s[..c - start]) - left;
                     if cx >= gutter {
                         win::fill(dc, &RECT { left: cx, top: y, right: cx + win::px(h, 2), bottom: y + v.line_h }, win::window_text());
                     }
@@ -1520,7 +1686,7 @@ fn paint(h: HWND, v: &mut View) {
             }
             // The text, token by token.
             let (tokens, _) = line_tokens(v.lang, &s, v.comments.get(line).copied().unwrap_or(false));
-            let mut x = gutter - v.left;
+            let mut x = gutter - left;
             for (a, b, t) in tokens {
                 let piece = &s[a..b];
                 let pw = v.width_of(dc, piece);
@@ -1538,7 +1704,7 @@ fn paint(h: HWND, v: &mut View) {
                 let lead: usize = s.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { tab_cols } else { 1 }).sum();
                 let mut col = tab_cols;
                 while col < lead {
-                    let gx = gutter + col as i32 * v.char_w - v.left;
+                    let gx = gutter + col as i32 * v.char_w - left;
                     if gx >= gutter {
                         win::fill(dc, &RECT { left: gx, top: y, right: gx + 1, bottom: y + v.line_h }, guide);
                     }
@@ -1547,7 +1713,7 @@ fn paint(h: HWND, v: &mut View) {
             }
             if WHITE_SPACE.load(std::sync::atomic::Ordering::Relaxed) {
                 for (i, c) in s.char_indices().filter(|(_, c)| *c == ' ' || *c == '\t') {
-                    let x0 = gutter + v.width_of(dc, &s[..i]) - v.left;
+                    let x0 = gutter + v.width_of(dc, &s[..i]) - left;
                     if x0 < gutter {
                         continue;
                     }
@@ -1565,7 +1731,7 @@ fn paint(h: HWND, v: &mut View) {
             }
             let column = COLUMN_GUIDE.load(std::sync::atomic::Ordering::Relaxed);
             if column > 0 {
-                let gx = gutter + column as i32 * v.char_w - v.left;
+                let gx = gutter + column as i32 * v.char_w - left;
                 if gx >= gutter {
                     win::fill(dc, &RECT { left: gx, top: y, right: gx + 1, bottom: y + v.line_h }, guide);
                 }
@@ -1582,8 +1748,8 @@ fn paint(h: HWND, v: &mut View) {
             for m in v.marks.iter().filter(|m| m.to > start && m.from <= start + s.len()) {
                 let a = m.from.max(start) - start;
                 let b = (m.to.min(start + s.len())).max(m.from.max(start)) - start;
-                let x0 = gutter + v.width_of(dc, &s[..a]) - v.left;
-                let x1 = (gutter + v.width_of(dc, &s[..b]) - v.left).max(x0 + v.char_w);
+                let x0 = gutter + v.width_of(dc, &s[..a]) - left;
+                let x1 = (gutter + v.width_of(dc, &s[..b]) - left).max(x0 + v.char_w);
                 let colour = if m.error { Color::rgb(0xe5, 0x14, 0x00) } else { Color::rgb(0xbf, 0x88, 0x03) };
                 let pen = Gdi::CreatePen(Gdi::PS_SOLID, win::px(h, 1).max(1), windows::Win32::Foundation::COLORREF(colour.colorref()));
                 let old = Gdi::SelectObject(dc, pen.into());
@@ -1602,6 +1768,9 @@ fn paint(h: HWND, v: &mut View) {
             }
             // The gutter on top, so text scrolled left goes under it.
             win::fill(dc, &RECT { left: 0, top: y, right: gutter - v.char_w / 2, bottom: y + v.line_h }, bg);
+            if seg > 0 {
+                continue;
+            }
             let n = wide_of(&if prefs.line_numbers { (line + 1).to_string() } else { String::new() });
             let mut nr = RECT { left: 0, top: y + win::px(h, 2), right: gutter - v.char_w * 3, bottom: y + v.line_h };
             // A block that can fold: a small box, − open, + folded; a folded one shows … after its line.
@@ -1618,7 +1787,7 @@ fn paint(h: HWND, v: &mut View) {
                 if folded {
                     win::fill(dc, &RECT { left: bx + bs / 2 - t / 2, top: by + 2 * t + 1, right: bx + bs / 2 - t / 2 + t, bottom: by + bs - 2 * t - 1 }, muted);
                     let s_line = v.model.buf.line(line);
-                    let x_end = gutter + v.width_of(dc, &s_line) - v.left + v.char_w;
+                    let x_end = gutter + v.width_of(dc, &s_line) - left + v.char_w;
                     let last = v.model.buf.line(z);
                     let label = format!("…{}", last.trim());
                     let lw = v.width_of(dc, &label) + v.char_w;
@@ -1736,6 +1905,7 @@ fn paint(h: HWND, v: &mut View) {
                 let _ = Gdi::DeleteObject(pen.into());
             }
         }
+        Gdi::SelectClipRgn(dc, None);
         let _ = Gdi::BitBlt(screen, 0, 0, w, hgt, Some(dc), 0, 0, Gdi::SRCCOPY);
         Gdi::SelectObject(dc, old_font);
         Gdi::SelectObject(dc, old_bmp);
@@ -2377,5 +2547,23 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             win::def(h, msg, w, l)
         }
         _ => win::def(h, msg, w, l),
+    }
+}
+
+#[cfg(test)]
+mod wrap_tests {
+    use super::wrap_points;
+
+    #[test]
+    fn long_lines_wrap_after_a_space_that_fits() {
+        assert_eq!(wrap_points("short", 20, 4), vec![0]);
+        let s = "let total = add(total, items[i]) + more;";
+        let at = wrap_points(s, 20, 4);
+        assert_eq!(at, vec![0, 12, 23]);
+        assert_eq!((&s[..12], &s[12..23], &s[23..]), ("let total = ", "add(total, ", "items[i]) + more;"));
+        assert_eq!(wrap_points(&"x".repeat(45), 20, 4), vec![0, 20, 40], "no space: where it runs out");
+        assert_eq!(wrap_points("นนน", 2, 4), vec![0, 6]);
+        // A Thai mark sits on its letter: no column of its own.
+        assert_eq!(wrap_points("น้น้น้", 2, 4), vec![0, 12]);
     }
 }

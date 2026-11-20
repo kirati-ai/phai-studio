@@ -1092,6 +1092,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("Word Wrap", "ตัดบรรทัดอัตโนมัติ"),
     ("Advanced", "ขั้นสูง"),
     ("Expand Selection", "ขยายส่วนที่เลือก"),
     ("Shrink Selection", "หดส่วนที่เลือก"),
