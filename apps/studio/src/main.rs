@@ -1149,7 +1149,6 @@ fn build_menu() -> HMENU {
         add(test, ID_RUN_ALL_TESTS, t("Run All Tests"), "Ctrl+R, A");
         sep(test);
         add(test, ID_COVERAGE, t("Analyze Code Coverage for All Tests"), "");
-        sub(t("&Test"), test);
         let gitm = wm::CreatePopupMenu().unwrap_or_default();
         add(gitm, ID_GIT_CHANGES, t("Git Changes..."), "Ctrl+Alt+G");
         sep(gitm);
@@ -1159,7 +1158,6 @@ fn build_menu() -> HMENU {
         if studio().is_some_and(|s| s.blame_on) {
             wm::CheckMenuItem(gitm, ID_GIT_BLAME as u32, wm::MF_CHECKED.0);
         }
-        sub(t("&Git"), gitm);
         let data = wm::CreatePopupMenu().unwrap_or_default();
         // In the order the work goes: connect, ask, design a table. (Server Explorer is in View.)
         add(data, ID_ADD_CONNECTION, t("Connect to Database..."), "");
@@ -1168,7 +1166,6 @@ fn build_menu() -> HMENU {
         add(data, ID_EXECUTE, t("Execute Query"), "Ctrl+Shift+E");
         sep(data);
         add(data, ID_TABLE_DESIGNER, t("Table Designer..."), "");
-        sub(t("D&ata"), data);
         let th = wm::CreatePopupMenu().unwrap_or_default();
         // The project's style sheets, the form's own ticked - choose one to use it.
         let (sheets, current) = studio().map(|s| (s.theme_files(), s.doc.form.form.theme.clone())).unwrap_or_default();
@@ -1191,10 +1188,16 @@ fn build_menu() -> HMENU {
         if current.is_none() {
             wm::CheckMenuItem(th, ID_THEME_NONE as u32, wm::MF_CHECKED.0);
         }
-        sub(t("&Theme"), th);
-        // Tools, as Visual Studio has them: connecting to a database, a new GUID, the look, a
-        // command line in the project's folder, Options.
+        // Tools: Data, Test, Git and the form's Theme as menus within; the Theme Editor; a new
+        // GUID; Studio's own colours; a command line in the project's folder; Options.
         let tools = wm::CreatePopupMenu().unwrap_or_default();
+        // Data, Test, Git and the form's Theme: menus of their own inside Tools, so the bar keeps
+        // to what is used all day.
+        sub_of(tools, t("D&ata"), data);
+        sub_of(tools, t("&Test"), test);
+        sub_of(tools, t("&Git"), gitm);
+        sub_of(tools, t("&Theme"), th);
+        sep(tools);
         // The editors, each in this one place (a form's menu bar and toolbar are edited from the
         // Toolbox and by double-clicking them on the form).
         add(tools, ID_THEME_EDITOR, t("Theme Editor..."), "");
@@ -1206,7 +1209,8 @@ fn build_menu() -> HMENU {
         add(look, ID_LIGHT, t("Light"), "");
         add(look, ID_DARK, t("Dark"), "");
         wm::CheckMenuItem(look, if theme::current().is_dark() { ID_DARK } else { ID_LIGHT } as u32, wm::MF_CHECKED.0);
-        sub_of(tools, t("Theme"), look);
+        // Phai Studio's own colours - not the form's theme above.
+        sub_of(tools, t("Studio Colours"), look);
         let cmd = wm::CreatePopupMenu().unwrap_or_default();
         add(cmd, ID_CMD_PROMPT, t("Command Prompt"), "");
         add(cmd, ID_POWERSHELL, "PowerShell", "");
@@ -6506,9 +6510,12 @@ impl Studio {
             }
             ID_THEME_EDIT => {
                 if let (Some(p), Some(th)) = (self.doc.path.clone(), self.doc.form.form.theme.clone()) {
+                    // A style sheet: in the code editor, not read as a form. Its path without the
+                    // `..` a form's theme is named with.
                     let file = p.with_file_name("").join(&th);
+                    let file = file.canonicalize().map(|c| PathBuf::from(c.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(file);
                     if file.is_file() {
-                        self.open_path(&file);
+                        self.open_code(&file);
                     }
                 }
             }
