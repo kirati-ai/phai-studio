@@ -59,6 +59,58 @@ fn place(c: &Control, f: &FormFile) -> String {
     )
 }
 
+/// Whether `f` stacks its controls on a screen `width` wide (PhoneLayout = stack, narrower than
+/// the form).
+pub fn stacks(f: &FormFile, width: i32) -> bool {
+    f.form.word("phone") != Some("zoom") && width < f.form.size[0]
+}
+
+/// Where each control of `f` goes when stacked on a screen `width` x `height`, as the page's
+/// CSS puts it (`.phai-stacked`): in reading order, as wide as the screen less its margins,
+/// tall enough for a finger. `None`: not shown that way (hidden, a component, another page, a
+/// frame its controls are stacked out of). `top`: where the first one starts (below a toolbar).
+pub fn stacked_rects(f: &FormFile, width: i32, height: i32, top: i32) -> Vec<Option<[i32; 4]>> {
+    const PAD: i32 = 12;
+    const GAP: i32 = 10;
+    let mut order: Vec<(i64, usize)> = Vec::new();
+    for (i, c) in f.control.iter().enumerate() {
+        let gone = c.visible == Some(false) || c.kind.is_component() || c.page.is_some_and(|p| p != 0) || matches!(c.kind, Kind::Panel | Kind::Flow | Kind::Table | Kind::Split);
+        if gone {
+            continue;
+        }
+        let [x, y, _, _] = c.rect();
+        let key = match c.dock.as_deref() {
+            Some("top") => -1_000_000 + y as i64,
+            Some("bottom") => 100_000_000,
+            _ if c.kind == Kind::Statusbar => 100_000_000,
+            _ => y.clamp(0, 9_999) as i64 * 10_000 + x.clamp(0, 9_999) as i64,
+        };
+        order.push((key, i));
+    }
+    order.sort();
+    let mut out = vec![None; f.control.len()];
+    let mut y = top + PAD;
+    for (key, i) in order {
+        let c = &f.control[i];
+        let [_, _, _, h] = c.rect();
+        if key == 100_000_000 {
+            // The status bar: along the bottom, the whole width.
+            out[i] = Some([0, height - h, width, h]);
+            continue;
+        }
+        let h = match c.kind {
+            Kind::Button | Kind::Edit | Kind::Combo | Kind::Date | Kind::Checkbox | Kind::Radio | Kind::Number | Kind::Masked => h.max(44),
+            Kind::Textarea | Kind::List | Kind::Grid | Kind::ListBox | Kind::CheckedList => h.max(180),
+            Kind::Group => 24,
+            _ => h,
+        };
+        out[i] = Some([PAD, y, width - 2 * PAD, h]);
+        // A label sits close over what it names.
+        y += h + if c.kind == Kind::Label { GAP - 6 } else { GAP };
+    }
+    out
+}
+
 /// The browser event a control's own method (`on_click`, `on_change`, `on_select`) listens to.
 fn own_event(c: &Control) -> Option<&'static str> {
     match c.kind {
@@ -282,6 +334,10 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "    fn make<E: {events} + 'static>(main: bool, events: E) -> HWND {{");
     let _ = writeln!(w, "        form::start();");
     let _ = writeln!(w, "        let (hwnd, area) = form::window({}, t({}), ({}, {}), main);", lit(name), lit(&f.form.title), f.form.size[0], f.form.size[1]);
+    // PhoneLayout: stacked on a narrow screen unless the form says zoom.
+    if f.form.word("phone") != Some("zoom") {
+        let _ = writeln!(w, "        form::stack_when_narrow(area);");
+    }
     let tabs = tabs_id(f);
     for c in &shown {
         let text = c.text.as_deref().unwrap_or("");
@@ -563,6 +619,18 @@ textarea.phai-edit { padding: 4px 6px; resize: none; }
 .phai-statusbar { display: flex; align-items: center; gap: 16px; padding: 0 12px; padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid; }
 .phai-link { display: flex; align-items: center; color: var(--accent, #12855f); }
 .phai-picture { object-fit: contain; }
+/* PhoneLayout = stack: on a screen narrower than the form, one control under another, as wide as
+   the screen, in the order they read; big enough for a finger. */
+.phai-area.phai-stacked { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); min-height: 100%; }
+.phai-stacked > .phai { position: relative !important; inset: auto !important; width: auto !important; flex: none; }
+.phai-stacked > .phai-button, .phai-stacked > .phai-edit, .phai-stacked > .phai-combo, .phai-stacked > .phai-date, .phai-stacked > .phai-checkbox, .phai-stacked > .phai-radio { min-height: 44px; font-size: 16px; }
+.phai-stacked > textarea.phai-edit, .phai-stacked > .phai-k-list, .phai-stacked > .phai-k-grid, .phai-stacked > .phai-k-listbox { min-height: 180px; }
+.phai-stacked > .phai-label { height: auto !important; white-space: normal; margin-bottom: -6px; }
+.phai-stacked > .phai-group { height: auto !important; border-width: 0 0 1px; padding: 0; margin-top: 6px; }
+.phai-stacked > .phai-panel:empty, .phai-stacked > .phai-k-flow:empty { display: none; }
+.phai-stacked > .phai-statusbar { margin: auto -12px calc(-12px - env(safe-area-inset-bottom)); }
+.phai-stacked > .phai-toolbar { position: relative !important; inset: auto !important; order: -2000000; flex: none; margin: -12px -12px 0; }
+.phai-stacked .phai-checkbox input, .phai-stacked .phai-radio input { width: 22px; height: 22px; }
 .phai-k-list, .phai-k-grid { overflow: auto; padding: 0; }
 .phai-k-list table, .phai-k-grid table { border-collapse: collapse; width: 100%; }
 .phai-k-list th, .phai-k-grid th { position: sticky; top: 0; text-align: left; font-weight: 400; padding: 3px 6px; background: var(--surface, #fff); border-bottom: 1px solid var(--rule, #e5e5e5); }
@@ -772,6 +840,52 @@ mod tests {
         assert!(code.contains("label: t(\"Zoom\")") && code.contains("key: \"Ctrl+=\", glyph: 59169"), "{code}");
         assert!(code.contains("phai_ui::menu::toolbar(hwnd, area, vec![phai_ui::menu::Tool { id: \"word_wrap\", label: t(\"Wrap\"), glyph: 59169, toggle: true }], 34, chosen(&me));"), "{code}");
         assert!(code.contains("pub fn set_item_checked(&self, item: &str, on: bool)") && code.contains("pub toolbar: HWND,"), "{code}");
+    }
+
+    #[test]
+    fn a_form_stacks_on_a_phone_in_reading_order() {
+        let mut f = FormFile::parse(
+            r#"format = 1
+
+[form]
+name = "MainWindow"
+title = "Shop"
+size = [600, 400]
+
+[[control]]
+kind = "button"
+id = "ok"
+text = "OK"
+bounds = [500, 360, 75, 23]
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name"
+bounds = [11, 20, 80, 23]
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [100, 20, 300, 23]
+
+[[control]]
+kind = "statusbar"
+id = "status"
+dock = "bottom"
+"#,
+        )
+        .unwrap();
+        assert!(stacks(&f, 390) && !stacks(&f, 800));
+        let r = stacked_rects(&f, 390, 844, 0);
+        let (ok, label, name) = (r[0].unwrap(), r[1].unwrap(), r[2].unwrap());
+        assert!(label[1] < name[1] && name[1] < ok[1], "read top to bottom: {r:?}");
+        assert_eq!((name[0], name[2], name[3]), (12, 390 - 24, 44), "the width less the margins, a finger's height");
+        assert_eq!(r[3].unwrap()[1] + r[3].unwrap()[3], 844, "the status bar along the bottom");
+        f.form.set_prop("phone", Some(toml::Value::String("zoom".into())));
+        assert!(!stacks(&f, 390));
+        let code = generate(&f);
+        assert!(!code.contains("stack_when_narrow"), "zoom: shrunk as before");
     }
 
     #[test]

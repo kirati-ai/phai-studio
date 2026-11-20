@@ -261,7 +261,7 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
     let version = version_stamp();
     let icon = |size: u32| app.icon_file(project).and_then(|f| scaled_icon(&f, size, hex(&app.color))).unwrap_or_else(|| icon_png(size, hex(&app.color)));
     let files: Vec<(&str, Vec<u8>)> = vec![
-        ("index.html", phai_form::web::index_html(&app.name, &package, &phai_form::web::theme_css(&theme), &app.color, &version).into_bytes()),
+        ("index.html", phai_form::web::index_html(&app.name, &package, &page_css(project, &theme), &app.color, &version).into_bytes()),
         ("manifest.webmanifest", phai_form::web::manifest(&app.name, &app.short, &app.color, &app.background, &app.orientation).into_bytes()),
         ("sw.js", phai_form::web::service_worker(&package, &version).into_bytes()),
         ("icon-192.png", icon(192)),
@@ -271,6 +271,18 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
         std::fs::write(web.join(name), data).map_err(|e| e.to_string())?;
     }
     Ok(WebBuild { folder: web, left_out })
+}
+
+/// The page's own CSS: the theme's, made the web's, then the project's `web.css` as written -
+/// CSS for the web alone (`@media`, `.phai-stacked`, a control's `#id`), after the theme so it wins.
+pub fn page_css(project: &Path, theme: &str) -> String {
+    let mut css = phai_form::web::theme_css(theme);
+    if let Ok(own) = std::fs::read_to_string(project.join("web.css")) {
+        css.push_str("\n/* web.css */\n");
+        // Never the end of the page's <style>.
+        css.push_str(&own.replace("</style", "<\\/style"));
+    }
+    css
 }
 
 /// How the program shows as an app on a phone - Project > Web App (PWA): kept in Cargo.toml's
@@ -636,6 +648,19 @@ mod tests {
         let at = |x: usize, y: usize| &buf[(y * 192 + x) * 4..(y * 192 + x) * 4 + 3];
         assert_eq!(at(96, 5), &[255, 0, 0], "above the picture: the colour");
         assert_eq!(at(96, 96), &[0, 0, 0], "the picture");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_project_s_web_css_comes_after_the_theme() {
+        let dir = std::env::temp_dir().join(format!("phai-webcss-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let theme = "@import \"phai:light\";";
+        assert!(!page_css(&dir, theme).contains("web.css"), "none: the theme alone");
+        std::fs::write(dir.join("web.css"), "@media (max-width: 600px) { #ok { background: red; } }</style>").unwrap();
+        let css = page_css(&dir, theme);
+        let at = css.find("#ok").unwrap();
+        assert!(at > css.find(".phai-button").unwrap_or(0) && css.ends_with("<\\/style>"), "{css}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

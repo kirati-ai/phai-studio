@@ -137,7 +137,12 @@ fn rebuild(hwnd: HWND, form: &FormFile) {
             // Off the screen, shown without taking the focus: drawn, never seen there.
             let host = wm::CreateWindowExW(wm::WS_EX_TOOLWINDOW | wm::WS_EX_NOACTIVATE, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP | wm::WS_CLIPCHILDREN, -32000, -32000, win::px(hwnd, size.0), win::px(hwnd, size.1), Some(hwnd), None, Some(win::instance()), None).unwrap_or_default();
             let live = live::build(host, form, d.font, 0);
-            live.layout.apply(host);
+            if phai_form::web::stacks(form, size.0) {
+                // As the page does on a narrow screen: one under another (PhoneLayout = stack).
+                stack(host, form, &live, size);
+            } else {
+                live.layout.apply(host);
+            }
             let _ = wm::ShowWindow(host, wm::SW_SHOWNOACTIVATE);
             let (n, _, _) = DEVICES[device];
             let name = if turned { tf("{0}, turned", &[&t(n)]) } else { t(n).to_string() };
@@ -148,6 +153,23 @@ fn rebuild(hwnd: HWND, form: &FormFile) {
     photograph(hwnd);
     unsafe {
         wm::SetTimer(Some(hwnd), TIMER_FIRST, 150, None);
+    }
+}
+
+/// The controls of `live` placed as the page stacks them on a screen of `size` design pixels.
+fn stack(host: HWND, form: &FormFile, live: &live::Live, size: (i32, i32)) {
+    let px = |v: i32| win::px(host, v);
+    let top = if let Some(tb) = live.toolbar {
+        win::move_to(tb, 0, 0, px(size.0), px(win::TOOLBAR_HEIGHT));
+        win::TOOLBAR_HEIGHT
+    } else {
+        0
+    };
+    for (h, r) in live.controls.iter().zip(phai_form::web::stacked_rects(form, size.0, size.1, top)) {
+        match r {
+            Some([x, y, w, ht]) => win::move_to(*h, px(x), px(y), px(w), px(ht)),
+            None => win::show(*h, false),
+        }
     }
 }
 
