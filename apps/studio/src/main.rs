@@ -215,6 +215,10 @@ const ID_WEB_APP: i32 = 297;
 const ID_DEVICES: i32 = 298;
 /// Edit > Search (Ctrl+Q): every command, Options page and file by name.
 const ID_SEARCH: i32 = 299;
+/// File > Pin Tab: the document kept at the left, its tab pinned.
+const ID_PIN_TAB: i32 = 670;
+/// File > Close All But Pinned.
+const ID_CLOSE_UNPINNED: i32 = 671;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
 
@@ -348,11 +352,16 @@ pub struct Doc {
     pub code: Option<HWND>,
     /// The file had `\r\n` line ends; they are written back so.
     pub crlf: bool,
+    /// A preview tab (a file looked at in Solution Explorer): the next one looked at takes its
+    /// place, unless it was changed or opened for good.
+    pub preview: bool,
+    /// Pinned: kept at the left, left open by Close All But Pinned.
+    pub pinned: bool,
 }
 
 impl Doc {
     pub fn new(form: FormFile, path: Option<PathBuf>) -> Doc {
-        Doc { form, path, dirty: false, code: None, crlf: false }
+        Doc { form, path, dirty: false, code: None, crlf: false, preview: false, pinned: false }
     }
 }
 
@@ -966,6 +975,8 @@ fn build_menu() -> HMENU {
         add(file, ID_START_WINDOW, t("Start Window"), "");
         sep(file);
         add(file, ID_CLOSE, t("Close"), "Ctrl+W");
+        add(file, ID_PIN_TAB, if studio().is_some_and(|s| s.doc.pinned) { t("Unpin Tab") } else { t("Pin Tab") }, "");
+        add(file, ID_CLOSE_UNPINNED, t("Close All But Pinned"), "");
         add(file, ID_CLOSE_PROJECT, t("Close Project"), "");
         sep(file);
         add(file, ID_SAVE, t("Save"), "Ctrl+S");
@@ -2415,6 +2426,8 @@ impl Studio {
         self.nothing = false;
         let same = |q: &Option<PathBuf>| q.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
         if same(&self.doc.path) {
+            // Opened for good (a double-click): a preview no longer.
+            self.doc.preview = false;
             return self.after_switch();
         }
         if let Some(i) = self.tabs.iter().enumerate().position(|(i, t)| i != self.active && same(&t.doc.path)) {
@@ -3703,6 +3716,17 @@ impl Studio {
         if self.nothing {
             return controls::tabs_relabel(self.tabbar, &[]);
         }
+        // Changed: a preview no longer.
+        if self.doc.dirty {
+            self.doc.preview = false;
+        }
+        let marks: Vec<u8> = (0..self.tabs.len())
+            .map(|i| {
+                let d = if i == self.active { &self.doc } else { &self.tabs[i].doc };
+                (if d.preview { controls::TAB_PREVIEW } else { 0 }) | if d.pinned { controls::TAB_PINNED } else { 0 }
+            })
+            .collect();
+        controls::tabs_marks(self.tabbar, &marks);
         let mut labels: Vec<String> = Vec::new();
         for (i, tab) in self.tabs.iter().enumerate() {
             labels.push(if i == self.active { Tab { doc: Doc { dirty: self.doc.dirty, ..Doc::new(FormFile::new("X"), self.doc.path.clone()) }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
@@ -3710,6 +3734,64 @@ impl Studio {
         let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         controls::tabs_relabel(self.tabbar, &refs);
         controls::tabs_select(self.tabbar, self.active);
+    }
+
+    /// File > Pin Tab: the document pinned (or unpinned), the pinned ones kept at the left in the
+    /// order they were pinned.
+    fn pin_tab(&mut self) {
+        if self.nothing {
+            return;
+        }
+        self.doc.pinned = !self.doc.pinned;
+        self.doc.preview = false;
+        self.stash();
+        let mut order: Vec<usize> = (0..self.tabs.len()).collect();
+        order.sort_by_key(|&i| !self.tabs[i].doc.pinned);
+        let now = order.iter().position(|&i| i == self.active).unwrap_or(0);
+        let mut old: Vec<Option<Tab>> = std::mem::take(&mut self.tabs).into_iter().map(Some).collect();
+        self.tabs = order.iter().map(|&i| old[i].take().unwrap_or_else(Tab::empty)).collect();
+        self.active = now;
+        self.activate(now);
+        self.rebuild_menu();
+    }
+
+    /// File > Close All But Pinned: every other tab closed, asking to save the changed ones.
+    fn close_unpinned(&mut self) {
+        let mut i = self.tabs.len();
+        while i > 0 {
+            i -= 1;
+            let pinned = if i == self.active { self.doc.pinned } else { self.tabs[i].doc.pinned };
+            if pinned || self.nothing {
+                continue;
+            }
+            self.activate(i);
+            if !self.close_tab() {
+                return;
+            }
+            i = i.min(self.tabs.len());
+        }
+    }
+
+    /// A code file looked at in Solution Explorer (one click): opened in the preview tab - the
+    /// one before it closed, unless it was changed or opened for good. Already open: shown.
+    pub fn open_preview(&mut self, path: &Path) {
+        let same = |q: &Option<PathBuf>| q.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+        if same(&self.doc.path) {
+            return;
+        }
+        if let Some(i) = self.tabs.iter().enumerate().position(|(i, t)| i != self.active && same(&t.doc.path)) {
+            return self.activate(i);
+        }
+        let old = if self.doc.preview && !self.doc.dirty { Some(self.active) } else { self.tabs.iter().enumerate().position(|(i, t)| i != self.active && t.doc.preview && !t.doc.dirty) };
+        if let Some(i) = old {
+            self.activate(i);
+            self.close_tab();
+        }
+        self.open_code(path);
+        if same(&self.doc.path) {
+            self.doc.preview = true;
+            self.refresh_tabs();
+        }
     }
 
     /// A form in a tab of its own - or the tab it is already in. An untouched empty first tab is
@@ -6418,6 +6500,8 @@ impl Studio {
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
             ID_SEARCH => self.feature_search(""),
+            ID_PIN_TAB => self.pin_tab(),
+            ID_CLOSE_UNPINNED => self.close_unpinned(),
             ID_ATTACH => self.attach_to_process(),
             ID_EXCEPTIONS => self.exception_settings(),
             ID_MEMORY_WIN => {
@@ -7247,7 +7331,12 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             let id = win::loword(w.0) as i32;
             if id == ID_TABS {
                 let i = win::hiword(w.0) as usize;
-                if i & phai_ui::controls::TAB_CLOSE != 0 {
+                if i & phai_ui::controls::TAB_PIN != 0 {
+                    // A pinned tab's pin: unpinned.
+                    let i = i & !phai_ui::controls::TAB_PIN;
+                    s.activate(i);
+                    s.pin_tab();
+                } else if i & phai_ui::controls::TAB_CLOSE != 0 {
                     // A tab's close button: that tab, asking to save first if it has changes.
                     let i = i & !phai_ui::controls::TAB_CLOSE;
                     if i != s.active {

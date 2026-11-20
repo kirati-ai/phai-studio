@@ -133,6 +133,25 @@ struct Tabs {
     closable: bool,
     /// The close button under the pointer.
     hot_close: bool,
+    /// Each tab's [`TAB_PREVIEW`] and [`TAB_PINNED`].
+    marks: Vec<u8>,
+}
+
+/// A preview tab: its words slanted, as Visual Studio's - the next file looked at takes its place.
+pub const TAB_PREVIEW: u8 = 1;
+/// A pinned tab: a pin where the close button is; a click on it unpins.
+pub const TAB_PINNED: u8 = 2;
+/// The high bits of the index a closable tab strip sends when a pinned tab's pin is clicked.
+pub const TAB_PIN: usize = 0x4000;
+
+/// Which tabs are previews and which are pinned, in order.
+pub fn tabs_marks(h: HWND, marks: &[u8]) {
+    unsafe {
+        if let Some(t) = win::state::<Tabs>(h) {
+            t.marks = marks.to_vec();
+            let _ = Gdi::InvalidateRect(Some(h), None, true);
+        }
+    }
 }
 
 /// The high bit of the index a closable tab strip sends: that tab's close button was clicked.
@@ -142,7 +161,7 @@ pub const TAB_CLOSE: usize = 0x8000;
 /// chosen page's controls; it hears `WM_COMMAND` with `id` and the index in the high word.
 pub fn tabs(parent: HWND, id: i32, f: HFONT, labels: &[&str]) -> HWND {
     let h = create(parent, "PhaiTabs", Some(tabs_proc), "", id, f, WINDOW_EX_STYLE(0));
-    win::set_state(h, Box::new(Tabs { font: f, labels: labels.iter().map(|s| s.to_string()).collect(), selected: 0, hot: None, closable: false, hot_close: false }));
+    win::set_state(h, Box::new(Tabs { font: f, labels: labels.iter().map(|s| s.to_string()).collect(), selected: 0, hot: None, closable: false, hot_close: false, marks: Vec::new() }));
     mark(h, Kind::Tabs);
     h
 }
@@ -234,9 +253,30 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                     let st = win::style_of(h, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
                     let close_w = if t.closable { px(h, 20) } else { 0 };
                     let mut tr = RECT { left: a, right: b - close_w, top: r.top, bottom: r.bottom - px(h, 3) };
-                    win::draw_text_styled(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
+                    let mark = t.marks.get(i).copied().unwrap_or(0);
+                    if mark & TAB_PREVIEW != 0 {
+                        // A preview: the same words, slanted.
+                        let font = win::css_font(h, &st).unwrap_or(t.font);
+                        let mut lf = Gdi::LOGFONTW::default();
+                        Gdi::GetObjectW(font.into(), std::mem::size_of::<Gdi::LOGFONTW>() as i32, Some(&mut lf as *mut _ as *mut _));
+                        lf.lfItalic = 1;
+                        let italic = Gdi::CreateFontIndirectW(&lf);
+                        let old = Gdi::SelectObject(dc, italic.into());
+                        win::draw_text(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+                        Gdi::SelectObject(dc, old);
+                        let _ = Gdi::DeleteObject(italic.into());
+                    } else {
+                        win::draw_text_styled(dc, h, &t.labels[i], &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
+                    }
+                    // A pinned tab: its pin, always, where the close button would be.
+                    if let Some(c) = close_box(i, t).filter(|_| mark & TAB_PINNED != 0) {
+                        if let Some(icon) = crate::icon::glyph_icon(0xE840, c.right - c.left, st.color_or(win::window_text_for(h))) {
+                            let _ = wm::DrawIconEx(dc, c.left, c.top, icon, c.right - c.left, c.bottom - c.top, 0, None, wm::DI_NORMAL);
+                            let _ = wm::DestroyIcon(icon);
+                        }
+                    }
                     // The close button, on the chosen tab and the one under the pointer.
-                    if let Some(c) = close_box(i, t).filter(|_| i == t.selected || t.hot == Some(i)) {
+                    if let Some(c) = close_box(i, t).filter(|_| mark & TAB_PINNED == 0 && (i == t.selected || t.hot == Some(i))) {
                         if t.hot == Some(i) && t.hot_close {
                             win::round_rect(dc, c, base.border_or(Color::rgb(220, 220, 220)), base.border_or(Color::rgb(220, 220, 220)), px(h, 3));
                         }
@@ -264,11 +304,16 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 LRESULT(0)
             }
             wm::WM_LBUTTONDOWN | wm::WM_MBUTTONUP if t.closable && (msg == wm::WM_MBUTTONUP || on_close(win::point_of(l).0, win::point_of(l).1, t).is_some()) => {
-                // Close: the parent decides (it may ask to save first).
+                // Close: the parent decides (it may ask to save first). A pinned tab's pin: unpinned.
                 if let Some(i) = at(win::point_of(l).0, t) {
                     let id = wm::GetDlgCtrlID(h) as usize;
+                    let pinned = t.marks.get(i).is_some_and(|m| m & TAB_PINNED != 0);
+                    if pinned && msg == wm::WM_MBUTTONUP {
+                        return LRESULT(0);
+                    }
+                    let flag = if pinned { TAB_PIN } else { TAB_CLOSE };
                     if let Ok(p) = wm::GetParent(h) {
-                        wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((i | TAB_CLOSE) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
+                        wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((i | flag) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
                     }
                 }
                 LRESULT(0)

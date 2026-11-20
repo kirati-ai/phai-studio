@@ -17,6 +17,8 @@ use windows::Win32::UI::WindowsAndMessaging::{self as wm, HMENU};
 
 use crate::studio;
 
+/// After a click in the tree: the file it chose, in the preview tab.
+const WM_PREVIEW_SELECTED: u32 = windows::Win32::UI::WindowsAndMessaging::WM_APP + 0x0E20;
 const ID_TREE: i32 = 400;
 const CMD_NEW_FORM: u32 = 1;
 const CMD_SHOW: u32 = 2;
@@ -561,6 +563,12 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             }
             LRESULT(0)
         }
+        WM_PREVIEW_SELECTED => {
+            if let Some(e) = studio().and_then(|s| s.explorer.as_mut()) {
+                e.preview_selected();
+            }
+            LRESULT(0)
+        }
         wm::WM_NOTIFY => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
@@ -615,6 +623,12 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                         cc::NM_DBLCLK => {
                             e.open_selected();
                             return LRESULT(1);
+                        }
+                        cc::NM_CLICK => {
+                            // One click: the file in the preview tab - once the click has chosen it.
+                            unsafe {
+                                let _ = wm::PostMessageW(Some(h), WM_PREVIEW_SELECTED, WPARAM(0), LPARAM(0));
+                            }
                         }
                         cc::NM_RCLICK => {
                             e.menu(h);
@@ -798,6 +812,17 @@ impl Explorer {
     fn selected_path(&self) -> Option<PathBuf> {
         let i = win::tree_selected(self.tree)?;
         self.entries.get(usize::try_from(i).ok()?).cloned()
+    }
+
+    /// The chosen file in the preview tab, when it is code.
+    fn preview_selected(&mut self) {
+        let Some(path) = self.selected_path() else { return };
+        let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        if path.is_file() && ["rs", "toml", "css", "md", "txt", "json"].contains(&ext.as_str()) {
+            if let Some(s) = studio() {
+                s.open_preview(&path);
+            }
+        }
     }
 
     fn open_selected(&mut self) {
