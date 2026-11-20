@@ -103,6 +103,9 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         let cols = win::list(hwnd, ID_COLS, font, &[(t("Column Name"), 170), (t("Data Type"), 150), (t("Allow Nulls"), 80), (t("Primary Key"), 85), (t("Identity"), 70), (t("Default"), 140)]);
         let idx = win::list(hwnd, ID_IDX, font, &[(t("Name"), 200), (t("Columns"), 260), (t("Unique"), 70)]);
         let fk = win::list(hwnd, ID_FK, font, &[(t("Name"), 160), (t("Columns"), 140), (t("References"), 220), (t("On Delete"), 100), (t("On Update"), 100)]);
+        for l in [cols, idx, fk] {
+            win::grid_lines(l);
+        }
         let script = win::edit_lines(hwnd, "", ID_SCRIPT, mono);
         wm::SendMessageW(script, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         let mut buttons = Vec::new();
