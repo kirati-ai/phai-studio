@@ -130,9 +130,9 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         win::set_state(hwnd, Box::new(Designer { tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, applied: false, font, mono }));
         refresh(hwnd);
         let (w, h) = (win::px(hwnd, 900), win::px(hwnd, 720));
-        let mut r = RECT::default();
-        let _ = wm::GetWindowRect(owner, &mut r);
-        let _ = wm::SetWindowPos(hwnd, None, r.left + (r.right - r.left - w) / 2, r.top + (r.bottom - r.top - h) / 2, w, h, wm::SWP_NOZORDER);
+        // In the middle of the screen (its owner may be a narrow pane at the side).
+        let _ = wm::SetWindowPos(hwnd, None, 0, 0, w, h, wm::SWP_NOZORDER | wm::SWP_NOMOVE);
+        win::center_on_screen(hwnd);
         win::theme_frame(hwnd);
         win::enable(owner, false);
         win::show_top(hwnd);
