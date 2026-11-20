@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>control และความสามารถเพิ่มเติม - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="winforms.html" class="here">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<h1>control และความสามารถเพิ่มเติม</h1>
+<p class="lead">นอกจาก control พื้นฐาน Phai Studio มี control และความสามารถแบบ WinForms ครบชุด ทุกอย่างวางจากกล่องเครื่องมือ ตั้งค่าในหน้าต่าง Properties แล้วเรียกจากโค้ดผ่าน <code>ui.ชื่อ</code> เหมือน control อื่น</p>
+
+<h2>control เพิ่มเติม</h2>
+<table>
+<tr><th>control</th><th>ใช้ทำอะไร</th><th>เรียกจากโค้ด</th></tr>
+<tr><td>Panel</td><td>กล่องรวม control มีสีพื้นของตัวเอง หรือเส้นขอบ (<code>border = "fixed"</code>)</td><td>ลาก control อื่นใส่ข้างในได้</td></tr>
+<tr><td>Split container</td><td>สองช่องกับเส้นแบ่งที่ลากได้ control ในแต่ละช่องยึด anchor กับช่องของตัวเอง</td><td><code>splitter_distance()</code>, <code>set_splitter_distance(200)</code></td></tr>
+<tr><td>ListBox</td><td>รายการให้เลือกหนึ่งหรือหลายบรรทัด (<code>selection_mode = "multi"</code>)</td><td><code>items_add("...")</code>, <code>selected_index()</code>, <code>selected_indices()</code></td></tr>
+<tr><td>CheckedListBox</td><td>รายการที่แต่ละบรรทัดมีช่องติ๊ก</td><td><code>checked(i)</code>, <code>set_checked(i, true)</code>, <code>checked_indices()</code></td></tr>
+<tr><td>LinkLabel</td><td>ข้อความที่เป็นลิงก์ กดแล้วเรียก <code>on_click</code></td><td><code>set_link_text("...")</code></td></tr>
+<tr><td>MaskedTextBox</td><td>ช่องที่รับเฉพาะรูปแบบที่กำหนด เช่น เบอร์โทร <code>mask = "000-000-0000"</code></td><td><code>value()</code> (ไม่รวมขีด), <code>mask_completed()</code></td></tr>
+<tr><td>MonthCalendar</td><td>ปฏิทินให้เลือกวัน สีตามธีม</td><td><code>selection_start()</code>, <code>set_date(2026, 11, 20)</code></td></tr>
+</table>
+<p>ตัวอักษรใน mask: <code>0</code> ตัวเลข, <code>9</code> ตัวเลขหรือเว้นว่าง, <code>L</code> ตัวอักษร, <code>A</code> ตัวอักษรหรือตัวเลข, <code>\</code> ใส่ตัวถัดไปตามที่เขียน</p>
+
+<h2>component (ไม่มีหน้าตาบนฟอร์ม)</h2>
+<p>component วางแล้วไปอยู่แถบด้านล่างฟอร์ม เหมือน Visual Studio</p>
+<table>
+<tr><th>component</th><th>ใช้ทำอะไร</th></tr>
+<tr><td>Open / Save file dialog</td><td>หน้าต่างเลือกไฟล์ของ Windows ตั้ง <code>title</code>, <code>filter</code> (<code>ไฟล์ข้อความ|*.txt|ทุกไฟล์|*.*</code>), <code>default_ext</code> แล้วเรียก <code>ui.open_file.show_dialog()</code> ได้ <code>Option&lt;PathBuf&gt;</code></td></tr>
+<tr><td>Folder / Color / Font dialog</td><td>เลือกโฟลเดอร์, สี (<code>show_dialog("#12855f")</code> ได้ <code>#rrggbb</code>), ฟอนต์ (ได้ชื่อ ขนาด ตัวหนา ตัวเอียง)</td></tr>
+<tr><td>ErrorProvider</td><td>เครื่องหมายแดงข้าง control ที่กรอกผิด: <code>ui.errors.set_error(ui.name, "ใส่ชื่อด้วย")</code> ส่งข้อความว่างเพื่อลบ</td></tr>
+<tr><td>NotifyIcon</td><td>ไอคอนมุมขวาล่างของ taskbar มี <code>on_click</code>, <code>double_click</code>, เมนูคลิกขวา (<code>context_menu</code>) และ <code>show_balloon_tip(...)</code></td></tr>
+<tr><td>Timer</td><td>เรียก <code>on_tick</code> ทุกกี่มิลลิวินาทีตามที่ตั้ง</td></tr>
+</table>
+
+<h2>เมนูแบบละเอียด</h2>
+<p>ในหน้าต่างแก้เมนู เขียนเมนูเป็นบรรทัด ย่อหน้าเข้าไปคือเมนูย่อย ชื่ออย่างเดียวในบรรทัดคือหัวเมนูย่อย:</p>
+<pre><code>&amp;View
+  word_wrap | Word wrap | checked | check_on_click
+  Zoom
+    zoom_in | Zoom in | Ctrl+= | SEARCH
+    zoom_max | Most | disabled</code></pre>
+<ul>
+  <li><code>checked</code> ติ๊กไว้ตั้งแต่เปิด, <code>check_on_click</code> กดแล้วสลับติ๊กเอง, <code>disabled</code> สีเทากดไม่ได้, ชื่อไอคอน (เช่น <code>SEARCH</code>) แสดงหน้าเมนู</li>
+  <li>ปุ่ม toolbar ที่เขียน <code>| toggle</code> เป็นปุ่มกดค้าง และติ๊กพร้อมกับเมนูที่ id เดียวกัน</li>
+  <li>จากโค้ด: <code>ui.item_checked("word_wrap")</code>, <code>ui.set_item_checked("word_wrap", true)</code>, <code>ui.set_item_enabled("zoom_max", false)</code></li>
+</ul>
+
+<h2>ฟอร์มซ้อนในฟอร์ม (MDI)</h2>
+<p>ตั้ง <code>IsMdiContainer</code> ของฟอร์มหลัก แล้วเปิดฟอร์มอื่นข้างในด้วย <code>EditorUi::show_mdi_child(ui.hwnd, editor::Editor::default())</code> จัดเรียงด้วย <code>ui.layout_mdi("cascade")</code> (หรือ <code>tile_horizontal</code>, <code>tile_vertical</code>) ใช้ <kbd>Ctrl</kbd>+<kbd>Tab</kbd> สลับ และ <kbd>Ctrl</kbd>+<kbd>F4</kbd> ปิดฟอร์มลูก</p>
+
+<h2>ลากข้อความจาก control หนึ่งไปวางอีกตัว</h2>
+<p>ใน event MouseDown ของ control ต้นทาง เรียก <code>ui.list.do_drag_drop("ข้อความ")</code> ป้ายเล็ก ๆ จะตามเมาส์ไป control ปลายทางที่มี event DragDrop ได้ <code>e.text</code> และ <code>e.source</code> กด <kbd>Esc</kbd> เพื่อยกเลิก ไฟล์ที่ลากมาจาก Explorer เข้า <code>e.files</code></p>
+
+<h2>การพิมพ์</h2>
+<p>วาง component <b>Print document</b> ตั้ง <code>document_name</code> แล้วผูก event <code>print_page</code> ทุกขนาดเป็นร้อยส่วนของนิ้ว นับจากมุมกระดาษ:</p>
+<pre><code>fn draw_page(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;phai_ui::print::PrintPageEventArgs) {
+    let m = e.margin_bounds;                     // พื้นที่ในขอบกระดาษ
+    e.set_font("Leelawadee UI", 16, true, false);
+    e.draw_text(&amp;format!("ใบเสร็จ หน้า {}", e.page), m.x, m.y);
+    e.draw_line(m.x, m.y + 40, m.right(), m.y + 40);
+    e.set_has_more_pages(e.page &lt; 3);           // ยังมีหน้าต่อไปไหม
+}</code></pre>
+<ul>
+  <li><code>ui.report.print_preview()</code> หน้าต่างดูตัวอย่าง พลิกหน้าได้ มีปุ่มพิมพ์</li>
+  <li><code>ui.report.print_dialog()</code> เลือกเครื่องพิมพ์แล้วพิมพ์, <code>ui.report.print()</code> พิมพ์เลยไม่ถาม, <code>ui.report.page_setup()</code> ตั้งกระดาษและขอบ</li>
+  <li><code>ui.report.print_to_file("Microsoft Print to PDF", path)</code> ได้ไฟล์ PDF</li>
+  <li>วาดได้: <code>draw_text</code>, <code>draw_text_in</code> (ตัดบรรทัด ชิดซ้าย กลาง ขวา), <code>draw_line</code>, <code>draw_rect</code>, <code>fill_rect</code>, <code>draw_image</code>, <code>measure_text</code>, <code>set_color</code></li>
+</ul>
+
+<h2>ผูกข้อมูลกับ control (DataBindings)</h2>
+<p>วาง component <b>Binding source</b> ให้ข้อมูลมาจากตารางในฐานข้อมูล (ตั้ง <code>bind</code> เหมือนตาราง grid) หรือจากโค้ด (ตั้ง <code>fields = "name, phone"</code> แล้ว <code>ui.people.set_rows(...)</code>) จากนั้นที่ control แต่ละตัวตั้ง <code>DataBindings</code> เป็น <code>people.name</code></p>
+<ul>
+  <li>กล่องข้อความแสดงข้อความ, ช่องติ๊กแสดงค่าจริงเท็จ, ช่องตัวเลขแสดงตัวเลข, ช่องวันที่แสดงวันที่</li>
+  <li>เลื่อนแถว: <code>move_next()</code>, <code>move_previous()</code>, <code>move_first()</code>, <code>move_last()</code> ค่าที่พิมพ์ในช่องกลับเข้าแถวเอง</li>
+  <li>แถวใหม่ <code>add_new()</code>, ลบ <code>remove_current()</code>, บันทึกลงฐานข้อมูล <code>ui.save_people()</code>, โหลดใหม่ <code>ui.reload_people()</code></li>
+  <li>event <code>position_changed</code> ทำงานเมื่อแถวปัจจุบันเปลี่ยน</li>
+</ul>
+
+<h2>User control: control ของเราเอง</h2>
+<ol>
+  <li>Project &gt; <b>เพิ่ม User Control...</b> ตั้งชื่อ เช่น <code>AddressBox</code> ได้ฟอร์มเล็ก ๆ ที่ออกแบบได้เหมือนฟอร์มทั่วไป และมีไฟล์โค้ดของตัวเอง</li>
+  <li>เปิดฟอร์มอื่น เลือก <b>User control</b> จากกล่องเครื่องมือ (หมวด Containers) วางลงฟอร์ม หน้าออกแบบแสดง control ข้างในให้เห็น</li>
+  <li>เข้าถึง control ข้างในจากโค้ดของฟอร์ม: <code>AddressBoxUi::with(ui.home, |a| a.street.text())</code></li>
+  <li>ให้ user control บอกฟอร์มว่ามีอะไรเปลี่ยน: ในโค้ดของ AddressBox เรียก <code>ui.notify_parent()</code> ฟอร์มจะได้ <code>on_change</code> ของมัน</li>
+</ol>
+<div class="note">ตารางเทียบทุก property เมธอด และ event กับ WinForms อยู่ใน <code>docs/winforms-parity.md</code> ของโปรเจกต์ Phai Studio</div>
+<div class="pager"><a href="database.html">← ทำงานกับฐานข้อมูล</a><a href="inspector.html">ตัวตรวจสด (F12) →</a></div>
+</main>
+</div>
+</body>
+</html>
