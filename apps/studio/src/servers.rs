@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use phai_data::{Column, Connection};
-use phai_ui::dialogs::{self, Field};
+use phai_ui::dialogs;
 use phai_ui::text::{t, tf};
 use phai_ui::win;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -172,37 +172,12 @@ impl Servers {
         }
     }
 
-    /// Add Connection: first which kind - MySQL, PostgreSQL, a SQLite file - then where and as
-    /// whom; tested before it is kept.
+    /// Add Connection: which kind - MySQL, PostgreSQL, a SQLite file - and where and as whom, in
+    /// one window; tested before it is kept.
     pub fn add_connection(&mut self, owner: HWND, start: Option<Connection>) -> bool {
-        let kind = match &start {
-            Some(c) => c.kind,
-            None => match win::popup(owner, &[(1, "MySQL / MariaDB"), (2, "PostgreSQL"), (3, t("SQLite file..."))]) {
-                1 => phai_data::Kind::MySql,
-                2 => phai_data::Kind::Postgres,
-                3 => phai_data::Kind::Sqlite,
-                _ => return false,
-            },
-        };
-        let new = if kind == phai_data::Kind::Sqlite {
-            // A file, as one is opened - or a new name, which SQLite makes.
-            let Some(path) = crate::file_dialog_pub(owner, true, "SQLite (*.db; *.sqlite; *.sqlite3)", "*.db;*.sqlite;*.sqlite3", "data.db") else { return false };
-            Connection { host: path.to_string_lossy().to_string(), kind, ..Default::default() }
-        } else {
-            let c = start.unwrap_or(Connection { host: "localhost".into(), port: kind.default_port(), user: if kind == phai_data::Kind::Postgres { "postgres".into() } else { "root".into() }, kind, ..Default::default() });
-            let port = c.port.to_string();
-            let fields = [
-                Field::Text(t("Server"), &c.host),
-                Field::Text(t("Port"), &port),
-                Field::Text(t("User"), &c.user),
-                Field::Password(t("Password"), &c.password),
-                Field::Text(t("Database"), &c.database),
-                Field::Check(t("Encrypt the connection (TLS)"), c.ssl),
-                Field::Check(t("Trust the server's own certificate"), c.trust_cert),
-            ];
-            let Some(a) = dialogs::ask_fields(Some(owner), &tf("Add Connection - {0}", &[&kind.name()]), &fields) else { return false };
-            Connection { host: a[0].trim().into(), port: a[1].trim().parse().unwrap_or(kind.default_port()), user: a[2].trim().into(), password: a[3].clone(), database: a[4].trim().into(), ssl: a[5] == "1", trust_cert: a[6] == "1", kind }
-        };
+        // One window: the kinds as cards, the chosen one's fields below.
+        let Some(new) = crate::connectdlg::choose(owner, start.as_ref()) else { return false };
+        let kind = new.kind;
         let probe = new.clone();
         match dialogs::wait_for(Some(owner), &tf("Add Connection - {0}", &[&kind.name()]), t("Connecting..."), move |_| probe.test()) {
             Some(Ok(version)) => {

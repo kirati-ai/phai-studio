@@ -34,6 +34,7 @@ mod merge;
 mod coverage;
 mod themeedit;
 mod colortray;
+mod connectdlg;
 mod menuicons;
 mod options;
 mod web;
@@ -7665,7 +7666,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -7751,6 +7752,22 @@ fn main() {
         if let Some(n) = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
             if let Some(p) = s.props.as_mut() {
                 p.set_style_state(n);
+            }
+        }
+        // `--connect N`: Add Connection on card N (0 MySQL, 1 PostgreSQL, 2 SQLite), photographed
+        // with PHAI_SHOT - checked by picture.
+        if let Some(k) = args.iter().position(|a| a == "--connect").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            if let Ok(out) = std::env::var("PHAI_SHOT") {
+                let dlg = connectdlg::make(hwnd, None);
+                connectdlg::show_kind(dlg, k);
+                win::show_top(dlg);
+                let mut msg = wm::MSG::default();
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&msg);
+                    wm::DispatchMessageW(&msg);
+                }
+                let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
+                std::process::exit(0);
             }
         }
         // `--options N`: Tools > Options open on page N, photographed with PHAI_SHOT - checked by picture.
