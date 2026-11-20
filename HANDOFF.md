@@ -77,6 +77,9 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - **ตัวตน (2026-11-19):** ไม่ใช่ WebForms; เป็นแบบ WinForms (ฟอร์ม property event, โปรแกรม Windows ตัวจริง) + แต่งลุคแบบเว็บ (CSS)
   และ **HomeSite + ImageStyler ไม่ใช่ Dreamweaver**: โค้ด/ไฟล์ข้อความคือของจริง, เครื่องมือแก้ทีละบรรทัดไม่เขียนทับ, ลุคเป็น style สำเร็จ
 - **Live Inspector (F12) เสร็จ 2026-11-19** — `crates/phai-ui/src/inspect.rs`, docs/phaiform.md หัวข้อ "ตัวตรวจสด"
+- **มือถือ = PWA อย่างเดียว (เจ้านายตัดสิน 2026-11-20: "ไปทาง pwa ... ios และ android ไม่เอา เอาทิ้งให้หมด")** — ไม่ทำแอป native;
+  แผนงานมือถือ (กรอบมือถือใน designer, Run on Phone ด้วย QR, หน้า PWA ใน Project Properties, layout ยืดตามจอ) อยู่ใน
+  `docs/ide-research.md` ระยะ 1. ประวัติเดิมด้านล่างไว้อ้างอิง:
 - **iOS / Android (เจ้านายถาม 2026-11-19 "หรือไม่ลองทำ"):** phai-ui เป็น Win32 ล้วน; ที่พกไปได้คือ logic Rust + `.phaiform` + CSS
   ต้องมี backend ที่สอง; Android build บน Windows ได้ (NDK ฟรี), iOS ต้องมี Mac + Xcode เพื่อ build/เซ็น
   **เริ่มแล้วและพักไว้** (เจ้านาย: "เขียน android เป็น handoff ทำ winform ให้จบ") — branch `android-prototype`,
@@ -84,7 +87,7 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   **เจ้านายเสนอ 2026-11-19 (ทางหลักใหม่): "ถ้า ios และ android รัน webform ได้ก็คงจะดีกว่า"** — เป้า: `.phaiform` → HTML +
   `theme.css` เดิม (เป็น CSS อยู่แล้ว) + logic Rust → WebAssembly (wasm-bindgen ฟรี) → ติดตั้งเป็น PWA ได้ทั้ง iOS และ Android
   ไม่ต้องใช้ Mac หรือบัญชี Apple; ชื่อ event ใช้ชื่อเดียวกับ Windows; ทำได้: control ทั่วไป, ธีม, ลุคตามสถานะ (CSS :hover จริง)
-  ทำไม่ได้บนเว็บ: NotifyIcon, ไฟล์ตรง ๆ (ใช้ File API แทน) — งาน native Android บน branch เป็นทางสำรอง
+  ทำไม่ได้บนเว็บ: NotifyIcon, ไฟล์ตรง ๆ (ใช้ File API แทน) — งาน native Android บน branch เลิกแล้ว (2026-11-20)
   **เริ่มแล้ว 2026-11-20: รอบแรกใช้ได้** — `crates/phai-web`, `phai_form::web`, Studio Build > สร้างสำหรับเว็บ (PWA) /
   รันในเบราว์เซอร์ (`apps/studio/src/web.rs`); รายละเอียดและสิ่งที่ยังไม่มีใน `docs/web.md`. เมนูบาร์/toolbar บนเว็บเสร็จ 2026-11-20; ต่อไป:
   เมนูคลิกขวา, tree, ฐานข้อมูลผ่าน HTTP, เผยแพร่ `web/` ขึ้น HTTPS จาก Studio, ทดสอบบนมือถือจริง
