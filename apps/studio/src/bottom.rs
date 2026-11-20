@@ -25,6 +25,8 @@ pub const ID_TESTS: i32 = 507;
 /// The Error List's filters: errors shown, warnings shown.
 pub const ID_SHOW_ERRORS: i32 = 520;
 pub const ID_SHOW_WARNINGS: i32 = 521;
+/// The Error List's scope: the entire solution, the document open now, or the open documents.
+pub const ID_ERROR_SCOPE: i32 = 545;
 pub const ID_IMMEDIATE: i32 = 522;
 pub const ID_IMMEDIATE_INPUT: i32 = 523;
 pub const ID_DIAGNOSTICS: i32 = 524;
@@ -75,6 +77,7 @@ pub struct Bottom {
     pub tests: HWND,
     pub show_errors: HWND,
     pub show_warnings: HWND,
+    pub error_scope: HWND,
     /// The Immediate window: what was asked and answered, and the box to ask in.
     pub immediate: HWND,
     pub immediate_input: HWND,
@@ -143,6 +146,12 @@ impl Bottom {
         let right = Anchor { left: false, top: true, right: true, bottom: false };
         layout.add(show_errors, Item { bounds: Rect::new(530, 3, 110, 22), dock: Dock::None, anchor: right });
         layout.add(show_warnings, Item { bounds: Rect::new(646, 3, 120, 22), dock: Dock::None, anchor: right });
+        // Which errors: Visual Studio's Entire Solution, Current Document, Open Documents.
+        let error_scope = win::combo(hwnd, ID_ERROR_SCOPE, bar_font, &[t("Entire Solution"), t("Current Document"), t("Open Documents")]);
+        unsafe {
+            wm::SendMessageW(error_scope, wm::CB_SETCURSEL, Some(WPARAM(crate::setting_pub("error_scope").and_then(|v| v.parse().ok()).unwrap_or(0usize).min(2))), None);
+        }
+        layout.add(error_scope, Item { bounds: Rect::new(380, 3, 144, 200), dock: Dock::None, anchor: right });
         // Close, as every Visual Studio tool window has; View > Errors and output brings it back, and
         // a build or a run shows it again.
         let close = win::toolbar(hwnd, ID_CLOSE + 100, &[(ID_CLOSE, t("Close"), 0xE711)]);
@@ -151,7 +160,7 @@ impl Bottom {
             let _ = wm::SetWindowPos(close, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
         }
         unsafe {
-            for c in [show_errors, show_warnings] {
+            for c in [show_errors, show_warnings, error_scope] {
                 let _ = wm::SetWindowPos(c, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
             }
         }
@@ -215,7 +224,7 @@ impl Bottom {
             let _ = windows::Win32::UI::Shell::SetWindowSubclass(term_input, Some(input_proc), 33, 0);
         }
         layout.add(term_input, Item { bounds: Rect::new(0, 116, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), open: std::cell::Cell::new({
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, error_scope, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), open: std::cell::Cell::new({
             // The tabs Options opens at start (Errors and Output unless it says other).
             let start = crate::options::tabs_of(crate::setting_pub("bottom_tabs"));
             std::array::from_fn(|k| start.contains(&k))
@@ -290,6 +299,7 @@ impl Bottom {
         win::show(self.tests, i == 7);
         win::show(self.show_errors, i == 0);
         win::show(self.show_warnings, i == 0);
+        win::show(self.error_scope, i == 0);
         win::show(self.immediate, i == 8);
         win::show(self.immediate_input, i == 8);
         win::show(self.diagnostics, i == 9);
@@ -518,13 +528,21 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             }
             LRESULT(0)
         }
+        (wm::WM_COMMAND, Some(_)) if win::loword(w.0) as i32 == ID_ERROR_SCOPE && win::hiword(w.0) as u32 == wm::CBN_SELCHANGE => {
+            if let Some(s) = crate::studio() {
+                crate::remember_setting_pub("error_scope", &win::combo_selected(HWND(l.0 as *mut _)).to_string());
+                s.fill_errors();
+            }
+            LRESULT(0)
+        }
         // The error list's double-click is the main window's business.
         (wm::WM_NOTIFY, _) => {
             use windows::Win32::UI::Controls as cc;
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
             // The Breakpoints window's ticks and its Delete key are the studio's to act on too.
             let from_breakpoints = unsafe { wm::GetDlgCtrlID(hdr.hwndFrom) } == ID_BREAKPOINTS && (hdr.code == cc::LVN_ITEMCHANGED || hdr.code == cc::LVN_KEYDOWN);
-            if hdr.code == cc::NM_DBLCLK || from_breakpoints {
+            let column = hdr.code == cc::LVN_COLUMNCLICK && unsafe { wm::GetDlgCtrlID(hdr.hwndFrom) } != ID_BREAKPOINTS;
+            if hdr.code == cc::NM_DBLCLK || from_breakpoints || column {
                 if let Ok(p) = unsafe { wm::GetParent(h) } {
                     return unsafe { wm::SendMessageW(p, msg, Some(w), Some(l)) };
                 }
