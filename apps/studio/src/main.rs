@@ -38,6 +38,7 @@ mod colortray;
 mod connectdlg;
 mod menuicons;
 mod options;
+mod terminal;
 mod web;
 mod repdesign;
 
@@ -240,6 +241,8 @@ const ID_POWERSHELL: i32 = 633;
 const ID_OPTIONS: i32 = 634;
 /// Tools > Table Designer.
 const ID_TABLE_DESIGNER: i32 = 635;
+/// View > Terminal (Ctrl+`).
+const ID_VIEW_TERMINAL: i32 = 637;
 /// View > Other Windows: `ID_OTHER_WINDOW + n`, each tab of the bottom panel in its order.
 const ID_OTHER_WINDOW: i32 = 640;
 const ID_RELEASE: i32 = 144;
@@ -1009,6 +1012,7 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
+        add(view, ID_VIEW_TERMINAL, t("Terminal"), "Ctrl+`");
         // Every tab of the panel below, each one closable on its own, opened again from here.
         let other = wm::CreatePopupMenu().unwrap_or_default();
         // The debugger's own windows (Immediate to Disassembly) are in the Debug menu.
@@ -2036,6 +2040,16 @@ impl Studio {
             PROPERTIES => self.show_pane(Pane::Properties, true),
             id => self.command(id as i32),
         }
+    }
+
+    /// The open thing's project folder, for the Terminal to start in.
+    pub fn project_dir_pub(&self) -> Option<PathBuf> {
+        self.doc.path.as_deref().filter(|_| !self.nothing).and_then(cargo::project_of)
+    }
+
+    /// The panel below, for its own windows to reach each other.
+    pub fn bottom_pub(&self) -> Option<&bottom::Bottom> {
+        self.bottom.as_deref()
     }
 
     pub fn add_handler_for_selected(&mut self) {
@@ -6593,7 +6607,15 @@ impl Studio {
                     self.open_project(&p);
                 }
             }
-            r if (ID_OTHER_WINDOW..ID_OTHER_WINDOW + 15).contains(&r) => {
+            ID_VIEW_TERMINAL => {
+                if !self.bottom_on {
+                    self.show_pane(Pane::Output, true);
+                }
+                if let Some(b) = self.bottom.as_ref() {
+                    b.show_tab(bottom::TERMINAL);
+                }
+            }
+            r if (ID_OTHER_WINDOW..ID_OTHER_WINDOW + bottom::labels().len() as i32).contains(&r) => {
                 if !self.bottom_on {
                     self.show_pane(Pane::Output, true);
                 }
@@ -7437,6 +7459,8 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     let in_box = !unsafe { km::GetFocus() }.0.is_null() && win::kind_of(unsafe { km::GetFocus() }) == Some(win::Kind::Edit);
     match (msg.wParam.0 as u8, ctrl) {
         (b'T', true) if !shift => Some(ID_GO_TO_ALL),
+        // Ctrl+` : the Terminal, as Visual Studio has it.
+        (0xC0, true) => Some(ID_VIEW_TERMINAL),
         (b'N', true) if shift => Some(ID_NEW_PROJECT),
         (b'N', true) => Some(ID_NEW),
         (b'O', true) if shift => Some(ID_OPEN_PROJECT),
@@ -7856,6 +7880,23 @@ fn main() {
                 }
                 let _ = phai_ui::shot::save(dlg, std::path::Path::new(&out));
                 std::process::exit(0);
+            }
+        }
+        // `PHAI_TERM_SEND=command`: the Terminal opened, the command sent, its words waited for
+        // three seconds - then the picture (PHAI_SHOT), for checking.
+        if let Ok(line) = std::env::var("PHAI_TERM_SEND") {
+            s.command(ID_VIEW_TERMINAL);
+            if let Some(b) = s.bottom.as_ref() {
+                b.term_send(&line);
+            }
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let mut msg = wm::MSG::default();
+            while std::time::Instant::now() < until {
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&msg);
+                    wm::DispatchMessageW(&msg);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(30));
             }
         }
         // `--print-menu FILE`: the menu bar's words, each menu within its menu indented, written to

@@ -3,7 +3,7 @@
 
 use phai_ui::controls;
 use phai_ui::layout::{Anchor, Dock, Item, Layout, Rect};
-use phai_ui::text::t;
+use phai_ui::text::{t, tf};
 use phai_ui::win;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -34,12 +34,32 @@ pub const ID_MEMORY_INPUT: i32 = 527;
 pub const ID_MEMORY: i32 = 528;
 pub const ID_DISASSEMBLY: i32 = 529;
 pub const ID_COVERAGE: i32 = 530;
+/// The Terminal tab: which shell, start it again, what it printed, the line to send it.
+const ID_TERM_SHELL: i32 = 540;
+const ID_TERM_RESTART: i32 = 541;
+const ID_TERM_OUTPUT: i32 = 542;
+const ID_TERM_INPUT: i32 = 543;
+/// The Terminal's place among the tabs.
+pub const TERMINAL: usize = 15;
+/// The windows' own words: smaller than the window's, as Visual Studio's tool windows have them
+/// (the tab names keep the window's size).
+const PANEL_POINTS: i32 = 7;
 
 /// The tabs, in order: 0 errors, 1 output, 2 references, 3 locals, 4 call stack, 5 query
 /// results, 6 watch, 7 tests, 8 immediate, 9 diagnostic tools, 10 breakpoints, 11 threads,
-/// 12 memory, 13 disassembly, 14 code coverage.
-pub fn labels() -> [&'static str; 15] {
-    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads"), t("Memory"), t("Disassembly"), t("Code Coverage")]
+/// 12 memory, 13 disassembly, 14 code coverage, 15 terminal.
+pub fn labels() -> [&'static str; 16] {
+    [t("Errors"), t("Output"), t("References"), t("Locals"), t("Call Stack"), t("Results"), t("Watch"), t("Tests"), t("Immediate"), t("Diagnostic Tools"), t("Breakpoints"), t("Threads"), t("Memory"), t("Disassembly"), t("Code Coverage"), t("Terminal")]
+}
+
+/// Code's font for the windows' words: Cascadia Mono at `points`.
+fn mono_font(h: HWND, points: i32) -> HFONT {
+    use windows::Win32::Graphics::Gdi;
+    let mut lf = Gdi::LOGFONTW { lfHeight: -(points * win::dpi(h) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
+    for (i, u) in "Cascadia Mono".encode_utf16().enumerate() {
+        lf.lfFaceName[i] = u;
+    }
+    unsafe { Gdi::CreateFontIndirectW(&lf) }
 }
 
 pub struct Bottom {
@@ -68,7 +88,16 @@ pub struct Bottom {
     layout: Layout,
     /// Which tabs are open, by the order of [`labels`]: as Visual Studio's tool windows, each
     /// closes on its own (its ×) and opens again when it is asked for. Errors and Output to begin.
-    open: std::cell::Cell<[bool; 15]>,
+    open: std::cell::Cell<[bool; 16]>,
+    /// The Terminal: its shell drop-down, Restart, what it printed, the box to type in; the
+    /// shell running, the lines typed (Up and Down bring them back) and where in them.
+    term_shell: HWND,
+    term_restart: HWND,
+    term_output: HWND,
+    term_input: HWND,
+    shell: std::cell::RefCell<Option<crate::terminal::Shell>>,
+    history: std::cell::RefCell<Vec<String>>,
+    history_at: std::cell::Cell<usize>,
 }
 
 impl Bottom {
@@ -79,8 +108,13 @@ impl Bottom {
         };
         let tabs = controls::tabs(hwnd, ID_TABS, font, &labels());
         controls::tabs_closable(tabs);
+        // The tabs and the Errors/Warnings ticks in the window's size; what is in the windows smaller.
+        let bar_font = font;
+        let font = win::font(hwnd, PANEL_POINTS, false);
+        let mono = mono_font(hwnd, PANEL_POINTS);
         let errors = win::list(hwnd, errors_id, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
+        win::set_font(output, mono);
         let refs = win::list(hwnd, ID_REFS, font, &[(t("File"), 170), (t("Line"), 60), (t("Code"), 640)]);
         let locals = win::list(hwnd, ID_LOCALS, font, &[(t("Name"), 160), (t("Value"), 380), (t("Type"), 220)]);
         let stack = win::list(hwnd, ID_STACK, font, &[(t("Function"), 420), (t("File"), 200), (t("Line"), 60)]);
@@ -104,8 +138,8 @@ impl Bottom {
         // Errors (n) and Warnings (n), at the right of the tabs, as Visual Studio's Error List has them.
         // As they were left (Tools > Options > Error List).
         let tick = |name: &str| crate::setting_pub(name).as_deref() != Some("0");
-        let show_errors = win::checkbox(hwnd, t("Errors"), ID_SHOW_ERRORS, font, tick("show_errors"));
-        let show_warnings = win::checkbox(hwnd, t("Warnings"), ID_SHOW_WARNINGS, font, tick("show_warnings"));
+        let show_errors = win::checkbox(hwnd, t("Errors"), ID_SHOW_ERRORS, bar_font, tick("show_errors"));
+        let show_warnings = win::checkbox(hwnd, t("Warnings"), ID_SHOW_WARNINGS, bar_font, tick("show_warnings"));
         let right = Anchor { left: false, top: true, right: true, bottom: false };
         layout.add(show_errors, Item { bounds: Rect::new(530, 3, 110, 22), dock: Dock::None, anchor: right });
         layout.add(show_warnings, Item { bounds: Rect::new(646, 3, 120, 22), dock: Dock::None, anchor: right });
@@ -122,6 +156,7 @@ impl Bottom {
             }
         }
         let immediate = win::edit_lines(hwnd, "", ID_IMMEDIATE, font);
+        win::set_font(immediate, mono);
         let immediate_input = win::edit(hwnd, "", ID_IMMEDIATE_INPUT, font, false);
         unsafe {
             wm::SendMessageW(immediate, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
@@ -143,6 +178,7 @@ impl Bottom {
         // Memory: an address or a variable typed above, its bytes below as hex and as text.
         let memory_input = win::edit(hwnd, "", ID_MEMORY_INPUT, font, false);
         let memory = win::edit_lines(hwnd, "", ID_MEMORY, font);
+        win::set_font(memory, mono);
         unsafe {
             wm::SendMessageW(memory, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
             let _ = windows::Win32::UI::Shell::SetWindowSubclass(memory_input, Some(input_proc), 32, 0);
@@ -152,11 +188,34 @@ impl Bottom {
         let coverage = win::list(hwnd, ID_COVERAGE, font, &[(t("File"), 420), (t("Covered"), 100), (t("Lines"), 100), (t("Coverage"), 100)]);
         layout.add(coverage, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         let disassembly = win::edit_lines(hwnd, "", ID_DISASSEMBLY, font);
+        win::set_font(disassembly, mono);
         unsafe {
             wm::SendMessageW(disassembly, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
         layout.add(disassembly, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, open: std::cell::Cell::new({
+        // The Terminal: the shell to run and Restart above, what it printed, the line to send below.
+        let term_shell = win::combo(hwnd, ID_TERM_SHELL, bar_font, &[crate::terminal::SHELLS[0], t(crate::terminal::SHELLS[1])]);
+        unsafe {
+            let k = crate::setting_pub("terminal_shell").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(1);
+            wm::SendMessageW(term_shell, 0x014E /* CB_SETCURSEL */, Some(WPARAM(k)), None);
+        }
+        layout.add(term_shell, Item { bounds: Rect::new(0, 30, 180, 200), dock: Dock::None, anchor: Anchor { left: true, top: true, right: false, bottom: false } });
+        let term_restart = win::button(hwnd, t("Restart"), ID_TERM_RESTART, bar_font, false);
+        phai_ui::props::tooltip(term_restart, t("Stop what runs and start the shell again"));
+        layout.add(term_restart, Item { bounds: Rect::new(186, 30, 90, 24), dock: Dock::None, anchor: Anchor { left: true, top: true, right: false, bottom: false } });
+        let term_output = win::edit_lines(hwnd, "", ID_TERM_OUTPUT, font);
+        win::set_font(term_output, mono);
+        unsafe {
+            wm::SendMessageW(term_output, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
+        }
+        layout.add(term_output, Item { bounds: Rect::new(0, 56, 800, 58), dock: Dock::None, anchor: Anchor::ALL });
+        let term_input = win::edit(hwnd, "", ID_TERM_INPUT, mono, false);
+        phai_ui::props::placeholder(term_input, t("A command, then Enter - Up and Down bring back the ones before"));
+        unsafe {
+            let _ = windows::Win32::UI::Shell::SetWindowSubclass(term_input, Some(input_proc), 33, 0);
+        }
+        layout.add(term_input, Item { bounds: Rect::new(0, 116, 800, 24), dock: Dock::None, anchor: Anchor { left: true, top: false, right: true, bottom: true } });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, term_shell, term_restart, term_output, term_input, shell: std::cell::RefCell::new(None), history: std::cell::RefCell::new(Vec::new()), history_at: std::cell::Cell::new(0), open: std::cell::Cell::new({
             // The tabs Options opens at start (Errors and Output unless it says other).
             let start = crate::options::tabs_of(crate::setting_pub("bottom_tabs"));
             std::array::from_fn(|k| start.contains(&k))
@@ -171,7 +230,7 @@ impl Bottom {
     /// The open tabs, in order.
     fn open_tabs(&self) -> Vec<usize> {
         let open = self.open.get();
-        (0..15).filter(|k| open[*k]).collect()
+        (0..labels().len()).filter(|k| open[*k]).collect()
     }
 
     /// The strip again: the open tabs' names, `i` chosen.
@@ -240,11 +299,97 @@ impl Bottom {
         win::show(self.memory_input, i == 12);
         win::show(self.disassembly, i == 13);
         win::show(self.coverage, i == 14);
+        for h in [self.term_shell, self.term_restart, self.term_output, self.term_input] {
+            win::show(h, i == TERMINAL);
+        }
+        // The Terminal shown the first time: its shell started, the box ready to type in.
+        if i == TERMINAL {
+            if self.shell.borrow().is_none() {
+                self.start_shell();
+            }
+            unsafe {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(self.term_input));
+            }
+        }
         // Shown while paused: the code of where it stopped, asked for.
         if i == 13 {
             if let Some(s) = crate::studio() {
                 s.ask_disassembly();
             }
+        }
+    }
+
+    /// The Terminal's shell (again): in the open project's folder, else the person's own.
+    pub fn start_shell(&self) {
+        *self.shell.borrow_mut() = None;
+        let which = win::combo_selected(self.term_shell).max(0) as usize;
+        let dir = crate::studio().and_then(|s| s.project_dir_pub()).or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from)).unwrap_or_default();
+        win::set_text(self.term_output, "");
+        match crate::terminal::Shell::start(which, &dir, self.hwnd) {
+            Ok(sh) => {
+                if sh.echoes {
+                    self.term_text(&format!("{}\n", tf("PowerShell in {0}", &[&dir.display()])));
+                }
+                *self.shell.borrow_mut() = Some(sh);
+            }
+            Err(e) => self.term_text(&format!("{}\n", tf("The shell could not start: {0}", &[&e]))),
+        }
+    }
+
+    /// What the shell printed, at the end of the Terminal's text - the oldest let go past a
+    /// quarter of a million characters.
+    fn term_text(&self, text: &str) {
+        let add = crate::terminal::shown(text);
+        unsafe {
+            let n = wm::GetWindowTextLengthW(self.term_output) as usize;
+            if n > 250_000 {
+                wm::SendMessageW(self.term_output, 0x00B1 /* EM_SETSEL */, Some(WPARAM(0)), Some(LPARAM(50_000)));
+                let empty = win::wide("");
+                wm::SendMessageW(self.term_output, 0x00C2 /* EM_REPLACESEL */, Some(WPARAM(0)), Some(LPARAM(empty.as_ptr() as isize)));
+            }
+            let n = wm::GetWindowTextLengthW(self.term_output) as usize;
+            wm::SendMessageW(self.term_output, 0x00B1, Some(WPARAM(n)), Some(LPARAM(n as isize)));
+            let w = win::wide(&add);
+            wm::SendMessageW(self.term_output, 0x00C2, Some(WPARAM(0)), Some(LPARAM(w.as_ptr() as isize)));
+            // The newest line in sight.
+            wm::SendMessageW(self.term_output, 0x00B7 /* EM_SCROLLCARET */, None, None);
+        }
+    }
+
+    /// A line typed in the Terminal: to the shell, kept for Up and Down.
+    pub fn term_send(&self, line: &str) {
+        if self.shell.borrow().is_none() {
+            self.start_shell();
+        }
+        let echoes = self.shell.borrow().as_ref().is_some_and(|s| s.echoes);
+        if echoes {
+            self.term_text(&format!("PS> {line}\n"));
+        }
+        let sent = self.shell.borrow_mut().as_mut().is_some_and(|s| s.send(line));
+        if !sent {
+            self.term_text(&format!("{}\n", t("The shell has ended - Restart starts it again.")));
+        }
+        if !line.trim().is_empty() {
+            let mut h = self.history.borrow_mut();
+            h.retain(|x| x != line);
+            h.push(line.to_string());
+            self.history_at.set(h.len());
+        }
+    }
+
+    /// Up (`back`) or Down in the lines typed before.
+    fn term_history(&self, back: bool) {
+        let h = self.history.borrow();
+        if h.is_empty() {
+            return;
+        }
+        let at = self.history_at.get();
+        let at = if back { at.saturating_sub(1) } else { (at + 1).min(h.len()) };
+        self.history_at.set(at);
+        win::set_text(self.term_input, h.get(at).map(String::as_str).unwrap_or(""));
+        let n = win::text_of(self.term_input).encode_utf16().count();
+        unsafe {
+            wm::SendMessageW(self.term_input, 0x00B1, Some(WPARAM(n)), Some(LPARAM(n as isize)));
         }
     }
 
@@ -284,6 +429,19 @@ impl Bottom {
 unsafe extern "system" fn input_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, which: usize, _: usize) -> LRESULT {
     match msg {
         wm::WM_GETDLGCODE => LRESULT(4 /* DLGC_WANTALLKEYS */),
+        // The Terminal's box: Enter sends the line, Up and Down bring back those before.
+        wm::WM_KEYDOWN if which == 33 && matches!(w.0, 0x0D | 0x26 | 0x28) => {
+            if let Some(b) = crate::studio().and_then(|s| s.bottom_pub()) {
+                if w.0 == 0x0D {
+                    let line = win::text_of(h);
+                    win::set_text(h, "");
+                    b.term_send(&line);
+                } else {
+                    b.term_history(w.0 == 0x26);
+                }
+            }
+            LRESULT(0)
+        }
         wm::WM_KEYDOWN if w.0 == 0x0D => {
             let text = win::text_of(h);
             if let Some(s) = crate::studio() {
@@ -306,6 +464,27 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match (msg, b) {
         (wm::WM_SIZE, Some(b)) => {
             b.layout.apply(h);
+            LRESULT(0)
+        }
+        // What the Terminal's shell printed; nothing at all: it ended.
+        (crate::terminal::WM_TERMINAL, Some(b)) => {
+            let text = unsafe { Box::from_raw(l.0 as *mut String) };
+            if text.is_empty() {
+                if b.shell.borrow().is_some() {
+                    b.term_text(&format!("{}\n", t("The shell has ended - Restart starts it again.")));
+                }
+            } else {
+                b.term_text(&text);
+            }
+            LRESULT(0)
+        }
+        (wm::WM_COMMAND, Some(b)) if win::loword(w.0) as i32 == ID_TERM_RESTART => {
+            b.start_shell();
+            LRESULT(0)
+        }
+        (wm::WM_COMMAND, Some(b)) if win::loword(w.0) as i32 == ID_TERM_SHELL && win::hiword(w.0) == 1 /* CBN_SELCHANGE */ => {
+            crate::remember_setting_pub("terminal_shell", &win::combo_selected(b.term_shell).max(0).to_string());
+            b.start_shell();
             LRESULT(0)
         }
         (wm::WM_COMMAND, _) if win::loword(w.0) as i32 == ID_CLOSE => {
