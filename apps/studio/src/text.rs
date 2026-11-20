@@ -232,6 +232,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its width and height, at 100% scale.", "ความกว้างและความสูง ที่สเกล 100%"),
     ("Float", "ลอย"),
     ("Auto Hide", "ซ่อนอัตโนมัติ"),
+    ("Tabs at the bottom", "แท็บด้านล่าง"),
     ("Hide", "ซ่อน"),
     ("Navigate backward", "ย้อนกลับ"),
     ("Navigate forward", "ไปข้างหน้า"),
