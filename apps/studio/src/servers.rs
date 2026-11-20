@@ -201,6 +201,33 @@ impl Servers {
         }
     }
 
+    /// Whether the node chosen is a table (not a view) - what can be dragged onto a form.
+    pub fn table_chosen(&self) -> bool {
+        self.selected().is_some_and(|(_, n)| matches!(n.kind, Kind::Table { view: false } | Kind::Column))
+    }
+
+    /// The table chosen onto the form being designed - Add to Form, or dragged there, as Visual
+    /// Studio's Data Sources: a grid bound to it, Reload and Save.
+    pub fn add_selected_to_form(&mut self, owner: HWND) {
+        let Some((_, n)) = self.selected() else { return };
+        if !matches!(n.kind, Kind::Table { view: false } | Kind::Column) {
+            return;
+        }
+        let c = self.conns[n.conn].clone();
+        let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
+        match dialogs::wait_for(Some(owner), t("Add to Form"), t("Connecting..."), move |_| c2.columns(&d2, &t2)) {
+            Some(Ok(cols)) => {
+                if let Some(s) = studio() {
+                    s.bind_table(&c, &n.db, &n.table, &cols);
+                }
+            }
+            Some(Err(e)) => {
+                win::message(Some(owner), &e, t("Add to Form"), wm::MB_ICONWARNING);
+            }
+            None => {}
+        }
+    }
+
     /// The menu of the node right-clicked.
     pub fn menu(&mut self, owner: HWND) {
         const ADD: u32 = 1;
@@ -254,24 +281,7 @@ impl Servers {
                     s.show_table_rows(n.conn, &n.db, &n.table);
                 }
             }
-            TO_FORM => {
-                // The table onto the form being designed: a grid bound to it, Reload and Save.
-                if let Some((_, n)) = sel {
-                    let c = self.conns[n.conn].clone();
-                    let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
-                    match dialogs::wait_for(Some(owner), t("Add to Form"), t("Connecting..."), move |_| c2.columns(&d2, &t2)) {
-                        Some(Ok(cols)) => {
-                            if let Some(s) = studio() {
-                                s.bind_table(&c, &n.db, &n.table, &cols);
-                            }
-                        }
-                        Some(Err(e)) => {
-                            win::message(Some(owner), &e, t("Add to Form"), wm::MB_ICONWARNING);
-                        }
-                        None => {}
-                    }
-                }
-            }
+            TO_FORM => self.add_selected_to_form(owner),
             CODE => {
                 if let Some((_, n)) = sel {
                     let c = &self.conns[n.conn];
