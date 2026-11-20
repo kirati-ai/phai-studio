@@ -163,8 +163,11 @@ mod tests {
 
     #[test]
     fn every_sentence_in_the_library_has_thai() {
-        let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
-        let used = scan(dir, &["text.rs"]);
+        // phai-ui's sources - also when phai-web, which shares this file, runs the test.
+        let here = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+        let ui = here.join("..").join("..").join("phai-ui").join("src");
+        let dir = if here.join("dialogs.rs").is_file() { here.to_path_buf() } else { ui };
+        let used = scan(&dir, &["text.rs"]);
         assert!(used.iter().any(|s| s == "OK"), "the scanner should see dialogs.rs: {used:?}");
         assert_eq!(problems(&used), Vec::<String>::new());
     }

@@ -13,6 +13,7 @@ name = "phai-studio"
 path = "src/main.rs"
 
 [dependencies]
+png = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 phai-ui = { path = "../../crates/phai-ui" }

@@ -50,9 +50,10 @@ fn main() {
         .unwrap_or_else(|| "0.1.0".into());
     let stub = read(release.join("phai-setup.exe"));
     let mut files = vec![("phai-studio.exe".to_string(), read(release.join("phai-studio.exe"))), ("phai-setup.exe".to_string(), stub.clone())];
-    // phai-ui's source under phai-ui/, and phai-data's (a form bound to a database table) under
+    // phai-ui's source under phai-ui/, phai-web's (the same program in a browser) under phai-web/,
+    // and phai-data's (a form bound to a database table) under
     // phai-data/, each Cargo.toml standing alone.
-    for lib in ["phai-ui", "phai-data"] {
+    for lib in ["phai-ui", "phai-data", "phai-web"] {
         let dir = root.join("crates").join(lib);
         let mut lib_files = Vec::new();
         files_under(&dir, &dir, &mut lib_files);
