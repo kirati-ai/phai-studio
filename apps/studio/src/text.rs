@@ -1092,6 +1092,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("Optional - empty shows every database", "ไม่ต้องใส่ก็ได้ - เว้นว่างจะแสดงทุก database"),
+    ("⚠ {0} - right-click, Refresh", "⚠ {0} - คลิกขวา แล้วเลือก Refresh"),
     ("{0} is named {1} - a Rust type's name begins with a capital", "ตั้งชื่อ {0} เป็น {1} - ชื่อชนิดใน Rust ขึ้นต้นด้วยตัวพิมพ์ใหญ่"),
     ("Compare Files...", "เทียบไฟล์..."),
     ("Compare Files", "เทียบไฟล์"),

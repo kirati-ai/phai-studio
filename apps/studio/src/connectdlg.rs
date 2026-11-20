@@ -156,6 +156,9 @@ pub fn make(owner: HWND, start: Option<&Connection>) -> HWND {
         let user = field(&c.user, 2, fw, false);
         let password = field(&c.password, 3, fw, true);
         let database = field(&c.database, 4, fw, false);
+        // Optional: one database shown in Server Explorer, or - empty - every one on the server.
+        let cue = win::wide(t("Optional - empty shows every database"));
+        wm::SendMessageW(database, 0x1501 /* EM_SETCUEBANNER */, Some(WPARAM(1)), Some(LPARAM(cue.as_ptr() as isize)));
         phai_ui::props::placeholder(database, t("Empty: none to start in"));
         let ssl = win::checkbox(hwnd, t("Encrypt the connection (TLS)"), 0, font, c.ssl);
         at(ssl, fx, row_y(5), fw, ROW);

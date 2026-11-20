@@ -626,6 +626,7 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             }
             if hdr.idFrom == crate::servers::ID_SERVERS_TREE as usize {
                 const TVN_ITEMEXPANDINGW: u32 = (-454i32) as u32;
+                const TVN_ITEMEXPANDEDW: u32 = (-455i32) as u32;
                 const TVN_BEGINDRAGW: u32 = (-456i32) as u32;
                 if let Some(sv) = studio().and_then(|s| s.servers.as_mut()) {
                     match hdr.code {
@@ -661,7 +662,8 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                             }
                             return LRESULT(0);
                         }
-                        TVN_ITEMEXPANDINGW => {
+                        // Opening - or opened, by whatever opened it: read the first time.
+                        TVN_ITEMEXPANDINGW | TVN_ITEMEXPANDEDW => {
                             let nm = unsafe { &*(l.0 as *const cc::NMTREEVIEWW) };
                             if nm.action.0 & 2 != 0 {
                                 sv.expanding(nm.itemNew.hItem.0, nm.itemNew.lParam.0);
