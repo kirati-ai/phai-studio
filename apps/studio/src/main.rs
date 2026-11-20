@@ -37,6 +37,7 @@ mod colortray;
 mod menuicons;
 mod options;
 mod web;
+mod repdesign;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -193,6 +194,8 @@ const ID_THEME_EDITOR: i32 = 791;
 const ID_ADD_FORM: i32 = 291;
 /// Project > Add User Control: a control of the project's own, made as a form.
 const ID_ADD_USER_CONTROL: i32 = 293;
+/// Project > Add Report: a printed report of the project's, designed in the Report Designer.
+const ID_ADD_REPORT: i32 = 292;
 /// Build > Build for Web: the project as a web page that installs as an app on phones.
 const ID_BUILD_WEB: i32 = 294;
 /// Build > Run in Browser: built for the web, served on this computer, opened.
@@ -1134,6 +1137,7 @@ fn build_menu() -> HMENU {
         let proj = wm::CreatePopupMenu().unwrap_or_default();
         add(proj, ID_ADD_FORM, t("Add Form..."), "");
         add(proj, ID_ADD_USER_CONTROL, t("Add User Control..."), "");
+        add(proj, ID_ADD_REPORT, t("Add Report..."), "");
         sep(proj);
         add(proj, ID_MANAGE_CRATES, t("Manage Crates..."), "");
         sep(proj);
@@ -6306,6 +6310,20 @@ impl Studio {
             ID_PROJECT_PROPS => self.project_properties(),
             ID_ADD_FORM => self.add_form(false),
             ID_ADD_USER_CONTROL => self.add_form(true),
+            ID_ADD_REPORT => match self.doc.path.as_deref().and_then(cargo::project_of) {
+                Some(dir) => {
+                    if let Some(path) = repdesign::add_report(self.hwnd, &dir) {
+                        if let Some(e) = self.explorer.as_mut() {
+                            // Read again, the new files in it.
+                            e.show_project_of(None);
+                            e.show_project_of(Some(&path));
+                        }
+                    }
+                }
+                None => {
+                    win::message(Some(self.hwnd), t("Open a form of the project first, so the new report can join it."), t("Add Report"), wm::MB_ICONINFORMATION);
+                }
+            },
             ID_MANAGE_CRATES => match self.doc.path.as_deref().and_then(cargo::project_of) {
                 Some(dir) => {
                     let dir = std::path::absolute(&dir).unwrap_or(dir);
@@ -7462,6 +7480,11 @@ fn main() {
         theme::set(Theme::dark());
     }
     win::init();
+    // `--report file.phaireport`: the Report Designer alone (`--report-preview`: its preview too).
+    if let Some(p) = args.iter().position(|a| a == "--report").and_then(|i| args.get(i + 1)) {
+        repdesign::run_alone(Path::new(p), args.iter().any(|a| a == "--report-preview"));
+        return;
+    }
     // Phai Studio's own icon (phai-studio.ico, embedded by build.rs): </> grown from bamboo.
     let icon = phai_ui::icon::app_icon(32).or_else(|| phai_ui::icon::glyph_icon(glyph::APPS, 32, theme::Color::rgb(0x12, 0x85, 0x5f)));
     let class = win::register("PhaiStudio", Some(proc_), icon);

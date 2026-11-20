@@ -262,7 +262,6 @@ struct Settings {
 
 /// WinForms' PrintDocument: the pages a program draws in its PrintPage event, printed, saved or
 /// shown first. One on a form is a component, its field named as the form names it.
-#[derive(Debug)]
 pub struct PrintDocument {
     pub owner: HWND,
     /// Its id on the form: the PrintPage event comes to the form with it.
@@ -270,6 +269,17 @@ pub struct PrintDocument {
     /// The name in the printer's queue and the preview's title - DocumentName.
     pub document_name: String,
     settings: RefCell<Settings>,
+    /// Draws each page in place of the PrintPage event - a report draws its own.
+    painter: RefCell<Option<Painter>>,
+}
+
+/// What draws a page when no form's PrintPage event does.
+pub type Painter = Box<dyn Fn(&PrintPageEventArgs)>;
+
+impl std::fmt::Debug for PrintDocument {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrintDocument").field("id", &self.id).field("document_name", &self.document_name).field("settings", &self.settings).finish_non_exhaustive()
+    }
 }
 
 const MAX_PAGES: usize = 2000;
@@ -429,7 +439,19 @@ const TIMER_SHOT: usize = 0x1F21;
 impl PrintDocument {
     /// A document on `owner` with `id`; `landscape` the paper turned sideways.
     pub fn new(owner: HWND, id: i32, document_name: &str, landscape: bool) -> PrintDocument {
-        PrintDocument { owner, id, document_name: if document_name.is_empty() { "document".into() } else { document_name.into() }, settings: RefCell::new(Settings { printer: String::new(), landscape, margins: [100; 4], devmode: Vec::new() }) }
+        PrintDocument { owner, id, document_name: if document_name.is_empty() { "document".into() } else { document_name.into() }, settings: RefCell::new(Settings { printer: String::new(), landscape, margins: [100; 4], devmode: Vec::new() }), painter: RefCell::new(None) }
+    }
+
+    /// Each page drawn by `paint` rather than by the PrintPage event: what a report does.
+    pub fn set_painter(&self, paint: Painter) {
+        *self.painter.borrow_mut() = Some(paint);
+    }
+
+    fn paint(&self, e: &PrintPageEventArgs) {
+        match self.painter.borrow().as_ref() {
+            Some(p) => p(e),
+            None => events::raise(self.owner, self.id, events::PRINT_PAGE, e),
+        }
     }
 
     /// The printer it prints on: empty for Windows' default - PrinterSettings.PrinterName.
@@ -507,7 +529,7 @@ impl PrintDocument {
                 units(dc, true);
                 pages += 1;
                 let e = PrintPageEventArgs::new(dc, pages, page, inner, false);
-                events::raise(self.owner, self.id, events::PRINT_PAGE, &e);
+                self.paint(&e);
                 let more = e.has_more_pages();
                 drop(e);
                 xps::EndPage(dc);
@@ -611,7 +633,7 @@ impl PrintDocument {
             }
             units(dc, false);
             let e = PrintPageEventArgs::new(dc, pages.len() + 1, page, inner, true);
-            events::raise(self.owner, self.id, events::PRINT_PAGE, &e);
+            self.paint(&e);
             let more = e.has_more_pages();
             drop(e);
             pages.push(unsafe { Gdi::CloseEnhMetaFile(dc) });

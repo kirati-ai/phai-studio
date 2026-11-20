@@ -17,6 +17,8 @@
 //! | [`layout`] | dock and anchor |
 //! | [`text`] | `t()` / `tf()`: Thai and English, English as the key |
 //! | [`icon`] | icons from pixels and from Windows' icon font |
+//! | [`print`] | PrintDocument, its dialogs and print preview |
+//! | [`report`] | banded reports: headers, groups, totals - previewed, printed, saved as PDF |
 //! | [`dialogs`] | ask for a line of text; "waiting" with Cancel |
 //! | [`inspect`] | the Live Inspector: F12 in a debug build, a control's look and properties changed live |
 //! | [`shot`] | photograph a window to PNG |
@@ -42,6 +44,7 @@ pub mod mdi;
 pub mod picture;
 pub mod print;
 pub mod props;
+pub mod report;
 #[cfg(feature = "shot")]
 pub mod shot;
 pub mod split;
