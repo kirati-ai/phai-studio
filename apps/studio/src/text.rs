@@ -232,6 +232,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its width and height, at 100% scale.", "ความกว้างและความสูง ที่สเกล 100%"),
     ("Float", "ลอย"),
     ("Auto Hide", "ซ่อนอัตโนมัติ"),
+    ("Edit {0} as text", "แก้ {0} แบบข้อความ"),
     ("No computer is named {0} - check the Server box.", "ไม่มีเครื่องชื่อ {0} - ตรวจช่อง Server อีกครั้ง"),
     ("Nothing answers at {0}:{1} - is {2} running there, on that port?", "ไม่มีอะไรตอบที่ {0}:{1} - {2} เปิดอยู่ที่นั่น พอร์ตนั้นหรือเปล่า?"),
     ("View Code", "ดูโค้ด"),

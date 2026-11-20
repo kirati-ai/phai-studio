@@ -1027,7 +1027,9 @@ pub fn edit(parent: HWND, text: &str, id: i32, f: HFONT, password: bool) -> HWND
     const ES_AUTOHSCROLL: u32 = 0x0080;
     const ES_PASSWORD: u32 = 0x0020;
     const EM_SETMARGINS: u32 = 0x00D3;
-    let style = WINDOW_STYLE(ES_AUTOHSCROLL | if password { ES_PASSWORD } else { 0 }) | wm::WS_TABSTOP | wm::WS_BORDER;
+    // No Windows border: the subclass keeps an edge and draws the theme's frame on it, the words
+    // in the middle of the box.
+    let style = WINDOW_STYLE(ES_AUTOHSCROLL | if password { ES_PASSWORD } else { 0 }) | wm::WS_TABSTOP;
     let h = child(parent, "EDIT", text, style, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::Edit);
     unsafe {
@@ -1065,7 +1067,16 @@ unsafe extern "system" fn edit_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
     match msg {
         wm::WM_NCPAINT => {
-            let r = windows::Win32::UI::Shell::DefSubclassProc(h, msg, w, l);
+            // A box with its words in the middle (see WM_NCCALCSIZE): its whole edge painted
+            // here - Windows would frame the smaller middle too. Any other: Windows first.
+            let centred = {
+                let (mut wr0, mut cr0) = (RECT::default(), RECT::default());
+                let _ = wm::GetWindowRect(h, &mut wr0);
+                let _ = wm::GetClientRect(h, &mut cr0);
+                (wr0.bottom - wr0.top) - (cr0.bottom - cr0.top) > 4
+                    && wm::GetWindowLongW(h, wm::GWL_STYLE) as u32 & 0x0004 /* ES_MULTILINE */ == 0
+            };
+            let r = if centred { LRESULT(0) } else { windows::Win32::UI::Shell::DefSubclassProc(h, msg, w, l) };
             let state = State {
                 hover: with_css(h, |c| c.hot).unwrap_or(false),
                 focus: GetFocus() == h,
@@ -1077,9 +1088,62 @@ unsafe extern "system" fn edit_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id
             let mut wr = RECT::default();
             let _ = wm::GetWindowRect(h, &mut wr);
             let rr = RECT { left: 0, top: 0, right: wr.right - wr.left, bottom: wr.bottom - wr.top };
+            // The room above and below the centred line: the box's own colour.
+            let mut cr = RECT::default();
+            let _ = wm::GetClientRect(h, &mut cr);
+            let mut at = [windows::Win32::Foundation::POINT { x: cr.left, y: cr.top }, windows::Win32::Foundation::POINT { x: cr.right, y: cr.bottom }];
+            Gdi::MapWindowPoints(Some(h), None, &mut at);
+            let (top, bottom) = (at[0].y - wr.top, at[1].y - wr.top);
+            if top > 1 || bottom < rr.bottom - 1 {
+                let bg = s.background_or(Color::rgb(255, 255, 255));
+                fill(dc, &RECT { left: 1, top: 1, right: rr.right - 1, bottom: top }, bg);
+                fill(dc, &RECT { left: 1, top: bottom, right: rr.right - 1, bottom: rr.bottom - 1 }, bg);
+            }
             let b = brush(s.border_or(Color::rgb(212, 212, 212)));
             Gdi::FrameRect(dc, &rr, b);
             Gdi::ReleaseDC(Some(h), dc);
+            return r;
+        }
+        // A one-line box taller than its words: the words in the middle, as a browser's text
+        // box has them - not against the top, as Windows leaves them. (A number box's arrows
+        // live in it: that one stays as it is.)
+        wm::WM_NCCALCSIZE if w.0 != 0 => {
+            let r = windows::Win32::UI::Shell::DefSubclassProc(h, msg, w, l);
+            let style = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32;
+            let multi = style & 0x0004 /* ES_MULTILINE */ != 0;
+            let has_child = wm::GetWindow(h, wm::GW_CHILD).is_ok_and(|c| !c.is_invalid());
+            // A one-line box has no Windows border (it would frame the middle too): the edge for
+            // the frame WM_NCPAINT draws is kept here.
+            if !multi && style & wm::WS_BORDER.0 == 0 {
+                let p = &mut *(l.0 as *mut wm::NCCALCSIZE_PARAMS);
+                p.rgrc[0].left += 1;
+                p.rgrc[0].top += 1;
+                p.rgrc[0].right -= 1;
+                p.rgrc[0].bottom -= 1;
+            }
+            if !multi && !has_child {
+                let p = &mut *(l.0 as *mut wm::NCCALCSIZE_PARAMS);
+                let dc = Gdi::GetDC(Some(h));
+                let font = Gdi::HGDIOBJ(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
+                let old = Gdi::SelectObject(dc, font);
+                let mut tm = Gdi::TEXTMETRICW::default();
+                let _ = Gdi::GetTextMetricsW(dc, &mut tm);
+                Gdi::SelectObject(dc, old);
+                Gdi::ReleaseDC(Some(h), dc);
+                let room = p.rgrc[0].bottom - p.rgrc[0].top;
+                let line = tm.tmHeight + 2;
+                if room > line {
+                    let pad = (room - line) / 2;
+                    p.rgrc[0].top += pad;
+                    p.rgrc[0].bottom -= room - line - pad;
+                }
+            }
+            return r;
+        }
+        // A new font: the middle worked out again.
+        wm::WM_SETFONT => {
+            let r = windows::Win32::UI::Shell::DefSubclassProc(h, msg, w, l);
+            let _ = wm::SetWindowPos(h, None, 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE | wm::SWP_FRAMECHANGED);
             return r;
         }
         wm::WM_SETFOCUS | wm::WM_KILLFOCUS | wm::WM_ENABLE => {

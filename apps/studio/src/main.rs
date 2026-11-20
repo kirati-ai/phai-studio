@@ -1168,19 +1168,20 @@ fn build_menu() -> HMENU {
         sep(data);
         add(data, ID_TABLE_DESIGNER, t("Table Designer..."), "");
         let th = wm::CreatePopupMenu().unwrap_or_default();
-        // The project's style sheets, the form's own ticked - choose one to use it.
+        // The form's theme in one place: change its colours (the Theme Editor) or its words, then
+        // which style sheet the form uses - the project's own, the form's ticked - a new one, one
+        // brought in, or none.
         let (sheets, current) = studio().map(|s| (s.theme_files(), s.doc.form.form.theme.clone())).unwrap_or_default();
+        add(th, ID_THEME_EDITOR, t("Theme Editor..."), "");
+        if current.is_some() {
+            add(th, ID_THEME_EDIT, &tf("Edit {0} as text", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
+        }
+        sep(th);
         for (i, name) in sheets.iter().enumerate().take(THEME_FILES_MAX) {
             add(th, ID_THEME_FILE + i as i32, &name.replace('&', "&&"), "");
             if current.as_deref() == Some(name.as_str()) {
                 wm::CheckMenuItem(th, (ID_THEME_FILE + i as i32) as u32, wm::MF_CHECKED.0);
             }
-        }
-        if current.is_some() {
-            add(th, ID_THEME_EDIT, &tf("Edit {0}", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
-        }
-        if !sheets.is_empty() || current.is_some() {
-            sep(th);
         }
         add(th, ID_THEME_NEW, t("New theme from the standard..."), "");
         add(th, ID_THEME_IMPORT, t("Import CSS..."), "");
@@ -1189,7 +1190,7 @@ fn build_menu() -> HMENU {
         if current.is_none() {
             wm::CheckMenuItem(th, ID_THEME_NONE as u32, wm::MF_CHECKED.0);
         }
-        // Tools: Data, Test, Git and the form's Theme as menus within; the Theme Editor; a new
+        // Tools: Data, Test, Git and the form's Theme (its editor in it) as menus within; a new
         // GUID; Studio's own colours; a command line in the project's folder; Options.
         let tools = wm::CreatePopupMenu().unwrap_or_default();
         // Data, Test, Git and the form's Theme: menus of their own inside Tools, so the bar keeps
@@ -1201,7 +1202,6 @@ fn build_menu() -> HMENU {
         sep(tools);
         // The editors, each in this one place (a form's menu bar and toolbar are edited from the
         // Toolbox and by double-clicking them on the form).
-        add(tools, ID_THEME_EDITOR, t("Theme Editor..."), "");
         add(tools, ID_CUSTOM_STD, t("Customize Toolbar..."), "");
         sep(tools);
         add(tools, ID_CREATE_GUID, t("Create GUID"), "");
@@ -7823,6 +7823,10 @@ fn main() {
                 // `PHAI_CONNECT_CLICK=N,M,..`: then those cards clicked in turn, as the mouse would.
                 for c in std::env::var("PHAI_CONNECT_CLICK").unwrap_or_default().split(',').filter_map(|v| v.trim().parse::<usize>().ok()) {
                     connectdlg::click_card(dlg, c);
+                }
+                // `PHAI_CONNECT_TEST`: Test connection pressed too.
+                if std::env::var_os("PHAI_CONNECT_TEST").is_some() {
+                    connectdlg::press_test(dlg);
                 }
                 win::show_top(dlg);
                 let mut msg = wm::MSG::default();
