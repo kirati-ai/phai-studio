@@ -95,6 +95,7 @@
 | ★ | Auto Hide: แท็บแนวตั้งที่ขอบ, ชี้หรือคลิกแล้วเลื่อนออก, ออกจากแผงแล้วเก็บเอง (แต่ละแผงปักหมุดแยกกัน แผงที่ยังติดขอบอยู่ไม่ขยับ) | ✅ |
 | ★ | Project กับ Properties เป็นแท็บด้านล่างแบบ Solution Explorer (▾ > แท็บด้านล่าง เปิด/ปิดได้) | ✅ |
 | ★ | เมนูแบบ Visual Studio: File (New ▸ / Open ▸ Project, File / Close Project / Recent Files / Recent Projects), Format (Align / Make Same Size / Horizontal, Vertical Spacing / Center in Form / Order), Tools (เชื่อมต่อฐานข้อมูล, Server Explorer, Snippet, Crates, สร้าง GUID, ธีม, Command Prompt / PowerShell ที่โฟลเดอร์โปรเจกต์) | ✅ |
+| ★ | Tools > Options: ธีมสี (ตาม Windows / สว่าง / มืด), ภาษา, จำนวนรายการล่าสุด, เปิดโปรแกรมแล้วให้เปิดอะไร (หน้าต่างเริ่มต้น / หน้าว่าง / โปรเจกต์ล่าสุด), แท็บด้านล่าง, ขนาดฟอนต์ตัวแก้โค้ด, ไลบรารี Phai จาก GitHub — จำไว้ใช้ครั้งหน้า; เมนูไม่ซ้ำกันแล้ว (แต่ละคำสั่งอยู่ที่เดียวตาม VS) | ✅ |
 | ★ | แท็บเอกสาร, จุดบอกยังไม่บันทึก | ✅ |
 | | Split editor (View > Split): ไฟล์เดียวกันสองช่องบน-ล่าง ลากเส้นแบ่งปรับขนาดได้; View > New Window: เปิดไฟล์ในหน้าต่างของตัวเอง ย้ายไปจออื่นได้ พิมพ์ที่ไหนก็เห็นทุกที่ | ✅ |
 
