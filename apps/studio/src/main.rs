@@ -258,6 +258,10 @@ const BAND_LAYOUT: u32 = 2;
 const TIMER_SLIDE: usize = 7301;
 /// Diagnostic Tools' samples, twice a second while a program runs.
 const TIMER_DIAG: usize = 7302;
+/// The breadcrumb over the editor follows the caret.
+const TIMER_CRUMB: usize = 7303;
+/// The breadcrumb's height, design pixels.
+const CRUMB_H: i32 = 24;
 /// File > Recent: `ID_RECENT + n`, newest first.
 const ID_RECENT: i32 = 160;
 /// File > New from template: `ID_TEMPLATE + n` in `Template::ALL` order.
@@ -441,6 +445,10 @@ pub struct Studio {
     /// Nothing open: Studio just started, or its last tab closed - no form, no project, as Visual
     /// Studio starts. Opening or making something ends it.
     pub nothing: bool,
+    /// The breadcrumb over the editor - folder, file, impl, fn - and the caret and version it
+    /// was last worked out for.
+    crumb: HWND,
+    crumb_for: (usize, i64, isize),
     pub font: HFONT,
     pub toolbar: HWND,
     pub toolbox: HWND,
@@ -2424,6 +2432,33 @@ impl Studio {
     }
 
     /// Shows the active tab's editor and hides every other one; the canvas shows when it is a form.
+    /// The breadcrumb worked out again when the caret moved or the text changed: the file's
+    /// folder and name, then the items around the caret (Visual Studio's navigation bar).
+    fn crumb_tick(&mut self) {
+        let Some(h) = self.doc.code else { return };
+        let (line, _) = phai_editor::view::caret_position(h);
+        let now = (line, phai_editor::view::version(h), h.0 as isize);
+        if now == self.crumb_for || self.crumb.is_invalid() {
+            return;
+        }
+        self.crumb_for = now;
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(p) = self.doc.path.as_deref() {
+            if let Some(dir) = p.parent().and_then(|d| d.file_name()) {
+                parts.push(dir.to_string_lossy().to_string());
+            }
+            parts.push(p.file_name().unwrap_or_default().to_string_lossy().to_string());
+            if p.extension().is_some_and(|e| e == "rs") {
+                let text = phai_editor::view::text(h);
+                parts.extend(phai_editor::crumbs::scope_at(&text, line.saturating_sub(1)));
+            }
+        }
+        win::set_text(self.crumb, &format!("  {}", parts.join("  \u{203A}  ")));
+        // Line and column on the status bar too, as the caret moves.
+        let (l, c) = phai_editor::view::caret_position(h);
+        controls::status_text(self.status, 1, &tf("Line {0}, column {1}", &[&l, &c]));
+    }
+
     fn show_code(&mut self) {
         let active = self.doc.code;
         for t in &self.tabs {
@@ -2433,12 +2468,24 @@ impl Studio {
         }
         if let Some(c) = self.canvas.as_ref() {
             win::show(c.surface, active.is_none());
+            if self.crumb.is_invalid() {
+                self.crumb = win::label(c.hwnd, "", 0, self.font);
+                // It follows the caret from now on.
+                unsafe {
+                    wm::SetTimer(Some(self.hwnd), TIMER_CRUMB, 300, None);
+                }
+            }
+            win::show(self.crumb, active.is_some());
             if let Some(h) = active {
                 let mut r = RECT::default();
                 unsafe {
                     let _ = wm::GetClientRect(c.hwnd, &mut r);
                 }
-                win::move_to(h, 0, 0, r.right, r.bottom);
+                // The breadcrumb along the top, the editor under it.
+                let ch = win::px(c.hwnd, CRUMB_H);
+                win::move_to(self.crumb, 0, 0, r.right, ch);
+                win::move_to(h, 0, ch, r.right, r.bottom - ch);
+                self.crumb_for = (usize::MAX, -1, 0);
                 unsafe {
                     // Children made later sit lower: lift the editor over the form's windows.
                     let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_SHOWWINDOW);
@@ -7573,6 +7620,10 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             avail::grey_menu(wm::HMENU(w.0 as *mut _), &avail::Now::of(s));
             LRESULT(0)
         }
+        wm::WM_TIMER if w.0 == TIMER_CRUMB => {
+            s.crumb_tick();
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_DIAG => {
             s.diag_tick();
             LRESULT(0)
@@ -8227,6 +8278,8 @@ fn main() {
             also: vec![],
             tool: None,
             nothing: false,
+            crumb: HWND::default(),
+            crumb_for: (usize::MAX, -1, 0),
         });
         STUDIO.store(Box::into_raw(studio_box), Ordering::Relaxed);
         let s = studio().unwrap();
