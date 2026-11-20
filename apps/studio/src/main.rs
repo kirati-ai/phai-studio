@@ -44,6 +44,7 @@ mod repdesign;
 mod qr;
 mod phone;
 mod devices;
+mod search;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -212,6 +213,8 @@ const ID_RUN_PHONE: i32 = 296;
 const ID_WEB_APP: i32 = 297;
 /// View > Device Preview: the form on a phone's and a tablet's screen.
 const ID_DEVICES: i32 = 298;
+/// Edit > Search (Ctrl+Q): every command, Options page and file by name.
+const ID_SEARCH: i32 = 299;
 /// A build for the web finished on its thread: `lparam` a boxed `(Result<web::WebBuild, String>, bool)`.
 const WM_WEB_DONE: u32 = wm::WM_APP + 0x0E03;
 
@@ -1008,6 +1011,7 @@ fn build_menu() -> HMENU {
         add(edit, ID_FOLD_ALL, t("Toggle All Outlining"), "Ctrl+M, Ctrl+L");
         add(edit, ID_FIND_IN_FILES, t("Find in Files..."), "Ctrl+Shift+F");
         add(edit, ID_GO_TO_ALL, t("Go to All..."), "Ctrl+T");
+        add(edit, ID_SEARCH, t("Search..."), "Ctrl+Q");
         add(edit, ID_SNIPPET, t("Insert Snippet..."), "Ctrl+K, Ctrl+X");
         add(edit, ID_BM_TOGGLE, t("Toggle Bookmark"), "Ctrl+K, Ctrl+K");
         add(edit, ID_BM_NEXT, t("Next Bookmark"), "Ctrl+K, Ctrl+N");
@@ -2975,10 +2979,41 @@ impl Studio {
         }
     }
 
-    /// Go to All (Ctrl+T): files and symbols of the solution by name; the one chosen opened there.
-    fn go_to_all(&mut self, query: &str) {
-        let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok());
-        let Some(root) = root else { return };
+    /// Search (Ctrl+Q): every menu command usable now, every Options page and the project's files,
+    /// by name; the one chosen done - run, opened.
+    fn feature_search(&mut self, query: &str) {
+        let now = avail::Now::of(self);
+        let menu = unsafe { wm::GetMenu(self.hwnd) };
+        let mut all = search::commands(menu, &|id| now.enabled(id) && id != ID_SEARCH);
+        for (i, (group, page)) in options::pages().into_iter().enumerate() {
+            all.push(search::Found { name: page.to_string(), place: group.to_string(), keys: String::new(), target: search::Target::Options(i) });
+        }
+        if let Some((root, files)) = self.solution_files() {
+            for f in files {
+                let place = f.parent().and_then(|p| p.strip_prefix(&root).ok()).map(|p| p.display().to_string()).unwrap_or_default();
+                all.push(search::Found { name: f.file_name().unwrap_or_default().to_string_lossy().to_string(), place, keys: String::new(), target: search::Target::File(f) });
+            }
+        }
+        match search::run(self.hwnd, all, query) {
+            Some(search::Target::Command(id)) => unsafe {
+                let _ = wm::PostMessageW(Some(self.hwnd), wm::WM_COMMAND, WPARAM(id as usize), LPARAM(0));
+            },
+            Some(search::Target::Options(page)) => self.options(page),
+            Some(search::Target::File(p)) => {
+                self.remember_place();
+                if p.extension().is_some_and(|e| e == "phaiform") {
+                    self.open_path(&p);
+                } else {
+                    self.open_code(&p);
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// The solution's folder and its files that Studio opens - for Go to All and Search.
+    fn solution_files(&self) -> Option<(PathBuf, Vec<PathBuf>)> {
+        let root = self.doc.path.as_deref().and_then(cargo::workspace_of).or_else(|| std::env::current_dir().ok())?;
         let root = std::path::absolute(if root.as_os_str().is_empty() { Path::new(".") } else { &root }).unwrap_or(root);
         let mut files = Vec::new();
         let mut stack = vec![root.clone()];
@@ -2995,6 +3030,12 @@ impl Studio {
                 }
             }
         }
+        Some((root, files))
+    }
+
+    /// Go to All (Ctrl+T): files and symbols of the solution by name; the one chosen opened there.
+    fn go_to_all(&mut self, query: &str) {
+        let Some((root, files)) = self.solution_files() else { return };
         let Some(it) = gotoall::run(self.hwnd, files, root, query) else { return };
         self.remember_place();
         if it.path.extension().is_some_and(|e| e == "phaiform") {
@@ -6376,6 +6417,7 @@ impl Studio {
             },
             ID_FIND_IN_FILES => self.find_in_files(None),
             ID_GO_TO_ALL => self.go_to_all(""),
+            ID_SEARCH => self.feature_search(""),
             ID_ATTACH => self.attach_to_process(),
             ID_EXCEPTIONS => self.exception_settings(),
             ID_MEMORY_WIN => {
@@ -7551,6 +7593,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
     let in_box = !unsafe { km::GetFocus() }.0.is_null() && win::kind_of(unsafe { km::GetFocus() }) == Some(win::Kind::Edit);
     match (msg.wParam.0 as u8, ctrl) {
         (b'T', true) if !shift => Some(ID_GO_TO_ALL),
+        (b'Q', true) if !shift => Some(ID_SEARCH),
         // Ctrl+` : the Terminal, as Visual Studio has it.
         (0xC0, true) => Some(ID_VIEW_TERMINAL),
         (b'N', true) if shift => Some(ID_NEW_PROJECT),
