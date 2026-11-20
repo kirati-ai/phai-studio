@@ -18,6 +18,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse as km;
 use windows::Win32::UI::WindowsAndMessaging::{self as wm, HMENU, WINDOW_EX_STYLE};
 
 use crate::studio;
+use phai_ui::text::{t, tf};
 
 /// The form's top-left corner inside the canvas, design pixels.
 pub const MARGIN: i32 = 16;
@@ -107,6 +108,9 @@ pub struct Canvas {
     tab_next: Option<usize>,
     /// Tab order mode's numbers on the controls.
     numbers: Vec<HWND>,
+    /// A right-drag from a control, as Xcode's connection drag: where it began (device pixels on
+    /// the surface) and the control.
+    link: Option<(i32, i32, usize)>,
 }
 
 fn snap(v: i32) -> i32 {
@@ -137,7 +141,7 @@ impl Canvas {
             wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
-        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], tag: HWND::default(), marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![] }
+        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], tag: HWND::default(), marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![], link: None }
     }
 
     /// Builds the form again from the model: size, controls, handles.
@@ -684,6 +688,43 @@ impl Canvas {
 
     /// A right-click on the form or the component tray: what is under it chosen (unless it is
     /// already among the chosen), then its menu - as Visual Studio's designer has it.
+    /// A right-drag from a control let go: its connections, as Xcode's - an event's method
+    /// written in the form's code and opened there, or `ui.<id>` copied for code that uses it.
+    fn connect(&mut self, i: usize) {
+        let Some(s) = studio() else { return };
+        let Some(c) = s.doc.form.control.get(i) else { return };
+        let (id, kind) = (c.id.clone(), c.kind);
+        if !s.selection().contains(&i) {
+            s.select(Some(i));
+            self.place_handles();
+        }
+        const OWN: u32 = 1;
+        const COPY: u32 = 2;
+        let events: Vec<&phai_form::events::EventSpec> = phai_form::events::of_kind(kind).take(14).collect();
+        let own = kind.event().map(|_| tf("{0}'s own event - in the code", &[&id]));
+        let copy = tf("Copy ui.{0} for code", &[&id]);
+        let mut items: Vec<(u32, &str)> = Vec::new();
+        if let Some(o) = own.as_deref() {
+            items.push((OWN, o));
+        }
+        let labels: Vec<String> = events.iter().map(|e| tf("Event: {0}", &[&t(e.label)])).collect();
+        for (k, l) in labels.iter().enumerate() {
+            items.push((10 + k as u32, l));
+        }
+        items.push((0, ""));
+        items.push((COPY, &copy));
+        match win::popup(self.surface, &items) {
+            OWN => s.add_event_method(crate::props::Key::Event),
+            COPY => crate::copy_text(self.surface, &format!("ui.{id}")),
+            n if n >= 10 => {
+                if let Some(e) = events.get((n - 10) as usize) {
+                    s.add_event_method(crate::props::Key::On(e.name));
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn context(&mut self, on_surface: bool, l: LPARAM) {
         let Some(s) = studio() else { return };
         let p = self.design_point(if on_surface { self.surface } else { self.hwnd }, l);
@@ -1145,9 +1186,30 @@ extern "system" fn surface_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
             }
             LRESULT(0)
         }
+        wm::WM_RBUTTONDOWN => {
+            // Perhaps a right-drag from a control: its connections when let go away from where it began.
+            if let Some(c) = canvas_of(h) {
+                let p = c.design_point(h, l);
+                c.link = c.hit(p).map(|i| (win::point_of(l).0, win::point_of(l).1, i));
+                if c.link.is_some() {
+                    unsafe {
+                        km::SetCapture(h);
+                    }
+                }
+            }
+            LRESULT(0)
+        }
         wm::WM_RBUTTONUP => {
             if let Some(c) = canvas_of(h) {
-                c.context(true, l);
+                let link = c.link.take();
+                unsafe {
+                    let _ = km::ReleaseCapture();
+                }
+                let (x, y) = win::point_of(l);
+                match link {
+                    Some((x0, y0, i)) if (x - x0).abs() + (y - y0).abs() > win::px(h, 10) => c.connect(i),
+                    _ => c.context(true, l),
+                }
             }
             LRESULT(0)
         }
