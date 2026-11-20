@@ -1246,6 +1246,13 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
 // --- lists ---------------------------------------------------------------------------------------
 
 /// A details list: `(heading, width in design pixels)` per column, whole rows selected.
+/// Lines between a list's cells, as a grid of data is drawn (LVS_EX_GRIDLINES).
+pub fn grid_lines(h: HWND) {
+    unsafe {
+        wm::SendMessageW(h, 0x1036 /* LVM_SETEXTENDEDLISTVIEWSTYLE */, Some(WPARAM(0x1)), Some(LPARAM(0x1)));
+    }
+}
+
 pub fn list(parent: HWND, id: i32, f: HFONT, columns: &[(&str, i32)]) -> HWND {
     use windows::Win32::UI::Controls as cc;
     const LVS_REPORT: u32 = 0x0001;

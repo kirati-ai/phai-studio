@@ -148,6 +148,7 @@ impl Bottom {
         let locals = win::list(hwnd, ID_LOCALS, font, &[(t("Name"), 160), (t("Value"), 380), (t("Type"), 220)]);
         let stack = win::list(hwnd, ID_STACK, font, &[(t("Function"), 420), (t("File"), 200), (t("Line"), 60)]);
         let results = win::list(hwnd, ID_RESULTS, font, &[("", 100)]);
+        win::grid_lines(results);
         let watch = win::list(hwnd, ID_WATCH, font, &[(t("Name"), 220), (t("Value"), 380), (t("Type"), 200)]);
         let tests = win::list(hwnd, ID_TESTS, font, &[(t("Test"), 380), (t("Outcome"), 110), (t("Message"), 480)]);
         unsafe {
