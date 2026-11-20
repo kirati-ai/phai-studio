@@ -4061,6 +4061,11 @@ impl Studio {
         explorer::set_tabbed(self.side, v.tabbed);
         phai_editor::prefs::set(v.editor());
         phai_editor::view::set_font_size(v.font_pt);
+        if let Some(b) = self.bottom.as_ref() {
+            win::set_checked(b.show_errors, v.show_errors);
+            win::set_checked(b.show_warnings, v.show_warnings);
+        }
+        self.fill_errors();
         canvas::set_designer(v.grid, v.snap_to_grid, v.snaplines);
         // rust-analyzer off: the running one stopped; on, it starts with the next Rust file shown.
         if !v.rust_analyzer {
@@ -6100,7 +6105,8 @@ impl Studio {
                 (_, false) => t("Build failed"),
             };
             b.add_line(&format!("{said} ({:.1} s)", out.seconds));
-            if !self.diagnostics.is_empty() {
+            // The Error List forward when the build found something - unless Options says not to.
+            if !self.diagnostics.is_empty() && setting("errors_forward").as_deref() != Some("0") {
                 b.show_tab(0);
             }
         }

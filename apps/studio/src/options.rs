@@ -63,6 +63,27 @@ pub struct Values {
     pub break_on_panic: bool,
     // Source Control
     pub blame: bool,
+    // Environment > Error List
+    /// The Error List brought forward when a build ends with errors or warnings.
+    pub errors_forward: bool,
+    /// Errors and warnings shown in it to begin with (its two ticks).
+    pub show_errors: bool,
+    pub show_warnings: bool,
+    // Environment > Other Windows
+    /// The tabs of the panel below open when Studio starts, by the order of `bottom::labels`.
+    pub start_tabs: Vec<usize>,
+    /// The tabs left open kept for next time, in place of `start_tabs`.
+    pub remember_tabs: bool,
+}
+
+/// The panel's tabs Options offers to open at start: all but the debugger's own (Immediate to
+/// Disassembly), which open as debugging needs them.
+pub const START_TABS: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 14];
+
+/// The panel's tabs open at start as a setting says them: `0,1` - Errors and Output when none.
+pub fn tabs_of(v: Option<String>) -> Vec<usize> {
+    let tabs: Vec<usize> = v.unwrap_or_else(|| "0,1".into()).split(',').filter_map(|n| n.trim().parse().ok()).filter(|k| *k < 15).collect();
+    if tabs.is_empty() { vec![0, 1] } else { tabs }
 }
 
 pub const THEMES: [&str; 3] = ["windows", "light", "dark"];
@@ -117,6 +138,11 @@ impl Values {
             // Debug > Exception Settings keeps it among the exceptions: "panic" there.
             break_on_panic: get("exceptions").map(|e| e.split(',').any(|w| w.trim() == "panic")).unwrap_or(true),
             blame: tick(get("blame"), false),
+            errors_forward: tick(get("errors_forward"), true),
+            show_errors: tick(get("show_errors"), true),
+            show_warnings: tick(get("show_warnings"), true),
+            start_tabs: tabs_of(get("bottom_tabs")),
+            remember_tabs: tick(get("remember_tabs"), false),
         }
     }
 
@@ -156,6 +182,11 @@ impl Values {
             ("library_from_git", one(self.git)),
             ("exceptions", ex.join(",")),
             ("blame", one(self.blame)),
+            ("errors_forward", one(self.errors_forward)),
+            ("show_errors", one(self.show_errors)),
+            ("show_warnings", one(self.show_warnings)),
+            ("bottom_tabs", self.start_tabs.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",")),
+            ("remember_tabs", one(self.remember_tabs)),
         ]
     }
 
@@ -183,6 +214,8 @@ fn pages() -> Vec<(&'static str, &'static str)> {
         (t("Environment"), t("Startup")),
         (t("Environment"), t("Tabs and Windows")),
         (t("Environment"), t("Documents")),
+        (t("Environment"), t("Error List")),
+        (t("Environment"), t("Other Windows")),
         (t("Text Editor"), t("General")),
         (t("Text Editor"), t("Tabs")),
         (t("Text Editor"), t("Font")),
@@ -233,6 +266,12 @@ struct Controls {
     git: HWND,
     panic: HWND,
     blame: HWND,
+    errors_forward: HWND,
+    show_errors: HWND,
+    show_warnings: HWND,
+    /// One tick per tab of `START_TABS`.
+    start_tabs: Vec<HWND>,
+    remember_tabs: HWND,
 }
 
 struct Dialog {
@@ -336,12 +375,25 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             git: check(t("Take the Phai libraries from GitHub, at this Phai Studio's release"), now.git),
             panic: check(t("Break when a Rust program panics"), now.break_on_panic),
             blame: check(t("Show who last changed each line (blame)"), now.blame),
+            errors_forward: check(t("Bring the Error List forward when a build has errors or warnings"), now.errors_forward),
+            show_errors: check(t("Show errors in it"), now.show_errors),
+            show_warnings: check(t("Show warnings in it"), now.show_warnings),
+            start_tabs: START_TABS.iter().map(|k| check(crate::bottom::labels()[*k], now.start_tabs.contains(k))).collect(),
+            remember_tabs: check(t("Open the tabs I left open, instead"), now.remember_tabs),
         };
         let rows = vec![
             vec![Row::Pair(label(t("Color theme:")), c.theme), Row::Pair(label(t("Language:")), c.language), Row::Pair(label(t("Items in recently used lists:")), c.recent)],
             vec![Row::Pair(label(t("On startup, open:")), c.startup)],
             vec![Row::Check(c.tabbed)],
             vec![Row::Check(c.detect), Row::Check(c.reload)],
+            vec![Row::Check(c.errors_forward), Row::Check(c.show_errors), Row::Check(c.show_warnings), note(t("The two ticks are the Error List's own Errors and Warnings - changed there, they are kept too."))],
+            {
+                let mut v = vec![note(t("Open in the panel below when Phai Studio starts:"))];
+                v.extend(c.start_tabs.iter().map(|h| Row::Check(*h)));
+                v.push(Row::Check(c.remember_tabs));
+                v.push(note(t("The debugger's windows open when debugging. A closed tab: View > Other Windows.")));
+                v
+            },
             vec![Row::Check(c.numbers), Row::Check(c.lenses), Row::Check(c.braces), Row::Check(c.analyzer), note(t("Off: less memory and work in the background; the editor still colours and indents."))],
             vec![Row::Pair(label(t("Tab size:")), c.tab_size), Row::Pair(label(t("Indent with:")), c.indent)],
             vec![Row::Pair(label(t("Font:")), c.font), Row::Pair(label(t("Size (points):")), c.font_pt), note(t("A fixed-width font keeps code in columns."))],
@@ -410,7 +462,7 @@ fn layout(h: HWND) {
         let _ = wm::GetClientRect(h, &mut r);
     }
     let px = |v| win::px(h, v);
-    let (m, row, gap, bw) = (px(12), px(26), px(10), px(96));
+    let (m, row, gap, bw) = (px(12), px(26), px(8), px(96));
     let tree_w = px(230);
     let bottom = r.bottom - m - row - gap;
     win::move_to(d.tree, m, m, tree_w, bottom - m);
@@ -470,6 +522,14 @@ fn read(c: &Controls) -> Values {
         git: win::is_checked(c.git),
         break_on_panic: win::is_checked(c.panic),
         blame: win::is_checked(c.blame),
+        errors_forward: win::is_checked(c.errors_forward),
+        show_errors: win::is_checked(c.show_errors),
+        show_warnings: win::is_checked(c.show_warnings),
+        start_tabs: {
+            let t: Vec<usize> = START_TABS.iter().zip(&c.start_tabs).filter(|(_, h)| win::is_checked(**h)).map(|(k, _)| *k).collect();
+            if t.is_empty() { vec![0] } else { t }
+        },
+        remember_tabs: win::is_checked(c.remember_tabs),
     }
 }
 
@@ -559,6 +619,11 @@ mod tests {
             git: true,
             break_on_panic: false,
             blame: true,
+            errors_forward: false,
+            show_errors: true,
+            show_warnings: false,
+            start_tabs: vec![0, 1, 6],
+            remember_tabs: true,
         };
         let saved: std::collections::HashMap<&str, String> = v.pairs(Some("panic,0xC0000005")).into_iter().collect();
         assert_eq!(saved["exceptions"], "0xC0000005", "panic out, the exceptions kept");

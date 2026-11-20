@@ -102,8 +102,10 @@ impl Bottom {
         layout.add(watch, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         layout.add(tests, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
         // Errors (n) and Warnings (n), at the right of the tabs, as Visual Studio's Error List has them.
-        let show_errors = win::checkbox(hwnd, t("Errors"), ID_SHOW_ERRORS, font, true);
-        let show_warnings = win::checkbox(hwnd, t("Warnings"), ID_SHOW_WARNINGS, font, true);
+        // As they were left (Tools > Options > Error List).
+        let tick = |name: &str| crate::setting_pub(name).as_deref() != Some("0");
+        let show_errors = win::checkbox(hwnd, t("Errors"), ID_SHOW_ERRORS, font, tick("show_errors"));
+        let show_warnings = win::checkbox(hwnd, t("Warnings"), ID_SHOW_WARNINGS, font, tick("show_warnings"));
         let right = Anchor { left: false, top: true, right: true, bottom: false };
         layout.add(show_errors, Item { bounds: Rect::new(530, 3, 110, 22), dock: Dock::None, anchor: right });
         layout.add(show_warnings, Item { bounds: Rect::new(646, 3, 120, 22), dock: Dock::None, anchor: right });
@@ -154,7 +156,11 @@ impl Bottom {
             wm::SendMessageW(disassembly, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         }
         layout.add(disassembly, Item { bounds: Rect::new(0, 28, 800, 112), dock: Dock::None, anchor: Anchor::ALL });
-        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, open: std::cell::Cell::new(std::array::from_fn(|k| k < 2)) });
+        let b = Box::new(Bottom { hwnd, tabs, errors, output, refs, locals, stack, results, watch, tests, show_errors, show_warnings, immediate, immediate_input, diagnostics, breakpoints, threads, memory, memory_input, disassembly, coverage, layout, open: std::cell::Cell::new({
+            // The tabs Options opens at start (Errors and Output unless it says other).
+            let start = crate::options::tabs_of(crate::setting_pub("bottom_tabs"));
+            std::array::from_fn(|k| start.contains(&k))
+        }) });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Bottom as isize);
         }
@@ -170,6 +176,10 @@ impl Bottom {
 
     /// The strip again: the open tabs' names, `i` chosen.
     fn restrip(&self, i: usize) {
+        // The tabs left open kept, when Options says to.
+        if crate::setting_pub("remember_tabs").as_deref() == Some("1") {
+            crate::remember_setting_pub("bottom_tabs", &self.open_tabs().iter().map(|k| k.to_string()).collect::<Vec<_>>().join(","));
+        }
         let all = labels();
         let shown = self.open_tabs();
         let names: Vec<&str> = shown.iter().map(|k| all[*k]).collect();
@@ -320,7 +330,10 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         }
         // The filters are the main window's to apply.
-        (wm::WM_COMMAND, _) if matches!(win::loword(w.0) as i32, ID_SHOW_ERRORS | ID_SHOW_WARNINGS) => {
+        (wm::WM_COMMAND, Some(b)) if matches!(win::loword(w.0) as i32, ID_SHOW_ERRORS | ID_SHOW_WARNINGS) => {
+            // Kept for next time.
+            crate::remember_setting_pub("show_errors", if win::is_checked(b.show_errors) { "1" } else { "0" });
+            crate::remember_setting_pub("show_warnings", if win::is_checked(b.show_warnings) { "1" } else { "0" });
             if let Some(s) = crate::studio() {
                 s.fill_errors();
             }
