@@ -78,11 +78,11 @@ pub struct Values {
 
 /// The panel's tabs Options offers to open at start: all but the debugger's own (Immediate to
 /// Disassembly), which open as debugging needs them.
-pub const START_TABS: [usize; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 14];
+pub const START_TABS: [usize; 10] = [0, 1, 2, 3, 4, 5, 6, 7, 14, 15];
 
 /// The panel's tabs open at start as a setting says them: `0,1` - Errors and Output when none.
 pub fn tabs_of(v: Option<String>) -> Vec<usize> {
-    let tabs: Vec<usize> = v.unwrap_or_else(|| "0,1".into()).split(',').filter_map(|n| n.trim().parse().ok()).filter(|k| *k < 15).collect();
+    let tabs: Vec<usize> = v.unwrap_or_else(|| "0,1".into()).split(',').filter_map(|n| n.trim().parse().ok()).filter(|k| *k < 16).collect();
     if tabs.is_empty() { vec![0, 1] } else { tabs }
 }
 

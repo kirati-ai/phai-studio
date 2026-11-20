@@ -31,7 +31,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
     if (ID_TEMPLATE..ID_TEMPLATE + 10).contains(&id) {
         return Some((glyph::FORM, BLUE));
     }
-    if (ID_OTHER_WINDOW..ID_OTHER_WINDOW + 15).contains(&id) {
+    if (ID_OTHER_WINDOW..ID_OTHER_WINDOW + 16).contains(&id) {
         return Some((0xE737, GREY));
     }
     if (ID_THEME_FILE..ID_THEME_FILE + 40).contains(&id) {
@@ -162,6 +162,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         ID_CMD_PROMPT => (0xE756, GREY),
         ID_POWERSHELL => (0xE756, BLUE),
         ID_OPTIONS => (glyph::SETTINGS, GREY),
+        ID_VIEW_TERMINAL => (0xE756, GREY), // CommandPrompt
         ID_TABLE_DESIGNER => (0xE80A, TEAL), // ViewAll: a table's grid
         // Help
         ID_HELP_STUDIO => (0xE897, BLUE), // Help
