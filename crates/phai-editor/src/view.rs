@@ -64,6 +64,8 @@ pub fn set_font_size(pt: i32) {
 struct View {
     /// The size `font` was made at - behind [`font_size`] after a zoom elsewhere.
     pt: i32,
+    /// The face `font` was made in - behind Options after it names another.
+    face: String,
     model: Model,
     lang: Language,
     font: HFONT,
@@ -156,8 +158,8 @@ impl View {
         if s.is_empty() {
             return 0;
         }
-        // Tabs as four spaces.
-        let w = wide_of(&s.replace('\t', "    "));
+        // A tab as the spaces it stands for (Options > Text Editor > Tabs).
+        let w = wide_of(&s.replace('\t', &crate::prefs::tab_spaces()));
         let mut size = SIZE::default();
         unsafe {
             let _ = Gdi::GetTextExtentPoint32W(dc, &w, &mut size);
@@ -166,7 +168,8 @@ impl View {
     }
 
     fn gutter(&self) -> i32 {
-        let digits = self.model.buf.line_count().to_string().len().max(3) as i32;
+        // Line numbers off (Options): no room for them, only for the marks and the folding boxes.
+        let digits = if crate::prefs::get().line_numbers { self.model.buf.line_count().to_string().len().max(3) as i32 } else { 0 };
         // Room at the left for a breakpoint's dot and the debugger's arrow; at the right, the
         // folding boxes.
         self.line_h + digits * self.char_w + self.char_w * 4
@@ -295,7 +298,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default() }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default() }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -306,7 +309,8 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
 
 fn code_font(h: HWND) -> HFONT {
     let mut lf = Gdi::LOGFONTW { lfHeight: -(font_size() * win::dpi(h) / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
-    for (i, u) in "Cascadia Mono".encode_utf16().enumerate() {
+    // The font Options > Text Editor > Font names.
+    for (i, u) in crate::prefs::get().font.encode_utf16().take(31).enumerate() {
         lf.lfFaceName[i] = u;
     }
     unsafe { Gdi::CreateFontIndirectW(&lf) }
@@ -1050,7 +1054,7 @@ pub fn set_lenses(h: HWND, lenses: Vec<(u32, (u32, u32), String)>) {
 /// The code lens under a point, if one is there: the place it speaks of.
 fn lens_at(h: HWND, v: &View, x: i32, y: i32) -> Option<(u32, u32)> {
     let line = v.line_of(v.top + (y / v.line_h.max(1)).max(0) as usize);
-    let (_, at, words) = v.lenses.iter().find(|(l, _, _)| *l == line)?;
+    let (_, at, words) = v.lenses.iter().find(|(l, at, _)| *l == line && (crate::prefs::get().lenses || at.1 == u32::MAX))?;
     // Words only (a line's blame): nothing to click.
     if at.1 == u32::MAX {
         return None;
@@ -1223,9 +1227,11 @@ fn moved(h: HWND) {
 
 /// Makes the font again at the size now asked for.
 fn refont(h: HWND, v: &mut View) {
-    if v.pt == font_size() {
+    let face = crate::prefs::get().font;
+    if v.pt == font_size() && v.face == face {
         return;
     }
+    v.face = face;
     unsafe {
         let _ = Gdi::DeleteObject(v.font.into());
     }
@@ -1278,7 +1284,9 @@ fn paint(h: HWND, v: &mut View) {
         let (sa, sb) = v.model.selection();
         let caret_line = v.model.buf.position(v.model.caret).0;
         // The bracket by the caret and its match, boxed as Visual Studio shows them.
-        let braces = if sa == sb { crate::model::matching_brace(&v.model.buf.text(), v.model.caret) } else { None };
+        let prefs = crate::prefs::get();
+        let tab = crate::prefs::tab_spaces();
+        let braces = if sa == sb && prefs.braces { crate::model::matching_brace(&v.model.buf.text(), v.model.caret) } else { None };
         let brace_bg = theme::current().var_color("--brace").unwrap_or(if dark { Color::rgb(0x3e, 0x52, 0x6b) } else { Color::rgb(0xdb, 0xe0, 0xe6) });
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         let page = v.visible_lines(h) + 1;
@@ -1347,13 +1355,14 @@ fn paint(h: HWND, v: &mut View) {
                 let pw = v.width_of(dc, piece);
                 if x + pw >= gutter && x < w {
                     Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(colour(t, dark).colorref()));
-                    let text = wide_of(&piece.replace('\t', "    "));
+                    let text = wide_of(&piece.replace('\t', &tab));
                     let _ = Gdi::ExtTextOutW(dc, x, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
                 }
                 x += pw;
             }
             // Code lenses after the line, quiet, as Visual Studio shows them above it.
-            if let Some((_, _, words)) = v.lenses.iter().find(|(l, _, _)| *l == line) {
+            // Reference counts only while Options shows them; a line's blame always.
+            if let Some((_, _, words)) = v.lenses.iter().find(|(l, at, _)| *l == line && (prefs.lenses || at.1 == u32::MAX)) {
                 let x0 = x + v.char_w * 3;
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
                 let text = wide_of(words);
@@ -1383,7 +1392,7 @@ fn paint(h: HWND, v: &mut View) {
             }
             // The gutter on top, so text scrolled left goes under it.
             win::fill(dc, &RECT { left: 0, top: y, right: gutter - v.char_w / 2, bottom: y + v.line_h }, bg);
-            let n = wide_of(&(line + 1).to_string());
+            let n = wide_of(&if prefs.line_numbers { (line + 1).to_string() } else { String::new() });
             let mut nr = RECT { left: 0, top: y + win::px(h, 2), right: gutter - v.char_w * 3, bottom: y + v.line_h };
             // A block that can fold: a small box, − open, + folded; a folded one shows … after its line.
             if let Some(&(a, z)) = v.regions.iter().find(|(a, _)| *a == line) {
@@ -1412,8 +1421,11 @@ fn paint(h: HWND, v: &mut View) {
                 }
             }
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(if line == caret_line { win::window_text() } else { muted }.colorref()));
-            let mut nn = n.clone();
-            Gdi::DrawTextW(dc, &mut nn, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
+            // Line numbers off: nothing to draw (DrawTextW must not be given no text).
+            if !n.is_empty() {
+                let mut nn = n.clone();
+                Gdi::DrawTextW(dc, &mut nn, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
+            }
             // A breakpoint: a red dot in the margin; the debugger's place: a yellow arrow.
             let d = v.line_h - win::px(h, 6);
             let (bx, by) = (win::px(h, 3), y + (v.line_h - d) / 2);
@@ -1825,7 +1837,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 match unit {
                     0x08 => v.model.backspace_all(),
                     0x0D => v.model.type_all("\n"),
-                    0x09 => v.model.type_all("    "),
+                    0x09 => v.model.type_all(&crate::prefs::indent()),
                     u if u < 0x20 || ctrl && u < 0x80 => return LRESULT(0),
                     0xD800..=0xDBFF => {
                         v.high_surrogate = Some(unit);

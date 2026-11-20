@@ -254,33 +254,8 @@ impl Servers {
                     s.new_query(n.conn, &n.db, &text);
                 }
             }
-            NEW_TABLE => {
-                // The Table Designer, for a new table; the database's tables read again after.
-                if let Some((item, n)) = sel {
-                    let c = self.conns[n.conn].clone();
-                    if crate::designer::open(owner, c, &n.db, None) {
-                        self.reload(item);
-                    }
-                }
-            }
-            DESIGN => {
-                if let Some((item, n)) = sel {
-                    let c = self.conns[n.conn].clone();
-                    let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
-                    match dialogs::wait_for(Some(owner), t("Design Table"), t("Connecting..."), move |_| c2.table_def(&d2, &t2)) {
-                        Some(Ok(def)) => {
-                            if crate::designer::open(owner, c, &n.db, Some(def)) {
-                                // The table's parent - the database - read again: the table may have a new name.
-                                let parent = unsafe { wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(3 /* TVGN_PARENT */)), Some(LPARAM(item))).0 };
-                                self.reload(if parent != 0 { parent } else { item });
-                            }
-                        }
-                        Some(Err(e)) => {
-                            win::message(Some(owner), &e, t("Design Table"), wm::MB_ICONWARNING);
-                        }
-                        None => {}
-                    }
-                }
+            NEW_TABLE | DESIGN => {
+                self.table_designer(owner);
             }
             AS_SQL => {
                 if let (Some((_, n)), Some(s)) = (sel, studio()) {
@@ -363,6 +338,42 @@ impl Servers {
         }
         self.expanding(item, data);
         win::tree_expand(self.tree, item);
+    }
+
+    /// The Table Designer on what is chosen: a table's design, or a new table in the database
+    /// chosen - from the right-click menu and from Tools > Table Designer. False when neither is
+    /// chosen.
+    pub fn table_designer(&mut self, owner: HWND) -> bool {
+        let Some((item, n)) = self.selected() else { return false };
+        match n.kind {
+            Kind::Database => {
+                // A new table; the database's tables read again after.
+                let c = self.conns[n.conn].clone();
+                if crate::designer::open(owner, c, &n.db, None) {
+                    self.reload(item);
+                }
+                true
+            }
+            Kind::Table { view: false } | Kind::Column => {
+                let c = self.conns[n.conn].clone();
+                let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
+                match dialogs::wait_for(Some(owner), t("Design Table"), t("Connecting..."), move |_| c2.table_def(&d2, &t2)) {
+                    Some(Ok(def)) => {
+                        if crate::designer::open(owner, c, &n.db, Some(def)) {
+                            // The table's parent - the database - read again: the table may have a new name.
+                            let parent = unsafe { wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(3 /* TVGN_PARENT */)), Some(LPARAM(item))).0 };
+                            self.reload(if parent != 0 { parent } else { item });
+                        }
+                    }
+                    Some(Err(e)) => {
+                        win::message(Some(owner), &e, t("Design Table"), wm::MB_ICONWARNING);
+                    }
+                    None => {}
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     /// The designer on the first connection's table - for checking by picture.

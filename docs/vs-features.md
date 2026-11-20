@@ -95,7 +95,7 @@
 | ★ | Auto Hide: แท็บแนวตั้งที่ขอบ, ชี้หรือคลิกแล้วเลื่อนออก, ออกจากแผงแล้วเก็บเอง (แต่ละแผงปักหมุดแยกกัน แผงที่ยังติดขอบอยู่ไม่ขยับ) | ✅ |
 | ★ | Project กับ Properties เป็นแท็บด้านล่างแบบ Solution Explorer (▾ > แท็บด้านล่าง เปิด/ปิดได้) | ✅ |
 | ★ | เมนูแบบ Visual Studio: File (New ▸ / Open ▸ Project, File / Close Project / Recent Files / Recent Projects), Format (Align / Make Same Size / Horizontal, Vertical Spacing / Center in Form / Order), Tools (เชื่อมต่อฐานข้อมูล, Server Explorer, Snippet, Crates, สร้าง GUID, ธีม, Command Prompt / PowerShell ที่โฟลเดอร์โปรเจกต์) | ✅ |
-| ★ | Tools > Options: ธีมสี (ตาม Windows / สว่าง / มืด), ภาษา, จำนวนรายการล่าสุด, เปิดโปรแกรมแล้วให้เปิดอะไร (หน้าต่างเริ่มต้น / หน้าว่าง / โปรเจกต์ล่าสุด), แท็บด้านล่าง, ขนาดฟอนต์ตัวแก้โค้ด, ไลบรารี Phai จาก GitHub — จำไว้ใช้ครั้งหน้า; เมนูไม่ซ้ำกันแล้ว (แต่ละคำสั่งอยู่ที่เดียวตาม VS) | ✅ |
+| ★ | Tools > Options แบบ VS 13 หน้า: สภาพแวดล้อม (ธีม ตาม Windows/สว่าง/มืด, ภาษา, รายการล่าสุด, เปิดโปรแกรมแล้วเปิดอะไร, แท็บด้านล่าง, ฟอร์มที่ถูกแก้จากข้างนอก), ตัวแก้โค้ด (เลขบรรทัด, CodeLens, ไฮไลต์วงเล็บ, rust-analyzer เปิด/ปิด, ขนาดแท็บ ช่องว่าง/แท็บ, ฟอนต์และขนาด, rustfmt ตอนบันทึก), ตัวออกแบบฟอร์ม (ขนาดตาราง, ชิดตาราง, เส้นนำแนว), บิลด์และรัน (บันทึกก่อนบิลด์, แสดง Output, จำ Debug/Release, ที่อยู่ cargo.exe), ไลบรารี Phai, ดีบัก (หยุดเมื่อ panic), Git (blame); Tools รวมตัวแก้ต่าง ๆ: Theme Editor, Table Designer, Menu Editor, Toolbar Editor | ✅ |
 | ★ | แท็บเอกสาร, จุดบอกยังไม่บันทึก | ✅ |
 | | Split editor (View > Split): ไฟล์เดียวกันสองช่องบน-ล่าง ลากเส้นแบ่งปรับขนาดได้; View > New Window: เปิดไฟล์ในหน้าต่างของตัวเอง ย้ายไปจออื่นได้ พิมพ์ที่ไหนก็เห็นทุกที่ | ✅ |
 
