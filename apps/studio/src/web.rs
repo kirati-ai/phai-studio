@@ -6,6 +6,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::process::Command;
 
 use phai_form::FormFile;
@@ -346,9 +347,86 @@ pub fn file_for(root: &Path, request_line: &str) -> Option<PathBuf> {
 pub fn serve(root: PathBuf) -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
+    serve_with(listener, Arc::new(Mutex::new(root)), false);
+    Ok(port)
+}
+
+/// The port Run on Phone tries first, so a phone keeps its address from one day to the next.
+pub const PHONE_PORT: u16 = 8790;
+
+/// The server for phones, once started: its folder (changed for another project) and port.
+static LAN: Mutex<Option<(Arc<Mutex<PathBuf>>, u16)>> = Mutex::new(None);
+
+/// Serves `root` to the computers and phones on this network - one server for the whole run of
+/// Studio, the folder changed when another project is built. Its pages reload when the build
+/// changes. The port.
+pub fn serve_lan(root: PathBuf) -> std::io::Result<u16> {
+    let mut lan = LAN.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((folder, port)) = lan.as_ref() {
+        *folder.lock().unwrap_or_else(|e| e.into_inner()) = root;
+        return Ok(*port);
+    }
+    let listener = std::net::TcpListener::bind(("0.0.0.0", PHONE_PORT)).or_else(|_| std::net::TcpListener::bind("0.0.0.0:0"))?;
+    let port = listener.local_addr()?.port();
+    let folder = Arc::new(Mutex::new(root));
+    serve_with(listener, folder.clone(), true);
+    *lan = Some((folder, port));
+    Ok(port)
+}
+
+/// This computer's address on its network - the one a phone on the same Wi-Fi reaches. Found by
+/// asking which address would be used to reach the internet; nothing is sent.
+pub fn lan_address() -> Option<std::net::Ipv4Addr> {
+    let s = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    s.connect("8.8.8.8:80").ok()?;
+    match s.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(a) if !a.is_loopback() && !a.is_unspecified() => Some(a),
+        _ => None,
+    }
+}
+
+/// Where the page asks whether the build changed.
+const STAMP_PATH: &str = "/__phai_stamp";
+
+/// What a live page runs: it asks for the build's stamp and reloads when it changes.
+const RELOAD_SCRIPT: &str = r#"<script>(function(){var s=null;setInterval(function(){fetch("/__phai_stamp",{cache:"no-store"}).then(function(r){return r.text()}).then(function(t){if(s!==null&&t!==s)location.reload();s=t}).catch(function(){})},1500)})();</script>"#;
+
+/// The build's stamp: when the newest of its files was written.
+pub fn stamp_of(root: &Path) -> String {
+    fn newest(dir: &Path, depth: u32) -> u128 {
+        let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+        entries
+            .flatten()
+            .map(|e| {
+                let p = e.path();
+                if p.is_dir() {
+                    if depth < 2 {
+                        newest(&p, depth + 1)
+                    } else {
+                        0
+                    }
+                } else {
+                    e.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0)
+                }
+            })
+            .max()
+            .unwrap_or(0)
+    }
+    newest(root, 0).to_string()
+}
+
+/// `html` with the reload script, before `</body>` when it has one.
+pub fn with_reload(html: &str) -> String {
+    match html.rfind("</body>") {
+        Some(i) => format!("{}{RELOAD_SCRIPT}{}", &html[..i], &html[i..]),
+        None => format!("{html}{RELOAD_SCRIPT}"),
+    }
+}
+
+fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: bool) {
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
-            let root = root.clone();
+            let root = root.lock().unwrap_or_else(|e| e.into_inner()).clone();
             std::thread::spawn(move || {
                 let mut stream = stream;
                 let mut reader = BufReader::new(match stream.try_clone() {
@@ -364,13 +442,20 @@ pub fn serve(root: PathBuf) -> std::io::Result<u16> {
                 while reader.read_line(&mut line).is_ok_and(|n| n > 2) {
                     line.clear();
                 }
-                let reply = match file_for(&root, &first).and_then(|p| std::fs::read(&p).ok().map(|d| (p, d))) {
-                    Some((p, data)) => {
-                        let mut head = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", mime(&p), data.len()).into_bytes();
-                        head.extend(data);
-                        head
+                let ok = |kind: &str, data: Vec<u8>| {
+                    let mut head = format!("HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", data.len()).into_bytes();
+                    head.extend(data);
+                    head
+                };
+                let asked = first.split_whitespace().nth(1).unwrap_or("");
+                let reply = if live && asked.split('?').next() == Some(STAMP_PATH) {
+                    ok("text/plain", stamp_of(&root).into_bytes())
+                } else {
+                    match file_for(&root, &first).and_then(|p| std::fs::read(&p).ok().map(|d| (p, d))) {
+                        Some((p, data)) if live && p.extension().is_some_and(|e| e == "html") => ok(mime(&p), with_reload(&String::from_utf8_lossy(&data)).into_bytes()),
+                        Some((p, data)) => ok(mime(&p), data),
+                        None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(),
                     }
-                    None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec(),
                 };
                 let _ = stream.write_all(&reply);
                 let mut sink = [0u8; 1];
@@ -380,12 +465,41 @@ pub fn serve(root: PathBuf) -> std::io::Result<u16> {
             });
         }
     });
-    Ok(port)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn get(port: u16, path: &str) -> String {
+        let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(c, "GET {path} HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();
+        let mut out = String::new();
+        c.read_to_string(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn the_phone_server_reloads_its_pages_when_the_build_changes() {
+        let dir = std::env::temp_dir().join(format!("phai-lan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), "<html><body>hi</body></html>").unwrap();
+        std::fs::write(dir.join("app.js"), "x()").unwrap();
+        // As Run on Phone serves, on this computer only - no firewall question in a test.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        serve_with(listener, Arc::new(Mutex::new(dir.clone())), true);
+        let page = get(port, "/");
+        assert!(page.contains("hi") && page.contains("__phai_stamp") && page.find("__phai_stamp") < page.find("</body>"), "{page}");
+        assert!(!get(port, "/app.js").contains("__phai_stamp"), "only pages have it");
+        let before = get(port, "/__phai_stamp");
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        std::fs::write(dir.join("app.js"), "y()").unwrap();
+        let body = |r: String| r.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+        assert_ne!(body(get(port, "/__phai_stamp")), body(before));
+        assert!(!get(serve(dir.clone()).unwrap(), "/").contains("__phai_stamp"), "Run in Browser's has no reload");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     const TOML: &str = r#"[package]
 name = "shop"
