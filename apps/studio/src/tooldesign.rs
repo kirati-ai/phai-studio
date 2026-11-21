@@ -57,7 +57,8 @@ pub fn open(chosen: Option<usize>) {
     let tools = s.doc.form.toolbar.clone();
     let strip = c.toolbar_screen(&s.doc.form);
     win::init();
-    let class = win::register("PhaiToolDesigner", Some(proc_), None);
+    // Double-clicks heard: one on a button opens its Click method.
+    let class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiToolDesigner", Some(proc_), None);
     unsafe {
         let h = wm::CreateWindowExW(wm::WS_EX_LAYERED | wm::WS_EX_TOOLWINDOW, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP, strip.left, strip.top, strip.right - strip.left, strip.bottom - strip.top, Some(s.hwnd), None, Some(win::instance()), None).unwrap_or_default();
         let _ = wm::SetLayeredWindowAttributes(h, CLEAR, 0, wm::LWA_COLORKEY);
