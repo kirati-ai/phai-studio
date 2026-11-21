@@ -241,15 +241,16 @@ fn taken(d: &Designer) -> Vec<String> {
     out
 }
 
-/// A new button (or separator) after the chosen one - at the end when none is chosen.
-fn add(h: HWND, separator: bool) {
+/// A new button (or separator): at the end from the add button at the end of the strip, as
+/// Visual Studio's; before the chosen one from the right-click's Insert.
+fn add(h: HWND, separator: bool, at_end: bool) {
     let Some(d) = state(h) else { return };
-    let at = d.sel.map(|i| i + 1).unwrap_or(d.tools.len()).min(d.tools.len());
+    let at = if at_end { d.tools.len() } else { d.sel.unwrap_or(d.tools.len()).min(d.tools.len()) };
     let tool = if separator {
         Tool { separator: true, ..Default::default() }
     } else {
         let id = crate::menudesign::new_id("button", &taken(d));
-        Tool { id, label: t("Button").to_string(), glyph: "BUTTON".into(), ..Default::default() }
+        Tool { id, label: "Button".to_string(), glyph: "BUTTON".into(), ..Default::default() }
     };
     d.tools.insert(at, tool);
     d.sel = Some(at);
@@ -418,8 +419,8 @@ fn right_click(h: HWND, hit: Option<Hit>) {
             x.checked &= x.toggle;
         }),
         CHECKED => toggle_field(h, |x| x.checked = !x.checked),
-        BUTTON => add(h, false),
-        SEP => add(h, true),
+        BUTTON => add(h, false, false),
+        SEP => add(h, true, false),
         STANDARD => standard(h),
         LEFT => shift(h, false),
         RIGHT => shift(h, true),
@@ -470,7 +471,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     relayout(h);
                     say(h);
                 }
-                Some(Hit::Add) => add(h, false),
+                Some(Hit::Add) => add(h, false, true),
                 Some(Hit::AddMore) => {
                     const BUTTON: u32 = 1;
                     const SEP: u32 = 2;
@@ -481,8 +482,8 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         d.busy = false;
                     }
                     match chosen {
-                        BUTTON => add(h, false),
-                        SEP => add(h, true),
+                        BUTTON => add(h, false, true),
+                        SEP => add(h, true, true),
                         STANDARD => standard(h),
                         _ => {}
                     }

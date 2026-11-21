@@ -641,7 +641,8 @@ fn insert(h: HWND, separator: bool) {
     if separator {
         l.insert(at, MenuItem { separator: true, ..Default::default() });
     } else {
-        let label = t("New item").to_string();
+        // The English word, as every text of a form: the Thai table translates it.
+        let label = "New item".to_string();
         l.insert(at, MenuItem { id: Some(new_id(&label, &taken)), label: Some(label), ..Default::default() });
     }
     d.path.truncate(level + 1);
