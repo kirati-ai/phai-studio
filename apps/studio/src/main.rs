@@ -12,6 +12,8 @@
 mod bottom;
 mod canvas;
 mod coledit;
+mod menudesign;
+mod tooldesign;
 mod explorer;
 mod cargo;
 mod project;
@@ -2351,6 +2353,24 @@ impl Studio {
         self.open_code_at(&user, line);
     }
 
+    /// A menu item's or toolbar button's Click method - `name`, its id - written into the
+    /// programmer's file if it is not there, and the code opened at it, as Visual Studio's
+    /// double-click on a ToolStripItem.
+    pub fn open_item_handler(&mut self, name: &str) {
+        let Some(path) = self.doc.path.clone() else { return };
+        let user = path.with_file_name(format!("{}.rs", snake(&self.doc.form.form.name)));
+        if let Ok(src) = std::fs::read_to_string(&user) {
+            if let Some(more) = codegen::add_handler(&src, &self.doc.form.form.name, name) {
+                if std::fs::write(&user, more).is_ok() {
+                    controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
+                }
+            }
+        }
+        let src = std::fs::read_to_string(&user).unwrap_or_default();
+        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
+        self.open_code_at(&user, line);
+    }
+
     /// A double-click on an event in the Events tab: the method it names - or a new one, named as
     /// Visual Studio names it (`name_key_down`, `main_window_closing`) - written into the
     /// programmer's file with what the event gives it, and the code opened there.
@@ -2535,48 +2555,16 @@ impl Studio {
 
     // --- menus and toolbar -----------------------------------------------------------------------
 
-    /// The form's menus as text in one box; asked again until it reads or is cancelled.
+    /// The form's menus designed on the form, as Visual Studio's MenuStrip: its first menu
+    /// dropped down, or "Type Here" for the first when it has none.
     pub fn edit_menus(&mut self) {
-        let mut text = phai_form::bars::menus_to_text(&self.doc.form.menu);
-        if text.is_empty() {
-            text = "&File\n  exit | Exit\n".into();
-        }
-        loop {
-            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Menus"), t("A menu at the left; its items indented: id | label, then any of: a key (Ctrl+N), a GLYPH, checked, check_on_click, disabled. Words alone with items indented under them: a menu within. A line of - separates."), &text) else { return };
-            match phai_form::bars::menus_from_text(&answer) {
-                Ok(menus) => {
-                    self.edit(|f| f.menu = menus);
-                    self.rebuild();
-                    return;
-                }
-                Err(e) => {
-                    win::message(Some(self.hwnd), &e, t("Menus"), wm::MB_ICONWARNING);
-                    text = answer;
-                }
-            }
-        }
+        menudesign::open(if self.doc.form.menu.is_empty() { None } else { Some(0) });
     }
 
     /// The form's toolbar as text: one button a line, id | label | GLYPH.
     pub fn edit_toolbar(&mut self) {
-        let mut text = phai_form::bars::toolbar_to_text(&self.doc.form.toolbar);
-        if text.is_empty() {
-            text = "save | Save | SAVE\n".into();
-        }
-        loop {
-            let Some(answer) = phai_ui::dialogs::ask_lines(Some(self.hwnd), t("Toolbar"), t("One button a line: id | label | GLYPH, and | toggle for one that stays down. The label is the tooltip."), &text) else { return };
-            match phai_form::bars::toolbar_from_text(&answer) {
-                Ok(tools) => {
-                    self.edit(|f| f.toolbar = tools);
-                    self.rebuild();
-                    return;
-                }
-                Err(e) => {
-                    win::message(Some(self.hwnd), &e, t("Toolbar"), wm::MB_ICONWARNING);
-                    text = answer;
-                }
-            }
-        }
+        // Designed on the form, as Visual Studio's ToolStrip.
+        tooldesign::open(None);
     }
 
     // --- tabs -----------------------------------------------------------------------------------
@@ -9341,6 +9329,10 @@ fn main() {
         // `--menus` opens the menu editor at once - for checking it by its picture.
         if args.iter().any(|a| a == "--menus") {
             let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_EDIT_MENUS as usize), LPARAM(0));
+        }
+        // `--toolbar` opens the toolbar designer - for checking it by its picture.
+        if args.iter().any(|a| a == "--toolbar") {
+            let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_TOOL_TOOLBAR as usize), LPARAM(0));
         }
         // `--tab N` shows tab N, the way a click on it does - for checking the switch.
         if let Some(n) = args.iter().position(|a| a == "--tab").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {

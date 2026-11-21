@@ -567,7 +567,11 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    fn toolbar_items() -> Vec<(i32, &'static str, u16)> {{");
         let _ = writeln!(w, "        vec![");
         for tool in &f.toolbar {
-            let _ = writeln!(w, "            ({}, t({}), phai_ui::icon::glyph::{}),", const_name(&tool.id), lit(&tool.label), tool.glyph);
+            if tool.separator {
+                let _ = writeln!(w, "            (0, \"\", 0),");
+            } else {
+                let _ = writeln!(w, "            ({}, t({}), phai_ui::icon::glyph::{}),", const_name(&tool.id), lit(&tool.label), tool.glyph);
+            }
         }
         let _ = writeln!(w, "        ]");
         let _ = writeln!(w, "    }}");
@@ -587,9 +591,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     if !f.toolbar.is_empty() {
         let _ = writeln!(w, "        let toolbar = win::toolbar(hwnd, ID_TOOLBAR, &Self::toolbar_items());");
         let _ = writeln!(w, "        layout.add(toolbar, Item {{ bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() }});");
-        for t in f.toolbar.iter().filter(|t| t.toggle) {
+        for t in f.toolbar.iter().filter(|t| !t.separator && t.disabled) {
+            let _ = writeln!(w, "        phai_ui::form::set_item_enabled(hwnd, Some(toolbar), {}, false);", const_name(&t.id));
+        }
+        for t in f.toolbar.iter().filter(|t| t.toggle && !t.separator) {
             let _ = writeln!(w, "        win::toolbar_toggle_style(toolbar, {});", const_name(&t.id));
-            if f.menu.iter().flat_map(|m| m.all_items()).any(|it| it.id.as_deref() == Some(&t.id) && it.checked) {
+            if t.checked || f.menu.iter().flat_map(|m| m.all_items()).any(|it| it.id.as_deref() == Some(&t.id) && it.checked) {
                 let _ = writeln!(w, "        phai_ui::form::set_item_checked(hwnd, Some(toolbar), {}, true);", const_name(&t.id));
             }
         }
@@ -819,7 +826,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let item_ids: Vec<String> = {
         let mut v: Vec<String> = f.menu.iter().flat_map(|m| m.all_items()).filter_map(|it| it.id.clone()).collect();
-        for t in &f.toolbar {
+        for t in f.toolbar.iter().filter(|t| !t.separator) {
             if !v.contains(&t.id) {
                 v.push(t.id.clone());
             }
@@ -1531,5 +1538,25 @@ mod tests {
         assert!(code.contains("phai_ui::grid::set_column(people, 1, phai_ui::grid::Column { align: phai_ui::grid::Align::Center, editor: phai_ui::grid::Editor::Check, ..phai_ui::grid::Column::new() });"), "{code}");
         assert!(code.contains("editor: phai_ui::grid::Editor::Combo(vec![\"S\".to_string(), \"M\".to_string()])"), "{code}");
         assert!(code.contains("sort: Some(false)"), "{code}");
+    }
+
+    /// A toolbar's separator, a greyed button and one that starts down reach the program.
+    #[test]
+    fn toolbar_separators_greyed_and_pressed_buttons_reach_the_code() {
+        let mut f = FormFile::new("MainWindow");
+        f.toolbar = vec![
+            crate::Tool { id: "new_file".into(), label: "New".into(), glyph: "NEW".into(), ..Default::default() },
+            crate::Tool { separator: true, ..Default::default() },
+            crate::Tool { id: "save_file".into(), label: "Save".into(), glyph: "SAVE".into(), disabled: true, ..Default::default() },
+            crate::Tool { id: "wrap".into(), label: "Wrap".into(), glyph: "SEARCH".into(), toggle: true, checked: true, ..Default::default() },
+        ];
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        let again = FormFile::parse(&f.to_toml()).expect("reads back");
+        assert_eq!(again.toolbar, f.toolbar);
+        let code = generate(&again, &Options::default());
+        assert!(code.contains("(0, \"\", 0),"), "{code}");
+        assert!(code.contains("phai_ui::form::set_item_enabled(hwnd, Some(toolbar), ID_SAVE_FILE, false);"), "{code}");
+        assert!(code.contains("phai_ui::form::set_item_checked(hwnd, Some(toolbar), ID_WRAP, true);"), "{code}");
+        assert!(!again.handlers().contains(&String::new()), "a separator has no method");
     }
 }

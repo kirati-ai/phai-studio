@@ -277,8 +277,19 @@ pub fn item(parent: HWND, c: &Control, h: HWND) -> Item {
 pub fn build(parent: HWND, f: &FormFile, font: HFONT, page: usize) -> Live {
     let mut layout = Layout::new((f.form.size[0], f.form.size[1]));
     let toolbar = (!f.toolbar.is_empty()).then(|| {
-        let items: Vec<(i32, &str, u16)> = f.toolbar.iter().enumerate().map(|(i, tool)| (1000 + i as i32, tr(&tool.label), phai_ui::icon::glyph::by_name(&tool.glyph).unwrap_or(0))).collect();
+        let items: Vec<(i32, &str, u16)> = f.toolbar.iter().enumerate().map(|(i, tool)| if tool.separator { (0, "", 0) } else { (1000 + i as i32, tr(&tool.label), phai_ui::icon::glyph::by_name(&tool.glyph).unwrap_or(0)) }).collect();
         let h = win::toolbar(parent, 1999, &items);
+        for (i, tool) in f.toolbar.iter().enumerate().filter(|(_, t)| !t.separator) {
+            if tool.disabled {
+                phai_ui::form::set_item_enabled(parent, Some(h), 1000 + i as i32, false);
+            }
+            if tool.toggle {
+                win::toolbar_toggle_style(h, 1000 + i as i32);
+                if tool.checked {
+                    phai_ui::form::set_item_checked(parent, Some(h), 1000 + i as i32, true);
+                }
+            }
+        }
         layout.add(h, Item { bounds: Rect::new(0, 0, 0, win::TOOLBAR_HEIGHT), dock: Dock::Top, anchor: Anchor::default() });
         h
     });
