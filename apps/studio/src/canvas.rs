@@ -373,7 +373,7 @@ impl Canvas {
         let pts = [(m + size[0], top + size[1] / 2), (m + size[0], top + size[1]), (m + size[0] / 2, top + size[1])];
         for (h, (x, y)) in self.form_handles.iter().zip(pts) {
             win::move_to(*h, scale(x, dpi) - hs / 2 + hs / 2, scale(y, dpi) - hs / 2 + hs / 2, hs, hs);
-            win::show(*h, s.selected.is_none() && s.doc.code.is_none() && s.doc.table.is_none());
+            win::show(*h, s.selected.is_none() && s.doc.code.is_none());
         }
     }
 
@@ -1059,7 +1059,7 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             let bg = theme::style("canvas", State::default()).background_or(Color::rgb(243, 243, 243));
             win::fill(dc, &r, bg);
-            if let Some(s) = studio().filter(|s| s.doc.code.is_none() && s.doc.table.is_none()) {
+            if let Some(s) = studio().filter(|s| s.doc.code.is_none()) {
                 paint_frame(dc, h, &s.doc.form, s.drag_size());
             }
             LRESULT(1)

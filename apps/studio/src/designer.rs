@@ -1,7 +1,7 @@
 //! The Table Designer, as Visual Studio's: a grid of the table's columns - name, data type, allow
 //! nulls, primary key, identity, default - edited in place with a click; its indexes and foreign
 //! keys below; and the script that makes the design so, written as you go. Update runs it.
-//! It is a document tab, as Visual Studio opens a table's design: "lotto.user [Design]".
+//! A window of its own, as the other designers are; Ctrl+S updates.
 
 use phai_data::schema::{ColDef, FkDef, IndexDef, TableDef, RULES};
 use phai_data::Connection;
@@ -55,6 +55,8 @@ struct Designer {
     buttons: Vec<(i32, HWND)>,
     /// The box editing a cell: it, and the row and column.
     editor: Option<(HWND, usize, usize)>,
+    /// Closed: the window's loop ends.
+    done: bool,
     font: Gdi::HFONT,
     mono: Gdi::HFONT,
 }
@@ -67,9 +69,9 @@ fn check(b: bool) -> &'static str {
     if b { "✓" } else { "" }
 }
 
-/// The tab's name, as Visual Studio's: "lotto.user [Design]".
+/// The window's title: "Table Designer - lotto.user".
 fn title_of(db: &str, table: Option<&str>) -> String {
-    format!("{db}.{} [Design]", table.unwrap_or("new_table"))
+    tf("Table Designer - {0}", &[&format!("{db}.{}", table.unwrap_or("new_table"))])
 }
 
 /// Icons: the buttons' and the lists' - glyphs of Windows' icon font.
@@ -86,15 +88,15 @@ const G_KEY: u16 = 0xE8D7;
 const G_INDEX: u16 = 0xE8CB;
 const G_LINK: u16 = 0xE71B;
 
-/// The designer for `existing` (or a new table in `db`), a child of `parent` - the document area -
-/// not shown yet: the tab it is in shows it.
-pub fn create(parent: HWND, conn: Connection, db: &str, existing: Option<TableDef>) -> HWND {
+/// The designer for `existing` (or a new table in `db`) in a window of its own over `owner`, the
+/// middle of the screen, until it is closed.
+pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>) {
     win::init();
     let class = win::register("PhaiTableDesigner", Some(proc_), None);
     let title = title_of(db, existing.as_ref().map(|d| d.name.as_str()));
     let title_w = win::wide(&title);
     unsafe {
-        let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title_w.as_ptr()), wm::WS_CHILD | wm::WS_CLIPCHILDREN, 0, 0, 100, 100, Some(parent), None, Some(win::instance()), None).unwrap_or_default();
+        let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title_w.as_ptr()), wm::WS_POPUP | wm::WS_CAPTION | wm::WS_SYSMENU | wm::WS_THICKFRAME | wm::WS_MINIMIZEBOX | wm::WS_MAXIMIZEBOX | wm::WS_CLIPCHILDREN, 0, 0, 100, 100, Some(owner), None, Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
         let mono = {
             let mut lf = Gdi::LOGFONTW { lfHeight: -win::px(hwnd, 13), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
@@ -166,9 +168,34 @@ pub fn create(parent: HWND, conn: Connection, db: &str, existing: Option<TableDe
             columns: vec![ColDef { name: "id".into(), ty: phai_data::schema::types_for(conn.kind)[0].to_string(), nullable: false, pk: true, auto: true, ..Default::default() }],
             ..Default::default()
         });
-        win::set_state(hwnd, Box::new(Designer { pages, tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, font, mono }));
+        win::set_state(hwnd, Box::new(Designer { pages, tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, font, mono }));
         refresh(hwnd);
-        hwnd
+        // In the middle of the screen, as large as fits.
+        let (w, h) = (win::px(hwnd, 1100), win::px(hwnd, 760));
+        let _ = wm::SetWindowPos(hwnd, None, 0, 0, w, h, wm::SWP_NOZORDER | wm::SWP_NOMOVE);
+        win::center_on_screen(hwnd);
+        win::theme_frame(hwnd);
+        win::enable(owner, false);
+        win::show_top(hwnd);
+        let mut msg = wm::MSG::default();
+        while state(hwnd).is_some_and(|s| !s.done) {
+            if !wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                wm::PostQuitMessage(msg.wParam.0 as i32);
+                break;
+            }
+            // Ctrl+S: Update, as a designer's Save.
+            if msg.message == wm::WM_KEYDOWN && msg.wParam.0 == 0x53 && windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(0x11) < 0 {
+                update(hwnd);
+                continue;
+            }
+            if !wm::IsDialogMessageW(hwnd, &msg).as_bool() {
+                let _ = wm::TranslateMessage(&msg);
+                wm::DispatchMessageW(&msg);
+            }
+        }
+        win::enable(owner, true);
+        let _ = wm::SetForegroundWindow(owner);
+        let _ = wm::DestroyWindow(hwnd);
     }
 }
 
@@ -182,13 +209,10 @@ pub fn may_close(h: HWND) -> bool {
     win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Table Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES
 }
 
-/// The tab's name changed (another table chosen, one made): the tabs say it.
+/// The title again: another table chosen, or one made.
 fn retitle(h: HWND) {
     let Some(s) = state(h) else { return };
     win::set_text(h, &title_of(&s.db, s.old.as_ref().map(|d| d.name.as_str())));
-    if let Some(st) = crate::studio() {
-        st.relabel_tabs();
-    }
 }
 
 /// A table chosen at the left (0: a new one): its design loaded - what was changed and not yet
@@ -660,15 +684,14 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     }
                 }
                 ID_UPDATE => update(h),
-                // The tab closed - by Studio, after this message is done with.
-                ID_CLOSE => {
-                    if let Some(main) = crate::studio().map(|st| st.hwnd) {
-                        unsafe {
-                            let _ = wm::PostMessageW(Some(main), wm::WM_COMMAND, WPARAM(crate::ID_CLOSE_DOC as usize), LPARAM(0));
-                        }
-                    }
-                }
+                ID_CLOSE if may_close(h) => s.done = true,
                 _ => {}
+            }
+            LRESULT(0)
+        }
+        wm::WM_CLOSE => {
+            if may_close(h) {
+                s.done = true;
             }
             LRESULT(0)
         }

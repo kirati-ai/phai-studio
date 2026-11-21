@@ -1128,6 +1128,13 @@ impl Props {
                     }
                 }
             }
+            // A grid's columns: the column editor.
+            Key::Items if s.selected.and_then(|i| s.doc.form.control.get(i)).is_some_and(|c| c.kind == phai_form::Kind::Grid) => {
+                s.edit_grid_columns();
+                unsafe {
+                    let _ = wm::PostMessageW(Some(self.hwnd), WM_REFILL, WPARAM(0), LPARAM(0));
+                }
+            }
             Key::Items => {
                 if let Some(text) = phai_ui::dialogs::ask_lines(Some(self.hwnd), p.name, t("One a line; a list's columns as Name:width."), &p.value) {
                     self.commit(p.key, &text);

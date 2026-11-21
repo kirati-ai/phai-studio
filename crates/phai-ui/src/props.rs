@@ -311,6 +311,48 @@ pub fn full_row_select(h: HWND, on: bool) {
     }
 }
 
+/// ShowColumnHeaders: the row of headings over a grid's columns.
+pub fn show_column_headers(h: HWND, on: bool) {
+    style_bits(h, 0x4000 /* LVS_NOCOLUMNHEADER */, !on);
+}
+
+/// ColumnAutoWidth: the columns share the grid's width.
+pub fn column_auto_width(h: HWND, on: bool) {
+    crate::grid::set_auto_width(h, on);
+}
+
+/// AllowAddRows: a double-click under the last row adds one.
+pub fn allow_add_rows(h: HWND, on: bool) {
+    crate::grid::set_allow_add_rows(h, on);
+}
+
+/// AllowDeleteRows: Delete takes the chosen row out.
+pub fn allow_delete_rows(h: HWND, on: bool) {
+    crate::grid::set_allow_delete_rows(h, on);
+}
+
+/// EditorShowMode: `double_click`, `click` or `f2` opens a cell for typing.
+pub fn editor_show_mode(h: HWND, mode: &str) {
+    crate::grid::set_edit_on(
+        h,
+        match mode {
+            "click" => crate::grid::EditOn::Click,
+            "f2" => crate::grid::EditOn::F2,
+            _ => crate::grid::EditOn::DoubleClick,
+        },
+    );
+}
+
+/// EnterMoveNextColumn: Enter keeps the cell and opens the next.
+pub fn enter_moves_next(h: HWND, on: bool) {
+    crate::grid::set_enter_moves_next(h, on);
+}
+
+/// AllowColumnMoving: columns dragged by their headings into another order.
+pub fn allow_column_moving(h: HWND, on: bool) {
+    list_ex(h, 0x10 /* LVS_EX_HEADERDRAGDROP */, on);
+}
+
 /// MultiSelect: several rows chosen at once.
 pub fn multi_select(h: HWND, on: bool) {
     style_bits(h, 0x0004 /* LVS_SINGLESEL */, !on);
@@ -512,6 +554,13 @@ pub fn apply(h: HWND, name: &str, value: &str) {
         "grid_lines" => grid_lines(h, yes),
         "full_row_select" => full_row_select(h, yes),
         "multi_select" => multi_select(h, yes),
+        "show_column_headers" => show_column_headers(h, yes),
+        "column_auto_width" => column_auto_width(h, yes),
+        "allow_add_rows" => allow_add_rows(h, yes),
+        "allow_delete_rows" => allow_delete_rows(h, yes),
+        "editor_show_mode" => editor_show_mode(h, value),
+        "enter_moves_next" => enter_moves_next(h, yes),
+        "allow_column_moving" => allow_column_moving(h, yes),
         "check_boxes" => check_boxes(h, yes),
         "header" => header(h, value),
         "hide_selection" => hide_selection(h, yes),
