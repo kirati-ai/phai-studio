@@ -857,6 +857,33 @@ impl Grid {
     pub fn set_read_only(self, on: bool) {
         crate::grid::set_read_only(self.0, on)
     }
+    /// The rows chosen, by place.
+    pub fn selected_rows(self) -> Vec<usize> {
+        crate::grid::selected_rows(self.0)
+    }
+    /// The rows sorted by a column, up or down - as a click on its heading.
+    pub fn sort_by(self, col: usize, up: bool) {
+        crate::grid::sort_by(self.0, col, up)
+    }
+    /// A column's properties.
+    pub fn column(self, col: usize) -> crate::grid::Column {
+        crate::grid::column(self.0, col)
+    }
+    pub fn set_column(self, col: usize, c: crate::grid::Column) {
+        crate::grid::set_column(self.0, col, c)
+    }
+    /// Looks for words as the find box does; empty shows every row again.
+    pub fn find(self, text: &str) {
+        crate::grid::find(self.0, text)
+    }
+    /// The chosen rows as tab-separated lines, as Ctrl+C copies them.
+    pub fn copy_rows(self) -> String {
+        crate::grid::copy_rows(self.0)
+    }
+    /// The rows shown written to a CSV file Excel opens, Thai and all.
+    pub fn export_csv(self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        crate::grid::export_csv(self.0, path.as_ref())
+    }
 }
 
 /// An item of a tree.

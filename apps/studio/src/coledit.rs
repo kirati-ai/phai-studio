@@ -45,6 +45,7 @@ const ID_ALLOW_SIZE: i32 = 30;
 const ID_FORMAT: i32 = 31;
 const ID_SUMMARY: i32 = 32;
 const ID_RULES: i32 = 33;
+const ID_GROUP: i32 = 34;
 const ID_OK: i32 = 1;
 const ID_CANCEL: i32 = 2;
 
@@ -78,6 +79,7 @@ struct Dialog {
     format: HWND,
     summary: HWND,
     rules: HWND,
+    group: HWND,
     buttons: Vec<(i32, HWND)>,
     /// The boxes being filled: their changes are not the person's.
     loading: bool,
@@ -123,6 +125,7 @@ pub fn edit(owner: HWND, cols: Vec<Col>, fields: Option<Fields>) -> Option<Vec<C
         let format = row(t("Display format"), win::combo_with(hwnd, ID_FORMAT, font, &FORMATS, true));
         let summary = row(t("Footer total"), win::combo(hwnd, ID_SUMMARY, font, &[t("None"), t("Sum"), t("Count"), t("Average"), t("Min"), t("Max")]));
         let rules = row(t("Format rules"), win::button(hwnd, t("Format Rules..."), ID_RULES, font, false));
+        let group = row("", win::checkbox(hwnd, t("Group the rows by this column"), ID_GROUP, font, false));
         let mut buttons = Vec::new();
         for (id, text, glyph) in [(ID_ADD, t("Add"), 0xE710u16), (ID_REMOVE, t("Remove"), 0xE74D), (ID_UP, t("Move Up"), 0xE74A), (ID_DOWN, t("Move Down"), 0xE74B), (ID_RETRIEVE, t("Retrieve Fields"), 0xE72C), (ID_OK, t("OK"), 0), (ID_CANCEL, t("Cancel"), 0)] {
             let b = win::button(hwnd, text, id, font, id == ID_OK);
@@ -136,7 +139,7 @@ pub fn edit(owner: HWND, cols: Vec<Col>, fields: Option<Fields>) -> Option<Vec<C
                 win::enable(*b, false);
             }
         }
-        win::set_state(hwnd, Box::new(Dialog { cols, bound, fields, known, list, rows, caption, field, width, visible, align, read_only, editor, items, sort, allow_sort, allow_size, format, summary, rules, buttons, loading: false, ok: false, done: false }));
+        win::set_state(hwnd, Box::new(Dialog { cols, bound, fields, known, list, rows, caption, field, width, visible, align, read_only, editor, items, sort, allow_sort, allow_size, format, summary, rules, group, buttons, loading: false, ok: false, done: false }));
         fill_list(hwnd, 0);
         let (w, h) = (win::px(hwnd, 820), win::px(hwnd, 560));
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, w, h, wm::SWP_NOZORDER | wm::SWP_NOMOVE);
@@ -215,6 +218,7 @@ fn load(h: HWND) {
     win::set_checked(d.allow_sort, c.props.allow_sort != Some(false));
     win::set_checked(d.allow_size, c.props.allow_size != Some(false));
     win::set_text(d.format, c.props.format.as_deref().unwrap_or(""));
+    win::set_checked(d.group, c.props.group == Some(true));
     set_combo(d.summary, SUMMARIES.iter().position(|a| Some(*a) == c.props.summary.as_deref()).unwrap_or(0));
     win::set_text(d.rules, &if c.props.rules.is_empty() { t("Format Rules...").to_string() } else { tf("Format Rules ({0})...", &[&c.props.rules.len()]) });
     d.loading = false;
@@ -248,9 +252,18 @@ fn store(h: HWND) {
     let f = win::text_of(d.format).trim().to_string();
     c.props.format = (!f.is_empty()).then_some(f);
     c.props.summary = pick(d.summary, &SUMMARIES);
+    c.props.group = win::is_checked(d.group).then_some(true);
     let caption = if c.props.visible == Some(false) { tf("{0} (hidden)", &[&c.caption]) } else { c.caption.clone() };
     let field = c.field.clone();
     let combo = c.props.editor.as_deref() == Some("combo");
+    // One column groups: the others let go.
+    if c.props.group == Some(true) {
+        for (k, other) in d.cols.iter_mut().enumerate() {
+            if k != i {
+                other.props.group = None;
+            }
+        }
+    }
     win::enable(d.items, combo);
     phai_ui::grid::set_cell(d.list, i, 0, &caption);
     phai_ui::grid::set_cell(d.list, i, 1, &field);
@@ -366,7 +379,7 @@ fn command(h: HWND, id: i32, code: u32) {
                 load(h);
             }
         }
-        ID_VISIBLE | ID_READ_ONLY | ID_ALLOW_SORT | ID_ALLOW_SIZE => store(h),
+        ID_VISIBLE | ID_READ_ONLY | ID_ALLOW_SORT | ID_ALLOW_SIZE | ID_GROUP => store(h),
         _ => {}
     }
 }

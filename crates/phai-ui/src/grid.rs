@@ -65,6 +65,8 @@ pub struct Column {
     pub summary: Summary,
     /// Its cells (or rows) coloured by their values - DevExpress's format rules.
     pub rules: Vec<Rule>,
+    /// The rows grouped by its values, a heading over each group (one column groups).
+    pub group: bool,
 }
 
 /// A footer's total under a column.
@@ -238,7 +240,7 @@ pub fn format_value(format: &str, value: &str) -> String {
 
 impl Default for Column {
     fn default() -> Column {
-        Column { visible: true, align: Align::Left, read_only: false, editor: Editor::Text, allow_sort: true, allow_size: true, sort: None, format: String::new(), summary: Summary::None, rules: vec![] }
+        Column { visible: true, align: Align::Left, read_only: false, editor: Editor::Text, allow_sort: true, allow_size: true, sort: None, format: String::new(), summary: Summary::None, rules: vec![], group: false }
     }
 }
 
@@ -283,6 +285,13 @@ struct Opts {
     find_mode: FindMode,
     /// Ctrl+C copies the headings too.
     copy_headers: bool,
+    /// The find box leaves only the rows it finds (else it marks them).
+    find_filters: bool,
+    /// Rows the find box left out, with their tags: kept, given back when it is emptied, saved
+    /// with the rest.
+    hidden: Vec<(usize, Vec<String>)>,
+    /// The find box: a window beside the grid, over the strip kept above its headings.
+    find_box: Option<isize>,
 }
 
 /// When the find box shows - DevExpress's find panel.
@@ -297,7 +306,7 @@ pub enum FindMode {
 
 impl Default for Opts {
     fn default() -> Opts {
-        Opts { cols: vec![], widths: vec![], add: true, delete: true, edit_on: EditOn::DoubleClick, enter_next: false, auto_width: false, sorted: None, focus_col: 0, alt: None, header_back: None, header_fore: None, footer: false, find: String::new(), find_mode: FindMode::CtrlF, copy_headers: true }
+        Opts { cols: vec![], widths: vec![], add: true, delete: true, edit_on: EditOn::DoubleClick, enter_next: false, auto_width: false, sorted: None, focus_col: 0, alt: None, header_back: None, header_fore: None, footer: false, find: String::new(), find_mode: FindMode::CtrlF, copy_headers: true, find_filters: true, hidden: vec![], find_box: None }
     }
 }
 
@@ -345,6 +354,13 @@ pub fn set_column(h: HWND, i: usize, c: Column) {
     }
     if let Some(up) = c.sort {
         sort_by(h, i, up);
+    }
+    if c.group != was.group {
+        regroup(h);
+    }
+    // A total now under it, or none: the footer's room again.
+    if c.summary != was.summary {
+        frame_changed(h);
     }
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(h), None, true);
@@ -650,6 +666,28 @@ fn paint_footer(h: HWND) {
     }
 }
 
+/// The strip above the headings the find box sits on, in the headings' colour.
+fn paint_find_strip(h: HWND) {
+    let fs = find_strip(h);
+    if fs == 0 {
+        return;
+    }
+    unsafe {
+        let mut wr = RECT::default();
+        let _ = wm::GetWindowRect(h, &mut wr);
+        let mut cr = RECT::default();
+        let _ = wm::GetClientRect(h, &mut cr);
+        let mut o = [windows::Win32::Foundation::POINT { x: 0, y: 0 }];
+        windows::Win32::Graphics::Gdi::MapWindowPoints(Some(h), None, &mut o);
+        let (ox, oy) = (o[0].x - wr.left, o[0].y - wr.top);
+        let dc = windows::Win32::Graphics::Gdi::GetWindowDC(Some(h));
+        let back = crate::theme::Color::rgb(243, 243, 243);
+        win::fill(dc, &RECT { left: ox, top: oy - fs, right: ox + cr.right, bottom: oy }, back);
+        win::fill(dc, &RECT { left: ox, top: oy - 1, right: ox + cr.right, bottom: oy }, win::list_border_color(h));
+        windows::Win32::Graphics::Gdi::ReleaseDC(Some(h), dc);
+    }
+}
+
 /// The headings in the grid's own colours, the sort arrow drawn too. `None`: Windows draws them.
 fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
     use windows::Win32::Graphics::Gdi;
@@ -708,11 +746,17 @@ fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
 const FIND_ID: i32 = 0x7E02;
 
 fn find_box(h: HWND) -> Option<HWND> {
-    unsafe { wm::GetDlgItem(Some(h), FIND_ID) }.ok().filter(|e| !e.is_invalid())
+    with_opts(h, |o| o.find_box).map(|e| HWND(e as *mut _)).filter(|e| unsafe { wm::IsWindow(Some(*e)) }.as_bool())
 }
 
-/// The find box over the headings' right end, as DevExpress's find panel: what is typed is found
-/// in the cells (marked), Enter goes to the next row that has it, Escape closes it.
+/// The strip above the headings the find box sits on: its height, none when it is closed.
+fn find_strip(h: HWND) -> i32 {
+    if find_box(h).is_some() { win::px(h, 34) } else { 0 }
+}
+
+/// The find box, as DevExpress's find panel: in a strip above the headings, what is typed found
+/// in the cells - the other rows set aside (or the cells marked) - Enter goes to the next row
+/// that has it, Escape closes it.
 fn open_find(h: HWND, focus: bool) {
     if with_opts(h, |o| o.find_mode) == FindMode::Off {
         return;
@@ -720,13 +764,16 @@ fn open_find(h: HWND, focus: bool) {
     let e = match find_box(h) {
         Some(e) => e,
         None => {
+            let Ok(parent) = (unsafe { wm::GetParent(h) }) else { return };
             let font = windows::Win32::Graphics::Gdi::HFONT(unsafe { wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 } as *mut _);
-            let e = win::edit(h, "", FIND_ID, font, false);
+            let e = win::edit(parent, "", FIND_ID, font, false);
             let cue = win::wide(crate::text::t("Find..."));
             unsafe {
                 wm::SendMessageW(e, 0x1501 /* EM_SETCUEBANNER */, Some(WPARAM(1)), Some(LPARAM(cue.as_ptr() as isize)));
                 let _ = SetWindowSubclass(e, Some(find_proc), 9, h.0 as usize);
             }
+            with_opts(h, |o| o.find_box = Some(e.0 as isize));
+            frame_changed(h);
             e
         }
     };
@@ -741,17 +788,23 @@ fn open_find(h: HWND, focus: bool) {
 
 fn place_find(h: HWND) {
     let Some(e) = find_box(h) else { return };
-    let mut cr = RECT::default();
-    let mut hr = RECT::default();
     unsafe {
+        let Ok(parent) = wm::GetParent(h) else { return };
+        let mut wr = RECT::default();
+        let _ = wm::GetWindowRect(h, &mut wr);
+        let mut cr = RECT::default();
         let _ = wm::GetClientRect(h, &mut cr);
-        let _ = wm::GetWindowRect(header_of(h), &mut hr);
-    }
-    let hh = (hr.bottom - hr.top).max(win::px(h, 24));
-    let w = win::px(h, 220).min(cr.right);
-    win::move_to(e, cr.right - w, 0, w, hh);
-    unsafe {
-        let _ = wm::SetWindowPos(e, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_SHOWWINDOW);
+        let mut o = [windows::Win32::Foundation::POINT { x: 0, y: 0 }];
+        windows::Win32::Graphics::Gdi::MapWindowPoints(Some(h), None, &mut o);
+        // The strip's top: just above the client area (under the border).
+        let mut at = [windows::Win32::Foundation::POINT { x: o[0].x, y: o[0].y - find_strip(h) }];
+        windows::Win32::Graphics::Gdi::MapWindowPoints(None, Some(parent), &mut at);
+        let pad = win::px(h, 5);
+        let w = win::px(h, 320).min(cr.right - pad * 2).max(win::px(h, 60));
+        win::move_to(e, at[0].x + pad, at[0].y + pad, w, find_strip(h) - pad * 2);
+        // Its own style: the window it is in may not be shown yet.
+        let visible = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32 & wm::WS_VISIBLE.0 != 0;
+        let _ = wm::SetWindowPos(e, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | if visible { wm::SWP_SHOWWINDOW } else { wm::SWP_HIDEWINDOW });
     }
 }
 
@@ -761,11 +814,14 @@ fn close_find(h: HWND) {
             win::set_text(e, "");
         }
     } else if let Some(e) = find_box(h) {
+        with_opts(h, |o| o.find_box = None);
         unsafe {
             let _ = wm::DestroyWindow(e);
         }
+        frame_changed(h);
     }
     with_opts(h, |o| o.find.clear());
+    apply_filter(h);
     unsafe {
         let _ = km::SetFocus(Some(h));
         let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(h), None, true);
@@ -802,6 +858,14 @@ unsafe extern "system" fn find_proc(e: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
             LRESULT(0)
         }
         wm::WM_CHAR if w.0 == 0x0D || w.0 == 0x1B => LRESULT(0),
+        // What is typed, cut, pasted or taken out: the grid looks again once the box has it.
+        wm::WM_CHAR | wm::WM_PASTE | wm::WM_CUT | wm::WM_CLEAR | wm::WM_KEYDOWN | wm::WM_SETTEXT => {
+            let r = unsafe { DefSubclassProc(e, msg, w, l) };
+            unsafe {
+                let _ = wm::PostMessageW(Some(g), wm::WM_APP + 0x7F, WPARAM(0), LPARAM(0));
+            }
+            r
+        }
         _ => unsafe { DefSubclassProc(e, msg, w, l) },
     }
 }
@@ -992,7 +1056,7 @@ pub fn draw_check_cell(h: HWND, dc: windows::Win32::Graphics::Gdi::HDC, row: usi
 /// case - each row keeping its tag; the heading shows the arrow.
 pub fn sort_by(h: HWND, col: usize, up: bool) {
     close_editor(h, true);
-    let mut rows = grid_tagged_rows(h);
+    let mut rows = shown_tagged_rows(h);
     let key = |r: &Vec<String>| r.get(col).cloned().unwrap_or_default();
     rows.sort_by(|(_, a), (_, b)| {
         let (a, b) = (key(a), key(b));
@@ -1008,8 +1072,11 @@ pub fn sort_by(h: HWND, col: usize, up: bool) {
     grid_clear(h);
     for (i, (t, r)) in rows.iter().enumerate() {
         let cells: Vec<&str> = r.iter().map(String::as_str).collect();
-        grid_add(h, &cells);
+        win::list_add(h, &cells);
         set_tag(h, i, *t);
+    }
+    if grouped_view(h) {
+        regroup(h);
     }
     unsafe {
         wm::SendMessageW(h, wm::WM_SETREDRAW, Some(WPARAM(1)), None);
@@ -1103,10 +1170,13 @@ pub fn grid_rows(h: impl Into<HWND>) -> Vec<Vec<String>> {
     }
 }
 
-/// Adds a row at the end.
+/// Adds a row at the end (into its group, when the rows are grouped).
 pub fn grid_add(h: impl Into<HWND>, cells: &[&str]) {
     let h: HWND = h.into();
     win::list_add(h, cells);
+    if grouped_view(h) {
+        regroup(h);
+    }
 }
 
 /// Empties the grid.
@@ -1115,6 +1185,13 @@ pub fn grid_clear(h: impl Into<HWND>) {
     unsafe {
         wm::SendMessageW(h, cc::LVM_DELETEALLITEMS, None, None);
     }
+}
+
+/// Every row gone - those the find box set aside too.
+pub fn grid_clear_all(h: impl Into<HWND>) {
+    let h: HWND = h.into();
+    with_opts(h, |o| o.hidden.clear());
+    grid_clear(h);
 }
 
 /// A row's tag: a number the grid keeps with the row, whatever moves around it (rows taken out
@@ -1140,21 +1217,175 @@ fn set_tag(h: HWND, row: usize, value: usize) {
 pub fn grid_fill(h: impl Into<HWND>, rows: &[Vec<String>]) {
     let h: HWND = h.into();
     grid_clear(h);
+    with_opts(h, |o| o.hidden.clear());
     for (i, r) in rows.iter().enumerate() {
         let cells: Vec<&str> = r.iter().map(String::as_str).collect();
-        grid_add(h, &cells);
+        win::list_add(h, &cells);
         set_tag(h, i, i + 1);
     }
-    // Sorted as it was.
+    // Sorted as it was, found as it was, grouped.
     if let Some((col, up)) = with_opts(h, |o| o.sorted) {
         sort_by(h, col, up);
     }
+    apply_filter(h);
+    regroup(h);
+}
+
+/// The find box's filter again: rows without what it looks for set aside, those set aside that
+/// have it (or all, when it is empty) back - in their first order, then sorted as the grid is.
+fn apply_filter(h: HWND) {
+    let (find, filters) = with_opts(h, |o| (o.find.clone(), o.find_filters));
+    let find = if filters { find } else { String::new() };
+    let hidden = with_opts(h, |o| std::mem::take(&mut o.hidden));
+    if find.is_empty() && hidden.is_empty() {
+        return;
+    }
+    close_editor(h, true);
+    let mut all = shown_tagged_rows(h);
+    all.extend(hidden);
+    // Their first order: by tag, the new ones (tag 0) after, as they were.
+    let mut keyed: Vec<(usize, usize, (usize, Vec<String>))> = all.into_iter().enumerate().map(|(i, r)| (if r.0 == 0 { usize::MAX } else { r.0 }, i, r)).collect();
+    keyed.sort_by_key(|(t, i, _)| (*t, *i));
+    let n = columns(h);
+    let shown_cols: Vec<usize> = (0..n).filter(|c| column(h, *c).visible).collect();
+    let has = |r: &Vec<String>| find.is_empty() || shown_cols.iter().any(|c| r.get(*c).is_some_and(|v| v.to_lowercase().contains(&find)));
+    let (keep, out): (Vec<_>, Vec<_>) = keyed.into_iter().map(|(_, _, r)| r).partition(|(_, r)| has(r));
+    unsafe {
+        wm::SendMessageW(h, wm::WM_SETREDRAW, Some(WPARAM(0)), None);
+    }
+    grid_clear(h);
+    for (i, (t, r)) in keep.iter().enumerate() {
+        let cells: Vec<&str> = r.iter().map(String::as_str).collect();
+        win::list_add(h, &cells);
+        set_tag(h, i, *t);
+    }
+    with_opts(h, |o| o.hidden = out);
+    unsafe {
+        wm::SendMessageW(h, wm::WM_SETREDRAW, Some(WPARAM(1)), None);
+    }
+    if let Some((col, up)) = with_opts(h, |o| o.sorted) {
+        sort_by(h, col, up);
+    }
+    regroup(h);
+    redraw(h);
+}
+
+/// The rows grouped by the grouping column's values - Windows' list groups, a heading
+/// "Status: Paid (3)" over each, folded with a click - or not grouped when no column groups.
+pub fn regroup(h: HWND) {
+    const LVM_ENABLEGROUPVIEW: u32 = 0x109D;
+    const LVM_INSERTGROUP: u32 = 0x1091;
+    const LVM_REMOVEALLGROUPS: u32 = 0x10A0;
+    let n = columns(h);
+    let g = (0..n).find(|c| column(h, *c).group);
+    unsafe {
+        wm::SendMessageW(h, LVM_REMOVEALLGROUPS, None, None);
+        wm::SendMessageW(h, LVM_ENABLEGROUPVIEW, Some(WPARAM(g.is_some() as usize)), None);
+    }
+    let Some(g) = g else { return };
+    let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+    let values: Vec<String> = (0..rows).map(|r| cell(h, r, g)).collect();
+    let mut groups: Vec<String> = values.clone();
+    groups.sort_by_key(|v| v.to_lowercase());
+    groups.dedup();
+    // The column's heading, for the groups' headings.
+    let caption = {
+        let mut buf = [0u16; 260];
+        let mut it = cc::HDITEMW { mask: cc::HDI_TEXT, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 260, ..Default::default() };
+        unsafe {
+            wm::SendMessageW(header_of(h), cc::HDM_GETITEMW, Some(WPARAM(g)), Some(LPARAM(&mut it as *mut _ as isize)));
+        }
+        String::from_utf16_lossy(&buf[..buf.iter().position(|c| *c == 0).unwrap_or(0)])
+    };
+    let format = column(h, g).format;
+    for (k, v) in groups.iter().enumerate() {
+        let count = values.iter().filter(|x| *x == v).count();
+        let shown = if v.trim().is_empty() { crate::text::t("(empty)").to_string() } else { format_value(&format, v) };
+        let mut text = win::wide(&format!("{caption}: {shown} ({count})"));
+        let group = cc::LVGROUP {
+            cbSize: std::mem::size_of::<cc::LVGROUP>() as u32,
+            mask: cc::LVGF_HEADER | cc::LVGF_GROUPID | cc::LVGF_STATE,
+            pszHeader: windows::core::PWSTR(text.as_mut_ptr()),
+            iGroupId: k as i32 + 1,
+            stateMask: cc::LVGS_COLLAPSIBLE,
+            state: cc::LVGS_COLLAPSIBLE,
+            ..Default::default()
+        };
+        unsafe {
+            wm::SendMessageW(h, LVM_INSERTGROUP, Some(WPARAM(usize::MAX)), Some(LPARAM(&group as *const _ as isize)));
+        }
+    }
+    for (r, v) in values.iter().enumerate() {
+        let id = groups.iter().position(|x| x == v).map(|i| i as i32 + 1).unwrap_or(1);
+        let item = cc::LVITEMW { mask: cc::LVIF_GROUPID, iItem: r as i32, iGroupId: id, ..Default::default() };
+        unsafe {
+            wm::SendMessageW(h, cc::LVM_SETITEMW, None, Some(LPARAM(&item as *const _ as isize)));
+        }
+    }
+}
+
+/// Whether a column groups the rows.
+fn grouped_view(h: HWND) -> bool {
+    with_opts(h, |o| o.cols.iter().any(|c| c.group))
+}
+
+/// FindFilter: the find box leaves only the rows it finds (else it only marks them).
+pub fn set_find_filters(h: HWND, on: bool) {
+    with_opts(h, |o| o.find_filters = on);
+    apply_filter(h);
+}
+
+/// The shown rows and columns written to a CSV file (UTF-8, as Excel reads Thai), the headings
+/// first, values as they are shown.
+pub fn export_csv(h: HWND, path: &std::path::Path) -> std::io::Result<()> {
+    let n = columns(h);
+    let shown: Vec<usize> = (0..n).filter(|c| column(h, *c).visible).collect();
+    let quote = |s: &str| if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() };
+    let mut out = String::from("\u{feff}");
+    out += &copy_headers_line(h, &shown).split('\t').map(quote).collect::<Vec<_>>().join(",");
+    out += "\r\n";
+    let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+    for r in 0..rows {
+        out += &shown.iter().map(|c| quote(&format_value(&column(h, *c).format, &cell(h, r, *c)))).collect::<Vec<_>>().join(",");
+        out += "\r\n";
+    }
+    std::fs::write(path, out)
+}
+
+/// The rows chosen, by place.
+pub fn selected_rows(h: HWND) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut r = -1isize;
+    loop {
+        r = unsafe { wm::SendMessageW(h, cc::LVM_GETNEXTITEM, Some(WPARAM(r as usize)), Some(LPARAM(2))).0 };
+        if r < 0 {
+            break;
+        }
+        out.push(r as usize);
+    }
+    out
+}
+
+/// Looks for `text` as the find box does (an empty one shows every row again).
+pub fn find(h: HWND, text: &str) {
+    with_opts(h, |o| o.find = text.trim().to_lowercase());
+    apply_filter(h);
+    find_next(h, 0);
+    redraw(h);
 }
 
 /// The grid's rows with their tags: the place each had when [`grid_fill`] put it there, 0 for a row
 /// added since.
+/// Rows the find box left out count too: they are the grid's, only not shown.
 pub fn grid_tagged_rows(h: impl Into<HWND>) -> Vec<(usize, Vec<String>)> {
     let h: HWND = h.into();
+    let mut rows = shown_tagged_rows(h);
+    rows.extend(with_opts(h, |o| o.hidden.clone()));
+    rows
+}
+
+/// The rows shown, with their tags.
+fn shown_tagged_rows(h: HWND) -> Vec<(usize, Vec<String>)> {
     grid_rows(h).into_iter().enumerate().map(|(i, r)| (tag(h, i), r)).collect()
 }
 
@@ -1279,6 +1510,9 @@ fn close_editor(h: HWND, keep: bool) {
     }
     if keep && text != cell(h, row, col) {
         set_cell(h, row, col, &text);
+        if c.group {
+            regroup(h);
+        }
         tell_changed(h);
     }
     unsafe {
@@ -1354,16 +1588,23 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
         return unsafe { DefSubclassProc(h, msg, w, l) };
     }
     match msg {
-        wm::WM_COMMAND if win::loword(w.0) as i32 == FIND_ID => {
-            if win::hiword(w.0) == 0x0300 /* EN_CHANGE */ {
-                let text = find_box(h).map(win::text_of).unwrap_or_default().trim().to_lowercase();
+        m if m == wm::WM_APP + 0x7F => {
+            let text = find_box(h).map(win::text_of).unwrap_or_default().trim().to_lowercase();
+            if text != with_opts(h, |o| o.find.clone()) {
                 with_opts(h, |o| o.find = text);
+                apply_filter(h);
                 find_next(h, 0);
                 unsafe {
                     let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(h), None, true);
                 }
             }
             LRESULT(0)
+        }
+        // The find box follows the grid: moved, sized, shown or hidden with it.
+        wm::WM_WINDOWPOSCHANGED | wm::WM_SHOWWINDOW => {
+            let r = unsafe { DefSubclassProc(h, msg, w, l) };
+            place_find(h);
+            r
         }
         wm::WM_KEYDOWN if unsafe { km::GetKeyState(0x11) } < 0 && matches!(w.0, 0x46 | 0x43 | 0x56 | 0x41) => {
             match w.0 {
@@ -1391,15 +1632,17 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
         wm::WM_NCCALCSIZE if w.0 != 0 => {
             let r = unsafe { DefSubclassProc(h, msg, w, l) };
             let fh = footer_height(h);
+            let p = unsafe { &mut *(l.0 as *mut wm::NCCALCSIZE_PARAMS) };
             if fh > 0 {
-                let p = unsafe { &mut *(l.0 as *mut wm::NCCALCSIZE_PARAMS) };
                 p.rgrc[0].bottom -= fh;
             }
+            p.rgrc[0].top += find_strip(h);
             r
         }
         wm::WM_NCPAINT | wm::WM_PAINT => {
             let r = unsafe { DefSubclassProc(h, msg, w, l) };
             paint_footer(h);
+            paint_find_strip(h);
             r
         }
         wm::WM_LBUTTONDOWN => {
@@ -1468,6 +1711,11 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
             r
         }
         wm::WM_NCDESTROY => {
+            if let Some(e) = find_box(h) {
+                unsafe {
+                    let _ = wm::DestroyWindow(e);
+                }
+            }
             OPTS.lock().unwrap_or_else(|e| e.into_inner()).as_mut().map(|m| m.remove(&(h.0 as isize)));
             unsafe { DefSubclassProc(h, msg, w, l) }
         }
@@ -1568,6 +1816,35 @@ pub fn richtext(parent: HWND, id: i32, f: windows::Win32::Graphics::Gdi::HFONT, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The find box sets rows aside, never loses them: a binding's save still sees every row
+    /// with its tag, and an empty find gives them back in their first order. Grouping keeps
+    /// every row's cells where they were.
+    #[test]
+    fn finding_sets_rows_aside_and_gives_them_back() {
+        win::init();
+        extern "system" fn host_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+            win::def(h, msg, w, l)
+        }
+        let class = win::register("PhaiGridFindHost", Some(host_proc), None);
+        let host = unsafe { wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_OVERLAPPEDWINDOW, 0, 0, 400, 300, None, None, Some(win::instance()), None).unwrap_or_default() };
+        let font = win::font(host, 0, false);
+        let g = grid(host, 5, font, &[("Name", 120), ("Status", 80)]);
+        let rows: Vec<Vec<String>> = [["Somchai", "Open"], ["Malee", "Paid"], ["Anan", "Paid"]].iter().map(|r| r.iter().map(|s| s.to_string()).collect()).collect();
+        grid_fill(g, &rows);
+        find(g, "PAID");
+        assert_eq!(grid_rows(g).len(), 2, "only the rows found are shown");
+        let mut all = grid_tagged_rows(g);
+        all.sort();
+        assert_eq!(all.iter().map(|(t, _)| *t).collect::<Vec<_>>(), vec![1, 2, 3], "every row is still the grid's");
+        find(g, "");
+        assert_eq!(grid_rows(g), rows, "all back, in their first order");
+        set_column(g, 1, Column { group: true, ..Column::new() });
+        assert_eq!(grid_rows(g), rows, "grouping moves no cell");
+        unsafe {
+            let _ = wm::DestroyWindow(host);
+        }
+    }
 
     /// Values shown as their column's format says, kept as they are underneath; what does not
     /// fit a format shown as it is.
