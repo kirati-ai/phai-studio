@@ -1232,6 +1232,65 @@ pub fn combo_with(parent: HWND, id: i32, f: HFONT, items: &[&str], editable: boo
     h
 }
 
+/// A drop-down's box as tall as `height` pixels, borders and all - never shorter than its words
+/// need, as Windows first made it. (Windows sizes the box by its font; the window's own height
+/// is the room for its list.)
+pub fn combo_box_height(h: HWND, height: i32) {
+    const CB_GETITEMHEIGHT: u32 = 0x0154;
+    const CB_SETITEMHEIGHT: u32 = 0x0153;
+    unsafe {
+        let key = windows::core::w!("PhaiComboNatural");
+        let mut natural = wm::GetPropW(h, key).0 as i32;
+        if natural == 0 {
+            natural = wm::SendMessageW(h, CB_GETITEMHEIGHT, Some(WPARAM(usize::MAX)), None).0 as i32;
+            let _ = wm::SetPropW(h, key, Some(windows::Win32::Foundation::HANDLE(natural as isize as *mut _)));
+        }
+        // The box's border and the room around its words: what the box is beyond its field.
+        let mut r = RECT::default();
+        let _ = wm::GetWindowRect(h, &mut r);
+        let field = wm::SendMessageW(h, CB_GETITEMHEIGHT, Some(WPARAM(usize::MAX)), None).0 as i32;
+        // The box's window is its box (the list is a window of its own): beyond the field, its frame.
+        let frame = ((r.bottom - r.top) - field).clamp(2, 16);
+        let want = (height - frame).max(natural);
+        if want != field {
+            wm::SendMessageW(h, CB_SETITEMHEIGHT, Some(WPARAM(usize::MAX)), Some(LPARAM(want as isize)));
+        }
+        // Taller than Windows makes it: its words drawn again in the middle of the box (Windows
+        // leaves them at the top). A box that is typed in keeps its own.
+        if want > natural && wm::GetWindowLongW(h, wm::GWL_STYLE) as u32 & 0x3 == 0x3 {
+            let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(tall_combo_proc), 12, 0);
+        }
+    }
+}
+
+unsafe extern "system" fn tall_combo_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id: usize, _data: usize) -> LRESULT {
+    use windows::Win32::UI::Shell::DefSubclassProc;
+    let r = unsafe { DefSubclassProc(h, msg, w, l) };
+    if msg == wm::WM_PAINT || msg == wm::WM_ENABLE || msg == wm::WM_SETFOCUS || msg == wm::WM_KILLFOCUS {
+        unsafe {
+            let mut cr = RECT::default();
+            let _ = wm::GetClientRect(h, &mut cr);
+            let arrow = wm::GetSystemMetrics(wm::SM_CXVSCROLL) + 2;
+            let inner = RECT { left: cr.left + 2, top: cr.top + 2, right: cr.right - arrow, bottom: cr.bottom - 2 };
+            let dc = Gdi::GetDC(Some(h));
+            let s = style_of(h, Kind::Combo, State { focus: windows::Win32::UI::Input::KeyboardAndMouse::GetFocus() == h, ..Default::default() });
+            let bg = s.background_or(window_background_for(h));
+            let fg = if windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h).as_bool() { s.color_or(window_text_for(h)) } else { Color::rgb(150, 150, 150) };
+            fill(dc, &inner, bg);
+            let font = Gdi::HGDIOBJ(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
+            let old = Gdi::SelectObject(dc, font);
+            Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+            Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(fg.colorref()));
+            let mut words: Vec<u16> = text_of(h).encode_utf16().collect();
+            let mut tr = RECT { left: inner.left + 2, ..inner };
+            Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+            Gdi::SelectObject(dc, old);
+            Gdi::ReleaseDC(Some(h), dc);
+        }
+    }
+    r
+}
+
 pub fn combo_selected(h: impl Into<HWND>) -> i32 {
     let h: HWND = h.into();
     unsafe { wm::SendMessageW(h, 0x0147 /* CB_GETCURSEL */, None, None).0 as i32 }
