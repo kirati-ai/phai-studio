@@ -5368,12 +5368,11 @@ impl Studio {
                 if b.data_server && matches!(then_run, WebRun::Browser | WebRun::Phone) {
                     let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else { return };
                     if then_run == WebRun::Phone {
-                        // The phone is another computer: it asks for this key once.
-                        let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() ^ d.as_secs() as u32).unwrap_or(4711);
-                        key = format!("{:06}", n % 1_000_000);
+                        // The phone is another computer: it asks for the key once. This
+                        // computer's page is given it.
+                        key = web::session_key().to_string();
                     }
-                    let k = key.clone();
-                    let started = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Run in Browser"), t("Starting the data server..."), move |_| web::start_data_server(&dir, &k));
+                    let started = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Run in Browser"), t("Starting the data server..."), move |_| web::start_data_server(&dir));
                     if let Some(Err(e)) = started {
                         win::message(Some(self.hwnd), &e, t("Run in Browser"), wm::MB_ICONWARNING);
                     }
@@ -12033,36 +12032,38 @@ impl MainWindowEvents for MainWindow {
         assert!(built.data_server && built.left_out.is_empty(), "{:?}", built.left_out);
         assert!(std::fs::read_to_string(dir.join("data-server").join("src").join("main.rs")).unwrap().contains("\"main_window/customers\""));
         use std::io::{Read as _, Write as _};
-        let post = |port: u16, path: &str, body: &str, key: &str| -> String {
+        // `extra`: the request's other headers, each ending in \r\n.
+        let post = |port: u16, path: &str, body: &str, extra: &str| -> String {
             let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
-            let auth = if key.is_empty() { String::new() } else { format!("Authorization: Bearer {key}
-") };
-            write!(c, "POST {path} HTTP/1.1
-Host: x
-Content-Type: application/json
-{auth}Content-Length: {}
-
-{body}", body.len()).unwrap();
+            write!(c, "POST {path} HTTP/1.1\r\nHost: localhost:{port}\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
             let mut out = String::new();
             c.read_to_string(&mut out).unwrap();
             out
         };
-        crate::web::start_data_server(&dir, "").unwrap_or_else(|e| panic!("{e}"));
+        crate::web::start_data_server(&dir).unwrap_or_else(|e| panic!("{e}"));
         let port = crate::web::serve(built.folder.clone()).unwrap();
         let load = "{\"table\":\"main_window/customers\"}";
-        let got = post(port, "/phai-data/load", load, "");
+        // This computer's page is given the key; its own address, the same origin.
+        let got = post(port, "/phai-data/load", load, &format!("Origin: http://localhost:{port}\r\n"));
         assert!(got.starts_with("HTTP/1.1 200") && got.contains("[\"1\",\"Somchai\",\"081\"]"), "{got}");
         let save = "{\"table\":\"main_window/customers\",\"loaded\":[[\"1\",\"Somchai\",\"081\"],[\"2\",\"Monrak Net\",\"02\"]],\"rows\":[[1,[\"1\",\"สมชาย\",\"081\"]],[2,[\"2\",\"Monrak Net\",\"02\"]]]}";
         let got = post(port, "/phai-data/save", save, "");
         assert!(got.contains("{\"changes\":1}"), "{got}");
         assert_eq!(conn.query(None, "SELECT name FROM customers WHERE id = 1").unwrap().rows[0][0], "สมชาย");
-        // With a key (Run on Phone): none, no rows.
-        crate::web::start_data_server(&dir, "424242").unwrap();
-        assert!(post(port, "/phai-data/load", load, "").starts_with("HTTP/1.1 401"));
-        assert!(post(port, "/phai-data/load", load, "424242").starts_with("HTTP/1.1 200"));
-        // PHAI_WEBDATA_WAIT=seconds: the page kept up to be tried in a browser (key 424242).
+        // Another site open in the browser, or a name of another site that leads here: no key.
+        assert!(post(port, "/phai-data/load", load, "Origin: https://evil.example\r\n").starts_with("HTTP/1.1 401"));
+        let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(c, "POST /phai-data/load HTTP/1.1\r\nHost: evil.example:{port}\r\nOrigin: http://evil.example:{port}\r\nContent-Length: {}\r\n\r\n{load}", load.len()).unwrap();
+        let mut got = String::new();
+        c.read_to_string(&mut got).unwrap();
+        assert!(got.starts_with("HTTP/1.1 401"), "{got}");
+        // The phone types the key (its page server gives none: web.rs's tests).
+        let key = crate::web::session_key();
+        assert!(post(port, "/phai-data/load", load, &format!("Origin: https://evil.example\r\nAuthorization: Bearer {key}\r\n")).starts_with("HTTP/1.1 200"));
+        // PHAI_WEBDATA_WAIT=seconds: the page kept up to be tried in a browser (the key in
+        // phai-webdata-port.txt's second line, for a page opened at 127.0.0.1's LAN address).
         if let Some(secs) = std::env::var("PHAI_WEBDATA_WAIT").ok().and_then(|s| s.parse::<u64>().ok()) {
-            std::fs::write(std::env::temp_dir().join("phai-webdata-port.txt"), port.to_string()).unwrap();
+            std::fs::write(std::env::temp_dir().join("phai-webdata-port.txt"), format!("{port}\n{key}")).unwrap();
             std::thread::sleep(std::time::Duration::from_secs(secs));
         }
         let _ = std::fs::remove_dir_all(&dir);

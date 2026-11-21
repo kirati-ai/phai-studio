@@ -58,13 +58,15 @@ tree (`phai_ui::tree`, `TreeView` เมธอดเดียวกับ Window
 - สร้างสำหรับเว็บแล้ว Studio เขียนโฟลเดอร์ `data-server/` (package แยก ใช้ phai-data อย่างเดียว + `src/data_sources.rs`
   ของโปรเจกต์) ให้บริการเฉพาะตารางและคอลัมน์ที่ฟอร์มผูก ชื่อ `ฟอร์ม/grid` เช่น `main_window/customers` ไม่รับ SQL
 - `POST .../phai-data/load` `{"table"}` และ `.../save` `{"table","loaded","rows":[[tag,[...]]]}` (`phai_data::server`)
-- รัน: `cd data-server` แล้ว `cargo run --release` พร้อม `PHAI_DB_PASSWORD`, `PHAI_DATA_TOKEN` (รหัสเข้าใช้ ต้องมีเมื่อฟัง
-  นอกเครื่องนี้), `PHAI_DATA_ADDR` (ค่าเริ่มต้น `127.0.0.1:8791`) วางหลัง HTTPS ของเว็บที่ `/phai-data/` เช่น nginx
+- รัน: `cd data-server` แล้ว `cargo run --release` พร้อม `PHAI_DB_PASSWORD`, `PHAI_DATA_TOKEN` (รหัสเข้าใช้ ต้องมีเสมอ
+  ไม่ตั้ง = สุ่มให้แล้วพิมพ์ออกมา เพราะ "เฉพาะเครื่องนี้" กันไม่ได้: เว็บอื่นที่เปิดในเบราว์เซอร์ก็ถาม 127.0.0.1 ได้ และ nginx ส่งต่อมา
+  ก็มาจากเครื่องนี้หมด; ใส่รหัสผิดรอ 1 วินาทีทีละครั้ง เดารหัสเร็ว ๆ ไม่ได้), `PHAI_DATA_ADDR` (ค่าเริ่มต้น `127.0.0.1:8791`) วางหลัง HTTPS ของเว็บที่ `/phai-data/` เช่น nginx
   `location /phai-data/ { proxy_pass http://127.0.0.1:8791; }` หรือคนละที่: `[package.metadata.phai-web] data-url = "https://..."`
 - หน้าเว็บ (`phai_web::data`): `reload_x` / `save_x` เหมือน Windows แต่เริ่มงานแล้วคืนทันที (save คืน `Ok(0)`) ตารางเติมเมื่อ
   คำตอบมา ผิดพลาดขึ้นข้อความ; รหัสเข้าใช้ถามครั้งแรกแล้วเก็บใน localStorage; ดับเบิลคลิกใต้แถวสุดท้ายเพิ่มแถว Ctrl+Delete ลบแถว
 - Run in Browser / Run on Phone: Studio build และเปิดเซิร์ฟเวอร์ข้อมูลเอง (job object ปิดตามเมื่อปิด Studio) ส่งต่อ `/phai-data/`
-  จากเซิร์ฟเวอร์หน้าเว็บ; Run on Phone ตั้งรหัสเข้าใช้ 6 หลักแสดงในแถบสถานะ
+  จากเซิร์ฟเวอร์หน้าเว็บ; รหัสเข้าใช้ 6 หลักสุ่มครั้งเดียวต่อการเปิด Studio (`web::session_key`): หน้าของเครื่องนี้
+  (`localhost`/`127.0.0.1` และ Origin เดียวกัน) ได้รหัสจากเซิร์ฟเวอร์หน้าเว็บโดยไม่ต้องถาม; มือถือพิมพ์เอง (แสดงในแถบสถานะ)
 - phai-data build บน Linux ได้แล้ว (`windows` เฉพาะ Windows; native-tls ต้องมี OpenSSL)
 
 ยังไม่มี (Studio บอกชื่อ control ที่ไม่ขึ้นบนเว็บหลังสร้าง): split container,

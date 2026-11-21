@@ -4,8 +4,11 @@
 //!
 //! Only the tables the forms bind, with only their bound columns: a request names a binding
 //! (`main_window/customers`), never SQL. Each request carries the access key
-//! (`Authorization: Bearer ...`, `PHAI_DATA_TOKEN`); without one the server only listens on this
-//! computer. Put it behind the web server's HTTPS at the same address as the app (`/phai-data/`),
+//! (`Authorization: Bearer ...`, `PHAI_DATA_TOKEN`) - always: "only this computer" protects
+//! nothing, as any site open in a browser here can ask `127.0.0.1` too, and a web server passing
+//! requests on makes them all come from this computer. Without `PHAI_DATA_TOKEN` the server makes
+//! a key and says it. A wrong key waits a second, one at a time, so keys cannot be guessed quickly.
+//! Put it behind the web server's HTTPS at the same address as the app (`/phai-data/`),
 //! as nginx's `location /phai-data/ { proxy_pass http://127.0.0.1:8791; }`, or give the app its
 //! address and the server answers other sites too (CORS).
 //!
@@ -264,6 +267,18 @@ fn error(status: u16, message: &str) -> Answer {
     Answer { status, body: format!("{{\"error\":{}}}", quote(message)) }
 }
 
+/// A key no one can guess: `digits` decimal digits (at most 19) from the system's randomness.
+pub fn random_key(digits: u32) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    let digits = digits.clamp(1, 19);
+    format!("{:0width$}", h.finish() % 10u64.pow(digits), width = digits as usize)
+}
+
+/// Wrong keys wait their turn here.
+static WRONG: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Whether two keys are the same, taking as long whatever they hold.
 fn same(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -278,7 +293,8 @@ impl Server {
     /// The answer to a request: its method, its path, its `Authorization` header, its body.
     pub fn answer(&self, method: &str, path: &str, auth: Option<&str>, body: &str) -> Answer {
         let path = path.split('?').next().unwrap_or("");
-        if !self.token.is_empty() && !auth.and_then(|a| a.strip_prefix("Bearer ")).is_some_and(|t| same(t.trim(), &self.token)) {
+        // No key set: nothing is served (see the top of this file).
+        if self.token.is_empty() || !auth.and_then(|a| a.strip_prefix("Bearer ")).is_some_and(|t| same(t.trim(), &self.token)) {
             return error(401, "the access key is missing or wrong");
         }
         if method == "GET" && path.trim_end_matches('/').ends_with("/phai-data") {
@@ -372,6 +388,11 @@ impl Server {
             reader.read_exact(&mut body)?;
             self.answer(&method, &path, auth.as_deref(), &String::from_utf8_lossy(&body))
         };
+        if answer.status == 401 {
+            // A second for each wrong key, one after another: a million keys take eleven days.
+            let _turn = WRONG.lock().unwrap_or_else(|e| e.into_inner());
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
         let reason = match answer.status {
             200 => "OK",
             204 => "No Content",
@@ -396,17 +417,17 @@ impl Server {
 pub type Table<'a> = (&'a str, &'a str, &'a str, &'a [&'a str], &'a [&'a str]);
 
 /// The data server's `main`: these tables of `conn` served at `PHAI_DATA_ADDR` (127.0.0.1:8791
-/// when unset), the access key `PHAI_DATA_TOKEN`. Without a key it listens on this computer only.
+/// when unset), the access key `PHAI_DATA_TOKEN` - one made and said when it is not set.
 pub fn run(conn: Connection, tables: &[Table]) -> Result<(), String> {
-    let token = std::env::var("PHAI_DATA_TOKEN").unwrap_or_default().trim().to_string();
+    let mut token = std::env::var("PHAI_DATA_TOKEN").unwrap_or_default().trim().to_string();
     let addr = std::env::var("PHAI_DATA_ADDR").unwrap_or_else(|_| "127.0.0.1:8791".into());
-    let local = addr.starts_with("127.") || addr.starts_with("localhost") || addr.starts_with("[::1]");
-    if token.is_empty() && !local {
-        return Err(format!("{addr}: set PHAI_DATA_TOKEN, the access key the app asks for, before serving to other computers"));
-    }
     let listener = TcpListener::bind(&addr).map_err(|e| format!("{addr}: {e}"))?;
     let served = tables.iter().map(|(name, db, table, cols, keys)| Served { name: name.to_string(), binding: Binding::new(conn.clone(), db, table, cols, keys) }).collect();
-    println!("Phai data server: http://{addr}/phai-data/ - {} table(s), {}", tables.len(), if token.is_empty() { "this computer only" } else { "with an access key" });
+    println!("Phai data server: http://{addr}/phai-data/ - {} table(s)", tables.len());
+    if token.is_empty() {
+        token = random_key(12);
+        println!("The access key the app asks for: {token} (PHAI_DATA_TOKEN chooses one that stays)");
+    }
     Server { tables: served, token }.serve(listener);
     Ok(())
 }
@@ -444,6 +465,11 @@ mod tests {
         assert_eq!((a.status, a.body.as_str()), (200, "{\"changes\":3}"), "one changed, one added, one deleted");
         let names: Vec<String> = c.query(None, "SELECT name FROM customers ORDER BY id").unwrap().rows.into_iter().map(|r| r[0].clone()).collect();
         assert_eq!(names, ["เอ", "C"]);
+        let open = Server { tables: s.tables, token: String::new() };
+        assert_eq!(open.answer("POST", "/phai-data/load", None, "{\"table\":\"w/customers\"}").status, 401, "no key set: nothing served");
+        assert_eq!(open.answer("POST", "/phai-data/load", Some("Bearer "), "{\"table\":\"w/customers\"}").status, 401);
+        let k = random_key(6);
+        assert!(k.len() == 6 && k.bytes().all(|b| b.is_ascii_digit()), "{k}");
         let _ = std::fs::remove_file(&path);
     }
 }
