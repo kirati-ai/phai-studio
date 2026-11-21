@@ -390,6 +390,67 @@ impl Canvas {
         }
     }
 
+    /// The form's menu bar on the screen - where it is, or where its first menu will put it - and
+    /// each menu's left and right edge, as the frame paints them.
+    pub fn menu_bar_screen(&self, f: &phai_form::FormFile) -> (RECT, Vec<(i32, i32)>) {
+        let dpi = win::dpi(self.hwnd);
+        let p = |v: i32| scale(v, dpi);
+        let (ox, _) = origin(f);
+        let width = f.form.size[0];
+        let mut o = POINT { x: 0, y: 0 };
+        unsafe {
+            let _ = Gdi::ClientToScreen(self.hwnd, &mut o);
+        }
+        let bar = RECT { left: o.x + p(ox), top: o.y + p(MARGIN + TITLE), right: o.x + p(ox + width), bottom: o.y + p(MARGIN + TITLE + MENU) };
+        let font = win::font(self.hwnd, 0, false);
+        let mut x = ox + 8;
+        let mut tops = Vec::new();
+        for m in &f.menu {
+            let (w, _) = win::measure(self.hwnd, font, &phai_form::bars::shown(&m.label));
+            let lw = unscale(w, dpi) + 16;
+            tops.push((o.x + p(x), o.x + p(x + lw)));
+            x += lw;
+        }
+        (bar, tops)
+    }
+
+    /// The form's toolbar on the screen: where it is, or where it will be - along the top of the
+    /// form's client area.
+    pub fn toolbar_screen(&self, f: &phai_form::FormFile) -> RECT {
+        let dpi = win::dpi(self.hwnd);
+        let p = |v: i32| scale(v, dpi);
+        let (ox, oy) = origin(f);
+        let mut o = POINT { x: 0, y: 0 };
+        unsafe {
+            let _ = Gdi::ClientToScreen(self.hwnd, &mut o);
+        }
+        RECT { left: o.x + p(ox), top: o.y + p(oy), right: o.x + p(ox + f.form.size[0]), bottom: o.y + p(oy + win::TOOLBAR_HEIGHT) }
+    }
+
+    /// The toolbar button under a screen point, on the form's own toolbar.
+    fn tool_at(&self, f: &phai_form::FormFile, screen: POINT) -> Option<usize> {
+        let tb = self.toolbar?;
+        let mut p = screen;
+        unsafe {
+            let _ = Gdi::ScreenToClient(tb, &mut p);
+        }
+        (0..f.toolbar.len()).find(|i| {
+            let r = win::toolbar_item_rect(tb, *i);
+            p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.bottom
+        })
+    }
+
+    /// The menu under design point `x` on the bar.
+    fn menu_at(&self, f: &phai_form::FormFile, x: i32) -> Option<usize> {
+        let dpi = win::dpi(self.hwnd);
+        let mut o = POINT { x: 0, y: 0 };
+        unsafe {
+            let _ = Gdi::ClientToScreen(self.hwnd, &mut o);
+        }
+        let sx = o.x + scale(x, dpi);
+        self.menu_bar_screen(f).1.iter().position(|(l, r)| sx >= *l && sx < *r)
+    }
+
     fn design_point(&self, h: HWND, l: LPARAM) -> (i32, i32) {
         let (x, y) = win::point_of(l);
         let dpi = win::dpi(h);
@@ -760,10 +821,24 @@ impl Canvas {
         }
         // The frame above the form: its menu bar opens the menus to edit, its title bar chooses the form.
         let inside_x = p.0 >= MARGIN && p.0 < MARGIN + size[0];
+        // The form's toolbar: designed on it, the button clicked chosen.
+        if inside_x && !s.doc.form.toolbar.is_empty() && p.1 >= top && p.1 < top + win::TOOLBAR_HEIGHT {
+            s.select(None);
+            self.place_handles();
+            let mut sp = POINT::default();
+            unsafe {
+                let _ = wm::GetCursorPos(&mut sp);
+            }
+            let at = self.tool_at(&s.doc.form, sp);
+            crate::tooldesign::open(at);
+            return;
+        }
         if inside_x && p.1 >= MARGIN + TITLE && p.1 < top {
             s.select(None);
             self.place_handles();
-            s.edit_menus();
+            // The menu clicked dropped down to design, as Visual Studio's MenuStrip.
+            let at = self.menu_at(&s.doc.form, p.0);
+            crate::menudesign::open(at.or(Some(usize::MAX)));
             return;
         }
         if s.selected.is_none() {

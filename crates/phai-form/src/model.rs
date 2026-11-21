@@ -154,15 +154,29 @@ impl Menu {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Tool {
+    /// Its click's method (none for a separator).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub id: String,
+    /// Its words: the tooltip.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub label: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub glyph: String,
     /// A button that stays pressed until clicked again - CheckOnClick.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub toggle: bool,
+    /// A line between groups of buttons - a ToolStripSeparator.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub separator: bool,
+    /// Pressed when the window opens (a toggle) - Checked.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub checked: bool,
+    /// Greyed, not to be clicked - Enabled = false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1080,7 +1094,7 @@ impl FormFile {
                 }
             }
         }
-        for t in &self.toolbar {
+        for t in self.toolbar.iter().filter(|t| !t.separator) {
             if phai_ui::icon::glyph::by_name(&t.glyph).is_none() {
                 out.push((format!("glyph {:?} is not one phai-ui knows", t.glyph), Some(t.glyph.clone())));
             }
@@ -1111,7 +1125,7 @@ impl FormFile {
                 }
             }
         }
-        for t in &self.toolbar {
+        for t in self.toolbar.iter().filter(|t| !t.separator) {
             add(&t.id);
         }
         for c in &self.control {
@@ -1210,7 +1224,7 @@ impl FormFile {
                 }
             }
         }
-        for t in &self.toolbar {
+        for t in self.toolbar.iter().filter(|t| !t.label.is_empty()) {
             add(&t.label);
         }
         for c in &self.control {

@@ -122,9 +122,9 @@ pub mod templates {
             Menu { label: "&Help".into(), items: vec![item("about", "About", None)] },
         ];
         f.toolbar = vec![
-            Tool { id: "new_item".into(), label: "New".into(), glyph: "NEW".into(), toggle: false },
-            Tool { id: "open_item".into(), label: "Open".into(), glyph: "OPEN".into(), toggle: false },
-            Tool { id: "save_item".into(), label: "Save".into(), glyph: "SAVE".into(), toggle: false },
+            Tool { id: "new_item".into(), label: "New".into(), glyph: "NEW".into(), toggle: false, ..Default::default() },
+            Tool { id: "open_item".into(), label: "Open".into(), glyph: "OPEN".into(), toggle: false, ..Default::default() },
+            Tool { id: "save_item".into(), label: "Save".into(), glyph: "SAVE".into(), toggle: false, ..Default::default() },
         ];
         let top = TOOLBAR;
         let mut list = Control::new(Kind::List, "items", [MARGIN, top + MARGIN, 640 - 2 * MARGIN, 420 - top - 2 * MARGIN - STATUS]);

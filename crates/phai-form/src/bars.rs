@@ -143,7 +143,7 @@ pub fn menus_from_text(text: &str) -> Result<Vec<Menu>, String> {
 
 /// The toolbar as text.
 pub fn toolbar_to_text(tools: &[Tool]) -> String {
-    tools.iter().map(|t| format!("{} | {} | {}{}\n", t.id, t.label, t.glyph, if t.toggle { " | toggle" } else { "" })).collect()
+    tools.iter().map(|t| if t.separator { "-\n".to_string() } else { format!("{} | {} | {}{}\n", t.id, t.label, t.glyph, if t.toggle { " | toggle" } else { "" }) }).collect()
 }
 
 /// Text back to a toolbar; an error names its line.
@@ -152,6 +152,10 @@ pub fn toolbar_from_text(text: &str) -> Result<Vec<Tool>, String> {
     for (n, raw) in text.lines().enumerate() {
         let t = raw.trim();
         if t.is_empty() {
+            continue;
+        }
+        if t == "-" {
+            out.push(Tool { separator: true, ..Default::default() });
             continue;
         }
         let parts: Vec<&str> = t.split('|').map(str::trim).collect();
@@ -163,7 +167,7 @@ pub fn toolbar_from_text(text: &str) -> Result<Vec<Tool>, String> {
             let names: Vec<&str> = phai_ui::icon::glyph::NAMES.iter().map(|(n, _)| *n).collect();
             return Err(format!("line {}: {} is not a glyph - one of {}", n + 1, parts[2], names.join(", ")));
         }
-        out.push(Tool { id: parts[0].to_string(), label: parts[1].to_string(), glyph: parts[2].to_string(), toggle });
+        out.push(Tool { id: parts[0].to_string(), label: parts[1].to_string(), glyph: parts[2].to_string(), toggle, ..Default::default() });
     }
     Ok(out)
 }

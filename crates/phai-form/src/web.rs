@@ -174,7 +174,7 @@ fn items_code(items: &[crate::model::MenuItem]) -> String {
 /// The ids of the form's menu items and toolbar buttons, each once.
 fn item_ids(f: &FormFile) -> Vec<String> {
     let mut v: Vec<String> = f.menu.iter().flat_map(|m| m.all_items()).filter_map(|it| it.id.clone()).collect();
-    for t in &f.toolbar {
+    for t in f.toolbar.iter().filter(|t| !t.separator) {
         if !v.contains(&t.id) {
             v.push(t.id.clone());
         }
@@ -423,7 +423,7 @@ pub fn generate(f: &FormFile) -> String {
         let _ = writeln!(w, "        phai_ui::menu::menu_bar(hwnd, menus, chosen(&me));");
     }
     if !f.toolbar.is_empty() {
-        let tools = f.toolbar.iter().map(|t| format!("phai_ui::menu::Tool {{ id: {}, label: t({}), glyph: {}, toggle: {} }}", lit(&t.id), lit(&t.label), glyph_code(Some(&t.glyph)), t.toggle)).collect::<Vec<_>>().join(", ");
+        let tools = f.toolbar.iter().filter(|t| !t.separator).map(|t| format!("phai_ui::menu::Tool {{ id: {}, label: t({}), glyph: {}, toggle: {} }}", lit(&t.id), lit(&t.label), glyph_code(Some(&t.glyph)), t.toggle)).collect::<Vec<_>>().join(", ");
         let _ = writeln!(w, "        let toolbar = phai_ui::menu::toolbar(hwnd, area, vec![{tools}], {TOOLBAR_HEIGHT}, chosen(&me));");
     }
     // Timers tick into the program once it is there.
@@ -866,7 +866,7 @@ mod tests {
         // A menu within a menu, a tick a click turns over, a toolbar button that stays down.
         let mut g = f.clone();
         g.menu = crate::bars::menus_from_text("&View\n  word_wrap | Word wrap | checked | check_on_click\n  Zoom\n    zoom_in | Zoom in | Ctrl+= | SEARCH\n").unwrap();
-        g.toolbar = vec![crate::model::Tool { id: "word_wrap".into(), label: "Wrap".into(), glyph: "SEARCH".into(), toggle: true }];
+        g.toolbar = vec![crate::model::Tool { id: "word_wrap".into(), label: "Wrap".into(), glyph: "SEARCH".into(), toggle: true, ..Default::default() }];
         let code = generate(&g);
         assert!(code.contains("phai_ui::menu::Item { id: \"word_wrap\", label: t(\"Word wrap\"), key: \"\", glyph: 0, checked: true, check_on_click: true"), "{code}");
         assert!(code.contains("label: t(\"Zoom\")") && code.contains("key: \"Ctrl+=\", glyph: 59169"), "{code}");
