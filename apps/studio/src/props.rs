@@ -81,6 +81,8 @@ pub enum Key {
     /// The chosen control's transition: milliseconds, and its curve.
     StyleTransition,
     StyleEasing,
+    /// A property of the chosen menu, menu item or toolbar button, by its name.
+    Bar(&'static str),
     /// Its look moved into the theme as a class.
     StyleToTheme,
 }
@@ -371,6 +373,64 @@ impl Props {
         v
     }
 
+    /// The properties of a menu, menu item or toolbar button - or of the menu bar or toolbar.
+    fn gather_bar(&self, b: &crate::BarSel) -> Vec<Prop> {
+        let Some(s) = studio() else { return vec![] };
+        let f = &s.doc.form;
+        let p = |category: &'static str, key, name: &'static str, value: String, ed, help: &'static str| {
+            let set = !value.is_empty() && value != "False";
+            Prop { category: t(category), key, name: t(name), value, ed, help: t(help).into(), parent: None, set }
+        };
+        let mut glyphs: Vec<String> = vec![String::new()];
+        glyphs.extend(phai_ui::icon::glyph::NAMES.iter().map(|(n, _)| n.to_string()).filter(|n| !n.starts_with("LAY_")));
+        let keys: Vec<String> = ["", "Ctrl+N", "Ctrl+O", "Ctrl+S", "Ctrl+Shift+S", "Ctrl+P", "Ctrl+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V", "Ctrl+A", "Ctrl+F", "Ctrl+H", "F1", "F2", "F5", "Del", "Alt+F4"].iter().map(|k| k.to_string()).collect();
+        let yes = |b: bool| if b { "True".to_string() } else { "False".to_string() };
+        match b {
+            crate::BarSel::MenuStrip => vec![
+                p("Design", Key::Bar("name"), "(Name)", "menuStrip".into(), Ed::ReadOnly, "The form's menu bar: click a menu on the form to design it."),
+                p("Data", Key::Bar("count"), "Items", tf("{0} menus", &[&f.menu.len()]), Ed::ReadOnly, "Its menus, designed on the form."),
+            ],
+            crate::BarSel::ToolStrip => vec![
+                p("Design", Key::Bar("name"), "(Name)", "toolStrip".into(), Ed::ReadOnly, "The form's toolbar: click a button on the form to design it."),
+                p("Data", Key::Bar("count"), "Items", tf("{0} buttons", &[&f.toolbar.len()]), Ed::ReadOnly, "Its buttons and separators, designed on the form."),
+            ],
+            crate::BarSel::Menu(i) => {
+                let Some(m) = f.menu.get(*i) else { return vec![] };
+                vec![p("Appearance", Key::Bar("text"), "Text", m.label.clone(), Ed::Text, "The menu's words on the bar; & before the underlined letter (Alt+it opens it).")]
+            }
+            crate::BarSel::MenuItem(path) => {
+                let Some(it) = crate::menu_item(f, path) else { return vec![] };
+                if it.separator {
+                    return vec![p("Design", Key::Bar("name"), "(Name)", t("Separator").into(), Ed::ReadOnly, "A line between groups of items.")];
+                }
+                let sub = !it.items.is_empty();
+                vec![
+                    p("Design", Key::Bar("id"), "(Name)", it.id.clone().unwrap_or_default(), if sub { Ed::ReadOnly } else { Ed::Text }, "Its Click method's name - double-click it on the form to write it. An item that opens a menu has none."),
+                    p("Appearance", Key::Bar("text"), "Text", it.label.clone().unwrap_or_default(), Ed::Text, "Its words; & before the underlined letter."),
+                    p("Appearance", Key::Bar("image"), "Image", it.glyph.clone().unwrap_or_default(), Ed::Choice(glyphs, false), "A picture beside its words."),
+                    p("Misc", Key::Bar("shortcut"), "ShortcutKeys", it.key.clone().unwrap_or_default(), Ed::Choice(keys, true), "The keys that choose it from anywhere in the window, e.g. Ctrl+S."),
+                    p("Behavior", Key::Bar("checked"), "Checked", yes(it.checked), Ed::Bool, "A tick beside it."),
+                    p("Behavior", Key::Bar("check_on_click"), "CheckOnClick", yes(it.check_on_click), Ed::Bool, "A click ticks it, or takes the tick away."),
+                    p("Behavior", Key::Bar("enabled"), "Enabled", yes(!it.disabled), Ed::Bool, "Whether it can be chosen."),
+                ]
+            }
+            crate::BarSel::Tool(i) => {
+                let Some(tool) = f.toolbar.get(*i) else { return vec![] };
+                if tool.separator {
+                    return vec![p("Design", Key::Bar("name"), "(Name)", t("Separator").into(), Ed::ReadOnly, "A line between groups of buttons.")];
+                }
+                vec![
+                    p("Design", Key::Bar("id"), "(Name)", tool.id.clone(), Ed::Text, "Its Click method's name - double-click it on the form to write it."),
+                    p("Appearance", Key::Bar("text"), "Text", tool.label.clone(), Ed::Text, "Its words: the tooltip shown when the pointer rests on it."),
+                    p("Appearance", Key::Bar("image"), "Image", tool.glyph.clone(), Ed::Choice(glyphs[1..].to_vec(), false), "Its picture."),
+                    p("Behavior", Key::Bar("check_on_click"), "CheckOnClick", yes(tool.toggle), Ed::Bool, "It stays down when clicked, and comes up at the next click."),
+                    p("Behavior", Key::Bar("checked"), "Checked", yes(tool.checked), Ed::Bool, "Down when the window opens (with CheckOnClick)."),
+                    p("Behavior", Key::Bar("enabled"), "Enabled", yes(!tool.disabled), Ed::Bool, "Whether it can be clicked."),
+                ]
+            }
+        }
+    }
+
     /// The properties of one control - or the form's, for `None`.
     fn gather_one(&self, sel: Option<usize>) -> Vec<Prop> {
         let Some(s) = studio() else { return vec![] };
@@ -379,6 +439,27 @@ impl Props {
         let part = |parent: Key, category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: Some(parent), set: false };
         let sizes: Vec<String> = ["", "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"].iter().map(|s| s.to_string()).collect();
         let bools = Ed::Bool;
+        // A part of the menu bar or toolbar: its own properties, as a ToolStripItem's.
+        if let Some(b) = s.bar_sel.clone() {
+            if self.mode == 1 {
+                // Its one event: Click, its id's method.
+                let id = match &b {
+                    crate::BarSel::MenuItem(path) => crate::menu_item(&s.doc.form, path).filter(|it| !it.separator && it.items.is_empty()).and_then(|it| it.id.clone()),
+                    crate::BarSel::Tool(i) => s.doc.form.toolbar.get(*i).filter(|t0| !t0.separator).map(|t0| t0.id.clone()),
+                    _ => None,
+                };
+                return id.map(|id| vec![Prop { category: t("Action"), key: Key::Bar("click"), name: t("Click"), value: id, ed: Ed::ReadOnly, help: t("The method a click runs - double-click the item on the form to write it.").into(), parent: None, set: true }]).unwrap_or_default();
+            }
+            if self.mode != 0 {
+                return vec![];
+            }
+            let mut v = self.gather_bar(&b);
+            // Enabled is True unless set otherwise: shown plain then, as a default.
+            for q in v.iter_mut().filter(|q| q.key == Key::Bar("enabled")) {
+                q.set = q.value == "False";
+            }
+            return v;
+        }
         if self.mode == 2 {
             return self.gather_style(sel);
         }
@@ -735,7 +816,21 @@ impl Props {
             for c in &f.control {
                 add(format!("{}\tphai_ui::ctl::{}", c.id, phai_form::codegen::ctl_type(c.kind)));
             }
-            wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(if s.selection().len() > 1 { usize::MAX } else { s.selected.map(|i| i + 1).unwrap_or(0) })), None);
+            // A part of the menu bar or toolbar chosen: it too, last, as Visual Studio lists a
+            // ToolStripButton.
+            let bar = s.bar_sel.as_ref().map(|b| match b {
+                crate::BarSel::MenuStrip => "menuStrip\tMenuStrip".to_string(),
+                crate::BarSel::ToolStrip => "toolStrip\tToolStrip".to_string(),
+                crate::BarSel::Menu(i) => format!("{}\tToolStripMenuItem", f.menu.get(*i).map(|m| phai_form::bars::shown(&m.label)).unwrap_or_default()),
+                crate::BarSel::MenuItem(path) => format!("{}\tToolStripMenuItem", crate::menu_item(f, path).map(|it| it.id.clone().unwrap_or_else(|| phai_form::bars::shown(it.label.as_deref().unwrap_or("")))).unwrap_or_default()),
+                crate::BarSel::Tool(i) => format!("{}\tToolStripButton", f.toolbar.get(*i).map(|t0| if t0.separator { "separator".to_string() } else { t0.id.clone() }).unwrap_or_default()),
+            });
+            let bar_row = bar.is_some();
+            if let Some(b) = bar {
+                add(b);
+            }
+            let at = if bar_row { f.control.len() + 1 } else if s.selection().len() > 1 { usize::MAX } else { s.selected.map(|i| i + 1).unwrap_or(0) };
+            wm::SendMessageW(self.chooser, 0x014E /* CB_SETCURSEL */, Some(WPARAM(at)), None);
         }
         let keep = self.chosen.and_then(|l| self.lines.get(l)).and_then(|l| if let Line::Prop(i) = l { self.props.get(*i).map(|p| p.key) } else { None });
         self.props = self.gather();
@@ -1187,6 +1282,10 @@ impl Props {
             }
             (ID_CHOOSER, 1) => {
                 let k = win::combo_selected(self.chooser);
+                // The menu bar's or toolbar's own row (last): it stays chosen.
+                if k as usize > s.doc.form.control.len() {
+                    return;
+                }
                 s.select(if k <= 0 { None } else { Some(k as usize - 1) });
             }
             (ID_SORT_CAT, 0) | (ID_SORT_AZ, 0) => {

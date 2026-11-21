@@ -112,6 +112,36 @@ pub fn open(open: Option<usize>) {
     }
 }
 
+/// The designer's copy of the menus taken again from the form - changed in Properties.
+pub fn reload() {
+    let h = HWND(OPEN.load(std::sync::atomic::Ordering::Relaxed) as *mut _);
+    if h.is_invalid() {
+        return;
+    }
+    if let (Some(d), Some(s)) = (state(h), studio()) {
+        d.menus = s.doc.form.menu.clone();
+        relayout(h);
+    }
+}
+
+/// What is chosen, for Properties: a menu, an item, or the bar.
+fn tell(d: &Designer) {
+    let sel = match d.sel {
+        Some(Slot::Top(i)) if i < d.menus.len() => crate::BarSel::Menu(i),
+        Some(Slot::Item { level, index }) if list(&d.menus, &d.path, level).is_some_and(|l| index < l.len()) => {
+            let mut p: Vec<usize> = d.path[..=level].to_vec();
+            p.push(index);
+            crate::BarSel::MenuItem(p)
+        }
+        _ => crate::BarSel::MenuStrip,
+    };
+    if let Some(s) = studio() {
+        if s.bar_sel.as_ref() != Some(&sel) {
+            s.choose_bar(Some(sel));
+        }
+    }
+}
+
 /// The items of the menu open at `level`.
 fn list<'a>(menus: &'a [Menu], path: &[usize], level: usize) -> Option<&'a Vec<MenuItem>> {
     let mut items = &menus.get(*path.first()?)?.items;
@@ -215,6 +245,7 @@ fn relayout(h: HWND) {
     all.bottom += margin;
     d.cells = cells;
     d.panels = panels;
+    tell(d);
     d.at = POINT { x: all.left, y: all.top };
     unsafe {
         let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), all.left, all.top, all.right - all.left, all.bottom - all.top, wm::SWP_NOACTIVATE);

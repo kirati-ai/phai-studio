@@ -497,8 +497,44 @@ impl Tab {
     }
 }
 
+/// What of the form's menu bar or toolbar is chosen - shown in Properties as a control is.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BarSel {
+    MenuStrip,
+    ToolStrip,
+    /// A menu on the bar.
+    Menu(usize),
+    /// A menu item: its menu, then its place at each level down.
+    MenuItem(Vec<usize>),
+    /// A toolbar button (or separator).
+    Tool(usize),
+}
+
+/// The menu item at `path` (its menu, then its place at each level).
+pub fn menu_item_mut<'a>(f: &'a mut FormFile, path: &[usize]) -> Option<&'a mut phai_form::MenuItem> {
+    let (first, rest) = path.split_first()?;
+    let mut items = &mut f.menu.get_mut(*first)?.items;
+    let (last, mid) = rest.split_last()?;
+    for k in mid {
+        items = &mut items.get_mut(*k)?.items;
+    }
+    items.get_mut(*last)
+}
+
+pub fn menu_item<'a>(f: &'a FormFile, path: &[usize]) -> Option<&'a phai_form::MenuItem> {
+    let (first, rest) = path.split_first()?;
+    let mut items = &f.menu.get(*first)?.items;
+    let (last, mid) = rest.split_last()?;
+    for k in mid {
+        items = &items.get(*k)?.items;
+    }
+    items.get(*last)
+}
+
 pub struct Studio {
     pub hwnd: HWND,
+    /// The menu bar's or toolbar's part chosen, in place of a control.
+    pub bar_sel: Option<BarSel>,
     /// Nothing open: Studio just started, or its last tab closed - no form, no project, as Visual
     /// Studio starts. Opening or making something ends it.
     pub nothing: bool,
@@ -1512,7 +1548,93 @@ impl Studio {
         self.apply_one(key, text);
     }
 
+    /// A part of the menu bar or toolbar chosen - by its designer or its chip - and shown in
+    /// Properties.
+    pub fn choose_bar(&mut self, sel: Option<BarSel>) {
+        if self.bar_sel == sel {
+            return;
+        }
+        self.bar_sel = sel;
+        if self.bar_sel.is_some() {
+            self.selected = None;
+            self.also.clear();
+            if let Some(c) = self.canvas.as_ref() {
+                c.place_handles();
+            }
+        }
+        crate::canvas::refresh_tray();
+        self.refresh_props();
+    }
+
+    /// A property of the chosen menu, menu item or toolbar button typed in Properties: the
+    /// form's at once (one undo step), the designers and the canvas drawn again.
+    fn apply_bar(&mut self, name: &str, text: &str) {
+        let Some(sel) = self.bar_sel.clone() else { return };
+        let v = text.trim().to_string();
+        let yes = v == "True" || v == "true";
+        let glyph_ok = |g: &str| g.is_empty() || phai_ui::icon::glyph::by_name(g).is_some();
+        let id_ok = |id: &str| !id.is_empty() && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') && !id.starts_with(|c: char| c.is_ascii_digit());
+        match (&sel, name) {
+            (_, "id") if !id_ok(&v) => {
+                win::message(Some(self.hwnd), &tf("{0}: an id is snake_case, like save_as", &[&v]), "Phai Studio", wm::MB_ICONWARNING);
+                return self.refresh_props();
+            }
+            (_, "image") if !glyph_ok(&v.to_uppercase()) => {
+                win::message(Some(self.hwnd), &tf("{0} is not a glyph - one of {1}", &[&v, &phai_ui::icon::glyph::NAMES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")]), "Phai Studio", wm::MB_ICONWARNING);
+                return self.refresh_props();
+            }
+            _ => {}
+        }
+        self.edit(|f| match &sel {
+            BarSel::Menu(i) => {
+                if let Some(m) = f.menu.get_mut(*i) {
+                    if name == "text" && !v.is_empty() {
+                        m.label = v.clone();
+                    }
+                }
+            }
+            BarSel::MenuItem(path) => {
+                if let Some(it) = menu_item_mut(f, path) {
+                    match name {
+                        "id" if it.items.is_empty() => it.id = Some(v.clone()),
+                        "text" if !v.is_empty() => it.label = Some(v.clone()),
+                        "shortcut" => it.key = (!v.is_empty()).then(|| v.clone()),
+                        "image" => it.glyph = (!v.is_empty()).then(|| v.to_uppercase()),
+                        "checked" => it.checked = yes,
+                        "check_on_click" => it.check_on_click = yes,
+                        "enabled" => it.disabled = !yes,
+                        _ => {}
+                    }
+                }
+            }
+            BarSel::Tool(i) => {
+                if let Some(t0) = f.toolbar.get_mut(*i) {
+                    match name {
+                        "id" => t0.id = v.clone(),
+                        "text" if !v.is_empty() => t0.label = v.clone(),
+                        "image" if !v.is_empty() => t0.glyph = v.to_uppercase(),
+                        "check_on_click" => {
+                            t0.toggle = yes;
+                            t0.checked &= yes;
+                        }
+                        "checked" => t0.checked = yes && t0.toggle,
+                        "enabled" => t0.disabled = !yes,
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        });
+        self.rebuild();
+        menudesign::reload();
+        tooldesign::reload();
+        self.refresh_props();
+    }
+
     fn apply_one(&mut self, key: Key, text: &str) {
+        if let Key::Bar(name) = key {
+            return self.apply_bar(name, text);
+        }
         // A composite typed in whole: its parts, one by one.
         match key {
             Key::Location | Key::Size | Key::FormSize => {
@@ -2204,7 +2326,12 @@ impl Studio {
 
     pub fn select(&mut self, i: Option<usize>) {
         self.also.clear();
-        if self.selected != i {
+        // A control (or the form) chosen: the menu bar's or toolbar's part no longer.
+        let was_bar = self.bar_sel.take().is_some();
+        if was_bar {
+            crate::canvas::refresh_tray();
+        }
+        if self.selected != i || was_bar {
             self.selected = i;
             self.refresh_props();
         }
@@ -2282,6 +2409,7 @@ impl Studio {
             }
             PROPERTIES => {
                 self.show_pane(Pane::Properties, true);
+                explorer::front_props(self.side);
                 // A data grid's properties are its columns', as DevExpress's grid opens its designer.
                 if self.selected.and_then(|i| self.doc.form.control.get(i)).is_some_and(|c| c.kind == Kind::Grid) {
                     self.edit_grid_columns();
@@ -8944,6 +9072,7 @@ fn main() {
         layout.add(toolbox_split, Item { bounds: Rect::new(0, 0, 6, 0), dock: Dock::Left, anchor: Anchor::default() });
         let studio_box = Box::new(Studio {
             hwnd,
+            bar_sel: None,
             font,
             toolbar,
             toolbox,
@@ -9088,7 +9217,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -9334,6 +9463,19 @@ fn main() {
         // `--menus` opens the menu editor at once - for checking it by its picture.
         if args.iter().any(|a| a == "--menus") {
             let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_EDIT_MENUS as usize), LPARAM(0));
+        }
+        // `--bar-tool N` / `--bar-item M.I`: that toolbar button or menu item chosen, its
+        // properties shown - for checking them by their picture.
+        if let Some(n) = args.iter().position(|a| a == "--bar-tool").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            s.choose_bar(Some(BarSel::Tool(n)));
+            s.show_pane(Pane::Properties, true);
+            explorer::front_props(s.side);
+        }
+        if let Some(p) = args.iter().position(|a| a == "--bar-item").and_then(|i| args.get(i + 1)) {
+            let path: Vec<usize> = p.split('.').filter_map(|x| x.parse().ok()).collect();
+            s.choose_bar(Some(BarSel::MenuItem(path)));
+            s.show_pane(Pane::Properties, true);
+            explorer::front_props(s.side);
         }
         // `--toolbar` opens the toolbar designer - for checking it by its picture.
         if args.iter().any(|a| a == "--toolbar") {

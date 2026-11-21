@@ -118,7 +118,10 @@ fn paint_chips(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, width: i32) {
         let rr = RECT { left: p(r[0]), top: p(r[1]), right: p(r[0] + r[2]), bottom: p(r[1] + r[3]) };
         // Chosen - a component, or the menu bar or toolbar while its designer is open: the
         // accent around it, its tint inside.
-        let active = chosen == Some(*i) || (*i == CHIP_MENU && crate::menudesign::is_open()) || (*i == CHIP_TOOLBAR && crate::tooldesign::is_open());
+        let bar = studio().and_then(|s| s.bar_sel.clone());
+        let menu_part = matches!(bar, Some(crate::BarSel::MenuStrip | crate::BarSel::Menu(_) | crate::BarSel::MenuItem(_)));
+        let tool_part = matches!(bar, Some(crate::BarSel::ToolStrip | crate::BarSel::Tool(_)));
+        let active = chosen == Some(*i) || (*i == CHIP_MENU && (menu_part || crate::menudesign::is_open())) || (*i == CHIP_TOOLBAR && (tool_part || crate::tooldesign::is_open()));
         win::fill(dc, &rr, if active { accent } else { border });
         let b = if active { p(2) } else { 1 };
         win::fill(dc, &RECT { left: rr.left + b, top: rr.top + b, right: rr.right - b, bottom: rr.bottom - b }, if active { tint } else { window });
@@ -1276,11 +1279,13 @@ extern "system" fn tray_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 // The menu bar's or toolbar's chip: designed on the form, as Visual Studio's.
                 Some(CHIP_MENU) => {
                     s.select(None);
+                    s.choose_bar(Some(crate::BarSel::MenuStrip));
                     crate::menudesign::open(Some(0));
                 }
                 Some(CHIP_TOOLBAR) => {
                     s.select(None);
-                    crate::tooldesign::open(Some(0));
+                    s.choose_bar(Some(crate::BarSel::ToolStrip));
+                    crate::tooldesign::open(None);
                 }
                 // A component's chip: it chosen; the tray's own room: nothing chosen.
                 under => {
