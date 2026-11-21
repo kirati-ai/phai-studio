@@ -1394,6 +1394,10 @@ pub fn list_select(h: impl Into<HWND>, row: usize) {
 /// instead of Windows' blue. A grid's check-box columns are drawn here too ([`crate::grid`]).
 pub fn list_custom_draw(l: LPARAM) -> LRESULT {
     use windows::Win32::UI::Controls as cc;
+    // A grid with properties of its own draws its cells itself.
+    if let Some(r) = crate::grid::custom_draw(l) {
+        return r;
+    }
     unsafe {
         let cd = &mut *(l.0 as *mut cc::NMLVCUSTOMDRAW);
         let h = cd.nmcd.hdr.hwndFrom;
@@ -1430,6 +1434,23 @@ pub fn list_custom_draw(l: LPARAM) -> LRESULT {
             _ => LRESULT(cc::CDRF_DODEFAULT as isize),
         }
     }
+}
+
+/// A list's chosen row's colours: the theme's `list:selected` background and words.
+pub fn list_selection_colors(h: HWND) -> (Color, Color) {
+    let s = style_of(h, Kind::List, State { selected: true, ..Default::default() });
+    (s.background_or(Color::rgb(231, 243, 239)), s.color_or(window_text_for(h)))
+}
+
+/// A list's own colours - its CSS's, else the window's.
+pub fn list_colors(h: HWND) -> (Color, Color) {
+    let s = style_of(h, Kind::List, State::default());
+    (s.background_or(window_background_for(h)), s.color_or(window_text_for(h)))
+}
+
+/// A list's border colour, for lines drawn to match it.
+pub fn list_border_color(h: HWND) -> Color {
+    list_border(h).1
 }
 
 static FRAMED: Mutex<Vec<isize>> = Mutex::new(Vec::new());

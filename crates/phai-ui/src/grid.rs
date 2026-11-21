@@ -58,11 +58,187 @@ pub struct Column {
     pub allow_size: bool,
     /// Sorted by it when the grid is filled: up (`Some(true)`) or down.
     pub sort: Option<bool>,
+    /// How its values are shown (they are kept as they are): `n2` 1,234.50, `c2` ฿1,234.50,
+    /// `p0` 15%, `d` 21/11/2026, `dt` with the time - DevExpress's DisplayFormat.
+    pub format: String,
+    /// What the footer under it says: a sum, a count...
+    pub summary: Summary,
+    /// Its cells (or rows) coloured by their values - DevExpress's format rules.
+    pub rules: Vec<Rule>,
+}
+
+/// A footer's total under a column.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Summary {
+    #[default]
+    None,
+    Sum,
+    Count,
+    Average,
+    Min,
+    Max,
+}
+
+impl Summary {
+    pub fn from_word(w: &str) -> Summary {
+        match w {
+            "sum" => Summary::Sum,
+            "count" => Summary::Count,
+            "avg" | "average" => Summary::Average,
+            "min" => Summary::Min,
+            "max" => Summary::Max,
+            _ => Summary::None,
+        }
+    }
+}
+
+/// A format rule: cells whose value passes `op value` take these colours - the whole row when
+/// `row`. Written as a line: `> 1000 back=#ffe4e4 fore=#b00020 row`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Rule {
+    /// `=`, `!=`, `>`, `>=`, `<`, `<=`, `contains`, `empty`, `notempty`.
+    pub op: String,
+    pub value: String,
+    pub back: String,
+    pub fore: String,
+    pub row: bool,
+}
+
+impl Rule {
+    /// A rule from its line; `None` when the line is not one.
+    pub fn parse(line: &str) -> Option<Rule> {
+        let line = line.trim();
+        let (op, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+        let op = match op {
+            "==" => "=",
+            "<>" => "!=",
+            o => o,
+        };
+        if !["=", "!=", ">", ">=", "<", "<=", "contains", "empty", "notempty"].contains(&op) {
+            return None;
+        }
+        let mut r = Rule { op: op.to_string(), ..Default::default() };
+        let mut rest = rest.trim();
+        if !matches!(op, "empty" | "notempty") {
+            if let Some(q) = rest.strip_prefix('"') {
+                let end = q.find('"')?;
+                r.value = q[..end].to_string();
+                rest = q[end + 1..].trim();
+            } else {
+                let (v, more) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+                r.value = v.to_string();
+                rest = more.trim();
+            }
+        }
+        for word in rest.split_whitespace() {
+            match word.split_once('=') {
+                Some(("back", c)) => r.back = c.to_string(),
+                Some(("fore", c)) => r.fore = c.to_string(),
+                None if word == "row" => r.row = true,
+                _ => return None,
+            }
+        }
+        Some(r)
+    }
+
+    /// Its line again.
+    pub fn text(&self) -> String {
+        let mut s = self.op.clone();
+        if !matches!(self.op.as_str(), "empty" | "notempty") {
+            s += &if self.value.contains(char::is_whitespace) || self.value.is_empty() { format!(" \"{}\"", self.value) } else { format!(" {}", self.value) };
+        }
+        if !self.back.is_empty() {
+            s += &format!(" back={}", self.back);
+        }
+        if !self.fore.is_empty() {
+            s += &format!(" fore={}", self.fore);
+        }
+        if self.row {
+            s += " row";
+        }
+        s
+    }
+
+    /// Whether a cell's words pass it: numbers compared as numbers, words without regard to case.
+    pub fn matches(&self, cell: &str) -> bool {
+        let (a, b) = (cell.trim(), self.value.trim());
+        let num = |s: &str| s.replace(',', "").parse::<f64>().ok();
+        let ord = match (num(a), num(b)) {
+            (Some(x), Some(y)) => x.partial_cmp(&y),
+            _ => Some(a.to_lowercase().cmp(&b.to_lowercase())),
+        };
+        use std::cmp::Ordering::*;
+        match self.op.as_str() {
+            "=" => ord == Some(Equal),
+            "!=" => ord != Some(Equal),
+            ">" => ord == Some(Greater),
+            ">=" => matches!(ord, Some(Greater | Equal)),
+            "<" => ord == Some(Less),
+            "<=" => matches!(ord, Some(Less | Equal)),
+            "contains" => a.to_lowercase().contains(&b.to_lowercase()),
+            "empty" => a.is_empty(),
+            "notempty" => !a.is_empty(),
+            _ => false,
+        }
+    }
+}
+
+/// Rules from their lines, those that are rules.
+pub fn rules(lines: &[&str]) -> Vec<Rule> {
+    lines.iter().filter_map(|l| Rule::parse(l)).collect()
+}
+
+/// A number with commas between thousands and `decimals` places: 1,234.50.
+fn grouped(n: f64, decimals: usize) -> String {
+    let s = format!("{:.*}", decimals, n.abs());
+    let (int, frac) = s.split_once('.').map(|(i, f)| (i.to_string(), Some(f.to_string()))).unwrap_or((s.clone(), None));
+    let mut out = String::new();
+    for (i, ch) in int.chars().enumerate() {
+        if i > 0 && (int.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    if let Some(f) = frac {
+        out = format!("{out}.{f}");
+    }
+    if n < 0.0 && out.chars().any(|c| c.is_ascii_digit() && c != '0') {
+        out.insert(0, '-');
+    }
+    out
+}
+
+/// A value as `format` shows it (see [`Column::format`]); as it is when it does not fit.
+pub fn format_value(format: &str, value: &str) -> String {
+    let f = format.trim();
+    if f.is_empty() || value.trim().is_empty() {
+        return value.to_string();
+    }
+    let num = value.trim().replace(',', "").parse::<f64>();
+    let places = |s: &str| s.parse::<usize>().unwrap_or(0).min(6);
+    match (f.chars().next(), num) {
+        (Some('n'), Ok(n)) => grouped(n, places(&f[1..])),
+        (Some('c'), Ok(n)) => format!("฿{}", grouped(n, places(&f[1..]))),
+        (Some('p'), Ok(n)) => format!("{}%", grouped(n * 100.0, places(&f[1..]))),
+        _ if f == "d" || f == "dt" => {
+            // 2026-11-21 (and a time after it): 21/11/2026.
+            let v = value.trim();
+            let (date, time) = v.split_once([' ', 'T']).unwrap_or((v, ""));
+            let p: Vec<&str> = date.split('-').collect();
+            if p.len() == 3 && p[0].len() == 4 {
+                let t = if f == "dt" && time.len() >= 5 { format!(" {}", &time[..5]) } else { String::new() };
+                format!("{}/{}/{}{t}", p[2], p[1], p[0])
+            } else {
+                value.to_string()
+            }
+        }
+        _ => value.to_string(),
+    }
 }
 
 impl Default for Column {
     fn default() -> Column {
-        Column { visible: true, align: Align::Left, read_only: false, editor: Editor::Text, allow_sort: true, allow_size: true, sort: None }
+        Column { visible: true, align: Align::Left, read_only: false, editor: Editor::Text, allow_sort: true, allow_size: true, sort: None, format: String::new(), summary: Summary::None, rules: vec![] }
     }
 }
 
@@ -96,11 +272,32 @@ struct Opts {
     sorted: Option<(usize, bool)>,
     /// The column last clicked: F2 opens it.
     focus_col: usize,
+    /// Every other row's background.
+    alt: Option<crate::theme::Color>,
+    header_back: Option<crate::theme::Color>,
+    header_fore: Option<crate::theme::Color>,
+    /// The footer under the rows, its totals.
+    footer: bool,
+    /// What the find box looks for (lower case); empty: nothing.
+    find: String,
+    find_mode: FindMode,
+    /// Ctrl+C copies the headings too.
+    copy_headers: bool,
+}
+
+/// When the find box shows - DevExpress's find panel.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum FindMode {
+    /// Ctrl+F opens it.
+    #[default]
+    CtrlF,
+    Always,
+    Off,
 }
 
 impl Default for Opts {
     fn default() -> Opts {
-        Opts { cols: vec![], widths: vec![], add: true, delete: true, edit_on: EditOn::DoubleClick, enter_next: false, auto_width: false, sorted: None, focus_col: 0 }
+        Opts { cols: vec![], widths: vec![], add: true, delete: true, edit_on: EditOn::DoubleClick, enter_next: false, auto_width: false, sorted: None, focus_col: 0, alt: None, header_back: None, header_fore: None, footer: false, find: String::new(), find_mode: FindMode::CtrlF, copy_headers: true }
     }
 }
 
@@ -186,6 +383,558 @@ pub fn set_auto_width(h: HWND, on: bool) {
 pub fn has_check_columns(h: HWND) -> bool {
     let m = OPTS.lock().unwrap_or_else(|e| e.into_inner());
     m.as_ref().and_then(|m| m.get(&(h.0 as isize))).is_some_and(|o| o.cols.iter().any(|c| c.editor == Editor::Check))
+}
+
+fn has_opts(h: HWND) -> bool {
+    OPTS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|m| m.contains_key(&(h.0 as isize)))
+}
+
+fn color(s: &str) -> Option<crate::theme::Color> {
+    if s.trim().is_empty() { None } else { crate::theme::parse_color(s) }
+}
+
+fn redraw(h: HWND) {
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::RedrawWindow(Some(h), None, None, windows::Win32::Graphics::Gdi::RDW_INVALIDATE | windows::Win32::Graphics::Gdi::RDW_FRAME);
+    }
+}
+
+/// AlternateRowColor: every other row's background (`""`: none).
+pub fn set_alternate_row_color(h: HWND, c: &str) {
+    with_opts(h, |o| o.alt = color(c));
+    redraw(h);
+}
+
+/// HeaderBackColor and HeaderForeColor: the headings' colours (`""`: Windows' own).
+pub fn set_header_back_color(h: HWND, c: &str) {
+    with_opts(h, |o| o.header_back = color(c));
+    redraw(header_of(h));
+}
+
+pub fn set_header_fore_color(h: HWND, c: &str) {
+    with_opts(h, |o| o.header_fore = color(c));
+    redraw(header_of(h));
+}
+
+/// ShowFooter: a row under the rows with each column's total ([`Column::summary`]).
+pub fn set_show_footer(h: HWND, on: bool) {
+    with_opts(h, |o| o.footer = on);
+    frame_changed(h);
+}
+
+/// RowHeight: the rows this tall, in design pixels (0: as the font makes them).
+pub fn set_row_height(h: HWND, px: i32) {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        let list = if px > 0 { cc::ImageList_Create(1, win::px(h, px), cc::ILC_COLOR32, 1, 0) } else { cc::HIMAGELIST::default() };
+        let old = wm::SendMessageW(h, 0x1003 /* LVM_SETIMAGELIST */, Some(WPARAM(1 /* LVSIL_SMALL */)), Some(LPARAM(list.0 as isize))).0;
+        if old != 0 {
+            let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
+        }
+    }
+}
+
+/// FindPanel: `ctrl_f` (Ctrl+F opens the find box), `always` or `off`.
+pub fn set_find_panel(h: HWND, mode: &str) {
+    let m = match mode {
+        "always" => FindMode::Always,
+        "off" => FindMode::Off,
+        _ => FindMode::CtrlF,
+    };
+    with_opts(h, |o| o.find_mode = m);
+    if m == FindMode::Always {
+        open_find(h, false);
+    }
+}
+
+/// CopyColumnHeaders: Ctrl+C copies the headings with the rows.
+pub fn set_copy_headers(h: HWND, on: bool) {
+    with_opts(h, |o| o.copy_headers = on);
+}
+
+fn header_of(h: HWND) -> HWND {
+    HWND(unsafe { wm::SendMessageW(h, cc::LVM_GETHEADER, None, None).0 } as *mut _)
+}
+
+fn frame_changed(h: HWND) {
+    unsafe {
+        let _ = wm::SetWindowPos(h, None, 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE | wm::SWP_FRAMECHANGED);
+    }
+}
+
+/// A cell's colours: the grid's, every other row's, the rules' (the row's first, then the
+/// cell's own), what the find box found, the chosen row's.
+fn cell_colors(h: HWND, row: usize, col: usize, selected: bool) -> (crate::theme::Color, crate::theme::Color) {
+    let (mut bg, mut fg) = win::list_colors(h);
+    let (alt, cols, find) = with_opts(h, |o| (o.alt, o.cols.clone(), o.find.clone()));
+    if row % 2 == 1 {
+        if let Some(a) = alt {
+            bg = a;
+        }
+    }
+    let apply = |r: &Rule, bg: &mut crate::theme::Color, fg: &mut crate::theme::Color| {
+        if let Some(c) = color(&r.back) {
+            *bg = c;
+        }
+        if let Some(c) = color(&r.fore) {
+            *fg = c;
+        }
+    };
+    for (i, c) in cols.iter().enumerate() {
+        let rules: Vec<&Rule> = c.rules.iter().filter(|r| r.row).collect();
+        if !rules.is_empty() {
+            let v = cell(h, row, i);
+            for r in rules.into_iter().filter(|r| r.matches(&v)) {
+                apply(r, &mut bg, &mut fg);
+            }
+        }
+    }
+    if let Some(c) = cols.get(col) {
+        let v = cell(h, row, col);
+        for r in c.rules.iter().filter(|r| !r.row && r.matches(&v)) {
+            apply(r, &mut bg, &mut fg);
+        }
+    }
+    if !find.is_empty() && cell(h, row, col).to_lowercase().contains(&find) {
+        bg = crate::theme::Color::rgb(255, 236, 153);
+        fg = crate::theme::Color::rgb(27, 27, 27);
+    } else if selected {
+        (bg, fg) = win::list_selection_colors(h);
+    }
+    (bg, fg)
+}
+
+/// `NM_CUSTOMDRAW` for a grid with properties of its own: each cell painted here - its colours,
+/// its value as its format shows it, a check box. `None` for any other list.
+pub fn custom_draw(l: LPARAM) -> Option<LRESULT> {
+    use windows::Win32::Graphics::Gdi;
+    let cd = unsafe { &mut *(l.0 as *mut cc::NMLVCUSTOMDRAW) };
+    let h = cd.nmcd.hdr.hwndFrom;
+    if !has_opts(h) {
+        return None;
+    }
+    let stage = cd.nmcd.dwDrawStage.0;
+    if stage == cc::CDDS_PREPAINT.0 {
+        return Some(LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize));
+    }
+    if stage == cc::CDDS_ITEMPREPAINT.0 {
+        return Some(LRESULT(cc::CDRF_NOTIFYSUBITEMDRAW as isize));
+    }
+    if stage != cc::CDDS_ITEMPREPAINT.0 | cc::CDDS_SUBITEM.0 {
+        return Some(LRESULT(cc::CDRF_DODEFAULT as isize));
+    }
+    let (row, col) = (cd.nmcd.dwItemSpec, cd.iSubItem.max(0) as usize);
+    let selected = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMSTATE, Some(WPARAM(row)), Some(LPARAM(cc::LVIS_SELECTED.0 as isize))).0 } as u32 & cc::LVIS_SELECTED.0 != 0;
+    let (bg, fg) = cell_colors(h, row, col, selected);
+    let dc = cd.nmcd.hdc;
+    if draw_check_cell(h, dc, row, col, bg, fg) {
+        return Some(LRESULT(cc::CDRF_SKIPDEFAULT as isize));
+    }
+    let mut r = RECT { top: col as i32, left: 0, ..Default::default() };
+    unsafe {
+        wm::SendMessageW(h, cc::LVM_GETSUBITEMRECT, Some(WPARAM(row)), Some(LPARAM(&mut r as *mut _ as isize)));
+    }
+    if col == 0 {
+        let w0 = unsafe { wm::SendMessageW(h, cc::LVM_GETCOLUMNWIDTH, Some(WPARAM(0)), None).0 } as i32;
+        r.right = r.left + w0;
+    }
+    if r.right <= r.left {
+        return Some(LRESULT(cc::CDRF_SKIPDEFAULT as isize));
+    }
+    // Inside the grid lines.
+    win::fill(dc, &RECT { right: r.right - 1, bottom: r.bottom - 1, ..r }, bg);
+    let c = column(h, col);
+    let text = format_value(&c.format, &cell(h, row, col));
+    let pad = win::px(h, 6);
+    let mut tr = RECT { left: r.left + pad, right: r.right - pad, ..r };
+    let align = match c.align {
+        Align::Left => Gdi::DT_LEFT,
+        Align::Center => Gdi::DT_CENTER,
+        Align::Right => Gdi::DT_RIGHT,
+    };
+    unsafe {
+        let font = Gdi::HGDIOBJ(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
+        let old = Gdi::SelectObject(dc, font);
+        Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(fg.colorref()));
+        let mut w = win::wide(&text);
+        w.pop();
+        Gdi::DrawTextW(dc, &mut w, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
+        Gdi::SelectObject(dc, old);
+    }
+    Some(LRESULT(cc::CDRF_SKIPDEFAULT as isize))
+}
+
+/// The footer's height: a row when it is shown, else none.
+fn footer_height(h: HWND) -> i32 {
+    if with_opts(h, |o| o.footer || o.cols.iter().any(|c| c.summary != Summary::None)) { win::px(h, 26) } else { 0 }
+}
+
+/// A column's total as its footer says it.
+fn summary_text(h: HWND, col: usize, c: &Column) -> String {
+    let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+    let values: Vec<String> = (0..rows).map(|r| cell(h, r, col)).filter(|v| !v.trim().is_empty()).collect();
+    let nums: Vec<f64> = values.iter().filter_map(|v| v.trim().replace(',', "").parse::<f64>().ok()).collect();
+    let show = |n: f64| {
+        if !c.format.is_empty() {
+            format_value(&c.format, &n.to_string())
+        } else if nums.iter().all(|x| x.fract() == 0.0) && n.fract() == 0.0 {
+            grouped(n, 0)
+        } else {
+            grouped(n, 2)
+        }
+    };
+    let (label, value) = match c.summary {
+        Summary::None => return String::new(),
+        Summary::Count => (crate::text::t("Count"), grouped(values.len() as f64, 0)),
+        Summary::Sum => (crate::text::t("Sum"), show(nums.iter().sum())),
+        Summary::Average => (crate::text::t("Average"), if nums.is_empty() { String::new() } else { grouped(nums.iter().sum::<f64>() / nums.len() as f64, 2) }),
+        Summary::Min => (crate::text::t("Min"), nums.iter().copied().fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.min(x)))).map(show).unwrap_or_default()),
+        Summary::Max => (crate::text::t("Max"), nums.iter().copied().fold(None, |m: Option<f64>, x| Some(m.map_or(x, |m| m.max(x)))).map(show).unwrap_or_default()),
+    };
+    format!("{label} = {value}")
+}
+
+/// The footer painted in the edge below the rows: each column's total under it.
+fn paint_footer(h: HWND) {
+    use windows::Win32::Graphics::Gdi;
+    let fh = footer_height(h);
+    if fh == 0 {
+        return;
+    }
+    unsafe {
+        let mut wr = RECT::default();
+        let _ = wm::GetWindowRect(h, &mut wr);
+        let mut cr = RECT::default();
+        let _ = wm::GetClientRect(h, &mut cr);
+        let mut o = [windows::Win32::Foundation::POINT { x: 0, y: 0 }];
+        Gdi::MapWindowPoints(Some(h), None, &mut o);
+        let (ox, oy) = (o[0].x - wr.left, o[0].y - wr.top);
+        let dc = Gdi::GetWindowDC(Some(h));
+        let top = oy + cr.bottom;
+        let back = with_opts(h, |o| o.header_back).unwrap_or_else(|| crate::theme::Color::rgb(243, 243, 243));
+        let fore = with_opts(h, |o| o.header_fore).unwrap_or_else(|| win::list_colors(h).1);
+        win::fill(dc, &RECT { left: ox, top, right: ox + cr.right, bottom: top + fh }, back);
+        win::fill(dc, &RECT { left: ox, top, right: ox + cr.right, bottom: top + 1 }, win::list_border_color(h));
+        let font = Gdi::HGDIOBJ(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
+        let old = Gdi::SelectObject(dc, font);
+        Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(fore.colorref()));
+        let header = header_of(h);
+        let rgn = Gdi::CreateRectRgn(ox, top, ox + cr.right, top + fh);
+        let _ = Gdi::SelectClipRgn(dc, Some(rgn));
+        for i in 0..columns(h) {
+            let c = column(h, i);
+            if c.summary == Summary::None || !c.visible {
+                continue;
+            }
+            let mut ir = RECT::default();
+            wm::SendMessageW(header, cc::HDM_GETITEMRECT, Some(WPARAM(i)), Some(LPARAM(&mut ir as *mut _ as isize)));
+            let mut p = [windows::Win32::Foundation::POINT { x: ir.left, y: 0 }, windows::Win32::Foundation::POINT { x: ir.right, y: 0 }];
+            Gdi::MapWindowPoints(Some(header), Some(h), &mut p);
+            let pad = win::px(h, 6);
+            let mut tr = RECT { left: ox + p[0].x + pad, right: ox + p[1].x - pad, top: top + 1, bottom: top + fh };
+            let mut w = win::wide(&summary_text(h, i, &c));
+            w.pop();
+            let align = match c.align {
+                Align::Left => Gdi::DT_LEFT,
+                Align::Center => Gdi::DT_CENTER,
+                Align::Right => Gdi::DT_RIGHT,
+            };
+            Gdi::DrawTextW(dc, &mut w, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
+        }
+        let _ = Gdi::SelectClipRgn(dc, None);
+        let _ = Gdi::DeleteObject(rgn.into());
+        Gdi::SelectObject(dc, old);
+        Gdi::ReleaseDC(Some(h), dc);
+    }
+}
+
+/// The headings in the grid's own colours, the sort arrow drawn too. `None`: Windows draws them.
+fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
+    use windows::Win32::Graphics::Gdi;
+    let (back, fore, sorted) = with_opts(h, |o| (o.header_back, o.header_fore, o.sorted));
+    if back.is_none() && fore.is_none() {
+        return None;
+    }
+    let cd = unsafe { &mut *(l.0 as *mut cc::NMCUSTOMDRAW) };
+    let back = back.unwrap_or_else(|| win::list_colors(h).0);
+    let fore = fore.unwrap_or_else(|| win::list_colors(h).1);
+    if cd.dwDrawStage == cc::CDDS_PREPAINT {
+        win::fill(cd.hdc, &cd.rc, back);
+        return Some(LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize));
+    }
+    if cd.dwDrawStage != cc::CDDS_ITEMPREPAINT {
+        return Some(LRESULT(cc::CDRF_DODEFAULT as isize));
+    }
+    let i = cd.dwItemSpec;
+    let r = cd.rc;
+    win::fill(cd.hdc, &r, back);
+    // The line between headings.
+    win::fill(cd.hdc, &RECT { left: r.right - 1, ..r }, win::list_border_color(h));
+    let mut buf = [0u16; 260];
+    let mut it = cc::HDITEMW { mask: cc::HDI_TEXT, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 260, ..Default::default() };
+    unsafe {
+        wm::SendMessageW(cd.hdr.hwndFrom, cc::HDM_GETITEMW, Some(WPARAM(i)), Some(LPARAM(&mut it as *mut _ as isize)));
+    }
+    let n = buf.iter().position(|c| *c == 0).unwrap_or(0);
+    let mut text: Vec<u16> = buf[..n].to_vec();
+    let pad = win::px(h, 6);
+    let arrow = win::px(h, 12);
+    let mut tr = RECT { left: r.left + pad, right: r.right - pad - if sorted.is_some_and(|(c, _)| c == i) { arrow } else { 0 }, ..r };
+    let align = match column(h, i).align {
+        Align::Left => Gdi::DT_LEFT,
+        Align::Center => Gdi::DT_CENTER,
+        Align::Right => Gdi::DT_RIGHT,
+    };
+    unsafe {
+        Gdi::SetBkMode(cd.hdc, Gdi::TRANSPARENT);
+        Gdi::SetTextColor(cd.hdc, windows::Win32::Foundation::COLORREF(fore.colorref()));
+        Gdi::DrawTextW(cd.hdc, &mut text, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
+    }
+    if let Some((c, up)) = sorted.filter(|(c, _)| *c == i) {
+        let _ = c;
+        let size = win::px(h, 10);
+        if let Some(icon) = crate::icon::glyph_icon(if up { 0xE70E } else { 0xE70D }, size, fore) {
+            unsafe {
+                let _ = wm::DrawIconEx(cd.hdc, r.right - pad - size, r.top + (r.bottom - r.top - size) / 2, icon, size, size, 0, None, wm::DI_NORMAL);
+                let _ = wm::DestroyIcon(icon);
+            }
+        }
+    }
+    Some(LRESULT(cc::CDRF_SKIPDEFAULT as isize))
+}
+
+const FIND_ID: i32 = 0x7E02;
+
+fn find_box(h: HWND) -> Option<HWND> {
+    unsafe { wm::GetDlgItem(Some(h), FIND_ID) }.ok().filter(|e| !e.is_invalid())
+}
+
+/// The find box over the headings' right end, as DevExpress's find panel: what is typed is found
+/// in the cells (marked), Enter goes to the next row that has it, Escape closes it.
+fn open_find(h: HWND, focus: bool) {
+    if with_opts(h, |o| o.find_mode) == FindMode::Off {
+        return;
+    }
+    let e = match find_box(h) {
+        Some(e) => e,
+        None => {
+            let font = windows::Win32::Graphics::Gdi::HFONT(unsafe { wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 } as *mut _);
+            let e = win::edit(h, "", FIND_ID, font, false);
+            let cue = win::wide(crate::text::t("Find..."));
+            unsafe {
+                wm::SendMessageW(e, 0x1501 /* EM_SETCUEBANNER */, Some(WPARAM(1)), Some(LPARAM(cue.as_ptr() as isize)));
+                let _ = SetWindowSubclass(e, Some(find_proc), 9, h.0 as usize);
+            }
+            e
+        }
+    };
+    place_find(h);
+    if focus {
+        unsafe {
+            let _ = km::SetFocus(Some(e));
+            wm::SendMessageW(e, 0x00B1, Some(WPARAM(0)), Some(LPARAM(-1)));
+        }
+    }
+}
+
+fn place_find(h: HWND) {
+    let Some(e) = find_box(h) else { return };
+    let mut cr = RECT::default();
+    let mut hr = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut cr);
+        let _ = wm::GetWindowRect(header_of(h), &mut hr);
+    }
+    let hh = (hr.bottom - hr.top).max(win::px(h, 24));
+    let w = win::px(h, 220).min(cr.right);
+    win::move_to(e, cr.right - w, 0, w, hh);
+    unsafe {
+        let _ = wm::SetWindowPos(e, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_SHOWWINDOW);
+    }
+}
+
+fn close_find(h: HWND) {
+    if with_opts(h, |o| o.find_mode) == FindMode::Always {
+        if let Some(e) = find_box(h) {
+            win::set_text(e, "");
+        }
+    } else if let Some(e) = find_box(h) {
+        unsafe {
+            let _ = wm::DestroyWindow(e);
+        }
+    }
+    with_opts(h, |o| o.find.clear());
+    unsafe {
+        let _ = km::SetFocus(Some(h));
+        let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(h), None, true);
+    }
+}
+
+/// The next row from `from` (round to the top) with a cell that has what is looked for: chosen.
+fn find_next(h: HWND, from: usize) {
+    let find = with_opts(h, |o| o.find.clone());
+    if find.is_empty() {
+        return;
+    }
+    let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+    let n = columns(h);
+    for k in 0..rows {
+        let r = (from + k) % rows.max(1);
+        if (0..n).any(|c| column(h, c).visible && cell(h, r, c).to_lowercase().contains(&find)) {
+            win::list_select(h, r);
+            return;
+        }
+    }
+}
+
+unsafe extern "system" fn find_proc(e: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, grid: usize) -> LRESULT {
+    let g = HWND(grid as *mut _);
+    match msg {
+        wm::WM_GETDLGCODE => LRESULT(4),
+        wm::WM_KEYDOWN if w.0 == 0x0D => {
+            find_next(g, chosen_row(g).map(|r| r + 1).unwrap_or(0));
+            LRESULT(0)
+        }
+        wm::WM_KEYDOWN if w.0 == 0x1B => {
+            close_find(g);
+            LRESULT(0)
+        }
+        wm::WM_CHAR if w.0 == 0x0D || w.0 == 0x1B => LRESULT(0),
+        _ => unsafe { DefSubclassProc(e, msg, w, l) },
+    }
+}
+
+fn set_clipboard(h: HWND, text: &str) {
+    use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
+    use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+    let w: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+    unsafe {
+        if OpenClipboard(Some(h)).is_err() {
+            return;
+        }
+        let _ = EmptyClipboard();
+        if let Ok(mem) = GlobalAlloc(GMEM_MOVEABLE, w.len() * 2) {
+            let p = GlobalLock(mem) as *mut u16;
+            if !p.is_null() {
+                std::ptr::copy_nonoverlapping(w.as_ptr(), p, w.len());
+                let _ = GlobalUnlock(mem);
+                let _ = SetClipboardData(13 /* CF_UNICODETEXT */, Some(windows::Win32::Foundation::HANDLE(mem.0)));
+            }
+        }
+        let _ = CloseClipboard();
+    }
+}
+
+fn get_clipboard(h: HWND) -> Option<String> {
+    use windows::Win32::Foundation::HGLOBAL;
+    use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
+    use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+    unsafe {
+        OpenClipboard(Some(h)).ok()?;
+        let out = (|| {
+            let data = GetClipboardData(13).ok()?;
+            let mem = HGLOBAL(data.0);
+            let p = GlobalLock(mem) as *const u16;
+            if p.is_null() {
+                return None;
+            }
+            let mut n = 0;
+            while *p.add(n) != 0 {
+                n += 1;
+            }
+            let s = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+            let _ = GlobalUnlock(mem);
+            Some(s)
+        })();
+        let _ = CloseClipboard();
+        out
+    }
+}
+
+/// The chosen rows as tab-separated lines (the shown columns; the headings first when it says),
+/// as a spreadsheet takes them.
+pub fn copy_rows(h: HWND) -> String {
+    let n = columns(h);
+    let shown: Vec<usize> = (0..n).filter(|c| column(h, *c).visible).collect();
+    let mut lines = Vec::new();
+    if with_opts(h, |o| o.copy_headers) {
+        let header = header_of(h);
+        let heads: Vec<String> = shown
+            .iter()
+            .map(|i| {
+                let mut buf = [0u16; 260];
+                let mut it = cc::HDITEMW { mask: cc::HDI_TEXT, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 260, ..Default::default() };
+                unsafe {
+                    wm::SendMessageW(header, cc::HDM_GETITEMW, Some(WPARAM(*i)), Some(LPARAM(&mut it as *mut _ as isize)));
+                }
+                String::from_utf16_lossy(&buf[..buf.iter().position(|c| *c == 0).unwrap_or(0)])
+            })
+            .collect();
+        lines.push(heads.join("\t"));
+    }
+    let mut r = -1isize;
+    loop {
+        r = unsafe { wm::SendMessageW(h, cc::LVM_GETNEXTITEM, Some(WPARAM(r as usize)), Some(LPARAM(2))).0 };
+        if r < 0 {
+            break;
+        }
+        lines.push(shown.iter().map(|c| cell(h, r as usize, *c).replace(['\t', '\n', '\r'], " ")).collect::<Vec<_>>().join("\t"));
+    }
+    lines.join("\r\n")
+}
+
+/// Tab-separated lines pasted from the chosen row down: into the shown columns that may be
+/// changed, rows added past the end when rows may be added. A line of the headings is passed by.
+pub fn paste_rows(h: HWND, text: &str) {
+    let n = columns(h);
+    let shown: Vec<usize> = (0..n).filter(|c| column(h, *c).visible).collect();
+    let start = chosen_row(h).unwrap_or(0);
+    let mut row = start;
+    let mut changed = false;
+    let heads = copy_headers_line(h, &shown);
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        if line.trim_end() == heads {
+            continue;
+        }
+        let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+        if row >= rows {
+            if !with_opts(h, |o| o.add) {
+                break;
+            }
+            let blank: Vec<&str> = vec![""; n.max(1)];
+            grid_add(h, &blank);
+        }
+        for (k, v) in line.split('\t').enumerate() {
+            let Some(&c) = shown.get(k) else { break };
+            let col = column(h, c);
+            if !col.read_only {
+                set_cell(h, row, c, v.trim_end_matches('\r'));
+                changed = true;
+            }
+        }
+        row += 1;
+    }
+    if changed {
+        tell_changed(h);
+    }
+}
+
+fn copy_headers_line(h: HWND, shown: &[usize]) -> String {
+    let header = header_of(h);
+    shown
+        .iter()
+        .map(|i| {
+            let mut buf = [0u16; 260];
+            let mut it = cc::HDITEMW { mask: cc::HDI_TEXT, pszText: windows::core::PWSTR(buf.as_mut_ptr()), cchTextMax: 260, ..Default::default() };
+            unsafe {
+                wm::SendMessageW(header, cc::HDM_GETITEMW, Some(WPARAM(*i)), Some(LPARAM(&mut it as *mut _ as isize)));
+            }
+            String::from_utf16_lossy(&buf[..buf.iter().position(|c| *c == 0).unwrap_or(0)])
+        })
+        .collect::<Vec<_>>()
+        .join("\t")
 }
 
 /// Whether a cell's words say yes: `1`, `true`, `yes`, `y`, `on`, `✓`.
@@ -569,7 +1318,18 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
         if hdr.hwndFrom.0 as isize == header {
             let nm = unsafe { &*(l.0 as *const cc::NMHEADERW) };
             let i = nm.iItem.max(0) as usize;
+            if hdr.code == cc::NM_CUSTOMDRAW {
+                if let Some(r) = header_custom_draw(h, l) {
+                    return r;
+                }
+            }
             match hdr.code as i32 {
+                -321 /* HDN_ITEMCHANGEDW */ | -301 /* HDN_ITEMCHANGEDA */ => {
+                    let r = unsafe { DefSubclassProc(h, msg, w, l) };
+                    redraw(h);
+                    place_find(h);
+                    return r;
+                }
                 -322 /* HDN_ITEMCLICKW */ => {
                     if column(h, i).allow_sort && column(h, i).visible {
                         let up = with_opts(h, |o| o.sorted).is_none_or(|(c, up)| c != i || !up);
@@ -594,6 +1354,54 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
         return unsafe { DefSubclassProc(h, msg, w, l) };
     }
     match msg {
+        wm::WM_COMMAND if win::loword(w.0) as i32 == FIND_ID => {
+            if win::hiword(w.0) == 0x0300 /* EN_CHANGE */ {
+                let text = find_box(h).map(win::text_of).unwrap_or_default().trim().to_lowercase();
+                with_opts(h, |o| o.find = text);
+                find_next(h, 0);
+                unsafe {
+                    let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(h), None, true);
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_KEYDOWN if unsafe { km::GetKeyState(0x11) } < 0 && matches!(w.0, 0x46 | 0x43 | 0x56 | 0x41) => {
+            match w.0 {
+                0x46 /* Ctrl+F */ => open_find(h, true),
+                0x43 /* Ctrl+C */ => {
+                    let text = copy_rows(h);
+                    set_clipboard(h, &text);
+                }
+                0x56 /* Ctrl+V */ => {
+                    if !is_read_only(h) {
+                        if let Some(text) = get_clipboard(h) {
+                            paste_rows(h, &text);
+                        }
+                    }
+                }
+                _ /* Ctrl+A */ => {
+                    let it = cc::LVITEMW { stateMask: cc::LVIS_SELECTED, state: cc::LVIS_SELECTED, ..Default::default() };
+                    unsafe {
+                        wm::SendMessageW(h, cc::LVM_SETITEMSTATE, Some(WPARAM(usize::MAX)), Some(LPARAM(&it as *const _ as isize)));
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_NCCALCSIZE if w.0 != 0 => {
+            let r = unsafe { DefSubclassProc(h, msg, w, l) };
+            let fh = footer_height(h);
+            if fh > 0 {
+                let p = unsafe { &mut *(l.0 as *mut wm::NCCALCSIZE_PARAMS) };
+                p.rgrc[0].bottom -= fh;
+            }
+            r
+        }
+        wm::WM_NCPAINT | wm::WM_PAINT => {
+            let r = unsafe { DefSubclassProc(h, msg, w, l) };
+            paint_footer(h);
+            r
+        }
         wm::WM_LBUTTONDOWN => {
             let r = unsafe { DefSubclassProc(h, msg, w, l) };
             let (x, y) = win::point_of(l);
@@ -656,6 +1464,7 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
             if with_opts(h, |o| o.auto_width) {
                 fit_columns(h);
             }
+            place_find(h);
             r
         }
         wm::WM_NCDESTROY => {
@@ -666,9 +1475,14 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
             grid_idle(h);
             LRESULT(0)
         }
-        wm::WM_VSCROLL | wm::WM_HSCROLL | wm::WM_MOUSEWHEEL => {
+        wm::WM_VSCROLL | wm::WM_HSCROLL | wm::WM_MOUSEWHEEL | wm::WM_MOUSEHWHEEL => {
             close_editor(h, true);
-            unsafe { DefSubclassProc(h, msg, w, l) }
+            let r = unsafe { DefSubclassProc(h, msg, w, l) };
+            // The footer's totals follow their columns sideways.
+            if msg != wm::WM_VSCROLL {
+                redraw(h);
+            }
+            r
         }
         _ => unsafe { DefSubclassProc(h, msg, w, l) },
     }
@@ -754,6 +1568,34 @@ pub fn richtext(parent: HWND, id: i32, f: windows::Win32::Graphics::Gdi::HFONT, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Values shown as their column's format says, kept as they are underneath; what does not
+    /// fit a format shown as it is.
+    #[test]
+    fn display_formats() {
+        assert_eq!(format_value("n2", "1234.5"), "1,234.50");
+        assert_eq!(format_value("n0", "-1234567"), "-1,234,567");
+        assert_eq!(format_value("c2", "99"), "฿99.00");
+        assert_eq!(format_value("p0", "0.15"), "15%");
+        assert_eq!(format_value("d", "2026-11-21"), "21/11/2026");
+        assert_eq!(format_value("dt", "2026-11-21 08:30:00"), "21/11/2026 08:30");
+        assert_eq!(format_value("n2", "abc"), "abc");
+        assert_eq!(format_value("", "x"), "x");
+    }
+
+    /// A rule's line read and written back; numbers compared as numbers.
+    #[test]
+    fn format_rules() {
+        let r = Rule::parse("> 1000 back=#ffe4e4 fore=red row").unwrap();
+        assert_eq!((r.op.as_str(), r.value.as_str(), r.back.as_str(), r.fore.as_str(), r.row), (">", "1000", "#ffe4e4", "red", true));
+        assert_eq!(Rule::parse(&r.text()), Some(r.clone()));
+        assert!(r.matches("1,500") && !r.matches("999") && !r.matches("200"));
+        let c = Rule::parse("contains \"ส่งแล้ว\" fore=green").unwrap();
+        assert!(c.matches("ส่งแล้ววันนี้") && !c.matches("รอส่ง"));
+        assert!(Rule::parse("empty back=#eee").unwrap().matches("  "));
+        assert!(Rule::parse("between 1 2").is_none() && Rule::parse("> 1 colour=red").is_none());
+        assert_eq!(rules(&["= 1 back=#eee", "nonsense"]).len(), 1);
+    }
 
     #[test]
     fn a_double_click_under_the_rows_adds_one_and_enter_keeps_what_is_typed() {
