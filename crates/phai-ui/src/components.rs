@@ -74,6 +74,8 @@ fn file_dialog(owner: HWND, save: bool, title: &str, filter: &str, dir: &str, ex
 #[derive(Clone, Debug, Default)]
 pub struct OpenFileDialog {
     pub owner: HWND,
+    /// Its id on the form: FileOk is raised to the form with it (0: no FileOk).
+    pub id: i32,
     pub title: String,
     /// `Text files|*.txt|All files|*.*`.
     pub filter: String,
@@ -84,15 +86,38 @@ pub struct OpenFileDialog {
 
 impl OpenFileDialog {
     pub fn new(owner: HWND, title: &str, filter: &str, initial_directory: &str, default_ext: &str, multiselect: bool) -> OpenFileDialog {
-        OpenFileDialog { owner, title: title.into(), filter: filter.into(), initial_directory: initial_directory.into(), default_ext: default_ext.into(), multiselect }
+        OpenFileDialog { owner, id: 0, title: title.into(), filter: filter.into(), initial_directory: initial_directory.into(), default_ext: default_ext.into(), multiselect }
+    }
+    /// Its id on the form, for its FileOk.
+    pub fn with_id(mut self, id: i32) -> OpenFileDialog {
+        self.id = id;
+        self
     }
     /// The file chosen, or `None` for Cancel.
     pub fn show_dialog(&self) -> Option<PathBuf> {
-        file_dialog(self.owner, false, &self.title, &self.filter, &self.initial_directory, &self.default_ext, "", false).into_iter().next()
+        checked(self.owner, self.id, |name| file_dialog(self.owner, false, &self.title, &self.filter, &self.initial_directory, &self.default_ext, name, false)).into_iter().next()
     }
     /// Every file chosen (Multiselect); none for Cancel.
     pub fn show_dialog_multi(&self) -> Vec<PathBuf> {
-        file_dialog(self.owner, false, &self.title, &self.filter, &self.initial_directory, &self.default_ext, "", self.multiselect)
+        checked(self.owner, self.id, |name| file_dialog(self.owner, false, &self.title, &self.filter, &self.initial_directory, &self.default_ext, name, self.multiselect))
+    }
+}
+
+/// A file dialog shown, its choice put to the form's FileOk (when it has an id): cancelled,
+/// the dialog opens again at once on the same choice, as if it had stayed open.
+fn checked(owner: HWND, id: i32, show: impl Fn(&str) -> Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut name = String::new();
+    loop {
+        let files = show(&name);
+        if files.is_empty() || id == 0 {
+            return files;
+        }
+        let e = crate::events::FileOkEventArgs::new(files.clone());
+        crate::events::raise(owner, id, crate::events::FILE_OK, &e);
+        if !e.cancelled() {
+            return files;
+        }
+        name = files[0].to_string_lossy().to_string();
     }
 }
 
@@ -100,6 +125,8 @@ impl OpenFileDialog {
 #[derive(Clone, Debug, Default)]
 pub struct SaveFileDialog {
     pub owner: HWND,
+    /// Its id on the form: FileOk is raised to the form with it (0: no FileOk).
+    pub id: i32,
     pub title: String,
     pub filter: String,
     pub initial_directory: String,
@@ -108,14 +135,19 @@ pub struct SaveFileDialog {
 
 impl SaveFileDialog {
     pub fn new(owner: HWND, title: &str, filter: &str, initial_directory: &str, default_ext: &str) -> SaveFileDialog {
-        SaveFileDialog { owner, title: title.into(), filter: filter.into(), initial_directory: initial_directory.into(), default_ext: default_ext.into() }
+        SaveFileDialog { owner, id: 0, title: title.into(), filter: filter.into(), initial_directory: initial_directory.into(), default_ext: default_ext.into() }
+    }
+    /// Its id on the form, for its FileOk.
+    pub fn with_id(mut self, id: i32) -> SaveFileDialog {
+        self.id = id;
+        self
     }
     pub fn show_dialog(&self) -> Option<PathBuf> {
         self.show_dialog_named("")
     }
     /// With `name` (FileName) in its box to begin with.
     pub fn show_dialog_named(&self, name: &str) -> Option<PathBuf> {
-        file_dialog(self.owner, true, &self.title, &self.filter, &self.initial_directory, &self.default_ext, name, false).into_iter().next()
+        checked(self.owner, self.id, |again| file_dialog(self.owner, true, &self.title, &self.filter, &self.initial_directory, &self.default_ext, if again.is_empty() { name } else { again }, false)).into_iter().next()
     }
 }
 
@@ -461,6 +493,41 @@ impl NotifyIcon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// FileOk cancelled: the dialog is shown again on the file chosen; let be, the choice stands.
+    #[test]
+    fn file_ok_cancelled_shows_the_dialog_again_on_the_same_file() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static ASKED: AtomicUsize = AtomicUsize::new(0);
+        extern "system" fn host(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+            if msg == crate::events::WM_EVENT && crate::events::decode(w) == (7, crate::events::FILE_OK) {
+                let e = unsafe { crate::events::args::<crate::events::FileOkEventArgs>(l) };
+                // The first choice refused.
+                if ASKED.fetch_add(1, Ordering::SeqCst) == 0 {
+                    e.cancel();
+                }
+                return LRESULT(0);
+            }
+            win::def(h, msg, w, l)
+        }
+        win::init();
+        let class = win::register("PhaiFileOkTestHost", Some(host), None);
+        let owner = unsafe { wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_OVERLAPPEDWINDOW, 0, 0, 100, 100, None, None, Some(win::instance()), None).unwrap_or_default() };
+        let shown = std::cell::RefCell::new(Vec::new());
+        let got = checked(owner, 7, |name| {
+            shown.borrow_mut().push(name.to_string());
+            vec![PathBuf::from(r"C:\data\first.txt")]
+        });
+        assert_eq!(*shown.borrow(), vec![String::new(), r"C:\data\first.txt".to_string()], "shown again on the same file");
+        assert_eq!(got, vec![PathBuf::from(r"C:\data\first.txt")]);
+        assert_eq!(ASKED.load(Ordering::SeqCst), 2);
+        // No id: no FileOk asked.
+        assert_eq!(checked(owner, 0, |_| vec![PathBuf::from("x")]), vec![PathBuf::from("x")]);
+        assert_eq!(ASKED.load(Ordering::SeqCst), 2);
+        unsafe {
+            let _ = wm::DestroyWindow(owner);
+        }
+    }
 
     #[test]
     fn a_winforms_filter_becomes_windows_pairs() {

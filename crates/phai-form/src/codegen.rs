@@ -243,6 +243,7 @@ fn event_const(code: u16) -> &'static str {
         e::DRAG_DROP => "DRAG_DROP",
         e::PRINT_PAGE => "PRINT_PAGE",
         e::POSITION_CHANGED => "POSITION_CHANGED",
+        e::FILE_OK => "FILE_OK",
         _ => "RESIZE",
     }
 }
@@ -645,8 +646,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Link => format!("phai_ui::extra::link_label(hwnd, {text}, {id}, {font})"),
             Kind::Masked => format!("phai_ui::extra::masked(hwnd, {}, {}, {id}, {font})", lit(c.word("mask").unwrap_or("")), lit(&text_of(c))),
             Kind::Calendar => format!("phai_ui::extra::calendar(hwnd, {id}, {font})"),
-            Kind::OpenFile => format!("phai_ui::ctl::OpenFileDialog::new(hwnd, {}, {}, {}, {}, {})", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or("")), c.flag("multiselect", false)),
-            Kind::SaveFile => format!("phai_ui::ctl::SaveFileDialog::new(hwnd, {}, {}, {}, {})", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or(""))),
+            Kind::OpenFile => format!("phai_ui::ctl::OpenFileDialog::new(hwnd, {}, {}, {}, {}, {}){}", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or("")), c.flag("multiselect", false), if c.events.contains_key("file_ok") { format!(".with_id({id})") } else { String::new() }),
+            Kind::SaveFile => format!("phai_ui::ctl::SaveFileDialog::new(hwnd, {}, {}, {}, {}){}", words(c, "title"), words(c, "filter"), lit(c.word("initial_directory").unwrap_or("")), lit(c.word("default_ext").unwrap_or("")), if c.events.contains_key("file_ok") { format!(".with_id({id})") } else { String::new() }),
             Kind::FolderDialog => format!("phai_ui::ctl::FolderBrowserDialog::new(hwnd, {}, {})", words(c, "title"), lit(c.word("initial_directory").unwrap_or(""))),
             Kind::Split => {
                 let (vertical, d) = c.split_bar();

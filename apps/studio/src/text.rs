@@ -1092,6 +1092,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("Open or Save clicked - e.file(), e.files; e.cancel() keeps the dialog open for another choice.", "กด Open หรือ Save แล้ว - e.file(), e.files; e.cancel() ให้หน้าต่างเลือกไฟล์ค้างไว้เพื่อเลือกใหม่"),
     ("The menu is about to open - tick, grey or rename its items here.", "เมนูกำลังจะเปิด - ติ๊ก ปิดใช้ หรือเปลี่ยนชื่อรายการได้ตรงนี้"),
     ("The menu bar is being used: a menu opened from it, or Alt pressed.", "เริ่มใช้แถบเมนู: เปิดเมนูจากแถบ หรือกด Alt"),
     ("The menu bar is no longer being used.", "เลิกใช้แถบเมนูแล้ว"),

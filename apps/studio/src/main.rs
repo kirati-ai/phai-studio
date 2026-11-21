@@ -11816,6 +11816,10 @@ impl MainWindowEvents for MainWindow {
         lab.context_menu = Some("label_menu".into());
         f.control.push(lab);
         f.control.push(cm);
+        // An open-file dialog with its FileOk: built.
+        let mut od = phai_form::Control::new(Kind::OpenFile, "open_file", [0, 0, 0, 0]);
+        od.events.insert("file_ok".into(), "open_file_ok".into());
+        f.control.push(od);
         assert!(f.check().is_empty(), "{:?}", f.check());
         assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
         std::fs::write(&form_path, f.to_toml()).unwrap();
@@ -11879,6 +11883,12 @@ impl MainWindowEvents for MainWindow {
     }
 
     fn label_menu_opening(&mut self, _ui: &MainWindowUi) {}
+
+    fn open_file_ok(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::FileOkEventArgs) {
+        if e.file().is_some_and(|f| f.extension().is_none()) {
+            e.cancel();
+        }
+    }
 
     fn copy_words(&mut self, _ui: &MainWindowUi) {}
 
