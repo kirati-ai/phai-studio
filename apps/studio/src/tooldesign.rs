@@ -33,6 +33,9 @@ struct Designer {
     sel: Option<usize>,
     /// The strip on the screen: where the form's toolbar is (or will be).
     strip: RECT,
+    /// When it opened on a button clicked on the form: a click on that button right after is
+    /// the second half of a double-click.
+    opened: Option<(usize, std::time::Instant)>,
     cells: Vec<(RECT, Hit)>,
     busy: bool,
     done: bool,
@@ -63,7 +66,7 @@ pub fn open(chosen: Option<usize>) {
         let h = wm::CreateWindowExW(wm::WS_EX_LAYERED | wm::WS_EX_TOOLWINDOW, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP, strip.left, strip.top, strip.right - strip.left, strip.bottom - strip.top, Some(s.hwnd), None, Some(win::instance()), None).unwrap_or_default();
         let _ = wm::SetLayeredWindowAttributes(h, CLEAR, 0, wm::LWA_COLORKEY);
         let sel = chosen.filter(|i| *i < tools.len());
-        win::set_state(h, Box::new(Designer { tools, sel, strip, cells: vec![], busy: false, done: false }));
+        win::set_state(h, Box::new(Designer { tools, sel, strip, opened: sel.map(|i| (i, std::time::Instant::now())), cells: vec![], busy: false, done: false }));
         OPEN.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
         relayout(h);
         let _ = wm::ShowWindow(h, wm::SW_SHOW);
@@ -448,6 +451,14 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         wm::WM_LBUTTONDOWN => {
             match hit(h, l) {
                 Some(Hit::Tool(i)) => {
+                    // The form's button double-clicked: the first click opened this, the second
+                    // lands here - its Click method, as Visual Studio's.
+                    let quick = std::time::Duration::from_millis(unsafe { km::GetDoubleClickTime() } as u64);
+                    if d.opened.take().is_some_and(|(o, at)| o == i && at.elapsed() <= quick) {
+                        d.sel = Some(i);
+                        view_code(h);
+                        return LRESULT(0);
+                    }
                     d.sel = Some(i);
                     relayout(h);
                     say(h);

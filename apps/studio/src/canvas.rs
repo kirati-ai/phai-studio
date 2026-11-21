@@ -32,13 +32,37 @@ pub fn chrome(f: &phai_form::FormFile) -> i32 {
     TITLE + if f.menu.is_empty() { 0 } else { MENU }
 }
 
-/// The component tray under the form, as Visual Studio's: one chip per component (a timer) -
-/// its index in the form and its rectangle, design pixels.
+/// The tray chip of the form's menu bar, and of its toolbar - not controls, so no index of one.
+pub const CHIP_MENU: usize = usize::MAX - 1;
+pub const CHIP_TOOLBAR: usize = usize::MAX - 2;
+
+/// A tray chip's name and icon: a component's, or the menu bar's or toolbar's.
+fn chip_label(f: &phai_form::FormFile, i: usize) -> (String, u16) {
+    match i {
+        CHIP_MENU => ("menuStrip".into(), phai_ui::icon::glyph::MENU_BAR),
+        CHIP_TOOLBAR => ("toolStrip".into(), phai_ui::icon::glyph::TOOLBAR),
+        _ => {
+            let c = &f.control[i];
+            (c.id.clone(), crate::toolbox_items().iter().find(|(id, _, _)| crate::tool_kind(*id) == Some(c.kind)).map(|(_, _, g)| *g).unwrap_or(0))
+        }
+    }
+}
+
+/// The component tray under the form, as Visual Studio's: the menu bar and the toolbar first,
+/// then one chip per component (a timer) - its index in the form (or [`CHIP_MENU`],
+/// [`CHIP_TOOLBAR`]) and its rectangle, design pixels.
 pub fn tray_chips(f: &phai_form::FormFile, size: [i32; 2]) -> Vec<(usize, [i32; 4])> {
     let (ox, top) = origin(f);
     let y = top + size[1] + 24;
     let mut x = ox;
     let mut out = Vec::new();
+    for (shown, i, name) in [(!f.menu.is_empty(), CHIP_MENU, "menuStrip"), (!f.toolbar.is_empty(), CHIP_TOOLBAR, "toolStrip")] {
+        if shown {
+            let w = name.chars().count() as i32 * 7 + 44;
+            out.push((i, [x, y, w, 28]));
+            x += w + 8;
+        }
+    }
     for (i, c) in f.control.iter().enumerate().filter(|(_, c)| c.kind.is_component()) {
         let w = c.id.chars().count() as i32 * 7 + 44;
         out.push((i, [x, y, w, 28]));
@@ -792,7 +816,7 @@ impl Canvas {
         let under = if on_surface {
             self.hit(p)
         } else {
-            tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]).map(|(i, _)| i)
+            tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]).map(|(i, _)| i).filter(|i| *i < s.doc.form.control.len())
         };
         if under.is_none_or(|i| !s.selection().contains(&i)) {
             s.select(under);
@@ -815,6 +839,17 @@ impl Canvas {
         }
         // A chip in the component tray: that component chosen.
         if let Some((i, _)) = tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]) {
+            // The menu bar's or toolbar's chip: designed on the form, as Visual Studio's.
+            if i == CHIP_MENU || i == CHIP_TOOLBAR {
+                s.select(None);
+                self.place_handles();
+                if i == CHIP_MENU {
+                    crate::menudesign::open(Some(0));
+                } else {
+                    crate::tooldesign::open(Some(0));
+                }
+                return;
+            }
             s.select(Some(i));
             self.place_handles();
             return;
@@ -1088,7 +1123,7 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
         let chosen = studio().and_then(|s| s.selected);
         let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
         for (i, r) in &chips {
-            let c = &f.control[*i];
+            let (name, g) = chip_label(f, *i);
             let rr = RECT { left: p(r[0]), top: p(r[1]), right: p(r[0] + r[2]), bottom: p(r[1] + r[3]) };
             win::fill(dc, &rr, if chosen == Some(*i) { accent } else { border });
             win::fill(dc, &RECT { left: rr.left + 1, top: rr.top + 1, right: rr.right - 1, bottom: rr.bottom - 1 }, window);
@@ -1096,7 +1131,6 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
                 Gdi::SelectObject(dc, icons.into());
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(accent.colorref()));
             }
-            let g = crate::toolbox_items().iter().find(|(id, _, _)| crate::tool_kind(*id) == Some(c.kind)).map(|(_, _, g)| *g).unwrap_or(0);
             let mut gr = RECT { left: rr.left + p(6), top: rr.top, right: rr.left + p(26), bottom: rr.bottom };
             let mut one = [g];
             unsafe {
@@ -1105,7 +1139,7 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
             }
             let mut tr = RECT { left: rr.left + p(30), top: rr.top, right: rr.right - p(4), bottom: rr.bottom };
-            let mut words: Vec<u16> = c.id.encode_utf16().collect();
+            let mut words: Vec<u16> = name.encode_utf16().collect();
             unsafe {
                 Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
             }
