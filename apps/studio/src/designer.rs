@@ -1,6 +1,7 @@
 //! The Table Designer, as Visual Studio's: a grid of the table's columns - name, data type, allow
 //! nulls, primary key, identity, default - edited in place with a click; its indexes and foreign
 //! keys below; and the script that makes the design so, written as you go. Update runs it.
+//! It is a document tab, as Visual Studio opens a table's design: "lotto.user [Design]".
 
 use phai_data::schema::{ColDef, FkDef, IndexDef, TableDef, RULES};
 use phai_data::Connection;
@@ -51,8 +52,6 @@ struct Designer {
     buttons: Vec<(i32, HWND)>,
     /// The box editing a cell: it, and the row and column.
     editor: Option<(HWND, usize, usize)>,
-    done: bool,
-    applied: bool,
     font: Gdi::HFONT,
     mono: Gdi::HFONT,
 }
@@ -65,18 +64,34 @@ fn check(b: bool) -> &'static str {
     if b { "✓" } else { "" }
 }
 
-/// Opens the designer for `existing` (or a new table in `db`) and runs it until closed; whether
-/// a change was made in the database.
-pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>) -> bool {
+/// The tab's name, as Visual Studio's: "lotto.user [Design]".
+fn title_of(db: &str, table: Option<&str>) -> String {
+    format!("{db}.{} [Design]", table.unwrap_or("new_table"))
+}
+
+/// Icons: the buttons' and the lists' - glyphs of Windows' icon font.
+const G_ADD: u16 = 0xE710;
+const G_DELETE: u16 = 0xE74D;
+const G_UP: u16 = 0xE74A;
+const G_DOWN: u16 = 0xE74B;
+const G_EDIT: u16 = 0xE70F;
+const G_SAVE: u16 = 0xE74E;
+const G_CLOSE: u16 = 0xE711;
+const G_TABLE: u16 = 0xE8A9;
+const G_COLUMN: u16 = 0xE8A5;
+const G_KEY: u16 = 0xE8D7;
+const G_INDEX: u16 = 0xE8CB;
+const G_LINK: u16 = 0xE71B;
+
+/// The designer for `existing` (or a new table in `db`), a child of `parent` - the document area -
+/// not shown yet: the tab it is in shows it.
+pub fn create(parent: HWND, conn: Connection, db: &str, existing: Option<TableDef>) -> HWND {
     win::init();
     let class = win::register("PhaiTableDesigner", Some(proc_), None);
-    let title = match &existing {
-        Some(d) => tf("Table Designer - {0}", &[&d.name]),
-        None => t("Table Designer - new table").to_string(),
-    };
+    let title = title_of(db, existing.as_ref().map(|d| d.name.as_str()));
     let title_w = win::wide(&title);
     unsafe {
-        let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title_w.as_ptr()), wm::WS_POPUP | wm::WS_CAPTION | wm::WS_SYSMENU | wm::WS_THICKFRAME | wm::WS_MAXIMIZEBOX | wm::WS_CLIPCHILDREN, 0, 0, 100, 100, Some(owner), None, Some(win::instance()), None).unwrap_or_default();
+        let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title_w.as_ptr()), wm::WS_CHILD | wm::WS_CLIPCHILDREN, 0, 0, 100, 100, Some(parent), None, Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);
         let mono = {
             let mut lf = Gdi::LOGFONTW { lfHeight: -win::px(hwnd, 13), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
@@ -94,9 +109,12 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         // The database's tables, the one designed chosen.
         let tables = win::list(hwnd, ID_TABLES, font, &[(&tf("Tables of {0}", &[&db]), 190)]);
         let names: Vec<String> = conn.tables(db).map(|v| v.into_iter().filter(|(_, view)| !view).map(|(n, _)| n).collect()).unwrap_or_default();
+        win::list_icons(tables, &[G_ADD, G_TABLE]);
         win::list_add(tables, &[t("(new table)")]);
-        for n in &names {
+        win::list_set_image(tables, 0, 0);
+        for (i, n) in names.iter().enumerate() {
             win::list_add(tables, &[n]);
+            win::list_set_image(tables, i + 1, 1);
         }
         let at = existing.as_ref().and_then(|d| names.iter().position(|n| *n == d.name)).map(|i| i + 1).unwrap_or(0);
         win::list_select(tables, at);
@@ -106,6 +124,9 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         for l in [cols, idx, fk] {
             win::grid_lines(l);
         }
+        win::list_icons(cols, &[G_KEY, G_COLUMN]);
+        win::list_icons(idx, &[G_INDEX]);
+        win::list_icons(fk, &[G_LINK]);
         let script = win::edit_lines(hwnd, "", ID_SCRIPT, mono);
         wm::SendMessageW(script, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
         let mut buttons = Vec::new();
@@ -123,38 +144,46 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
             (ID_UPDATE, t("Update")),
             (ID_CLOSE, t("Close")),
         ] {
-            buttons.push((id, win::button(hwnd, label, id, font, id == ID_UPDATE)));
+            let b = win::button(hwnd, label, id, font, id == ID_UPDATE);
+            let glyph = match id {
+                ID_ADD_COL | ID_ADD_IDX | ID_ADD_FK => G_ADD,
+                ID_DEL_COL | ID_DEL_IDX | ID_DEL_FK => G_DELETE,
+                ID_UP => G_UP,
+                ID_DOWN => G_DOWN,
+                ID_EDIT_IDX | ID_EDIT_FK => G_EDIT,
+                ID_UPDATE => G_SAVE,
+                _ => G_CLOSE,
+            };
+            win::set_button_glyph(b, glyph);
+            buttons.push((id, b));
         }
         let def = existing.clone().unwrap_or_else(|| TableDef {
             name: name_text.clone(),
             columns: vec![ColDef { name: "id".into(), ty: phai_data::schema::types_for(conn.kind)[0].to_string(), nullable: false, pk: true, auto: true, ..Default::default() }],
             ..Default::default()
         });
-        win::set_state(hwnd, Box::new(Designer { tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, applied: false, font, mono }));
+        win::set_state(hwnd, Box::new(Designer { tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, font, mono }));
         refresh(hwnd);
-        let (w, h) = (win::px(hwnd, 900), win::px(hwnd, 720));
-        // In the middle of the screen (its owner may be a narrow pane at the side).
-        let _ = wm::SetWindowPos(hwnd, None, 0, 0, w, h, wm::SWP_NOZORDER | wm::SWP_NOMOVE);
-        win::center_on_screen(hwnd);
-        win::theme_frame(hwnd);
-        win::enable(owner, false);
-        win::show_top(hwnd);
-        let mut msg = wm::MSG::default();
-        while state(hwnd).is_some_and(|s| !s.done) {
-            if !wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                wm::PostQuitMessage(msg.wParam.0 as i32);
-                break;
-            }
-            if !wm::IsDialogMessageW(hwnd, &msg).as_bool() {
-                let _ = wm::TranslateMessage(&msg);
-                wm::DispatchMessageW(&msg);
-            }
-        }
-        let applied = state(hwnd).is_some_and(|s| s.applied);
-        win::enable(owner, true);
-        let _ = wm::SetForegroundWindow(owner);
-        let _ = wm::DestroyWindow(hwnd);
-        applied
+        hwnd
+    }
+}
+
+/// Whether the designer in `h` may close: changes not yet updated asked about first.
+pub fn may_close(h: HWND) -> bool {
+    close_editor(h, true);
+    let Some(s) = state(h) else { return true };
+    if s.conn.design_script(&s.db, s.old.as_ref(), &s.def).is_empty() {
+        return true;
+    }
+    win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Table Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES
+}
+
+/// The tab's name changed (another table chosen, one made): the tabs say it.
+fn retitle(h: HWND) {
+    let Some(s) = state(h) else { return };
+    win::set_text(h, &title_of(&s.db, s.old.as_ref().map(|d| d.name.as_str())));
+    if let Some(st) = crate::studio() {
+        st.relabel_tabs();
     }
 }
 
@@ -192,12 +221,8 @@ fn choose_table(h: HWND, k: usize) {
         ..Default::default()
     });
     win::set_text(s.name, &s.def.name);
-    let title = match &s.old {
-        Some(d) => tf("Table Designer - {0}", &[&d.name]),
-        None => t("Table Designer - new table").to_string(),
-    };
-    win::set_text(h, &title);
     refresh(h);
+    retitle(h);
 }
 
 /// The lists and the script again, from the design.
@@ -218,6 +243,16 @@ fn refresh(h: HWND) {
     }
     for f in &s.def.fkeys {
         win::list_add(s.fk, &[&f.name, &f.columns.join(", "), &format!("{} ({})", f.ref_table, f.ref_columns.join(", ")), &f.on_delete, &f.on_update]);
+    }
+    // Their icons: a key on the primary key's columns.
+    for (i, c) in s.def.columns.iter().enumerate() {
+        win::list_set_image(s.cols, i, if c.pk { 0 } else { 1 });
+    }
+    for i in 0..s.def.indexes.len() {
+        win::list_set_image(s.idx, i, 0);
+    }
+    for i in 0..s.def.fkeys.len() {
+        win::list_set_image(s.fk, i, 0);
     }
     for (l, i) in [(s.cols, cs), (s.idx, is), (s.fk, fs)] {
         if i >= 0 {
@@ -248,7 +283,7 @@ fn layout(h: HWND) {
         let _ = wm::GetClientRect(h, &mut r);
     }
     let px = |v| win::px(h, v);
-    let (m, row, gap, bw) = (px(11), px(23), px(6), px(110));
+    let (m, row, gap, bw) = (px(11), px(23), px(6), px(140));
     // The tables down the left; the design beside them.
     let side = px(210);
     win::move_to(s.tables, m, m, side, r.bottom - 2 * m);
@@ -287,8 +322,8 @@ fn layout(h: HWND) {
     // The script takes what is left above the buttons.
     let _ = script_h;
     win::move_to(s.script, x0, y, w, (by - gap * 2 - y).max(px(60)));
-    win::move_to(button(ID_CLOSE), r.right - m - px(75), by, px(75), row);
-    win::move_to(button(ID_UPDATE), r.right - m - px(75) * 2 - px(7), by, px(75), row);
+    win::move_to(button(ID_CLOSE), r.right - m - px(95), by, px(95), row);
+    win::move_to(button(ID_UPDATE), r.right - m - px(95) * 2 - px(7), by, px(95), row);
 }
 
 /// A click in the columns' grid: a check toggled, or a box over the cell to type in.
@@ -466,8 +501,9 @@ fn edit_fk(h: HWND, at: Option<usize>) {
     refresh(h);
 }
 
-/// Update: the script run against the database, waiting with a Cancel.
-fn update(h: HWND) {
+/// Update (and Ctrl+S): the script run against the database, waiting with a Cancel. Done, the
+/// design is read back from the database and Server Explorer reads the database again.
+pub fn update(h: HWND) {
     close_editor(h, true);
     let Some(s) = state(h) else { return };
     if s.def.name.trim().is_empty() || s.def.columns.is_empty() {
@@ -476,15 +512,43 @@ fn update(h: HWND) {
     }
     let script = s.conn.design_script(&s.db, s.old.as_ref(), &s.def);
     if script.is_empty() {
-        s.done = true;
         return;
     }
     let (c, db) = (s.conn.clone(), s.db.clone());
     let sql = script.join(";\n") + ";";
     match dialogs::wait_for(Some(h), t("Table Designer"), t("Saving..."), move |_| c.query(Some(&db), &sql)) {
         Some(Ok(_)) => {
-            s.applied = true;
-            s.done = true;
+            let name = s.def.name.clone();
+            if let Ok(d) = s.conn.table_def(&s.db, &name) {
+                s.old = Some(d.clone());
+                s.def = d;
+            }
+            // A new table, or one renamed: the list at the left again.
+            let names: Vec<String> = s.conn.tables(&s.db).map(|v| v.into_iter().filter(|(_, view)| !view).map(|(n, _)| n).collect()).unwrap_or_default();
+            if names != s.names {
+                s.names = names;
+                unsafe {
+                    wm::SendMessageW(s.tables, cc::LVM_DELETEALLITEMS, None, None);
+                }
+                win::list_add(s.tables, &[t("(new table)")]);
+                win::list_set_image(s.tables, 0, 0);
+                for (i, n) in s.names.iter().enumerate() {
+                    win::list_add(s.tables, &[n]);
+                    win::list_set_image(s.tables, i + 1, 1);
+                }
+            }
+            if let Some(i) = s.names.iter().position(|n| *n == name) {
+                win::list_select(s.tables, i + 1);
+            }
+            let db = s.db.clone();
+            refresh(h);
+            retitle(h);
+            if let Some(st) = crate::studio() {
+                st.say_status(t("Table updated"));
+                if let Some(sv) = st.servers.as_mut() {
+                    sv.reload_database(&db);
+                }
+            }
         }
         Some(Err(e)) => {
             win::message(Some(h), &e, t("Table Designer"), wm::MB_ICONWARNING);
@@ -587,13 +651,16 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     }
                 }
                 ID_UPDATE => update(h),
-                ID_CLOSE => s.done = true,
+                // The tab closed - by Studio, after this message is done with.
+                ID_CLOSE => {
+                    if let Some(main) = crate::studio().map(|st| st.hwnd) {
+                        unsafe {
+                            let _ = wm::PostMessageW(Some(main), wm::WM_COMMAND, WPARAM(crate::ID_CLOSE_DOC as usize), LPARAM(0));
+                        }
+                    }
+                }
                 _ => {}
             }
-            LRESULT(0)
-        }
-        wm::WM_CLOSE => {
-            s.done = true;
             LRESULT(0)
         }
         wm::WM_NCDESTROY => {

@@ -248,6 +248,17 @@ struct Css {
     auto: bool,
     /// The designer showing it in a state it is not in - its Style tab's preview.
     preview: Option<State>,
+    /// A button's icon: a glyph of Windows' icon font before its words (0: none).
+    glyph: u16,
+}
+
+/// An icon on a button, before its words - a glyph of Windows' icon font (Segoe Fluent Icons),
+/// drawn in the button's text colour.
+pub fn set_button_glyph(h: HWND, glyph: u16) {
+    with_css(h, |c| c.glyph = glyph);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, true);
+    }
 }
 
 /// Shows control `h` as if it were in `state` (hovered, pressed...) - or as it is, for `None`.
@@ -355,7 +366,7 @@ fn with_css<R>(h: HWND, f: impl FnOnce(&mut Css) -> R) -> Option<R> {
 
 fn mark(h: HWND, kind: Kind) {
     let mut map = CSS.lock().unwrap_or_else(|e| e.into_inner());
-    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), own_text: String::new(), align: 0, mixed: false, three: false, push: false, auto: false, preview: None });
+    map.get_or_insert_with(HashMap::new).insert(h.0 as isize, Css { kind, classes: vec![], id: None, group: 0, checked: false, hot: false, own: Style::default(), own_text: String::new(), align: 0, mixed: false, three: false, push: false, auto: false, preview: None, glyph: 0 });
 }
 
 fn forget(h: HWND) {
@@ -1005,7 +1016,30 @@ pub fn draw_item(l: LPARAM) -> bool {
                 3 => Gdi::DT_RIGHT,
                 _ => Gdi::DT_CENTER,
             };
-            draw_text_styled(dc, h, &text, &mut tr, fg, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
+            let glyph = with_css(h, |c| c.glyph).unwrap_or(0);
+            if glyph != 0 {
+                // The icon and the words together, centred as one (or at the side they are put).
+                let size = px(h, 16);
+                let gap = if text.is_empty() { 0 } else { px(h, 6) };
+                let (tw, _) = measure(h, unsafe { HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _) }, &text);
+                let whole = size + gap + tw;
+                let x = match align {
+                    Gdi::DT_LEFT => tr.left,
+                    Gdi::DT_RIGHT => tr.right - whole,
+                    _ => tr.left + ((tr.right - tr.left) - whole).max(0) / 2,
+                };
+                let y = tr.top + (tr.bottom - tr.top - size) / 2;
+                if let Some(i) = crate::icon::glyph_icon(glyph, size, fg) {
+                    unsafe {
+                        let _ = wm::DrawIconEx(dc, x, y, i, size, size, 0, None, wm::DI_NORMAL);
+                        let _ = wm::DestroyIcon(i);
+                    }
+                }
+                tr.left = x + size + gap;
+                draw_text_styled(dc, h, &text, &mut tr, fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
+            } else {
+                draw_text_styled(dc, h, &text, &mut tr, fg, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE, &s);
+            }
         }
     }
     true
@@ -1299,6 +1333,36 @@ pub fn list_add(h: impl Into<HWND>, cells: &[&str]) {
             let m = if i == 0 { cc::LVM_INSERTITEMW } else { cc::LVM_SETITEMW };
             wm::SendMessageW(h, m, None, Some(LPARAM(&item as *const _ as isize)));
         }
+    }
+}
+
+/// A list's small icons, one per glyph by index, in the list's text colour; rows then show
+/// [`list_set_image`]'s - the first, unless set.
+pub fn list_icons(h: HWND, glyphs: &[u16]) {
+    use windows::Win32::UI::Controls as cc;
+    unsafe {
+        let size = px(h, 16);
+        let colour = style_of(h, Kind::List, State::default()).icon_color.unwrap_or(window_text_for(h));
+        let list = cc::ImageList_Create(size, size, cc::ILC_COLOR32 | cc::ILC_MASK, glyphs.len() as i32, 0);
+        for g in glyphs {
+            if let Some(i) = crate::icon::glyph_icon(*g, size, colour) {
+                cc::ImageList_ReplaceIcon(list, -1, i);
+                let _ = wm::DestroyIcon(i);
+            }
+        }
+        let old = wm::SendMessageW(h, 0x1003 /* LVM_SETIMAGELIST */, Some(WPARAM(1 /* LVSIL_SMALL */)), Some(LPARAM(list.0 as isize))).0;
+        if old != 0 {
+            let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
+        }
+    }
+}
+
+/// The icon a list's row shows: an index of [`list_icons`]'s, or -2 for none.
+pub fn list_set_image(h: HWND, row: usize, image: i32) {
+    use windows::Win32::UI::Controls as cc;
+    let item = cc::LVITEMW { mask: cc::LVIF_IMAGE, iItem: row as i32, iImage: image, ..Default::default() };
+    unsafe {
+        wm::SendMessageW(h, cc::LVM_SETITEMW, None, Some(LPARAM(&item as *const _ as isize)));
     }
 }
 

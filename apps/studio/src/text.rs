@@ -1092,6 +1092,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("Table updated", "อัปเดตตารางแล้ว"),
     ("Close Connection", "ปิดการเชื่อมต่อ"),
     ("Delete Connection", "ลบการเชื่อมต่อ"),
     ("Connection closed - open it again to read it", "ปิดการเชื่อมต่อแล้ว - กางออกอีกครั้งเพื่อเชื่อมต่อใหม่"),
