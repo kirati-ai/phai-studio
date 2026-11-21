@@ -233,6 +233,10 @@ enum Line {
 
 pub struct Props {
     pub hwnd: HWND,
+    /// Where the line between the names and the values is: thousandths of the width, dragged.
+    share: i32,
+    /// The line being dragged.
+    dragging: bool,
     chooser: HWND,
     /// Categorized, Alphabetical | Properties, Events.
     bar: HWND,
@@ -337,7 +341,9 @@ impl Props {
         let help_text = win::child(hwnd, "STATIC", "", wm::WINDOW_STYLE(0x80), Default::default(), 0, font);
         win::register_kind(help_text, win::Kind::Label);
         win::set_css(help_text, "muted", "");
-        let p = Props { hwnd, chooser, bar, heading, grid, help_name, help_text, mode: 0, style_state: 0, previewing: None, alphabetical: false, folded: vec![], expanded: vec![], props: vec![], lines: vec![], chosen: None, top: 0, editor: None, font, bold, filling: false };
+        // As it was left last time.
+        let share = crate::setting_pub("props_split").and_then(|v| v.parse::<i32>().ok()).filter(|v| (150..=850).contains(v)).unwrap_or(450);
+        let p = Props { hwnd, share, dragging: false, chooser, bar, heading, grid, help_name, help_text, mode: 0, style_state: 0, previewing: None, alphabetical: false, folded: vec![], expanded: vec![], props: vec![], lines: vec![], chosen: None, top: 0, editor: None, font, bold, filling: false };
         p.say_bar();
         p
     }
@@ -851,7 +857,27 @@ impl Props {
         unsafe {
             let _ = wm::GetClientRect(self.grid, &mut r);
         }
-        r.right * 45 / 100
+        r.right * self.share / 1000
+    }
+
+    /// Whether `x` is on the line between the names and the values - where it is dragged.
+    fn on_split(&self, x: i32) -> bool {
+        (x - self.split()).abs() <= win::px(self.grid, 4)
+    }
+
+    /// The line dragged to `x`: kept between 15% and 85% of the width.
+    fn drag_split(&mut self, x: i32) {
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetClientRect(self.grid, &mut r);
+        }
+        if r.right <= 0 {
+            return;
+        }
+        self.share = ((x as i64 * 1000 / r.right as i64) as i32).clamp(150, 850);
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(self.grid), None, false);
+        }
     }
 
     fn line_rect(&self, line: usize) -> RECT {
@@ -1240,6 +1266,54 @@ extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_SIZE => {
             p.update_scroll();
+            LRESULT(0)
+        }
+        // The line between the names and the values, dragged as Visual Studio's.
+        wm::WM_SETCURSOR if win::loword(l.0 as usize) == 1 /* HTCLIENT */ => {
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            unsafe {
+                let _ = wm::GetCursorPos(&mut pt);
+                let _ = Gdi::ScreenToClient(h, &mut pt);
+            }
+            if p.dragging || p.on_split(pt.x) {
+                unsafe {
+                    let _ = wm::SetCursor(wm::LoadCursorW(None, wm::IDC_SIZEWE).ok());
+                }
+                return LRESULT(1);
+            }
+            win::def(h, msg, w, l)
+        }
+        wm::WM_LBUTTONDOWN if p.on_split(win::point_of(l).0) => {
+            p.close_editor(true);
+            p.dragging = true;
+            unsafe {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetCapture(h);
+            }
+            LRESULT(0)
+        }
+        // A double-click on the line: back to where it starts.
+        wm::WM_LBUTTONDBLCLK if p.on_split(win::point_of(l).0) => {
+            p.share = 450;
+            crate::remember_setting_pub("props_split", "450");
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(h), None, false);
+            }
+            LRESULT(0)
+        }
+        wm::WM_MOUSEMOVE if p.dragging => {
+            p.drag_split(win::point_of(l).0);
+            LRESULT(0)
+        }
+        wm::WM_LBUTTONUP if p.dragging => {
+            p.dragging = false;
+            unsafe {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture();
+            }
+            crate::remember_setting_pub("props_split", &p.share.to_string());
+            LRESULT(0)
+        }
+        wm::WM_CAPTURECHANGED if p.dragging => {
+            p.dragging = false;
             LRESULT(0)
         }
         wm::WM_LBUTTONDOWN | wm::WM_LBUTTONDBLCLK => {
