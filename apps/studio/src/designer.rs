@@ -338,12 +338,16 @@ fn open_editor(h: HWND, row: usize, col: usize) {
     };
     let e = if col == 1 {
         let types: Vec<&str> = phai_data::schema::types_for(s.conn.kind).to_vec();
-        let combo = win::combo(h, ID_EDITOR, s.font, &types);
-        unsafe {
-            let old = wm::GetWindowLongW(combo, wm::GWL_STYLE) as u32;
-            wm::SetWindowLongW(combo, wm::GWL_STYLE, ((old & !0x3) | 0x2 /* CBS_DROPDOWN */) as i32);
-        }
+        // Made able to be typed in from the start (a style changed later never gets its typing
+        // box, so the column's own type - VARCHAR(64) - could not be shown, and the list's first,
+        // INT, was taken). The type the column has is the one shown and chosen.
+        let combo = win::combo_with(h, ID_EDITOR, s.font, &types, true);
         win::move_to(combo, r.left, r.top, r.right - r.left, win::px(h, 300));
+        unsafe {
+            let w = win::wide(&value);
+            let at = wm::SendMessageW(combo, 0x0158 /* CB_FINDSTRINGEXACT */, Some(WPARAM(usize::MAX)), Some(LPARAM(w.as_ptr() as isize))).0;
+            wm::SendMessageW(combo, 0x014E /* CB_SETCURSEL */, Some(WPARAM(at as usize)), None);
+        }
         win::set_text(combo, &value);
         combo
     } else {
