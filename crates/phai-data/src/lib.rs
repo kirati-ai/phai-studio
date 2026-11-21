@@ -355,6 +355,21 @@ impl Connection {
 
     /// Runs `sql` - one statement or several - in `database`; the last result with rows is
     /// shown, or how many rows the statements changed.
+    /// A new, empty database on the server: MySQL's in utf8mb4 (Thai and all), PostgreSQL's in
+    /// UTF8. SQLite has none to make - its database is its file.
+    pub fn create_database(&self, name: &str) -> Result<(), String> {
+        let n = name.trim();
+        if n.is_empty() || !n.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            return Err(format!("{n:?}: a database's name is letters, digits, _ and -"));
+        }
+        match self.kind {
+            Kind::MySql => self.query(None, &format!("CREATE DATABASE `{n}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")).map(|_| ()),
+            // Made from a database that is there: the one named, or postgres itself.
+            Kind::Postgres => self.query(Some(if self.database.trim().is_empty() { "postgres" } else { self.database.trim() }), &format!("CREATE DATABASE \"{n}\" ENCODING 'UTF8'")).map(|_| ()),
+            Kind::Sqlite => Err("A SQLite database is its file: add a connection to a new file".into()),
+        }
+    }
+
     pub fn query(&self, database: Option<&str>, sql: &str) -> Result<Grid, String> {
         Ok(to_grid(self.run(database, sql, MAX_ROWS)?))
     }
@@ -579,6 +594,18 @@ mod tests {
             Err(e) if e.contains("onnect") || e.contains("refused") || e.contains("timed out") => eprintln!("no MySQL here: {e}"),
             Err(e) => panic!("unexpected: {e}"),
         }
+    }
+
+    /// A database's name is checked before any server is asked: nothing that could end the
+    /// statement or quote out of it. SQLite has no database to make.
+    #[test]
+    fn a_database_s_name_is_checked_first() {
+        let c = Connection { host: "127.0.0.1".into(), port: 1, user: "nobody".into(), kind: Kind::MySql, ..Default::default() };
+        for bad in ["", "  ", "a;drop", "x`y", "q\"z", "it's"] {
+            assert!(c.create_database(bad).unwrap_err().contains("letters, digits"), "{bad:?}");
+        }
+        let lite = Connection { host: "x.db".into(), kind: Kind::Sqlite, ..Default::default() };
+        assert!(lite.create_database("shop").unwrap_err().contains("SQLite"));
     }
 
     /// PostgreSQL here, if one is: a role that does not exist is turned away - after the server's

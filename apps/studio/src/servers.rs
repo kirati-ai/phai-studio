@@ -277,11 +277,12 @@ impl Servers {
         const AS_SQL: u32 = 9;
         const TO_FORM: u32 = 10;
         const CLOSE: u32 = 11;
+        const NEW_DB: u32 = 12;
         let sel = self.selected();
         let kind = sel.as_ref().map(|(_, n)| n.kind.clone()).unwrap_or(Kind::Root);
         let items: Vec<(u32, &str)> = match kind {
             Kind::Root | Kind::Waiting => vec![(ADD, t("Add Connection..."))],
-            Kind::Server => vec![(QUERY, t("New Query")), (REFRESH, t("Refresh")), (CLOSE, t("Close Connection")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete Connection"))],
+            Kind::Server => vec![(QUERY, t("New Query")), (NEW_DB, t("New Database...")), (REFRESH, t("Refresh")), (CLOSE, t("Close Connection")), (0, ""), (ADD, t("Add Connection...")), (DELETE, t("Delete Connection"))],
             Kind::Database => vec![(QUERY, t("New Query")), (NEW_TABLE, t("New Table...")), (REFRESH, t("Refresh"))],
             Kind::Table { view: false } | Kind::Column => vec![(ROWS, t("Show Table Data")), (DESIGN, t("Design Table")), (AS_SQL, t("Script as SQL")), (QUERY, t("New Query")), (CODE, t("Copy code for a program")), (TO_FORM, t("Add to Form")), (REFRESH, t("Refresh"))],
             Kind::Table { view: true } => vec![(ROWS, t("Show Table Data")), (QUERY, t("New Query")), (REFRESH, t("Refresh"))],
@@ -332,6 +333,14 @@ impl Servers {
                     }
                 }
             }
+            // New Database: made, the server read again, the Database Designer on it.
+            NEW_DB => {
+                if let Some((_, n)) = sel {
+                    if let Some(c) = self.conns.get(n.conn).cloned() {
+                        self.new_database(owner, c);
+                    }
+                }
+            }
             REFRESH => {
                 if let Some((item, n)) = sel {
                     let data = item_data(self.tree, item).unwrap_or(-1);
@@ -378,6 +387,58 @@ impl Servers {
     }
 
     /// A branch read from the database again.
+    /// New Database on connection `c`: its name asked, made, the servers read again, and the
+    /// Database Designer opened on it for its first table.
+    pub fn new_database(&mut self, owner: HWND, c: Connection) {
+        if c.kind == phai_data::Kind::Sqlite {
+            win::message(Some(owner), t("A SQLite database is its file: add a connection to a new file"), t("New Database"), wm::MB_ICONINFORMATION);
+            return;
+        }
+        let Some(name) = dialogs::ask(Some(owner), t("New Database"), t("The new database's name - letters, digits, _ and -:"), "", false) else { return };
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        let (c2, n) = (c.clone(), name.clone());
+        match dialogs::wait_for(Some(owner), t("New Database"), t("Saving..."), move |_| c2.create_database(&n)) {
+            Some(Ok(())) => {
+                self.reload_servers();
+                design(c, &name, None);
+            }
+            Some(Err(e)) => {
+                win::message(Some(owner), &e, t("New Database"), wm::MB_ICONWARNING);
+            }
+            None => {}
+        }
+    }
+
+    /// Every server opened read again - a database made.
+    pub fn reload_servers(&mut self) {
+        for item in self.all_items() {
+            let data = item_data(self.tree, item).unwrap_or(-1);
+            if self.node_of(data).is_some_and(|n| n.kind == Kind::Server && n.loaded) {
+                self.reload(item);
+            }
+        }
+    }
+
+    /// Every item of the tree, top to bottom.
+    fn all_items(&self) -> Vec<isize> {
+        fn walk(tree: HWND, item: isize, out: &mut Vec<isize>) {
+            let mut it = item;
+            while it != 0 {
+                out.push(it);
+                let child = unsafe { wm::SendMessageW(tree, 0x110A, Some(WPARAM(4 /* TVGN_CHILD */)), Some(LPARAM(it))).0 };
+                walk(tree, child, out);
+                it = unsafe { wm::SendMessageW(tree, 0x110A, Some(WPARAM(1 /* TVGN_NEXT */)), Some(LPARAM(it))).0 };
+            }
+        }
+        let root = unsafe { wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(0 /* TVGN_ROOT */)), None).0 };
+        let mut all = Vec::new();
+        walk(self.tree, root, &mut all);
+        all
+    }
+
     /// Every open database named `db` read again - a table made, changed or renamed in it.
     pub fn reload_database(&mut self, db: &str) {
         fn walk(tree: HWND, item: isize, out: &mut Vec<isize>) {
@@ -420,8 +481,10 @@ impl Servers {
             let conn = self.selected().map(|(_, n)| n.conn).filter(|c| *c < self.conns.len()).unwrap_or(0);
             let Some(c) = self.conns.get(conn).cloned() else { return false };
             let db = if c.database.trim().is_empty() { c.databases().ok().and_then(|d| d.into_iter().next()).unwrap_or_default() } else { c.database.clone() };
-            if db.is_empty() {
-                return false;
+            // No database on the server yet: one made first.
+            if db.is_empty() && c.kind != phai_data::Kind::Sqlite {
+                self.new_database(owner, c);
+                return true;
             }
             design(c, &db, None);
             return true;

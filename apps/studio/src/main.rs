@@ -1352,7 +1352,7 @@ fn build_menu() -> HMENU {
         add(data, ID_NEW_QUERY, t("New Query"), "");
         add(data, ID_EXECUTE, t("Execute Query"), "Ctrl+Shift+E");
         sep(data);
-        add(data, ID_TABLE_DESIGNER, t("Table Designer..."), "");
+        add(data, ID_TABLE_DESIGNER, t("Database Designer..."), "");
         let th = wm::CreatePopupMenu().unwrap_or_default();
         // The form's theme in one place: change its colours (the Theme Editor) or its words, then
         // which style sheet the form uses - the project's own, the form's ticked - a new one, one
