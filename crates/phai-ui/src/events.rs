@@ -37,6 +37,8 @@ pub const DRAG_DROP: u16 = 14;
 pub const PRINT_PAGE: u16 = 15;
 /// A BindingSource's current row changed (`crate::binding`).
 pub const POSITION_CHANGED: u16 = 16;
+/// A file dialog's Open or Save clicked: [`FileOkEventArgs`].
+pub const FILE_OK: u16 = 17;
 
 /// The bit of `event` in a [`hook`]'s mask.
 pub const fn bit(event: u16) -> u32 {
@@ -112,6 +114,31 @@ pub struct ClosingEventArgs {
 
 impl ClosingEventArgs {
     /// It stays open - `e.Cancel = true`.
+    pub fn cancel(&self) {
+        self.cancel.set(true);
+    }
+    pub fn cancelled(&self) -> bool {
+        self.cancel.get()
+    }
+}
+
+/// The files a file dialog's Open or Save was clicked on - WinForms' FileOk with its
+/// CancelEventArgs: `e.cancel()` keeps the dialog open for another choice.
+#[derive(Debug, Default)]
+pub struct FileOkEventArgs {
+    pub files: Vec<std::path::PathBuf>,
+    cancel: Cell<bool>,
+}
+
+impl FileOkEventArgs {
+    pub fn new(files: Vec<std::path::PathBuf>) -> FileOkEventArgs {
+        FileOkEventArgs { files, cancel: Cell::new(false) }
+    }
+    /// The first file chosen - the one, unless several may be.
+    pub fn file(&self) -> Option<&std::path::Path> {
+        self.files.first().map(|p| p.as_path())
+    }
+    /// Not this one: the dialog stays open - `e.Cancel = true`.
     pub fn cancel(&self) {
         self.cancel.set(true);
     }

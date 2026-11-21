@@ -74,6 +74,26 @@ impl ClosingEventArgs {
     }
 }
 
+/// A file dialog's Open or Save clicked - WinForms' FileOk. In a browser there is none to raise
+/// it; the type is here so a program's code is the same for both.
+#[derive(Debug, Default)]
+pub struct FileOkEventArgs {
+    pub files: Vec<std::path::PathBuf>,
+    cancel: Cell<bool>,
+}
+
+impl FileOkEventArgs {
+    pub fn file(&self) -> Option<&std::path::Path> {
+        self.files.first().map(|p| p.as_path())
+    }
+    pub fn cancel(&self) {
+        self.cancel.set(true);
+    }
+    pub fn cancelled(&self) -> bool {
+        self.cancel.get()
+    }
+}
+
 /// What was dropped. In a browser: words dragged from another control.
 #[derive(Debug, Default)]
 pub struct FileDropEventArgs {

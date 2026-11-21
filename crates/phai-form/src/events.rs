@@ -16,6 +16,7 @@ pub enum Args {
     Item,
     Files,
     Print,
+    FileOk,
 }
 
 impl Args {
@@ -30,6 +31,7 @@ impl Args {
             Args::Item => Some("phai_ui::events::ItemEventArgs"),
             Args::Files => Some("phai_ui::events::FileDropEventArgs"),
             Args::Print => Some("phai_ui::print::PrintPageEventArgs"),
+            Args::FileOk => Some("phai_ui::events::FileOkEventArgs"),
         }
     }
 }
@@ -87,6 +89,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("print_page", "PrintPage", Args::Print, &[Kind::PrintDocument], Source::Hook(phai_ui_codes::PRINT_PAGE), "A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows."),
     ev("selection_changed", "SelectionChanged", Args::None, &[Kind::Grid], Source::Notify(-101), "Another row chosen."),
     ev("opening", "Opening", Args::None, &[Kind::ContextMenu], Source::Form, "The menu is about to open - tick, grey or rename its items here."),
+    ev("file_ok", "FileOk", Args::FileOk, &[Kind::OpenFile, Kind::SaveFile], Source::Hook(phai_ui_codes::FILE_OK), "Open or Save clicked - e.file(), e.files; e.cancel() keeps the dialog open for another choice."),
 ];
 
 /// A menu item's own, beyond its Click (its id's method).
@@ -153,6 +156,7 @@ pub mod phai_ui_codes {
     pub const DRAG_DROP: u16 = phai_ui::events::DRAG_DROP;
     pub const PRINT_PAGE: u16 = phai_ui::events::PRINT_PAGE;
     pub const POSITION_CHANGED: u16 = phai_ui::events::POSITION_CHANGED;
+    pub const FILE_OK: u16 = phai_ui::events::FILE_OK;
 }
 
 /// Whether controls of `kind` raise `e`: an empty list is every control on the form.
