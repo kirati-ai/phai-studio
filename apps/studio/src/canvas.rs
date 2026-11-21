@@ -75,6 +75,15 @@ pub fn tray_chips(f: &phai_form::FormFile, width: i32) -> Vec<(usize, [i32; 4])>
     out
 }
 
+/// The tray drawn again: what is chosen in it changed.
+pub fn refresh_tray() {
+    if let Some(c) = studio().and_then(|s| s.canvas.as_ref()) {
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(c.tray), None, true);
+        }
+    }
+}
+
 /// The tray's splitter: the band along its top dragged to make it taller or shorter.
 const SPLIT: i32 = 6;
 
@@ -103,11 +112,16 @@ fn paint_chips(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, width: i32) {
     }
     let chosen = studio().and_then(|s| s.selected);
     let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+    let tint = if window.is_dark() { Color::rgb(40, 64, 56) } else { Color::rgb(231, 243, 239) };
     for (i, r) in &chips {
         let (name, g) = chip_label(f, *i);
         let rr = RECT { left: p(r[0]), top: p(r[1]), right: p(r[0] + r[2]), bottom: p(r[1] + r[3]) };
-        win::fill(dc, &rr, if chosen == Some(*i) { accent } else { border });
-        win::fill(dc, &RECT { left: rr.left + 1, top: rr.top + 1, right: rr.right - 1, bottom: rr.bottom - 1 }, window);
+        // Chosen - a component, or the menu bar or toolbar while its designer is open: the
+        // accent around it, its tint inside.
+        let active = chosen == Some(*i) || (*i == CHIP_MENU && crate::menudesign::is_open()) || (*i == CHIP_TOOLBAR && crate::tooldesign::is_open());
+        win::fill(dc, &rr, if active { accent } else { border });
+        let b = if active { p(2) } else { 1 };
+        win::fill(dc, &RECT { left: rr.left + b, top: rr.top + b, right: rr.right - b, bottom: rr.bottom - b }, if active { tint } else { window });
         unsafe {
             Gdi::SelectObject(dc, icons.into());
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(accent.colorref()));
