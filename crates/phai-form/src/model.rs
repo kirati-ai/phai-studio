@@ -633,6 +633,19 @@ pub struct Bind {
 }
 
 impl Control {
+    /// A grid's column by its heading or its bound column's name, case aside.
+    pub fn grid_column(&self, name: &str) -> Option<usize> {
+        let n = name.trim();
+        if n.is_empty() {
+            return None;
+        }
+        self.columns
+            .iter()
+            .position(|(h, _)| h.eq_ignore_ascii_case(n))
+            .or_else(|| self.bind.as_ref().and_then(|b| b.columns.iter().position(|x| x.eq_ignore_ascii_case(n))))
+            .filter(|i| *i < self.columns.len())
+    }
+
     /// A binding source's columns: its table's when it is bound to one, its `fields` otherwise.
     pub fn data_columns(&self) -> Vec<String> {
         match &self.bind {
@@ -889,6 +902,19 @@ impl FormFile {
     }
 
     /// Everything wrong with the form, each with text to find its line by. Empty when it is good.
+    /// A grid's MasterDetail, resolved: the master grid's place in the form, its key column and
+    /// this grid's column, by place - `None` when it does not name them.
+    pub fn master_detail(&self, c: &Control) -> Option<(usize, usize, usize)> {
+        let d = c.word("master_detail")?;
+        let (left, right) = d.split_once('=').map(|(a, b)| (a.trim(), b.trim())).unwrap_or((d.trim(), ""));
+        let (m, key) = left.split_once('.')?;
+        let mi = self.control.iter().position(|x| x.id == m.trim() && x.kind == Kind::Grid && x.id != c.id)?;
+        let master = &self.control[mi];
+        let mc = master.grid_column(key.trim())?;
+        let dc = c.grid_column(if right.is_empty() { key.trim() } else { right })?;
+        Some((mi, mc, dc))
+    }
+
     pub fn check(&self) -> Vec<(String, Option<String>)> {
         let mut out = Vec::new();
         if self.format != FORMAT {
@@ -1042,6 +1068,11 @@ impl FormFile {
                             out.push((format!("{}: {} has no column {col:?}", c.id, s.id), at.clone()));
                         }
                     }
+                }
+            }
+            if let Some(d) = c.word("master_detail") {
+                if self.master_detail(c).is_none() {
+                    out.push((format!("{}: master_detail {d:?} - another grid's id, a dot, its key column, then = and this grid's column (orders.id = order_id)", c.id), at.clone()));
                 }
             }
             if let Some(a) = &c.bind_action {

@@ -295,7 +295,7 @@ fn element(kind: &str, text: &str) -> HtmlElement {
             let _ = e.append_child(&t);
             e
         }
-        "tabs" => make("div"),
+        "tabs" | "tree" => make("div"),
         _ => {
             let e = make("div");
             e.set_text_content(Some(text));
@@ -329,6 +329,9 @@ pub fn control(area: HWND, kind: &str, id: &str, class: &str, text: &str, p: Pla
     let h = keep(e);
     if matches!(kind, "list" | "grid") {
         crate::ctl::rows_choosable(h);
+    }
+    if kind == "tree" {
+        crate::tree::make_tree(h);
     }
     h
 }

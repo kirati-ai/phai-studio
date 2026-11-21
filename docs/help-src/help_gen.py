@@ -10,6 +10,11 @@ PAGES = [
     ('studio.html', 'ใช้งาน Phai Studio', 'Phai Studio'),
     ('css.html', 'ตกแต่งหน้าตาด้วย CSS', 'Phai Studio'),
     ('database.html', 'ทำงานกับฐานข้อมูล', 'Phai Studio'),
+    ('code.html', 'เขียนโค้ดกับ control', 'Phai Studio'),
+    ('winforms.html', 'control และความสามารถเพิ่มเติม', 'Phai Studio'),
+    ('inspector.html', 'ตัวตรวจสด (F12)', 'Phai Studio'),
+    ('web.html', 'เว็บและมือถือ (PWA)', 'Phai Studio'),
+    ('report.html', 'รายงานพิมพ์', 'Phai Studio'),
     ('rust-01.html', '1. เริ่มต้นกับ Rust', 'เรียน Rust'),
     ('rust-02.html', '2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน', 'เรียน Rust'),
     ('rust-03.html', '3. เงื่อนไขและการวนซ้ำ', 'เรียน Rust'),
@@ -30,7 +35,7 @@ def load(name):
     return m.BODY
 
 bodies = {}
-for mod in ['help_pages1', 'help_pages2', 'help_pages3', 'help_pages4']:
+for mod in ['help_pages1', 'help_pages2', 'help_pages3', 'help_pages4', 'help_pages5', 'help_pages6']:
     if os.path.exists(os.path.join(HERE, mod + '.py')):
         bodies.update(load(mod))
 

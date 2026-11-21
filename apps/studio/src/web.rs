@@ -600,6 +600,133 @@ fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: 
     });
 }
 
+/// Where Build > Publish Web App puts `web/`: a folder (a web server's, a shared drive), a server
+/// reached by SSH (`user@host:/var/www/app`, through Windows' own `scp`, its key - never a
+/// password typed here), or the project's GitHub repository's Pages (`github-pages`: its
+/// `gh-pages` branch, which GitHub serves over HTTPS).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Destination {
+    Folder(PathBuf),
+    Ssh(String),
+    GitHubPages,
+}
+
+impl Destination {
+    pub fn parse(s: &str) -> Option<Destination> {
+        let s = s.trim();
+        if s.is_empty() {
+            return None;
+        }
+        if matches!(s.to_ascii_lowercase().as_str(), "github-pages" | "github" | "gh-pages") {
+            return Some(Destination::GitHubPages);
+        }
+        // `user@host:path` - not `C:\...`, which is a folder.
+        if let Some((who, path)) = s.split_once(':') {
+            if who.contains('@') && !who.contains(['\\', '/']) && !path.is_empty() {
+                return Some(Destination::Ssh(s.to_string()));
+            }
+        }
+        Some(Destination::Folder(PathBuf::from(s)))
+    }
+}
+
+/// The GitHub Pages address of a repository's `origin`: `https://user.github.io/repo/`.
+pub fn pages_url(remote: &str) -> Option<String> {
+    let r = remote.trim().trim_end_matches('/').trim_end_matches(".git");
+    let path = r.strip_prefix("https://github.com/").or_else(|| r.strip_prefix("git@github.com:")).or_else(|| r.strip_prefix("ssh://git@github.com/"))?;
+    let (user, repo) = path.split_once('/')?;
+    if repo.eq_ignore_ascii_case(&format!("{user}.github.io")) {
+        return Some(format!("https://{}.github.io/", user.to_ascii_lowercase()));
+    }
+    Some(format!("https://{}.github.io/{repo}/", user.to_ascii_lowercase()))
+}
+
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<usize> {
+    std::fs::create_dir_all(to)?;
+    let mut n = 0;
+    for e in std::fs::read_dir(from)? {
+        let e = e?;
+        let target = to.join(e.file_name());
+        if e.file_type()?.is_dir() {
+            n += copy_tree(&e.path(), &target)?;
+        } else {
+            std::fs::copy(e.path(), &target)?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+fn run(dir: &Path, program: &str, args: &[&str]) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    let out = Command::new(program).args(args).current_dir(dir).creation_flags(0x0800_0000).output().map_err(|e| format!("{program}: {e}"))?;
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    if out.status.success() {
+        Ok(text)
+    } else {
+        Err(format!("{program} {}:\n{}", args.join(" "), text.trim()))
+    }
+}
+
+/// `web/` (the folder a build for the web made) put at `to`: what it now is at, to tell the person.
+pub fn publish(project: &Path, web: &Path, to: &Destination) -> Result<String, String> {
+    match to {
+        Destination::Folder(dir) => {
+            let dir = if dir.is_absolute() { dir.clone() } else { project.join(dir) };
+            let n = copy_tree(web, &dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            Ok(format!("{} ({n})", dir.display()))
+        }
+        Destination::Ssh(target) => {
+            // Each thing in web/, so they land in the folder itself; no question ever waits for an
+            // answer (BatchMode) - the key does the signing in.
+            let mut args: Vec<String> = vec!["-r".into(), "-q".into(), "-o".into(), "BatchMode=yes".into()];
+            for e in std::fs::read_dir(web).map_err(|e| e.to_string())?.flatten() {
+                args.push(e.path().to_string_lossy().to_string());
+            }
+            args.push(target.clone());
+            let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run(project, "scp", &refs)?;
+            Ok(target.clone())
+        }
+        Destination::GitHubPages => {
+            let remote = run(project, "git", &["remote", "get-url", "origin"]).map_err(|_| "The project has no GitHub repository (git remote origin) to publish to.".to_string())?;
+            let remote = remote.trim().to_string();
+            let url = pages_url(&remote).ok_or_else(|| format!("{remote}: not a GitHub repository"))?;
+            // The gh-pages branch in a folder of its own: as it is on GitHub when it is there, then
+            // web/ in place of what it held, one commit on top - nothing else of the project moves.
+            let tmp = std::env::temp_dir().join(format!("phai-pages-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&tmp);
+            std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+            let tmp_s = tmp.to_string_lossy().to_string();
+            let fresh = run(project, "git", &["clone", "--quiet", "--depth", "1", "--branch", "gh-pages", &remote, &tmp_s]).is_err();
+            if fresh {
+                let _ = std::fs::remove_dir_all(&tmp);
+                std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+                run(&tmp, "git", &["init", "--quiet"])?;
+                run(&tmp, "git", &["checkout", "--quiet", "--orphan", "gh-pages"])?;
+                run(&tmp, "git", &["remote", "add", "origin", &remote])?;
+            }
+            for e in std::fs::read_dir(&tmp).map_err(|e| e.to_string())?.flatten() {
+                if e.file_name() != ".git" {
+                    let p = e.path();
+                    let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                }
+            }
+            copy_tree(web, &tmp).map_err(|e| e.to_string())?;
+            // GitHub's Jekyll left out: the files served as they are.
+            std::fs::write(tmp.join(".nojekyll"), "").map_err(|e| e.to_string())?;
+            run(&tmp, "git", &["add", "-A"])?;
+            let changed = run(&tmp, "git", &["status", "--porcelain"])?;
+            if !changed.trim().is_empty() {
+                run(&tmp, "git", &["-c", "user.name=Phai Studio", "-c", "user.email=phai-studio@users.noreply.github.com", "commit", "--quiet", "-m", "Publish the web app"])?;
+                run(&tmp, "git", &["push", "--quiet", "origin", "gh-pages"])?;
+            }
+            let _ = std::fs::remove_dir_all(&tmp);
+            Ok(url)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -743,5 +870,25 @@ opt-level = "s"
         let png = icon_png(48, (0x12, 0x85, 0x5f));
         assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
         assert_eq!(hex("#2563eb"), (0x25, 0x63, 0xeb));
+    }
+
+    #[test]
+    fn a_publish_destination_is_a_folder_a_server_or_github_pages() {
+        assert_eq!(Destination::parse("github-pages"), Some(Destination::GitHubPages));
+        assert_eq!(Destination::parse("me@example.com:/var/www/app"), Some(Destination::Ssh("me@example.com:/var/www/app".into())));
+        assert_eq!(Destination::parse(r"C:\inetpub\wwwroot\app"), Some(Destination::Folder(PathBuf::from(r"C:\inetpub\wwwroot\app"))));
+        assert_eq!(Destination::parse("  "), None);
+        assert_eq!(pages_url("https://github.com/kirati-ai/phai-studio.git").as_deref(), Some("https://kirati-ai.github.io/phai-studio/"));
+        assert_eq!(pages_url("git@github.com:Someone/someone.github.io.git").as_deref(), Some("https://someone.github.io/"));
+        assert_eq!(pages_url("https://gitlab.com/a/b"), None);
+        let web = std::env::temp_dir().join(format!("phai-pub-web-{}", std::process::id()));
+        let to = std::env::temp_dir().join(format!("phai-pub-to-{}", std::process::id()));
+        std::fs::create_dir_all(web.join("pkg")).unwrap();
+        std::fs::write(web.join("index.html"), "x").unwrap();
+        std::fs::write(web.join("pkg").join("a.wasm"), "y").unwrap();
+        let said = publish(&web, &web, &Destination::Folder(to.clone())).unwrap();
+        assert!(said.ends_with("(2)") && to.join("pkg").join("a.wasm").is_file(), "{said}");
+        let _ = std::fs::remove_dir_all(&web);
+        let _ = std::fs::remove_dir_all(&to);
     }
 }

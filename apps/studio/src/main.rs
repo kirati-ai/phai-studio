@@ -223,6 +223,8 @@ const ID_RUN_PHONE: i32 = 296;
 const ID_WEB_APP: i32 = 297;
 /// View > Device Preview: the form on a phone's and a tablet's screen.
 const ID_DEVICES: i32 = 298;
+/// Build > Publish Web App: built for the web, then put on a folder, a server or GitHub Pages.
+const ID_PUBLISH_WEB: i32 = 1689;
 /// Edit > Search (Ctrl+Q): every command, Options page and file by name.
 const ID_SEARCH: i32 = 299;
 /// File > Pin Tab: the document kept at the left, its tab pinned.
@@ -291,6 +293,8 @@ enum WebRun {
     No,
     Browser,
     Phone,
+    /// Put where Cargo.toml's `[package.metadata.phai-web] publish` says.
+    Publish,
 }
 /// The Memory window's request.
 const EVAL_MEMORY: u64 = 3;
@@ -1318,6 +1322,7 @@ fn build_menu() -> HMENU {
         add(build, ID_BUILD_WEB, t("Build for Web (PWA)"), "");
         add(build, ID_RUN_WEB, t("Run in Browser"), "");
         add(build, ID_RUN_PHONE, t("Run on Phone..."), "");
+        add(build, ID_PUBLISH_WEB, t("Publish Web App..."), "");
         sep(build);
         add(build, ID_DEBUG, "Debug", "");
         add(build, ID_RELEASE, "Release", "");
@@ -1755,6 +1760,14 @@ impl Studio {
                     c.states.insert(state.to_string(), now);
                 }
             }
+            (Key::StyleAnimation, Some(i)) => {
+                use phai_form::HasProps;
+                let a = text.trim();
+                if !a.is_empty() && phai_ui::theme::Animation::parse(a).is_none() {
+                    return;
+                }
+                f.control[i].set_prop("animation", (!a.is_empty()).then(|| phai_form::toml::Value::String(a.to_string())));
+            }
             (Key::StyleTransition | Key::StyleEasing, Some(i)) => {
                 use phai_form::HasProps;
                 let c = &mut f.control[i];
@@ -1948,7 +1961,7 @@ impl Studio {
             c.border_color = None;
             c.radius = None;
             c.bold = None;
-            for name in ["border_width", "accent_color", "icon_color", "transition"] {
+            for name in ["border_width", "accent_color", "icon_color", "transition", "animation"] {
                 c.set_prop(name, None);
             }
             c.states.clear();
@@ -5289,6 +5302,37 @@ impl Studio {
         }
     }
 
+    /// Build > Publish Web App: where to (kept in Cargo.toml for next time), then a build for the
+    /// web that puts `web/` there.
+    fn publish_web(&mut self) {
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Open a form of the project first."), t("Publish Web App"), wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else { return };
+        let now = cargo::table_field(&text, cargo::WEB_APP_TABLE, "publish").unwrap_or_default();
+        let answer = match std::env::var("PHAI_PUBLISH_WEB_TEST") {
+            Ok(v) => v,
+            Err(_) => {
+                let fields = [phai_ui::dialogs::Field::Text(t("Publish to - a folder, user@host:/path (SSH), or github-pages:"), &now)];
+                let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), t("Publish Web App"), &fields) else { return };
+                a.into_iter().next().unwrap_or_default()
+            }
+        };
+        let answer = answer.trim().to_string();
+        if web::Destination::parse(&answer).is_none() {
+            return;
+        }
+        if answer != now {
+            let text = cargo::with_table_field(&text, cargo::WEB_APP_TABLE, "publish", &answer);
+            if let Err(e) = std::fs::write(dir.join("Cargo.toml"), text) {
+                win::message(Some(self.hwnd), &e.to_string(), t("Publish Web App"), wm::MB_ICONWARNING);
+                return;
+            }
+        }
+        self.build_web(WebRun::Publish);
+    }
+
     /// Build > Build for Web / Run in Browser: on another thread; `WM_WEB_DONE` when it ends.
     fn build_web(&mut self, then_run: WebRun) {
         let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
@@ -5321,6 +5365,27 @@ impl Studio {
                 self.say_status(&format!("{}{left}", tf("Built for the web in {0}", &[&b.folder.display()])));
                 match then_run {
                     WebRun::No => {}
+                    WebRun::Publish => {
+                        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else { return };
+                        let to = std::fs::read_to_string(dir.join("Cargo.toml")).ok().and_then(|t| cargo::table_field(&t, cargo::WEB_APP_TABLE, "publish")).and_then(|d| web::Destination::parse(&d));
+                        let Some(to) = to else { return };
+                        self.say_status(t("Publishing the web app..."));
+                        let folder = b.folder.clone();
+                        let said = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Publish Web App"), t("Publishing the web app..."), move |_| web::publish(&dir, &folder, &to));
+                        match said {
+                            Some(Ok(at)) => {
+                                self.say_status(&tf("Published to {0}", &[&at]));
+                                if at.starts_with("https://") {
+                                    open_with_windows(&at);
+                                }
+                            }
+                            Some(Err(e)) => {
+                                self.say_status(t("Publishing failed"));
+                                win::message(Some(self.hwnd), &e, t("Publish Web App"), wm::MB_ICONWARNING);
+                            }
+                            None => {}
+                        }
+                    }
                     WebRun::Browser => match web::serve(b.folder.clone()) {
                         Ok(port) => open_with_windows(&format!("http://localhost:{port}/")),
                         Err(e) => {
@@ -8122,6 +8187,7 @@ impl Studio {
             ID_BUILD_WEB => self.build_web(WebRun::No),
             ID_RUN_WEB => self.build_web(WebRun::Browser),
             ID_RUN_PHONE => self.build_web(WebRun::Phone),
+            ID_PUBLISH_WEB => self.publish_web(),
             ID_NEXT_ERROR | ID_PREV_ERROR => self.step_diagnostic(id == ID_NEXT_ERROR),
             ID_MOVE_UP | ID_MOVE_DOWN => match self.code_shown() {
                 Some(h) => phai_editor::view::move_lines(h, id == ID_MOVE_UP),
@@ -11524,7 +11590,14 @@ impl MainWindowEvents for MainWindow {
         let mut list = Control::new(Kind::List, "orders", [11, 132, 458, 120]);
         list.columns = vec![("Name".into(), 160), ("Size".into(), 100), ("Qty".into(), 60)];
         list.anchor = Some("all".into());
-        f.control.extend([label, name, vip, size, qty, add, list]);
+        list.context_menu = Some("orders_menu".into());
+        // A context menu on the list, and a tree.
+        let mut orders_menu = Control::new(Kind::ContextMenu, "orders_menu", [0, 0, 0, 0]);
+        orders_menu.items = vec!["clear_all | Clear the list".into()];
+        let mut places = Control::new(Kind::Tree, "places", [11, 260, 458, 60]);
+        places.items = vec!["Shops".into(), "  Bangkok".into(), "  Chiang Mai".into()];
+        places.on_select = Some("place_chosen".into());
+        f.control.extend([label, name, vip, size, qty, add, list, orders_menu, places]);
         // A menu bar - a menu within a menu, a tick a click turns over, a greyed item, shortcut
         // keys - and a toolbar whose button stays down with the menu's tick.
         f.menu = phai_form::bars::menus_from_text("&File\n  new_order | &New order | Ctrl+N | NEW\n  -\n  Export\n    export_csv | As CSV | disabled\n&View\n  members_only | &Members only | check_on_click\n").unwrap();
@@ -11538,7 +11611,7 @@ impl MainWindowEvents for MainWindow {
         assert!(f.check().is_empty(), "{:?}", f.check());
         std::fs::write(&form_path, f.to_toml()).unwrap();
         std::fs::write(src.join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
-        crate::project::add_thai(&src, &[("File", "ไฟล์"), ("New order", "รายการใหม่"), ("Export", "ส่งออก"), ("As CSV", "เป็น CSV"), ("View", "มุมมอง"), ("Members only", "เฉพาะสมาชิก"), ("New", "ใหม่"), ("Members", "สมาชิก"), ("&File", "&ไฟล์"), ("&New order", "&รายการใหม่"), ("&View", "&มุมมอง"), ("&Members only", "เฉพาะ&สมาชิก"), ("Members only: {0}", "เฉพาะสมาชิก: {0}"), ("Shop", "ร้านค้า"), ("Name", "ชื่อ"), ("Your name", "ชื่อของคุณ"), ("Member", "สมาชิก"), ("Small", "เล็ก"), ("Medium", "กลาง"), ("Large", "ใหญ่"), ("Add to list", "เพิ่มลงรายการ"), ("Size", "ขนาด"), ("Qty", "จำนวน"), ("{0} orders", "{0} รายการ"), ("Hello, {0}", "สวัสดี {0}")]).unwrap();
+        crate::project::add_thai(&src, &[("File", "ไฟล์"), ("New order", "รายการใหม่"), ("Export", "ส่งออก"), ("As CSV", "เป็น CSV"), ("View", "มุมมอง"), ("Members only", "เฉพาะสมาชิก"), ("New", "ใหม่"), ("Members", "สมาชิก"), ("&File", "&ไฟล์"), ("&New order", "&รายการใหม่"), ("&View", "&มุมมอง"), ("&Members only", "เฉพาะ&สมาชิก"), ("Members only: {0}", "เฉพาะสมาชิก: {0}"), ("Shop", "ร้านค้า"), ("Name", "ชื่อ"), ("Your name", "ชื่อของคุณ"), ("Member", "สมาชิก"), ("Small", "เล็ก"), ("Medium", "กลาง"), ("Large", "ใหญ่"), ("Add to list", "เพิ่มลงรายการ"), ("Size", "ขนาด"), ("Qty", "จำนวน"), ("{0} orders", "{0} รายการ"), ("Hello, {0}", "สวัสดี {0}"), ("Clear the list", "ล้างรายการ"), ("Shops", "ร้าน"), ("Bangkok", "กรุงเทพ"), ("Chiang Mai", "เชียงใหม่"), ("Place: {0}", "สถานที่: {0}")]).unwrap();
         // One file of the program's own, for both.
         // (`tf` by another name, so Studio's own sentence check passes this program's by.)
         std::fs::write(src.join("main_window.rs"), r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
@@ -11578,6 +11651,14 @@ impl MainWindowEvents for MainWindow {
 
     fn members_only(&mut self, ui: &MainWindowUi) {
         ui.status.set_part_text(0, &words("Members only: {0}", &[&ui.item_checked("members_only")]));
+    }
+
+    fn clear_all(&mut self, ui: &MainWindowUi) {
+        ui.orders.items_clear();
+    }
+
+    fn place_chosen(&mut self, ui: &MainWindowUi) {
+        ui.status.set_part_text(0, &words("Place: {0}", &[&ui.places.selected_text().unwrap_or_default()]));
     }
 }
 "##).unwrap();

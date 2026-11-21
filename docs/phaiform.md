@@ -156,8 +156,13 @@ dialog_result = "ok"         # คลิกแล้วปิดหน้าต�
 kind = "button"
 id = "save"
 transition = "200ms ease-out"                                  # สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน
+animation = "pulse 1.5s infinite"                              # สีเคลื่อนไหวเอง: blink pulse fade-in หรือ @keyframes
 states = { hover = "background: #0b5d43", pressed = "color: #ffcc00" }   # = CSS #save:hover { } ...
 ```
+
+`animation` ของ CSS: `ชื่อ เวลา [รอก่อนเริ่ม] [easing] [จำนวนรอบ | infinite] [alternate]` — สำเร็จรูป `blink`
+`pulse` `fade-in` หรือ `@keyframes ชื่อ { from { } 50% { } to { } }` ใน theme.css (ขยับได้เฉพาะสีและ `border-width`
+เพราะ control ของ Windows หมุนหรือโปร่งใสไม่ได้) ใช้กับปุ่ม ช่องติ๊ก radio ช่องกรอก slider progress
 
 เงาและไล่สี (แบบ style ของ ImageStyler) ใช้ได้ทั้งใน theme.css, แท็บ Style และ Theme Editor:
 
@@ -255,7 +260,13 @@ rules = ["> 500 back=#ffe4e4 fore=#b00020", "empty back=#eeeeee row"]
 (จัดกลุ่มแถวตามคอลัมน์นี้ ได้คอลัมน์เดียว) — ค่าของทั้ง grid อยู่ในตาราง props: `show_column_headers`,
 `column_auto_width`, `allow_add_rows`, `allow_delete_rows`, `editor_show_mode`, `enter_moves_next`,
 `allow_column_moving`, `alternate_row_color`, `header_back_color`, `header_fore_color`, `row_height`,
-`show_footer`, `find_panel` (`ctrl_f` `always` `off`), `find_filter`, `copy_headers`
+`show_footer`, `find_panel` (`ctrl_f` `always` `off`), `find_filter`, `copy_headers`, `allow_filter` (ปุ่มกรองแบบ
+Excel ที่หัวคอลัมน์ ค่าเริ่มต้น true), `header_menu` (คลิกขวาหัวคอลัมน์: เรียง กรอง จัดกลุ่ม ส่งออก Excel/PDF/CSV
+ตัวอย่างก่อนพิมพ์ ค่าเริ่มต้น true)
+
+ตารางหลัก-ตารางลูก: `master_detail = "orders.id = order_id"` ที่ grid ลูก — grid หลัก `orders` คอลัมน์ `id`
+(หัวคอลัมน์หรือชื่อคอลัมน์ที่ผูก) = คอลัมน์ `order_id` ของ grid นี้ (ชื่อเดียวกันเขียนแค่ `orders.id`); codegen
+เรียก `phai_ui::grid::set_master(lines, orders, 0, 1)` แถวใหม่ใน grid ลูกได้คีย์ของแถวหลักเอง
 
 ## User control — control ของโปรเจกต์เอง
 

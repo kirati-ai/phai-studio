@@ -14,4 +14,5 @@ pub mod form;
 pub mod menu;
 #[path = "../../phai-ui/src/text.rs"]
 pub mod text;
+pub mod tree;
 pub mod win;

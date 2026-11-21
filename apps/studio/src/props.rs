@@ -81,6 +81,7 @@ pub enum Key {
     /// The chosen control's transition: milliseconds, and its curve.
     StyleTransition,
     StyleEasing,
+    StyleAnimation,
     /// A property of the chosen menu, menu item or toolbar button, by its name.
     Bar(&'static str),
     /// An event of the chosen menu, menu item or toolbar button (`events::MENU_ITEM`...).
@@ -755,6 +756,10 @@ impl Props {
             }).unwrap_or_default();
             let set = !ms.is_empty();
             v.push(row(t("Transition"), Key::StyleTransition, t("Duration (ms)"), ms, Ed::Number, t("Its colours move to a new state's over this many milliseconds - 150 is quick; empty, at once.").into(), set));
+            let anim = c.prop("animation").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let set = !anim.is_empty();
+            let choices = ["", "blink 1s infinite", "pulse 1.5s infinite", "fade-in 400ms", "blink 600ms 3"].iter().map(|x| x.to_string()).collect();
+            v.push(row(t("Animation"), Key::StyleAnimation, t("Animation"), anim, Ed::Choice(choices, true), t("Its colours move on their own, again and again or once: blink, pulse, fade-in, or a @keyframes name of the theme, then how long.").into(), set));
             v.push(row(t("Transition"), Key::StyleEasing, t("Easing"), if easing.is_empty() { "ease".into() } else { easing }, Ed::Choice(["ease", "linear", "ease-in", "ease-out", "ease-in-out"].iter().map(|x| x.to_string()).collect(), false), t("How the change moves: ease starts and ends gently, linear evenly.").into(), set));
         }
         v.push(row(t("Theme"), Key::StyleToTheme, t("Send to theme"), t("Make a class...").into(), Ed::Dialog, t("This control's look, every state, becomes a class in the theme's CSS that other controls can take; the control takes the class.").into(), false));

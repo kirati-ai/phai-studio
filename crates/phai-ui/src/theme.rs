@@ -100,6 +100,87 @@ pub struct Style {
     pub gradient: Option<Gradient>,
     /// `box-shadow`; `Some(None)` is `box-shadow: none`, over a shadow a rule below gave.
     pub shadow: Option<Option<Shadow>>,
+    /// CSS `animation`: the colours moved through a `@keyframes`' (or a built-in one's) frames.
+    pub animation: Option<Animation>,
+}
+
+/// CSS's `animation: name 1s ease-in-out infinite alternate`: a `@keyframes` (or `blink`,
+/// `pulse`, `fade-in`, built in) run over `ms`, `count` times (`None`: for ever), every other
+/// time backwards when `alternate`, after `delay` ms. A Windows control cannot turn or fade, so
+/// only colours move - `fade-in` comes out of the window's background.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Animation {
+    pub name: String,
+    pub ms: i32,
+    pub easing: Easing,
+    pub count: Option<u32>,
+    pub alternate: bool,
+    pub delay: i32,
+}
+
+impl Animation {
+    /// Read from what follows `animation:`; `None` when it names no animation or no time.
+    pub fn parse(text: &str) -> Option<Animation> {
+        let mut a = Animation { name: String::new(), ms: -1, easing: Easing::Ease, count: Some(1), alternate: false, delay: 0 };
+        let time = |w: &str| w.strip_suffix("ms").and_then(|n| n.parse::<f32>().ok()).or_else(|| w.strip_suffix('s').and_then(|n| n.parse::<f32>().ok()).map(|n| n * 1000.0));
+        for w in text.split_whitespace() {
+            if let Some(ms) = time(w) {
+                if a.ms < 0 {
+                    a.ms = ms as i32;
+                } else {
+                    a.delay = ms as i32;
+                }
+            } else if let Some(e) = Easing::parse(w) {
+                a.easing = e;
+            } else if w == "infinite" {
+                a.count = None;
+            } else if let Ok(n) = w.parse::<u32>() {
+                a.count = Some(n.max(1));
+            } else if w == "alternate" {
+                a.alternate = true;
+            } else if matches!(w, "normal" | "forwards" | "backwards" | "both" | "none" | "running") {
+            } else if w.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') && a.name.is_empty() {
+                a.name = w.to_string();
+            } else {
+                return None;
+            }
+        }
+        (!a.name.is_empty() && a.ms > 0).then_some(a)
+    }
+
+    /// Where it is `elapsed` ms after it started: how far through the frames (0 to 1, eased), and
+    /// whether it is still going.
+    pub fn at(&self, elapsed: u128) -> (f32, bool) {
+        let elapsed = elapsed as i64 - self.delay as i64;
+        if elapsed < 0 {
+            return (0.0, true);
+        }
+        let d = self.ms.max(1) as i64;
+        let round = elapsed / d;
+        if self.count.is_some_and(|n| round >= n as i64) {
+            return (1.0, false);
+        }
+        let mut p = (elapsed % d) as f32 / d as f32;
+        if self.alternate && round % 2 == 1 {
+            p = 1.0 - p;
+        }
+        (self.easing.at(p), true)
+    }
+}
+
+/// The style part way through `frames` (each at its place, 0 to 1, in order).
+pub fn frames_at(frames: &[(f32, Style)], t: f32) -> Style {
+    let Some(first) = frames.first() else { return Style::default() };
+    if t <= first.0 {
+        return first.1.clone();
+    }
+    for w in frames.windows(2) {
+        if t <= w[1].0 {
+            let span = (w[1].0 - w[0].0).max(1e-6);
+            return w[0].1.mix(&w[1].1, (t - w[0].0) / span);
+        }
+    }
+    frames[frames.len() - 1].1.clone()
 }
 
 /// CSS's `linear-gradient(angle, colour [stop%], ...)`: `angle` in degrees as CSS has them - 0 up,
@@ -252,7 +333,7 @@ impl Style {
         if top.background.is_some() && top.gradient.is_none() {
             self.gradient = None;
         }
-        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color, transition, gradient, shadow);
+        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color, transition, gradient, shadow, animation);
         self
     }
 
@@ -316,6 +397,7 @@ enum Value {
     Transition(i32, Easing),
     Gradient(Gradient),
     Shadow(Option<Shadow>),
+    Animation(Option<Animation>),
 }
 
 #[derive(Clone, Debug)]
@@ -380,6 +462,7 @@ enum Prop {
     Transition,
     BackgroundImage,
     BoxShadow,
+    Animation,
 }
 
 impl Prop {
@@ -397,6 +480,7 @@ impl Prop {
             "transition" => Prop::Transition,
             "background-image" => Prop::BackgroundImage,
             "box-shadow" => Prop::BoxShadow,
+            "animation" => Prop::Animation,
             _ => return None,
         })
     }
@@ -415,6 +499,7 @@ impl Prop {
             Prop::Transition => "transition",
             Prop::BackgroundImage => "background-image",
             Prop::BoxShadow => "box-shadow",
+            Prop::Animation => "animation",
         }
     }
 
@@ -452,10 +537,15 @@ impl std::fmt::Display for ThemeError {
 
 impl std::error::Error for ThemeError {}
 
+/// A `@keyframes` frame: its place (0 to 1) and what it says.
+type Frame = (f32, Vec<(Prop, Value)>);
+
 #[derive(Clone, Debug)]
 pub struct Theme {
     rules: Vec<Rule>,
     vars: HashMap<String, String>,
+    /// `@keyframes name { from { } 50% { } to { } }`: each frame's place (0 to 1) and declarations.
+    keyframes: HashMap<String, Vec<Frame>>,
 }
 
 pub const LIGHT_CSS: &str = include_str!("../themes/light.css");
@@ -481,7 +571,8 @@ impl Theme {
     pub fn parse_with(css: &str, files: &dyn Fn(&str) -> Result<String, String>) -> Result<Theme, ThemeError> {
         let mut vars = HashMap::new();
         let mut raw = Vec::new();
-        collect(css, "", files, 0, &mut vars, &mut raw)?;
+        let mut raw_frames = Vec::new();
+        collect(css, "", files, 0, &mut vars, &mut raw, &mut raw_frames)?;
         // Every value is read now, with every sheet's variables: a `--accent` set after an
         // `@import` recolours what the imported sheet said, as in a browser.
         let mut rules = Vec::new();
@@ -502,7 +593,25 @@ impl Theme {
             let order = rules.len();
             rules.push(Rule { selectors, decls: out, order, source, lines });
         }
-        Ok(Theme { rules, vars })
+        let mut keyframes = HashMap::new();
+        for (name, frames, source) in raw_frames {
+            let mut out: Vec<Frame> = Vec::new();
+            for (at, decls) in frames {
+                let mut d = Vec::new();
+                for (pname, value, line) in decls {
+                    let err = |message: String| ThemeError { line, message: if source.is_empty() { message } else { format!("{source}: {message}") } };
+                    let prop = Prop::parse(&pname).filter(|p| p.is_color() || *p == Prop::BorderWidth).ok_or_else(|| err(format!("@keyframes {name}: {pname} cannot move - colours and border-width can")))?;
+                    let text = resolve_vars(&value, &vars, line, 0).map_err(|e| err(e.message))?;
+                    d.push((prop, parse_value(prop, &text).ok_or_else(|| err(format!("{pname}: cannot read {text:?}")))?));
+                }
+                for a in at {
+                    out.push((a, d.clone()));
+                }
+            }
+            out.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            keyframes.insert(name, out);
+        }
+        Ok(Theme { rules, vars, keyframes })
     }
 
     /// A `:root` variable's value, its own `var()`s read - what the theme says `--accent` is.
@@ -565,30 +674,63 @@ impl Theme {
         let mut s = Style::default();
         for (_, _, r) in hits {
             for (p, v) in &r.decls {
-                match (p, v) {
-                    (Prop::Background, Value::Color(c)) => {
-                        s.background = Some(*c);
-                        s.gradient = None;
-                    }
-                    (Prop::BackgroundImage, Value::Gradient(g)) => {
-                        s.background = Some(g.stops[0].0);
-                        s.gradient = Some(g.clone());
-                    }
-                    (Prop::BoxShadow, Value::Shadow(sh)) => s.shadow = Some(*sh),
-                    (Prop::Color, Value::Color(c)) => s.color = Some(*c),
-                    (Prop::BorderColor, Value::Color(c)) => s.border_color = Some(*c),
-                    (Prop::AccentColor, Value::Color(c)) => s.accent_color = Some(*c),
-                    (Prop::IconColor, Value::Color(c)) => s.icon_color = Some(*c),
-                    (Prop::BorderWidth, Value::Number(n)) => s.border_width = Some(*n),
-                    (Prop::BorderRadius, Value::Number(n)) => s.border_radius = Some(*n),
-                    (Prop::FontWeight, Value::Number(n)) => s.font_weight = Some(*n),
-                    (Prop::FontSize, Value::Number(n)) => s.font_size = Some(*n),
-                    (Prop::Transition, Value::Transition(ms, e)) => s.transition = Some((*ms, *e)),
-                    _ => {}
-                }
+                apply(&mut s, *p, v);
             }
         }
         s
+    }
+
+    /// The frames of animation `name` for a control that looks as `base` does: the sheet's
+    /// `@keyframes`, else a built-in one - `blink` (the words fade into the background and back),
+    /// `pulse` (the background toward the accent and back), `fade-in` (out of the window's
+    /// background). A frame says only what moves; the rest is `base`'s.
+    pub fn frames(&self, name: &str, base: &Style) -> Option<Vec<(f32, Style)>> {
+        if let Some(k) = self.keyframes.get(name) {
+            let mut out: Vec<(f32, Style)> = k
+                .iter()
+                .map(|(at, decls)| {
+                    let mut s = base.clone();
+                    for (p, v) in decls {
+                        apply(&mut s, *p, v);
+                    }
+                    (*at, s)
+                })
+                .collect();
+            if out.first().is_none_or(|f| f.0 > 0.0) {
+                out.insert(0, (0.0, base.clone()));
+            }
+            if out.last().is_none_or(|f| f.0 < 1.0) {
+                out.push((1.0, base.clone()));
+            }
+            return Some(out);
+        }
+        let window = self.style(&Query::kind("window")).background.unwrap_or(Color::rgb(255, 255, 255));
+        let accent = self.var_color("--accent").unwrap_or(Color::rgb(0, 95, 184));
+        let bg = base.background.unwrap_or(window);
+        match name {
+            "blink" => {
+                let mut off = base.clone();
+                off.color = Some(base.color.unwrap_or(Color::rgb(0, 0, 0)).mix(bg, 0.85));
+                off.icon_color = base.icon_color.map(|c| c.mix(bg, 0.85));
+                Some(vec![(0.0, base.clone()), (0.5, off), (1.0, base.clone())])
+            }
+            "pulse" => {
+                let mut on = base.clone();
+                on.background = Some(bg.mix(accent, 0.35));
+                on.border_color = Some(base.border_color.unwrap_or(accent).mix(accent, 0.8));
+                Some(vec![(0.0, base.clone()), (0.5, on), (1.0, base.clone())])
+            }
+            "fade-in" | "fadein" | "fade_in" => {
+                let mut from = base.clone();
+                for c in [&mut from.background, &mut from.color, &mut from.border_color, &mut from.accent_color, &mut from.icon_color] {
+                    if c.is_some() {
+                        *c = Some(window);
+                    }
+                }
+                Some(vec![(0.0, from), (1.0, base.clone())])
+            }
+            _ => None,
+        }
     }
 
     /// The window background, which decides light or dark for everything Windows draws itself.
@@ -597,10 +739,39 @@ impl Theme {
     }
 }
 
+/// What one declaration does to a style.
+fn apply(s: &mut Style, p: Prop, v: &Value) {
+    match (p, v) {
+        (Prop::Background, Value::Color(c)) => {
+            s.background = Some(*c);
+            s.gradient = None;
+        }
+        (Prop::BackgroundImage, Value::Gradient(g)) => {
+            s.background = Some(g.stops[0].0);
+            s.gradient = Some(g.clone());
+        }
+        (Prop::BoxShadow, Value::Shadow(sh)) => s.shadow = Some(*sh),
+        (Prop::Color, Value::Color(c)) => s.color = Some(*c),
+        (Prop::BorderColor, Value::Color(c)) => s.border_color = Some(*c),
+        (Prop::AccentColor, Value::Color(c)) => s.accent_color = Some(*c),
+        (Prop::IconColor, Value::Color(c)) => s.icon_color = Some(*c),
+        (Prop::BorderWidth, Value::Number(n)) => s.border_width = Some(*n),
+        (Prop::BorderRadius, Value::Number(n)) => s.border_radius = Some(*n),
+        (Prop::FontWeight, Value::Number(n)) => s.font_weight = Some(*n),
+        (Prop::FontSize, Value::Number(n)) => s.font_size = Some(*n),
+        (Prop::Transition, Value::Transition(ms, e)) => s.transition = Some((*ms, *e)),
+        (Prop::Animation, Value::Animation(a)) => s.animation = a.clone(),
+        _ => {}
+    }
+}
+
 type RawRule = (Vec<Selector>, Vec<(String, String, usize)>, String);
 
+/// A `@keyframes`' name, its frames (each frame's places and declarations) and its file.
+type RawFrames = (String, Vec<(Vec<f32>, Vec<(String, String, usize)>)>, String);
+
 /// One sheet's imports, variables and rules, in order, values still unread.
-fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, String>, depth: usize, vars: &mut HashMap<String, String>, raw: &mut Vec<RawRule>) -> Result<(), ThemeError> {
+fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, String>, depth: usize, vars: &mut HashMap<String, String>, raw: &mut Vec<RawRule>, frames: &mut Vec<RawFrames>) -> Result<(), ThemeError> {
     let named = |e: ThemeError| if source.is_empty() { e } else { ThemeError { line: e.line, message: format!("{source}: {}", e.message) } };
     if depth > 8 {
         return Err(ThemeError { line: 0, message: "@import goes too deep - sheets that import each other?".into() });
@@ -616,9 +787,57 @@ fn collect(css: &str, source: &str, files: &dyn Fn(&str) -> Result<String, Strin
             "phai:dark" => DARK_CSS.to_string(),
             _ => files(&what).map_err(|m| named(ThemeError { line, message: m }))?,
         };
-        collect(&text, &what, files, depth + 1, vars, raw)?;
+        collect(&text, &what, files, depth + 1, vars, raw, frames)?;
         let blank: String = css[i..=end].chars().map(|c| if c == '\n' { '\n' } else { ' ' }).collect();
         css.replace_range(i..=end, &blank);
+    }
+    // `@keyframes name { from { ... } 50% { ... } to { ... } }`: taken out, each a blank of the
+    // same lines, before the rules are read.
+    while let Some(i) = css.find("@keyframes") {
+        let line = line_at(&css, i);
+        let open = css[i..].find('{').map(|o| i + o).ok_or_else(|| named(ThemeError { line, message: "@keyframes without {".into() }))?;
+        let name = css[i + 10..open].trim().to_string();
+        if name.is_empty() {
+            return Err(named(ThemeError { line, message: "@keyframes needs a name".into() }));
+        }
+        // Its closing brace: the one that ends what it opened.
+        let mut depth = 0;
+        let mut close = None;
+        for (k, ch) in css[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + k);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let close = close.ok_or_else(|| named(ThemeError { line, message: format!("@keyframes {name}: a {{ that is never closed") }))?;
+        let inner = &css[open + 1..close];
+        let base = line_at(&css, open) - 1;
+        let mut list = Vec::new();
+        for b in split_blocks(inner).map_err(|e| named(ThemeError { line: e.line + base, message: e.message }))? {
+            let mut at = Vec::new();
+            for sel in b.selectors.split(',') {
+                let sel = sel.trim();
+                let place = match sel {
+                    "from" => Some(0.0),
+                    "to" => Some(1.0),
+                    p => p.strip_suffix('%').and_then(|n| n.trim().parse::<f32>().ok()).filter(|n| (0.0..=100.0).contains(n)).map(|n| n / 100.0),
+                };
+                at.push(place.ok_or_else(|| named(ThemeError { line: b.line + base, message: format!("@keyframes {name}: {sel:?} - from, to or a percentage") }))?);
+            }
+            let decls = declarations(&b.body, b.body_line + base).map_err(named)?;
+            list.push((at, decls));
+        }
+        frames.retain(|f| f.0 != name);
+        frames.push((name, list, source.to_string()));
+        let blank: String = css[i..=close].chars().map(|c| if c == '\n' { '\n' } else { ' ' }).collect();
+        css.replace_range(i..=close, &blank);
     }
     let blocks = split_blocks(&css).map_err(named)?;
     for b in &blocks {
@@ -994,6 +1213,9 @@ fn parse_value(prop: Prop, text: &str) -> Option<Value> {
     if prop == Prop::BoxShadow {
         return parse_shadow(t).map(Value::Shadow);
     }
+    if prop == Prop::Animation {
+        return if t == "none" { Some(Value::Animation(None)) } else { Animation::parse(t).map(|a| Value::Animation(Some(a))) };
+    }
     if prop == Prop::Transition {
         // `150ms`, `0.2s ease-out`, `background 200ms linear` - every colour, whatever is named.
         let mut ms = None;
@@ -1236,5 +1458,39 @@ mod tests {
             assert!(STANDARD_CSS.contains(word), "the standard sheet should say {word}");
         }
         assert!(!Theme::parse(STANDARD_CSS).unwrap().is_dark());
+    }
+
+    #[test]
+    fn keyframes_and_animations_move_the_colours() {
+        let t = Theme::parse(
+            ":root { --hot: #ff0000; }
+@keyframes glow {
+  from { background: #ffffff; }
+  50% { background: var(--hot); border-color: #00ff00; }
+}
+button.alert { background: #ffffff; animation: glow 1s linear infinite alternate; }",
+        )
+        .unwrap();
+        let q = Query { kind: "button", classes: &["alert"], id: None, state: State::default() };
+        let s = t.style(&q);
+        let a = s.animation.clone().expect("an animation");
+        assert_eq!((a.name.as_str(), a.ms, a.easing, a.count, a.alternate), ("glow", 1000, Easing::Linear, None, true));
+        let f = t.frames("glow", &s).expect("its frames");
+        assert_eq!(f.len(), 3, "from, 50% and the closing frame as the control is");
+        assert_eq!(frames_at(&f, 0.5).background, Some(Color::rgb(255, 0, 0)));
+        assert_eq!(frames_at(&f, 0.25).background, Some(Color::rgb(255, 128, 128)));
+        // Alternate: the second round goes back.
+        assert_eq!(a.at(250).0, 0.25);
+        assert_eq!(a.at(1250).0, 0.75);
+        assert!(a.at(99_000).1, "infinite runs on");
+        let once = Animation::parse("blink 400ms 2 0.1s").unwrap();
+        assert_eq!((once.count, once.delay), (Some(2), 100));
+        assert_eq!(once.at(50), (0.0, true), "waiting out its delay");
+        assert_eq!(once.at(2000), (1.0, false), "done after two rounds");
+        assert!(t.frames("blink", &s).is_some() && t.frames("pulse", &s).is_some() && t.frames("fade-in", &s).is_some());
+        assert!(t.frames("nothing", &s).is_none());
+        assert!(Theme::parse("@keyframes x { 120% { color: red; } }").is_err());
+        assert!(Theme::parse("@keyframes x { to { font-weight: 700; } }").is_err(), "only colours move");
+        assert!(Theme::parse("button { animation: pulse; }").is_err(), "no time");
     }
 }

@@ -441,6 +441,46 @@ const ANIM_TIMER: usize = 0x7A11;
 /// [`style_of`] for the control's look as drawn now: with a CSS `transition`, a change of state
 /// moves its colours over the transition's time instead of at once.
 pub fn style_animated(h: HWND, kind: Kind, state: State) -> Style {
+    let shown = style_transitioned(h, kind, state);
+    animate(h, shown)
+}
+
+/// Controls with a CSS `animation` running: when each started, and its name.
+static RUNNING: Mutex<Option<HashMap<isize, (String, std::time::Instant)>>> = Mutex::new(None);
+
+/// `style` as its `animation` has it now (the frames of a `@keyframes`, or a built-in one), the
+/// timer kept going while it runs.
+fn animate(h: HWND, style: Style) -> Style {
+    let mut map = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+    let m = map.get_or_insert_with(HashMap::new);
+    let key = h.0 as isize;
+    let Some(a) = style.animation.clone() else {
+        m.remove(&key);
+        return style;
+    };
+    let start = match m.get(&key) {
+        Some((name, at)) if *name == a.name => *at,
+        _ => {
+            let now = std::time::Instant::now();
+            m.insert(key, (a.name.clone(), now));
+            now
+        }
+    };
+    let Some(frames) = theme::current().frames(&a.name, &style) else { return style };
+    let (t, going) = a.at(start.elapsed().as_millis());
+    if going {
+        unsafe {
+            wm::SetTimer(Some(h), ANIM_TIMER, 30, Some(anim_tick));
+        }
+    }
+    if !going {
+        // Done: as it was asked to look, as CSS leaves it without a fill mode.
+        return style;
+    }
+    theme::frames_at(&frames, t)
+}
+
+fn style_transitioned(h: HWND, kind: Kind, state: State) -> Style {
     let target = style_of(h, kind, state);
     let mut map = ANIMS.lock().unwrap_or_else(|e| e.into_inner());
     let m = map.get_or_insert_with(HashMap::new);
@@ -475,6 +515,7 @@ extern "system" fn anim_tick(h: HWND, _: u32, _: usize, _: u32) {
         (a.start.elapsed().as_millis() as i32) < ms + 15
     })).unwrap_or(false);
     unsafe {
+        // An animation keeps it going; `animate` sets it again on each frame it draws.
         if !running {
             let _ = wm::KillTimer(Some(h), ANIM_TIMER);
         }

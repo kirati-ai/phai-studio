@@ -731,6 +731,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
         }
     }
+    // MasterDetail: a grid following another's chosen row.
+    for c in &f.control {
+        if let Some((mi, mc, dc)) = f.master_detail(c) {
+            let _ = writeln!(w, "        phai_ui::grid::set_master({}, {}, {mc}, {dc});", c.id, f.control[mi].id);
+        }
+    }
     if f.form.flag("is_mdi_container", false) {
         let _ = writeln!(w, "        // IsMdiContainer: the area child forms open in, what docking leaves.");
         let _ = writeln!(w, "        let mdi_client = phai_ui::mdi::client(hwnd);");
@@ -1600,6 +1606,29 @@ mod tests {
         assert!(code.contains("phai_ui::grid::set_column(people, 1, phai_ui::grid::Column { align: phai_ui::grid::Align::Center, editor: phai_ui::grid::Editor::Check, ..phai_ui::grid::Column::new() });"), "{code}");
         assert!(code.contains("editor: phai_ui::grid::Editor::Combo(vec![\"S\".to_string(), \"M\".to_string()])"), "{code}");
         assert!(code.contains("sort: Some(false)"), "{code}");
+    }
+
+    /// MasterDetail names the master grid, its key column and the detail's by heading; the code
+    /// links them by place, and a name that is not there is a problem in the form.
+    #[test]
+    fn master_detail_links_two_grids_by_their_columns() {
+        let mut f = FormFile::new("MainWindow");
+        let mut orders = Control::new(Kind::Grid, "orders", [10, 10, 300, 200]);
+        orders.columns = vec![("Customer".into(), 120), ("Id".into(), 60)];
+        let mut lines = Control::new(Kind::Grid, "lines", [10, 220, 300, 200]);
+        lines.columns = vec![("Item".into(), 120), ("Order".into(), 60)];
+        lines.set_prop("master_detail", Some(toml::Value::String("orders.id = order".into())));
+        f.control.push(orders);
+        f.control.push(lines);
+        let again = FormFile::parse(&f.to_toml()).expect("reads back");
+        assert_eq!(again.master_detail(&again.control[1]), Some((0, 1, 1)));
+        assert!(!again.check().iter().any(|(m, _)| m.contains("master_detail")), "{:?}", again.check());
+        let code = generate(&again, &Options::default());
+        assert!(code.contains("phai_ui::grid::set_master(lines, orders, 1, 1);"), "{code}");
+        let mut wrong = again.clone();
+        wrong.control[1].set_prop("master_detail", Some(toml::Value::String("orders.number".into())));
+        assert!(wrong.check().iter().any(|(m, _)| m.contains("master_detail")));
+        assert!(!generate(&wrong, &Options::default()).contains("set_master"));
     }
 
     /// A toolbar's separator, a greyed button and one that starts down reach the program.

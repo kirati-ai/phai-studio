@@ -48,6 +48,11 @@ pub fn el(h: HWND) -> Option<HtmlElement> {
     ELEMENTS.with(|l| l.borrow().get(h.0 as usize).cloned().flatten())
 }
 
+/// The handle `e` was given, if it was.
+pub fn handle_of(e: &HtmlElement) -> Option<HWND> {
+    ELEMENTS.with(|l| l.borrow().iter().position(|x| x.as_ref() == Some(e)).map(|i| HWND(i as u32)))
+}
+
 /// `h` and what is in it gone from the page and the list.
 pub fn forget(h: HWND) {
     if let Some(e) = el(h) {
