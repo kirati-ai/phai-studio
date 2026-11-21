@@ -226,7 +226,7 @@ id = "name_box"
 data_binding = "people.name"
 ```
 
-`ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง
+`ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง; save ทำใน transaction เดียว (`Connection::transaction`) พังกลางทาง = ไม่บันทึกอะไรเลย
 
 ## Data grid — ค่าของแต่ละคอลัมน์ (`column_props`)
 

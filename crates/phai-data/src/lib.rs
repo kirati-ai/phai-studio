@@ -327,31 +327,73 @@ impl Connection {
         keys.iter().enumerate().map(|(i, (k, _))| format!("{} = {}", self.q(k), self.mark(first + i))).collect::<Vec<_>>().join(" AND ")
     }
 
-    /// Changes one value of a row, the row found by its primary key - `keys` its columns and
-    /// their values now. How many rows changed: 1, or 0 when the row is no longer there.
-    pub fn update_cell(&self, database: &str, table: &str, column: &str, value: Option<&str>, keys: &[(String, String)]) -> Result<u64, String> {
+    /// The UPDATE of [`Connection::update_cell`] and its values.
+    fn update_sql(&self, database: &str, table: &str, column: &str, value: Option<&str>, keys: &[(String, String)]) -> (String, Vec<Option<String>>) {
         let limit = if self.kind == Kind::MySql { " LIMIT 1" } else { "" };
         let sql = format!("UPDATE {} SET {} = {} WHERE {}{limit}", self.table_ref(database, table), self.q(column), self.mark(1), self.key_where(keys, 2));
         let mut params: Vec<Option<String>> = vec![value.map(str::to_string)];
         params.extend(keys.iter().map(|(_, v)| Some(v.clone())));
+        (sql, params)
+    }
+
+    fn delete_sql(&self, database: &str, table: &str, keys: &[(String, String)]) -> (String, Vec<Option<String>>) {
+        let limit = if self.kind == Kind::MySql { " LIMIT 1" } else { "" };
+        let sql = format!("DELETE FROM {} WHERE {}{limit}", self.table_ref(database, table), self.key_where(keys, 1));
+        (sql, keys.iter().map(|(_, v)| Some(v.clone())).collect())
+    }
+
+    fn insert_sql(&self, database: &str, table: &str, values: &[(String, Option<String>)]) -> (String, Vec<Option<String>>) {
+        let cols: Vec<String> = values.iter().map(|(c, _)| self.q(c)).collect();
+        let marks: Vec<String> = (1..=values.len()).map(|i| self.mark(i)).collect();
+        let sql = format!("INSERT INTO {} ({}) VALUES ({})", self.table_ref(database, table), cols.join(", "), marks.join(", "));
+        (sql, values.iter().map(|(_, v)| v.clone()).collect())
+    }
+
+    /// Changes one value of a row, the row found by its primary key - `keys` its columns and
+    /// their values now. How many rows changed: 1, or 0 when the row is no longer there.
+    pub fn update_cell(&self, database: &str, table: &str, column: &str, value: Option<&str>, keys: &[(String, String)]) -> Result<u64, String> {
+        let (sql, params) = self.update_sql(database, table, column, value, keys);
         Ok(self.execute(Some(database), &sql, &params)?.affected)
     }
 
     /// Deletes the row with these primary key values.
     pub fn delete_row(&self, database: &str, table: &str, keys: &[(String, String)]) -> Result<u64, String> {
-        let limit = if self.kind == Kind::MySql { " LIMIT 1" } else { "" };
-        let sql = format!("DELETE FROM {} WHERE {}{limit}", self.table_ref(database, table), self.key_where(keys, 1));
-        let params: Vec<Option<String>> = keys.iter().map(|(_, v)| Some(v.clone())).collect();
+        let (sql, params) = self.delete_sql(database, table, keys);
         Ok(self.execute(Some(database), &sql, &params)?.affected)
     }
 
     /// Adds a row: these columns, these values (`None` for NULL); the others take their defaults.
     pub fn insert_row(&self, database: &str, table: &str, values: &[(String, Option<String>)]) -> Result<u64, String> {
-        let cols: Vec<String> = values.iter().map(|(c, _)| self.q(c)).collect();
-        let marks: Vec<String> = (1..=values.len()).map(|i| self.mark(i)).collect();
-        let sql = format!("INSERT INTO {} ({}) VALUES ({})", self.table_ref(database, table), cols.join(", "), marks.join(", "));
-        let params: Vec<Option<String>> = values.iter().map(|(_, v)| v.clone()).collect();
+        let (sql, params) = self.insert_sql(database, table, values);
         Ok(self.execute(Some(database), &sql, &params)?.affected)
+    }
+
+    /// `work` done in one transaction on one connection to `database`: all of it kept when it
+    /// returns `Ok`, none of it when it fails (or a statement does) - the database as it was.
+    /// MySQL's tables must be InnoDB's (its default) for that; MyISAM's keep what was done.
+    pub fn transaction<T>(&self, database: &str, work: impl FnOnce(&mut Transaction) -> Result<T, String>) -> Result<T, String> {
+        let open = match self.kind {
+            Kind::MySql => Open::MySql(self.mysql(Some(database))?),
+            Kind::Postgres => Open::Postgres(self.postgres(Some(database))?),
+            Kind::Sqlite => Open::Sqlite(sqlite::open(&self.host)?),
+        };
+        let mut tx = Transaction { conn: self, database: database.to_string(), open };
+        // SQLite's IMMEDIATE: the file's write lock taken now, not halfway through.
+        tx.statement(match self.kind {
+            Kind::MySql => "START TRANSACTION",
+            Kind::Postgres => "BEGIN",
+            Kind::Sqlite => "BEGIN IMMEDIATE",
+        })?;
+        match work(&mut tx) {
+            Ok(v) => {
+                tx.statement("COMMIT")?;
+                Ok(v)
+            }
+            Err(e) => {
+                let _ = tx.statement("ROLLBACK");
+                Err(e)
+            }
+        }
     }
 
     /// Runs `sql` - one statement or several - in `database`; the last result with rows is
@@ -703,8 +745,15 @@ impl Binding {
             self.keys.iter().map(|k| at(k).and_then(|i| row.get(i)).map(|v| (k.clone(), v.clone())).ok_or_else(|| format!("the key {k} is not among the bound columns"))).collect()
         };
         let value = |v: &str| (v != "NULL").then(|| v.to_string());
+        // What to do, worked out first: a row the grid cannot have changed (no key) stops it
+        // before anything is written.
+        enum Change {
+            Update(String, Option<String>, Vec<(String, String)>),
+            Insert(Vec<(String, Option<String>)>),
+            Delete(Vec<(String, String)>),
+        }
         let mut seen = vec![false; loaded.len()];
-        let mut changes = 0;
+        let mut todo = Vec::new();
         for (place, row) in rows {
             match place.checked_sub(1).filter(|&k| k < loaded.len()) {
                 Some(k) => {
@@ -713,33 +762,122 @@ impl Binding {
                     for (i, col) in self.columns.iter().enumerate() {
                         let (now, was) = (row.get(i).map(String::as_str).unwrap_or(""), before.get(i).map(String::as_str).unwrap_or(""));
                         if now != was {
-                            self.conn.update_cell(&self.database, &self.table, col, value(now).as_deref(), &key_of(before)?)?;
-                            changes += 1;
+                            todo.push(Change::Update(col.clone(), value(now), key_of(before)?));
                         }
                     }
                 }
                 None => {
                     let values: Vec<(String, Option<String>)> = self.columns.iter().zip(row).filter(|(_, v)| !v.is_empty()).map(|(c, v)| (c.clone(), value(v))).collect();
                     if !values.is_empty() {
-                        self.conn.insert_row(&self.database, &self.table, &values)?;
-                        changes += 1;
+                        todo.push(Change::Insert(values));
                     }
                 }
             }
         }
         for (k, before) in loaded.iter().enumerate() {
             if !seen[k] {
-                self.conn.delete_row(&self.database, &self.table, &key_of(before)?)?;
-                changes += 1;
+                todo.push(Change::Delete(key_of(before)?));
             }
         }
-        Ok(changes)
+        if todo.is_empty() {
+            return Ok(0);
+        }
+        // All of it, or - when one fails - none of it.
+        self.conn.transaction(&self.database, |tx| {
+            for c in &todo {
+                match c {
+                    Change::Update(col, v, keys) => tx.update_cell(&self.table, col, v.as_deref(), keys)?,
+                    Change::Insert(values) => tx.insert_row(&self.table, values)?,
+                    Change::Delete(keys) => tx.delete_row(&self.table, keys)?,
+                };
+            }
+            Ok(todo.len())
+        })
+    }
+}
+
+/// One connection, kept open while its statements run.
+enum Open {
+    MySql(wire::Conn),
+    Postgres(pg::Conn),
+    Sqlite(rusqlite::Connection),
+}
+
+/// A transaction under way ([`Connection::transaction`]): the same changes as a connection's,
+/// kept or undone together.
+pub struct Transaction<'a> {
+    conn: &'a Connection,
+    database: String,
+    open: Open,
+}
+
+impl Transaction<'_> {
+    /// One statement, its values in their places: how many rows it changed.
+    pub fn execute(&mut self, sql: &str, params: &[Option<String>]) -> Result<u64, String> {
+        let refs: Vec<Option<&str>> = params.iter().map(|p| p.as_deref()).collect();
+        let (r, _) = match &mut self.open {
+            Open::MySql(c) => c.execute(sql, &refs, MAX_ROWS)?,
+            Open::Postgres(c) => c.execute(sql, &refs, MAX_ROWS)?,
+            Open::Sqlite(c) => sqlite::execute_on(c, sql, &refs, MAX_ROWS)?,
+        };
+        Ok(r.affected)
+    }
+
+    fn statement(&mut self, sql: &str) -> Result<(), String> {
+        match &mut self.open {
+            Open::MySql(c) => c.query(sql, 0).map(|_| ()),
+            Open::Postgres(c) => c.query(sql, 0).map(|_| ()),
+            Open::Sqlite(c) => c.execute_batch(sql).map_err(|e| e.to_string()),
+        }
+    }
+
+    /// As [`Connection::update_cell`].
+    pub fn update_cell(&mut self, table: &str, column: &str, value: Option<&str>, keys: &[(String, String)]) -> Result<u64, String> {
+        let (sql, params) = self.conn.update_sql(&self.database, table, column, value, keys);
+        self.execute(&sql, &params)
+    }
+
+    /// As [`Connection::delete_row`].
+    pub fn delete_row(&mut self, table: &str, keys: &[(String, String)]) -> Result<u64, String> {
+        let (sql, params) = self.conn.delete_sql(&self.database, table, keys);
+        self.execute(&sql, &params)
+    }
+
+    /// As [`Connection::insert_row`].
+    pub fn insert_row(&mut self, table: &str, values: &[(String, Option<String>)]) -> Result<u64, String> {
+        let (sql, params) = self.conn.insert_sql(&self.database, table, values);
+        self.execute(&sql, &params)
     }
 }
 
 #[cfg(test)]
 mod binding_tests {
     use super::*;
+
+    #[test]
+    fn a_save_that_fails_halfway_changes_nothing() {
+        let path = std::env::temp_dir().join(format!("phai-tx-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let c = Connection { host: path.to_string_lossy().to_string(), kind: Kind::Sqlite, ..Default::default() };
+        c.query(None, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL); INSERT INTO t (name) VALUES ('A'), ('B');").unwrap();
+        let b = Binding::new(c.clone(), "main", "t", &["id", "name"], &["id"]);
+        let loaded = b.load().unwrap();
+        // A changed, then a new row the table refuses (its name NULL), B deleted.
+        let rows = vec![(1, vec!["1".to_string(), "AA".to_string()]), (0, vec!["".to_string(), "NULL".to_string()])];
+        assert!(b.save_against(&loaded, &rows).is_err());
+        assert_eq!(b.load().unwrap(), loaded, "nothing kept: not A's change, not B's deletion");
+        // The same without the bad row: all of it.
+        assert_eq!(b.save_against(&loaded, &rows[..1]).unwrap(), 2);
+        assert_eq!(b.load().unwrap(), vec![vec!["1".to_string(), "AA".to_string()]]);
+        // A transaction of one's own.
+        let r: Result<(), String> = c.transaction("main", |tx| {
+            tx.insert_row("t", &[("name".into(), Some("C".into()))])?;
+            Err("changed my mind".into())
+        });
+        assert_eq!(r.unwrap_err(), "changed my mind");
+        assert_eq!(b.load().unwrap().len(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn a_report_selects_its_rows_sorted() {

@@ -9,7 +9,7 @@ fn err(e: rusqlite::Error) -> String {
     e.to_string()
 }
 
-fn open(path: &str) -> Result<rusqlite::Connection, String> {
+pub(crate) fn open(path: &str) -> Result<rusqlite::Connection, String> {
     rusqlite::Connection::open(path).map_err(err)
 }
 
@@ -63,7 +63,11 @@ pub fn query(path: &str, sql: &str, max: usize) -> Result<Vec<(Result1, bool)>, 
 
 /// One statement with `?` marks and `params` in their places.
 pub fn execute(path: &str, sql: &str, params: &[Option<&str>], max: usize) -> Result<(Result1, bool), String> {
-    let c = open(path)?;
+    execute_on(&open(path)?, sql, params, max)
+}
+
+/// [`execute`] on a database already open - a transaction's.
+pub(crate) fn execute_on(c: &rusqlite::Connection, sql: &str, params: &[Option<&str>], max: usize) -> Result<(Result1, bool), String> {
     let mut stmt = c.prepare(sql).map_err(err)?;
     run(&mut stmt, params, max)
 }
