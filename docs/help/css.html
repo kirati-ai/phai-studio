@@ -15,6 +15,7 @@
 <a href="studio.html">ใช้งาน Phai Studio</a>
 <a href="css.html" class="here">ตกแต่งหน้าตาด้วย CSS</a>
 <a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
 <a href="winforms.html">control และความสามารถเพิ่มเติม</a>
 <a href="inspector.html">ตัวตรวจสด (F12)</a>
 <a href="web.html">เว็บและมือถือ (PWA)</a>
@@ -110,6 +111,29 @@ button { border-radius: 10px; }</code></pre>
   <li>เปิด <code>theme.css</code> แล้วเพิ่มกฎ <code>button.danger { background: #dc2626; color: white; }</code> บันทึกไฟล์</li>
   <li>ดูปุ่มในตัวออกแบบเปลี่ยนเป็นสีแดง แล้วลองเพิ่ม <code>button.danger:hover</code> ให้สีเข้มขึ้นตอนเอาเมาส์ชี้</li>
 </ol>
+
+<h2>ภาพเคลื่อนไหว: animation และ @keyframes</h2>
+<p><code>transition</code> ทำให้สีค่อย ๆ เปลี่ยนตอนสถานะเปลี่ยน (เช่น เอาเมาส์ชี้) ส่วน <code>animation</code> ทำให้สีเคลื่อนไหวเองโดยไม่ต้องรอใคร ซ้ำไปเรื่อย ๆ หรือกี่รอบก็ได้ เหมาะกับปุ่มที่อยากให้คนเห็น หรือสถานะเตือน</p>
+<pre><code>/* สำเร็จรูป: blink (ตัวหนังสือกะพริบ) pulse (พื้นเต้นเป็นสี accent) fade-in (ค่อย ๆ ปรากฏ) */
+button.urgent { animation: pulse 1.5s infinite; }
+#warning      { animation: blink 1s infinite; }
+#panel        { animation: fade-in 400ms; }
+
+/* ทำเอง */
+@keyframes alarm {
+  50% { background: #dc2626; color: #ffffff; border-color: #991b1b; }
+}
+#stop { animation: alarm 2s ease-in-out infinite alternate; }</code></pre>
+<table>
+  <tr><th>ส่วนของ animation</th><th>หมายถึง</th></tr>
+  <tr><td>ชื่อ</td><td><code>blink</code> <code>pulse</code> <code>fade-in</code> หรือชื่อ <code>@keyframes</code> ที่เขียนเอง</td></tr>
+  <tr><td>เวลาแรก</td><td>หนึ่งรอบนานเท่าไร เช่น <code>1s</code> <code>400ms</code> เวลาที่สองคือรอก่อนเริ่ม</td></tr>
+  <tr><td>easing</td><td><code>ease</code> <code>linear</code> <code>ease-in</code> <code>ease-out</code> <code>ease-in-out</code></td></tr>
+  <tr><td>จำนวนรอบ</td><td>ตัวเลข หรือ <code>infinite</code> ไม่หยุด (ไม่ใส่ = รอบเดียว)</td></tr>
+  <tr><td><code>alternate</code></td><td>รอบคู่เดินย้อนกลับ ไปกลับนุ่ม ๆ</td></tr>
+</table>
+<p>ใน <code>@keyframes</code> เขียน <code>from</code>, <code>to</code> หรือเปอร์เซ็นต์ (<code>0%, 100% { }</code> ก็ได้) เฟรมที่ไม่ได้เขียนใช้หน้าตาปกติของ control ขยับได้เฉพาะสี (<code>background color border-color accent-color icon-color</code>) และ <code>border-width</code> เพราะ control ของ Windows หมุนหรือโปร่งใสแบบหน้าเว็บไม่ได้ <code>fade-in</code> จึงเป็นการค่อย ๆ เปลี่ยนสีจากสีพื้นหน้าต่าง</p>
+<p>ไม่ต้องเขียน CSS เองก็ได้: เลือก control แล้วไปที่แท็บ <b>Style</b> 🖌 ในหน้าต่าง Properties มีช่อง <b>Animation</b> ให้เลือกแบบสำเร็จรูป (ใช้กับปุ่ม ช่องติ๊ก radio ช่องกรอก slider และ progress)</p>
 <div class="pager"><a href="studio.html">← ใช้งาน Phai Studio</a><a href="database.html">ทำงานกับฐานข้อมูล →</a></div>
 </main>
 </div>

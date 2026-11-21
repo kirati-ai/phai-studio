@@ -255,6 +255,9 @@ control!(PictureBox);
 control!(TreeView);
 control!(SplitContainer);
 control!(UserControl);
+control!(ContextMenu);
+
+pub use crate::tree::Node;
 
 impl Button {
     /// A click, as a finger or the mouse would make it.

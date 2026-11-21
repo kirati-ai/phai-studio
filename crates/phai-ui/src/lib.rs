@@ -36,6 +36,7 @@ pub mod events;
 pub mod extra;
 pub mod form;
 pub mod grid;
+pub mod gridfilter;
 pub mod icon;
 pub mod inspect;
 pub mod invoke;
@@ -52,5 +53,6 @@ pub mod text;
 pub mod theme;
 pub mod theme_edit;
 pub mod win;
+pub mod xlsx;
 
 pub use text::{t, tf};

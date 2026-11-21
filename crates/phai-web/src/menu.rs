@@ -362,6 +362,55 @@ fn close_on_click_outside() {
     k.forget();
 }
 
+/// A control's context menu - WinForms' ContextMenuStrip: a right-click on `target` (a long
+/// press on a phone) opens `items` where it happened, `opening` first (its Opening), `chosen`
+/// given the item's id.
+pub fn context_menu(window: HWND, target: HWND, items: Vec<Item>, mut opening: impl FnMut() + 'static, chosen: impl FnMut(&String) + 'static) {
+    let Some(e) = el(target) else { return };
+    let chosen: Chosen = Rc::new(RefCell::new(chosen));
+    let open: Rc<RefCell<dyn FnMut(f64, f64)>> = Rc::new(RefCell::new(move |x: f64, y: f64| {
+        close_all();
+        opening();
+        open_menu(window, &items, x, y, 0, &chosen);
+    }));
+    let o = open.clone();
+    let c = Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
+        ev.prevent_default();
+        ev.stop_propagation();
+        if let Ok(mut f) = o.try_borrow_mut() {
+            f(ev.client_x() as f64, ev.client_y() as f64);
+        }
+    });
+    let _ = e.add_event_listener_with_callback("contextmenu", c.as_ref().unchecked_ref());
+    c.forget();
+    // A long press, for the phones that send no contextmenu (iPhone's Safari).
+    let timer: Rc<std::cell::Cell<i32>> = Rc::new(std::cell::Cell::new(0));
+    let (t1, o2) = (timer.clone(), open.clone());
+    let start = Closure::<dyn FnMut(web_sys::TouchEvent)>::new(move |ev: web_sys::TouchEvent| {
+        let Some(touch) = ev.touches().get(0) else { return };
+        let (x, y) = (touch.client_x() as f64, touch.client_y() as f64);
+        let o = o2.clone();
+        let fire = Closure::once_into_js(move || {
+            if let Ok(mut f) = o.try_borrow_mut() {
+                f(x, y);
+            }
+        });
+        let id = win::window().set_timeout_with_callback_and_timeout_and_arguments_0(fire.unchecked_ref(), 550).unwrap_or(0);
+        t1.set(id);
+    });
+    let _ = e.add_event_listener_with_callback("touchstart", start.as_ref().unchecked_ref());
+    start.forget();
+    for ev in ["touchend", "touchmove", "touchcancel"] {
+        let t2 = timer.clone();
+        let stop = Closure::<dyn FnMut()>::new(move || {
+            win::window().clear_timeout_with_handle(t2.get());
+        });
+        let _ = e.add_event_listener_with_callback(ev, stop.as_ref().unchecked_ref());
+        stop.forget();
+    }
+    close_on_click_outside();
+}
+
 /// The window's toolbar along the top of its controls' area, `height` designer pixels tall.
 pub fn toolbar(window: HWND, area: HWND, tools: Vec<Tool>, height: i32, chosen: impl FnMut(&String) + 'static) -> HWND {
     let chosen: Chosen = Rc::new(RefCell::new(chosen));

@@ -15,6 +15,7 @@
 <a href="studio.html">ใช้งาน Phai Studio</a>
 <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
 <a href="database.html" class="here">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
 <a href="winforms.html">control และความสามารถเพิ่มเติม</a>
 <a href="inspector.html">ตัวตรวจสด (F12)</a>
 <a href="web.html">เว็บและมือถือ (PWA)</a>
@@ -131,8 +132,17 @@
   <li><kbd>Ctrl</kbd>+<kbd>F</kbd> เปิดช่องค้นหาเหนือหัวตาราง พิมพ์แล้วเหลือเฉพาะแถวที่มีคำนั้น (ปิด FindFilter ถ้าอยากแค่ไฮไลต์) <kbd>Enter</kbd> ไปแถวถัดไป <kbd>Esc</kbd> ปิด แถวที่ถูกกรองออกยังอยู่ กด Save ก็บันทึกด้วย</li>
   <li>คลิกหัวคอลัมน์เพื่อเรียง คลิกอีกครั้งเพื่อกลับด้าน</li>
   <li><kbd>Ctrl</kbd>+<kbd>C</kbd> คัดลอกแถวที่เลือกพร้อมหัวคอลัมน์ วางใน Excel ได้เลย <kbd>Ctrl</kbd>+<kbd>V</kbd> วางจาก Excel ลงตาราง <kbd>Ctrl</kbd>+<kbd>A</kbd> เลือกทุกแถว</li>
+  <li><b>ตัวกรองแบบ Excel</b> (AllowFilter): ชี้ที่หัวคอลัมน์จะเห็นปุ่มลูกศร กดแล้วได้รายการค่าทั้งหมดในคอลัมน์นั้นให้ติ๊ก มีช่องค้นหา ปุ่มเรียง ก-ฮ / ฮ-ก และ "ล้างตัวกรอง" คอลัมน์ที่กรองอยู่มีรูปกรวยบนหัว ผลรวมท้ายตารางคิดเฉพาะแถวที่เหลือ กรองหลายคอลัมน์พร้อมกันได้</li>
+  <li><b>คลิกขวาที่หัวคอลัมน์</b> (HeaderMenu): เรียง, กรอง..., ล้างตัวกรอง, จัดกลุ่มตามคอลัมน์นี้, <b>ส่งออกเป็น Excel</b> (.xlsx ตัวเลขและวันที่ยังเป็นตัวเลขจริง คำนวณต่อได้ หัวตารางตรึงไว้และมีปุ่มกรองของ Excel), <b>ส่งออกเป็น PDF</b>, ส่งออกเป็น CSV และตัวอย่างก่อนพิมพ์</li>
 </ul>
-<p>ในโค้ดสั่งได้ด้วย เช่น <code>ui.customers.sort_by(1, true)</code>, <code>ui.customers.find("สมชาย")</code>, <code>ui.customers.selected_rows()</code>, <code>ui.customers.export_csv("customers.csv")</code> (เปิดใน Excel แล้วภาษาไทยไม่เพี้ยน)</p>
+<h3>ตารางหลัก-ตารางลูก (master-detail)</h3>
+<p>เช่น ตาราง <code>orders</code> (ใบสั่งซื้อ) กับ <code>lines</code> (รายการสินค้าในใบสั่งซื้อ) เลือก <code>lines</code> แล้วตั้ง <b>MasterDetail</b> ในหน้าต่าง Properties เป็น <code>orders.id = order_id</code> อ่านว่า ตารางนี้แสดงเฉพาะแถวที่คอลัมน์ <code>order_id</code> ตรงกับคอลัมน์ <code>id</code> ของแถวที่เลือกอยู่ในตาราง <code>orders</code> (ชื่อคอลัมน์ใช้ได้ทั้งหัวคอลัมน์และชื่อคอลัมน์ในฐานข้อมูล ถ้าชื่อเหมือนกันเขียนแค่ <code>orders.id</code>)</p>
+<ul>
+  <li>เลือกแถวอื่นในตารางหลัก ตารางลูกเปลี่ยนตามทันที ตารางลูกมีตารางลูกต่ออีกชั้นก็ได้</li>
+  <li>เพิ่มแถวใหม่ในตารางลูก (ดับเบิลคลิกใต้แถวสุดท้าย) คีย์ของตารางหลักใส่ให้เอง</li>
+  <li>แถวของใบอื่นไม่ได้หายไป แค่ไม่แสดง ตารางที่ผูกฐานข้อมูลกด Save ก็บันทึกครบทุกแถว</li>
+</ul>
+<p>ในโค้ดสั่งได้ด้วย เช่น <code>ui.customers.sort_by(1, true)</code>, <code>ui.customers.find("สมชาย")</code>, <code>ui.customers.selected_rows()</code>, <code>ui.customers.export_csv("customers.csv")</code> (เปิดใน Excel แล้วภาษาไทยไม่เพี้ยน), <code>ui.customers.export_xlsx("customers.xlsx")</code>, <code>ui.customers.export_pdf("customers.pdf", "ลูกค้า")</code>, <code>ui.customers.print_preview("ลูกค้า")</code>, <code>ui.customers.set_column_filter(2, Some(&amp;["Paid"]))</code>, <code>ui.customers.clear_filters()</code> และ <code>ui.lines.set_master(ui.orders, 0, 1)</code></p>
 <div class="note">ในเว็บแอป (PWA) สีแถวเว้นแถว สีหัวตาราง การจัดวาง และคอลัมน์ที่ซ่อน แสดงเหมือนกัน ส่วนรูปแบบตัวเลข ผลรวม กฎสี การจัดกลุ่ม และช่องค้นหา มีเฉพาะโปรแกรม Windows</div>
 
 <h2>ให้โปรแกรมของคุณอ่านฐานข้อมูล</h2>
@@ -163,7 +173,7 @@ SELECT * FROM customers;</code></pre>
   <li>ดูผลที่แท็บ Results แล้วคลิกขวาที่การเชื่อมต่อ เลือก Refresh จะเห็นตาราง <code>customers</code></li>
   <li>เปิดฟอร์มหลักของโปรเจกต์ คลิกขวาที่ตาราง <code>customers</code> เลือก Add to Form บันทึกฟอร์ม แล้วกด <kbd>F5</kbd> ลองแก้ชื่อลูกค้า เพิ่มลูกค้าใหม่ แล้วกด Save</li>
 </ol>
-<div class="pager"><a href="css.html">← ตกแต่งหน้าตาด้วย CSS</a><a href="winforms.html">control และความสามารถเพิ่มเติม →</a></div>
+<div class="pager"><a href="css.html">← ตกแต่งหน้าตาด้วย CSS</a><a href="code.html">เขียนโค้ดกับ control →</a></div>
 </main>
 </div>
 </body>

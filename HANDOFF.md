@@ -1,4 +1,4 @@
-# Handoff — Phai Studio (2026-11-19)
+# Handoff — Phai Studio (2026-11-21)
 
 > เปิด session ใหม่แล้วบอกว่า **"อ่าน HANDOFF.md แล้วทำต่อ"** · ตอบเจ้านายเป็นภาษาไทย เรียก "เจ้านาย"
 > ส่วนท้ายไฟล์ (ตั้งแต่ "ประวัติเดิม") เป็นบันทึกเก่าวันที่ 16 พ.ย. ไว้อ้างอิงเท่านั้น
@@ -136,7 +136,28 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   Tools > Keyboard Shortcuts (`keymap.rs`), หน้าเริ่มต้น (ค้นหา/ปักหมุด/Clone/เคล็ดลับ), New Project การ์ดมีรูป (`newproj.rs`)
 - ยังไม่ได้ลองด้วยมือ: สแกน QR ด้วยมือถือจริง, ลากตาราง (ต้องมี DB), ลากปุ่มขวาเข้าโค้ด, Clone จริง
 
+## ทำเสร็จ 2026-11-21 (หลัง 0.2.0 ยังไม่ออกรุ่น)
+- **grid**: ตัวกรองแบบ Excel ที่หัวคอลัมน์ (`phai_ui::gridfilter` หน้าต่างติ๊กค่า + ค้นหา + เรียง + ล้าง, HDF_SPLITBUTTON,
+  รูปกรวยบนคอลัมน์ที่กรอง, `grid::set_column_filter/column_filter/clear_filters`, prop `allow_filter`), คลิกขวาหัวคอลัมน์
+  (`header_menu`: เรียง กรอง จัดกลุ่ม ส่งออก), ส่งออก **.xlsx** (`phai_ui::xlsx` เขียน zip เองไม่มี dependency ตัวเลข/วันที่
+  เป็นค่าจริง + รูปแบบ หัวตรึง + autofilter), **PDF** และตัวอย่างก่อนพิมพ์ (`grid::grid_report` → `report::Report`),
+  **master-detail** (`grid::set_master`, prop `master_detail = "orders.id = order_id"`, `FormFile::master_detail`)
+  ทดลอง: `cargo run -p phai-ui --example grid_demo` (`GRID_DEMO=filter|popup|export|detail`, `PHAI_SHOT=...`)
+- **CSS animation**: `animation:` + `@keyframes` ใน `theme.rs` (`Animation`, `frames`, `frames_at`), สำเร็จรูป blink pulse
+  fade-in, `win::animate` ใน `style_animated`; แท็บ Style มีช่อง Animation (prop `animation` → `#id { animation }`)
+  ยังไม่ทำ: transition/animation ของแท็บและ list (วาดคนละทาง), label
+- **เว็บ**: เมนูคลิกขวา (`phai_web::menu::context_menu`, กดค้างบนมือถือ), tree (`phai_web::tree`), Build > Publish Web App
+  (`web::Destination`/`web::publish`: โฟลเดอร์, scp, GitHub Pages); เทสต์ `a_project_builds_for_the_web_and_for_windows`
+  มี tree + context menu แล้ว ผ่าน
+- **คู่มือ**: หน้าใหม่ code.html (ctl, events args, invoke); css (animation), database (กรอง ส่งออก master-detail),
+  web (publish, tree, เมนูคลิกขวา) — **ต้นฉบับจริงของคู่มือตอนนี้คือ `docs/help-src/help_pages6.py`** (ดึงจาก HTML ที่
+  เผยแพร่ เพราะของเดิมถูกแก้ใน HTML ตรง ๆ) โหลดทับ help_pages1-4 ที่ล้าสมัย; หน้า code.html อยู่ใน help_pages5.py
+
 ## งานถัดไป (เรียงตามความสำคัญ)
+
+### 0. รอเจ้านายตัดสิน: ฐานข้อมูลบนเว็บ (ตารางที่ `bind`) ต้องมีเซิร์ฟเวอร์กลางที่ต่อฐานข้อมูล + ยืนยันตัวตน
+  (PWA เป็นไฟล์ static เปิดฐานข้อมูลตรงไม่ได้) และ API บนเว็บต้องเป็น async (load/save ของ Windows เป็นแบบรอ)
+### 0.1 ยังไม่ได้ลองด้วยมือ: กรองด้วยเมาส์จริง (ภาพหน้าจอตรวจแล้ว), Publish ไป scp / GitHub Pages จริง, tree/เมนูคลิกขวาบนมือถือจริง
 
 ### 1. `docs/winforms-parity.md` ครบแล้ว (2026-11-19 รอบสอง) เหลือ 🟡 เดียว
 - ทำเพิ่ม: BackColor/ForeColor รายหน้าต่าง (`win::window_background_for(h)` ดูหน้าต่างราก), Label AutoSize, CheckBox
@@ -173,9 +194,9 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 - ประวัติ: เจ้านายถามถึง HomeSite และ Adobe ImageStyler (2026-11-19); ที่เข้ากับ Phai: เงา/ไล่สี
   (`box-shadow`, `linear-gradient`) ใน CSS ของ phai-ui แบบ style ของ ImageStyler, ตัวแก้ HTML/CSS แบบ HomeSite
 
-### 3. ทิศทาง DevExpress: grid ก่อน (จัดกลุ่ม, กรองแบบ Excel, ผลรวม, master-detail, ตัวแก้ในช่อง, ส่งออก Excel/PDF)
+### 3. ทิศทาง DevExpress: grid ครบตามรายการแล้ว (2026-11-21) — ต่อไป: server mode หลายล้านแถว, กราฟ, Ribbon/docking
 
-### 4. คู่มือไทย (`docs/help-src`) ยังไม่มีหน้าของ Properties ใหม่ / Events / `phai_ui::ctl` / invoke
+### 4. คู่มือไทย: หน้า code.html เสร็จ (2026-11-21) แก้คู่มือที่ `help_pages6.py` แล้ว `python docs/help-src/help_gen.py`
 
 ### 5. dogfooding: ทำโปรแกรมจริงของ Monrak ด้วย Phai Studio (Desktop Server / Desktop Access) ขาดอะไรเพิ่มทันที
 
@@ -190,7 +211,7 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
   ถ้าต้องใส่ backslash ในโค้ด Rust ผ่านสคริปต์ ใช้ `char::from(92)` / `char::from(10)` แทน
 - เว็บ: `site/` (PHP) → `bash site/deploy.sh` (ใช้ key `~/.ssh/phaicity_vps`, aaPanel); monrak.net ต้นฉบับที่
   `D:\DesktopServer\www\monrak-site`; บอทถูกห้ามดาวน์โหลดทุกเว็บด้วย nginx `extension/<site>/no-bot-downloads.conf`
-- คู่มือ: แก้ `docs/help-src/help_pages*.py` แล้ว `python docs/help-src/help_gen.py`
+- คู่มือ: แก้ `docs/help-src/help_pages6.py` (หน้าใหม่ใส่ไฟล์ใหม่ + `PAGES` ใน help_gen.py) แล้ว `python docs/help-src/help_gen.py`
 - กติกาเจ้านาย: commit + push ทุกรอบที่ผ่าน, ไม่ force-push, ไม่ใช้ของเสียเงิน, ไม่ใส่อีเมลเจ้านายในที่สาธารณะ,
   ห้ามรีบูต, หน้าต่างทดสอบห้ามแย่งเมาส์/คีย์บอร์ด
 

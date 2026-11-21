@@ -876,6 +876,36 @@ impl Grid {
     pub fn find(self, text: &str) {
         crate::grid::find(self.0, text)
     }
+    /// Only the rows whose value in column `col` is one of `keep`, as a heading's filter leaves
+    /// them; `None` shows them all again.
+    pub fn set_column_filter(self, col: usize, keep: Option<&[&str]>) {
+        crate::grid::set_column_filter(self.0, col, keep.map(|k| k.iter().map(|s| s.to_string()).collect()))
+    }
+    /// The values column `col`'s filter keeps; `None` when it has none.
+    pub fn column_filter(self, col: usize) -> Option<Vec<String>> {
+        crate::grid::column_filter(self.0, col)
+    }
+    /// Every column's filter taken off.
+    pub fn clear_filters(self) {
+        crate::grid::clear_filters(self.0)
+    }
+    /// Master-detail: this grid shows only the rows whose column `detail_col` holds `master`'s
+    /// chosen row's value in `master_col`, following it.
+    pub fn set_master(self, master: Grid, master_col: usize, detail_col: usize) {
+        crate::grid::set_master(self.0, master.0, master_col, detail_col)
+    }
+    /// The rows shown written to an Excel workbook (.xlsx), numbers and dates as Excel's.
+    pub fn export_xlsx(self, path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+        crate::grid::export_xlsx(self.0, path.as_ref())
+    }
+    /// The rows shown printed to a PDF: how many pages, 0 when it could not.
+    pub fn export_pdf(self, path: impl AsRef<std::path::Path>, title: &str) -> usize {
+        crate::grid::export_pdf(self.0, path.as_ref(), title)
+    }
+    /// The rows shown as they would print, in a preview window.
+    pub fn print_preview(self, title: &str) {
+        crate::grid::print_preview(self.0, title)
+    }
     /// The chosen rows as tab-separated lines, as Ctrl+C copies them.
     pub fn copy_rows(self) -> String {
         crate::grid::copy_rows(self.0)

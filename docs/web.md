@@ -18,6 +18,10 @@ WebAssembly แล้วติดตั้งลงมือถือ Android �
 | `sw.js` | service worker — เก็บไฟล์ไว้ ให้เปิดได้แม้ไม่มีเน็ต และรับเวอร์ชันใหม่เมื่อมีเน็ต |
 | `icon-192.png`, `icon-512.png` | ไอคอนแอป (สี `--accent` ของธีม) |
 
+**Build > Publish Web App...** สร้างแล้วส่ง `web/` ไปที่ปลายทางใน `Cargo.toml` `[package.metadata.phai-web] publish`:
+โฟลเดอร์ (คัดลอก), `user@host:/path` (Windows `scp -r -o BatchMode=yes` ใช้ SSH key ไม่ถามรหัส) หรือ `github-pages`
+(clone branch `gh-pages` ของ origin ลงโฟลเดอร์ชั่วคราว แทนไฟล์ด้วย `web/` + `.nojekyll` commit แล้ว push ไม่ force)
+
 ติดตั้งลงมือถือ: อัปโหลดโฟลเดอร์ `web/` ขึ้นเว็บที่เป็น **HTTPS** (เว็บไซต์ของเราเอง, GitHub Pages ฯลฯ — service
 worker ทำงานเฉพาะบน HTTPS หรือ localhost) แล้วเปิดในมือถือ:
 
@@ -47,7 +51,10 @@ listbox, checkedlist, list (ListView), grid (แก้ในช่องได�
 tabs, link, picture, statusbar, timer; event `on_click` `on_change` `on_select`, Click DoubleClick Enter Leave KeyDown
 KeyUp KeyPress MouseDown MouseUp MouseMove MouseEnter MouseLeave CheckedChanged TextChanged, Shown, `loaded`
 
-ยังไม่มี (Studio บอกชื่อ control ที่ไม่ขึ้นบนเว็บหลังสร้าง): context menu, tree, split container,
+มีด้วย (2026-11-21): เมนูคลิกขวา (`phai_ui::menu::context_menu`, บนมือถือกดค้าง 550ms, Opening ก่อนเปิด) และ
+tree (`phai_ui::tree`, `TreeView` เมธอดเดียวกับ Windows, `Node`, ลูกศรเปิดปิด คีย์บอร์ด, `change` = AfterSelect)
+
+ยังไม่มี (Studio บอกชื่อ control ที่ไม่ขึ้นบนเว็บหลังสร้าง): split container,
 user control, dialog แบบ component (Open/Save/Folder/Color/Font), ErrorProvider, NotifyIcon, การพิมพ์, BindingSource,
 ตารางที่ผูกฐานข้อมูล (`bind`) — โค้ดที่เรียกสิ่งเหล่านี้จะ build สำหรับเว็บไม่ผ่าน
 

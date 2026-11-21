@@ -33,7 +33,7 @@ fn filter_of(filter: &str) -> Vec<u16> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn file_dialog(owner: HWND, save: bool, title: &str, filter: &str, dir: &str, ext: &str, name: &str, multi: bool) -> Vec<PathBuf> {
+pub(crate) fn file_dialog(owner: HWND, save: bool, title: &str, filter: &str, dir: &str, ext: &str, name: &str, multi: bool) -> Vec<PathBuf> {
     let filter = filter_of(if filter.is_empty() { "All files|*.*" } else { filter });
     let mut file = vec![0u16; 32 * 1024];
     for (i, u) in name.encode_utf16().take(1000).enumerate() {

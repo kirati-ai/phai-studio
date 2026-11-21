@@ -383,6 +383,16 @@ pub fn find_filter(h: HWND, on: bool) {
     crate::grid::set_find_filters(h, on);
 }
 
+/// HeaderMenu: a right-click on a heading offers sorting, filters, grouping and exporting.
+pub fn header_menu(h: HWND, on: bool) {
+    crate::grid::set_header_menu(h, on);
+}
+
+/// AllowFilter: a drop-down on each heading filters the rows by the column's values.
+pub fn allow_filter(h: HWND, on: bool) {
+    crate::grid::set_allow_filter(h, on);
+}
+
 /// CopyColumnHeaders: Ctrl+C copies the headings too.
 pub fn copy_headers(h: HWND, on: bool) {
     crate::grid::set_copy_headers(h, on);
@@ -609,6 +619,8 @@ pub fn apply(h: HWND, name: &str, value: &str) {
         "find_panel" => find_panel(h, value),
         "copy_headers" => copy_headers(h, yes),
         "find_filter" => find_filter(h, yes),
+        "allow_filter" => allow_filter(h, yes),
+        "header_menu" => header_menu(h, yes),
         "check_boxes" => check_boxes(h, yes),
         "header" => header(h, value),
         "hide_selection" => hide_selection(h, yes),

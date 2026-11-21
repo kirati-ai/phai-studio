@@ -20,7 +20,7 @@ fn lit(s: &str) -> String {
 pub fn on_web(kind: Kind) -> bool {
     !matches!(
         kind,
-        Kind::ContextMenu | Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument | Kind::BindingSource | Kind::UserControl | Kind::Split | Kind::Tree
+        Kind::OpenFile | Kind::SaveFile | Kind::FolderDialog | Kind::ColorDialog | Kind::FontDialog | Kind::ErrorProvider | Kind::NotifyIcon | Kind::PrintDocument | Kind::BindingSource | Kind::UserControl | Kind::Split
     )
 }
 
@@ -118,6 +118,8 @@ fn own_event(c: &Control) -> Option<&'static str> {
         Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Masked | Kind::Number | Kind::Slider | Kind::Grid => Some("input"),
         Kind::Date | Kind::Calendar | Kind::Combo | Kind::CheckedList | Kind::ListBox => Some("change"),
         Kind::List | Kind::Tabs => Some("click"),
+        // A tree raises `change` when another item is chosen - its AfterSelect.
+        Kind::Tree => Some("change"),
         _ => None,
     }
 }
@@ -177,6 +179,14 @@ fn item_ids(f: &FormFile) -> Vec<String> {
     for t in f.toolbar.iter().filter(|t| !t.separator) {
         if !v.contains(&t.id) {
             v.push(t.id.clone());
+        }
+    }
+    // A context menu's items too.
+    for c in f.control.iter().filter(|c| c.kind == Kind::ContextMenu) {
+        for (id, _) in c.menu_items() {
+            if !id.is_empty() && !v.contains(&id) {
+                v.push(id);
+            }
         }
     }
     v
@@ -342,8 +352,20 @@ pub fn generate(f: &FormFile) -> String {
     for c in &shown {
         let text = c.text.as_deref().unwrap_or("");
         let words = if text.is_empty() || matches!(c.kind, Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Masked | Kind::Number) { lit(text) } else { format!("t({})", lit(text)) };
+        // A context menu has no element: it opens over the control that has it.
+        if c.kind == Kind::ContextMenu {
+            let _ = writeln!(w, "        let {} = HWND::default();", c.id);
+            continue;
+        }
         let _ = writeln!(w, "        let {} = form::control(area, {}, {}, {}, {words}, {});", c.id, lit(c.kind.name()), lit(&c.id), lit(c.class.as_deref().unwrap_or("")), place(c, f));
         match c.kind {
+            Kind::Tree => {
+                let lines = c.items.iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ");
+                let _ = writeln!(w, "        phai_ui::tree::set_lines({}, &[{lines}]);", c.id);
+                if c.flag("expand_all", false) {
+                    let _ = writeln!(w, "        phai_ui::ctl::TreeView({}).expand_all();", c.id);
+                }
+            }
             Kind::Combo => {
                 let items = combo_items(c).iter().map(|s| format!("t({})", lit(s))).collect::<Vec<_>>().join(", ");
                 let _ = writeln!(w, "        form::set_items({}, &[{items}]);", c.id);
@@ -479,6 +501,18 @@ pub fn generate(f: &FormFile) -> String {
                 _ => {}
             }
         }
+    }
+    // Context menus: a right-click (a long press on a phone) on the control that has one.
+    for c in shown.iter().filter(|c| c.kind != Kind::ContextMenu) {
+        let Some(menu) = c.context_menu.as_ref().and_then(|m| f.control.iter().find(|x| x.kind == Kind::ContextMenu && &x.id == m)) else { continue };
+        let items = menu
+            .menu_items()
+            .iter()
+            .map(|(id, label)| if id.is_empty() { "phai_ui::menu::Item { separator: true, ..Default::default() }".to_string() } else { format!("phai_ui::menu::Item {{ id: {}, label: t({}), ..Default::default() }}", lit(id), lit(label)) })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let opening = menu.events.get("opening").map(|h| format!("call(&me, |e: &mut E, ui: &{ui}| e.{h}(ui))")).unwrap_or_else(|| "|| {}".to_string());
+        let _ = writeln!(w, "        phai_ui::menu::context_menu(hwnd, ui.{}.hwnd(), vec![{items}], {opening}, chosen(&me));", c.id);
     }
     let _ = writeln!(w, "        let host = Rc::new(RefCell::new(Host {{ ui, events }}));");
     let _ = writeln!(w, "        let _ = me.set(Rc::downgrade(&host));");
@@ -695,6 +729,18 @@ textarea.phai-edit { padding: 4px 6px; resize: none; }
 .phai-tool .phai-glyph { color: var(--icon, #3c3c3c); }
 .phai-tool.checked { background: var(--accent-tint-pressed, #d0e7df); border-color: var(--accent, #12855f); }
 .phai-tool.disabled { color: var(--disabled-text, #a0a0a0); pointer-events: none; }
+.phai-k-tree { overflow: auto; border: 1px solid; padding: 2px 0; outline: none; }
+.phai-k-tree ul { list-style: none; margin: 0; padding: 0; }
+.phai-k-tree ul ul { padding-left: 16px; }
+.phai-node { display: flex; align-items: center; gap: 2px; min-height: 22px; padding: 0 6px 0 2px; white-space: nowrap; cursor: default; }
+.phai-twist { width: 16px; flex: none; text-align: center; font-size: 10px; color: var(--muted, #5f5f5f); cursor: pointer; }
+.phai-k-tree li.open > .phai-node .phai-twist::before { content: "BE"; }
+.phai-k-tree li.closed > .phai-node .phai-twist::before { content: "B8"; }
+.phai-k-tree li.closed > ul { display: none; }
+.phai-k-tree li.selected > .phai-node { background: var(--accent-tint, #e7f3ef); }
+.phai-k-tree:focus li.selected > .phai-node { background: var(--accent, #12855f); color: #fff; }
+.phai-stacked > .phai-k-tree { min-height: 180px; }
+@media (pointer: coarse) { .phai-node { min-height: 36px; font-size: 15px; } }
 @media (pointer: coarse) { .phai-edit, .phai-combo, .phai-date { font-size: 16px; } .phai-menu-item { min-height: 40px; font-size: 15px; } .phai-menubar { height: 36px; } }
 "#;
 
@@ -949,5 +995,27 @@ dock = "bottom"
         assert!(css.contains("#orders th { background: #12855f; }"), "{css}");
         assert!(css.contains("#orders th:nth-child(2), #orders td:nth-child(2) { text-align: right; }"), "{css}");
         assert!(css.contains("#orders th:nth-child(3), #orders td:nth-child(3) { display: none; }"), "{css}");
+    }
+
+    #[test]
+    fn a_tree_and_a_context_menu_reach_the_page() {
+        let mut f = FormFile::new("MainWindow");
+        let mut tree = Control::new(Kind::Tree, "folders", [0, 0, 200, 300]);
+        tree.items = vec!["Root".into(), "  Child".into()];
+        tree.on_select = Some("folders_selected".into());
+        tree.context_menu = Some("menu".into());
+        let mut menu = Control::new(Kind::ContextMenu, "menu", [0, 0, 0, 0]);
+        menu.items = vec!["rename | Rename".into(), "-".into(), "remove | Remove".into()];
+        menu.events.insert("opening".into(), "menu_opening".into());
+        f.control.push(tree);
+        f.control.push(menu);
+        assert!(left_out(&f).is_empty(), "{:?}", left_out(&f));
+        let code = generate(&f);
+        assert!(code.contains("phai_ui::tree::set_lines(folders, &[\"Root\", \"  Child\"]);"), "{code}");
+        assert!(code.contains("form::on(ui.folders.hwnd(), \"change\""), "{code}");
+        assert!(code.contains("let menu = HWND::default();"), "{code}");
+        assert!(code.contains("phai_ui::menu::context_menu(hwnd, ui.folders.hwnd(), vec![phai_ui::menu::Item { id: \"rename\", label: t(\"Rename\"), ..Default::default() }, phai_ui::menu::Item { separator: true, ..Default::default() }"), "{code}");
+        assert!(code.contains("e.menu_opening(ui)"), "{code}");
+        assert!(code.contains("\"remove\" => e.remove(ui),"), "{code}");
     }
 }

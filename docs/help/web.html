@@ -15,6 +15,7 @@
 <a href="studio.html">ใช้งาน Phai Studio</a>
 <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
 <a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
 <a href="winforms.html">control และความสามารถเพิ่มเติม</a>
 <a href="inspector.html">ตัวตรวจสด (F12)</a>
 <a href="web.html" class="here">เว็บและมือถือ (PWA)</a>
@@ -96,6 +97,14 @@ cargo install wasm-bindgen-cli --version 0.2.130</code></pre>
 <p>ชื่อ class ที่ใช้ได้: <code>.phai-button</code>, <code>.phai-edit</code>, <code>.phai-label</code>, <code>.phai-combo</code>, <code>.phai-list</code> ฯลฯ และ <code>#ชื่อcontrol</code> สำหรับตัวเดียว ส่วนสีและหน้าตาที่ใช้ทั้งบน Windows และเว็บ ให้แต่งใน <code>theme.css</code> ตาม <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a></p>
 
 <h2>ขึ้นเว็บและติดตั้งลงมือถือ</h2>
+<p><b>Build &gt; Publish Web App...</b> สร้างสำหรับเว็บแล้วส่งขึ้นที่จริงให้ ใส่ปลายทางครั้งเดียว Phai Studio จำไว้ใน <code>Cargo.toml</code> (<code>[package.metadata.phai-web] publish</code>) ครั้งต่อไปกดอย่างเดียว</p>
+<table>
+  <tr><th>ปลายทาง</th><th>ตัวอย่าง</th><th>ทำอย่างไร</th></tr>
+  <tr><td>โฟลเดอร์</td><td><code>D:\www\shop</code></td><td>คัดลอกไฟล์ไปไว้ เช่น โฟลเดอร์ของเว็บเซิร์ฟเวอร์ หรือไดรฟ์ที่แชร์</td></tr>
+  <tr><td>เซิร์ฟเวอร์ (SSH)</td><td><code>me@example.com:/var/www/shop</code></td><td>ส่งด้วย <code>scp</code> ของ Windows ใช้ SSH key ที่ตั้งไว้ในเครื่อง ไม่ถามรหัสผ่าน</td></tr>
+  <tr><td>GitHub Pages</td><td><code>github-pages</code></td><td>ส่งไป branch <code>gh-pages</code> ของ repository ของโปรเจกต์ (git remote origin) แล้วเปิด <code>https://ชื่อ.github.io/โปรเจกต์/</code> ให้ ครั้งแรกต้องเปิด Pages ใน Settings ของ repository บน GitHub ให้ใช้ branch <code>gh-pages</code></td></tr>
+</table>
+<p>หรือทำเอง:</p>
 <ol>
   <li>อัปโหลดทุกไฟล์ในโฟลเดอร์ <code>web/</code> ขึ้นเว็บไซต์ที่เป็น <b>HTTPS</b> (เว็บของเราเอง, GitHub Pages หรืออื่น ๆ)</li>
   <li>Android: เปิดที่อยู่ใน Chrome แล้วกดเมนู ⋮ &gt; <b>ติดตั้งแอป</b> หรือ <b>เพิ่มลงหน้าจอหลัก</b></li>
@@ -114,8 +123,8 @@ cargo install wasm-bindgen-cli --version 0.2.130</code></pre>
 
 <h2>มีบนเว็บแล้ว / ยังไม่มี</h2>
 <table>
-<tr><th>มีแล้ว</th><td>เมนูบาร์ (เมนูย่อย ติ๊ก รายการสีเทา ปุ่มลัด <kbd>Ctrl</kbd>+...), toolbar (บนมือถือแสดงเป็นข้อความ), label, edit (รวมรหัสผ่าน), textarea, button, checkbox, radio, combo, listbox, checked list, list, grid, number, date, calendar, slider, progress, group, panel, tabs, link, picture, status bar, timer และ event หลักทั้งหมด (click, change, key, mouse, Shown)</td></tr>
-<tr><th>ยังไม่มี</th><td>เมนูคลิกขวา, tree, split container, user control, dialog เลือกไฟล์ สี ฟอนต์, ErrorProvider, NotifyIcon, การพิมพ์, binding source และตารางที่ผูกฐานข้อมูล</td></tr>
+<tr><th>มีแล้ว</th><td>เมนูบาร์ (เมนูย่อย ติ๊ก รายการสีเทา ปุ่มลัด <kbd>Ctrl</kbd>+...), toolbar (บนมือถือแสดงเป็นข้อความ), <b>เมนูคลิกขวา</b> (บนมือถือ: กดค้าง พร้อม Opening), <b>tree</b> (ลูกศรเปิดปิด ปุ่มลูกศรบนคีย์บอร์ด เหตุการณ์เมื่อเลือก และเมธอดเดียวกับ Windows), label, edit (รวมรหัสผ่าน), textarea, button, checkbox, radio, combo, listbox, checked list, list, grid, number, date, calendar, slider, progress, group, panel, tabs, link, picture, status bar, timer และ event หลักทั้งหมด (click, change, key, mouse, Shown)</td></tr>
+<tr><th>ยังไม่มี</th><td>split container, user control, dialog เลือกไฟล์ สี ฟอนต์, ErrorProvider, NotifyIcon, การพิมพ์, binding source และตารางที่ผูกฐานข้อมูล</td></tr>
 </table>
 <p>โค้ดที่เรียกสิ่งที่ยังไม่มี จะ build สำหรับเว็บไม่ผ่าน แต่ build สำหรับ Windows ได้ตามปกติ</p>
 <div class="pager"><a href="inspector.html">← ตัวตรวจสด (F12)</a><a href="report.html">รายงานพิมพ์ →</a></div>

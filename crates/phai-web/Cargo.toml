@@ -39,5 +39,8 @@ web-sys = { version = "0.3", features = [
     "Node",
     "NodeList",
     "ServiceWorkerContainer",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
     "Window",
 ] }

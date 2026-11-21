@@ -292,6 +292,15 @@ struct Opts {
     hidden: Vec<(usize, Vec<String>)>,
     /// The find box: a window beside the grid, over the strip kept above its headings.
     find_box: Option<isize>,
+    /// Each filtered column's values that stay (as the cells hold them) - Excel's ticks.
+    filters: std::collections::BTreeMap<usize, Vec<String>>,
+    /// AllowFilter: a drop-down on each heading opens its filter.
+    allow_filter: bool,
+    /// HeaderMenu: a right-click on a heading offers sorting, filters and exporting.
+    header_menu: bool,
+    /// A detail grid's: the column that holds its master row's key, and the key now - only the
+    /// rows with it shown.
+    master_filter: Option<(usize, String)>,
 }
 
 /// When the find box shows - DevExpress's find panel.
@@ -306,7 +315,7 @@ pub enum FindMode {
 
 impl Default for Opts {
     fn default() -> Opts {
-        Opts { cols: vec![], widths: vec![], add: true, delete: true, edit_on: EditOn::DoubleClick, enter_next: false, auto_width: false, sorted: None, focus_col: 0, alt: None, header_back: None, header_fore: None, footer: false, find: String::new(), find_mode: FindMode::CtrlF, copy_headers: true, find_filters: true, hidden: vec![], find_box: None }
+        Opts { cols: vec![], widths: vec![], add: true, delete: true, edit_on: EditOn::DoubleClick, enter_next: false, auto_width: false, sorted: None, focus_col: 0, alt: None, header_back: None, header_fore: None, footer: false, find: String::new(), find_mode: FindMode::CtrlF, copy_headers: true, find_filters: true, hidden: vec![], find_box: None, filters: Default::default(), allow_filter: true, header_menu: true, master_filter: None }
     }
 }
 
@@ -691,11 +700,35 @@ fn paint_find_strip(h: HWND) {
 /// The headings in the grid's own colours, the sort arrow drawn too. `None`: Windows draws them.
 fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
     use windows::Win32::Graphics::Gdi;
-    let (back, fore, sorted) = with_opts(h, |o| (o.header_back, o.header_fore, o.sorted));
-    if back.is_none() && fore.is_none() {
-        return None;
-    }
+    let (back, fore, sorted, filtered) = with_opts(h, |o| (o.header_back, o.header_fore, o.sorted, o.filters.keys().copied().collect::<Vec<_>>()));
     let cd = unsafe { &mut *(l.0 as *mut cc::NMCUSTOMDRAW) };
+    // A filtered column's heading shows the filter's mark.
+    let mark = |dc: Gdi::HDC, r: RECT, colour: crate::theme::Color| {
+        let size = win::px(h, 12);
+        let drop = if filters_allowed(h) { unsafe { wm::GetSystemMetrics(wm::SM_CXVSCROLL) } } else { 0 };
+        if let Some(icon) = crate::icon::glyph_icon(0xE71C, size, colour) {
+            unsafe {
+                let _ = wm::DrawIconEx(dc, r.right - drop - size - win::px(h, 4), r.top + (r.bottom - r.top - size) / 2, icon, size, size, 0, None, wm::DI_NORMAL);
+                let _ = wm::DestroyIcon(icon);
+            }
+        }
+    };
+    if back.is_none() && fore.is_none() {
+        if filtered.is_empty() {
+            return None;
+        }
+        // Windows draws them; the mark after.
+        if cd.dwDrawStage == cc::CDDS_PREPAINT {
+            return Some(LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize));
+        }
+        if cd.dwDrawStage == cc::CDDS_ITEMPREPAINT {
+            return Some(LRESULT(if filtered.contains(&cd.dwItemSpec) { cc::CDRF_NOTIFYPOSTPAINT } else { cc::CDRF_DODEFAULT } as isize));
+        }
+        if cd.dwDrawStage == cc::CDDS_ITEMPOSTPAINT {
+            mark(cd.hdc, cd.rc, crate::theme::Color::rgb(0, 95, 184));
+        }
+        return Some(LRESULT(cc::CDRF_DODEFAULT as isize));
+    }
     let back = back.unwrap_or_else(|| win::list_colors(h).0);
     let fore = fore.unwrap_or_else(|| win::list_colors(h).1);
     if cd.dwDrawStage == cc::CDDS_PREPAINT {
@@ -719,7 +752,9 @@ fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
     let mut text: Vec<u16> = buf[..n].to_vec();
     let pad = win::px(h, 6);
     let arrow = win::px(h, 12);
-    let mut tr = RECT { left: r.left + pad, right: r.right - pad - if sorted.is_some_and(|(c, _)| c == i) { arrow } else { 0 }, ..r };
+    let drop = if filters_allowed(h) { unsafe { wm::GetSystemMetrics(wm::SM_CXVSCROLL) } } else { 0 };
+    let marked = filtered.contains(&i);
+    let mut tr = RECT { left: r.left + pad, right: r.right - pad - drop - if sorted.is_some_and(|(c, _)| c == i) { arrow } else { 0 } - if marked { arrow + pad } else { 0 }, ..r };
     let align = match column(h, i).align {
         Align::Left => Gdi::DT_LEFT,
         Align::Center => Gdi::DT_CENTER,
@@ -735,7 +770,21 @@ fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
         let size = win::px(h, 10);
         if let Some(icon) = crate::icon::glyph_icon(if up { 0xE70E } else { 0xE70D }, size, fore) {
             unsafe {
-                let _ = wm::DrawIconEx(cd.hdc, r.right - pad - size, r.top + (r.bottom - r.top - size) / 2, icon, size, size, 0, None, wm::DI_NORMAL);
+                let _ = wm::DrawIconEx(cd.hdc, r.right - pad - drop - size, r.top + (r.bottom - r.top - size) / 2, icon, size, size, 0, None, wm::DI_NORMAL);
+                let _ = wm::DestroyIcon(icon);
+            }
+        }
+    }
+    if marked {
+        let left = if sorted.is_some_and(|(c, _)| c == i) { arrow + pad } else { 0 };
+        mark(cd.hdc, RECT { right: r.right - left, ..r }, fore);
+    }
+    // The filter's drop-down, Windows' own being skipped with the rest.
+    if drop > 0 {
+        let size = win::px(h, 8);
+        if let Some(icon) = crate::icon::glyph_icon(0xE70D, size, fore) {
+            unsafe {
+                let _ = wm::DrawIconEx(cd.hdc, r.right - drop + (drop - size) / 2, r.top + (r.bottom - r.top - size) / 2, icon, size, size, 0, None, wm::DI_NORMAL);
                 let _ = wm::DestroyIcon(icon);
             }
         }
@@ -1156,6 +1205,7 @@ pub fn grid(parent: HWND, id: i32, f: windows::Win32::Graphics::Gdi::HFONT, colu
         wm::SendMessageW(h, cc::LVM_SETEXTENDEDLISTVIEWSTYLE, Some(WPARAM(0)), Some(LPARAM(LVS_EX_GRIDLINES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER)));
         let _ = SetWindowSubclass(h, Some(grid_proc), 7, 0);
     }
+    filter_buttons(h);
     h
 }
 
@@ -1229,16 +1279,26 @@ pub fn grid_fill(h: impl Into<HWND>, rows: &[Vec<String>]) {
     }
     apply_filter(h);
     regroup(h);
+    filter_buttons(h);
+    follow_master(h);
 }
 
 /// The find box's filter again: rows without what it looks for set aside, those set aside that
 /// have it (or all, when it is empty) back - in their first order, then sorted as the grid is.
 fn apply_filter(h: HWND) {
-    let (find, filters) = with_opts(h, |o| (o.find.clone(), o.find_filters));
+    let (find, filters, mut columns_kept, master) = with_opts(h, |o| (o.find.clone(), o.find_filters, o.filters.clone(), o.master_filter.clone()));
     let find = if filters { find } else { String::new() };
     let hidden = with_opts(h, |o| std::mem::take(&mut o.hidden));
-    if find.is_empty() && hidden.is_empty() {
+    if find.is_empty() && hidden.is_empty() && columns_kept.is_empty() && master.is_none() {
         return;
+    }
+    // A detail grid: its master row's rows, as a filter of their own over the person's.
+    if let Some((c, key)) = master {
+        let kept = columns_kept.entry(c).or_insert_with(|| vec![key.clone()]);
+        kept.retain(|v| *v == key);
+        if kept.is_empty() {
+            kept.push("\u{0}none".into());
+        }
     }
     close_editor(h, true);
     let mut all = shown_tagged_rows(h);
@@ -1248,7 +1308,8 @@ fn apply_filter(h: HWND) {
     keyed.sort_by_key(|(t, i, _)| (*t, *i));
     let n = columns(h);
     let shown_cols: Vec<usize> = (0..n).filter(|c| column(h, *c).visible).collect();
-    let has = |r: &Vec<String>| find.is_empty() || shown_cols.iter().any(|c| r.get(*c).is_some_and(|v| v.to_lowercase().contains(&find)));
+    let found = |r: &Vec<String>| find.is_empty() || shown_cols.iter().any(|c| r.get(*c).is_some_and(|v| v.to_lowercase().contains(&find)));
+    let has = |r: &Vec<String>| found(r) && passes(&columns_kept, r);
     let (keep, out): (Vec<_>, Vec<_>) = keyed.into_iter().map(|(_, _, r)| r).partition(|(_, r)| has(r));
     unsafe {
         wm::SendMessageW(h, wm::WM_SETREDRAW, Some(WPARAM(0)), None);
@@ -1268,6 +1329,253 @@ fn apply_filter(h: HWND) {
     }
     regroup(h);
     redraw(h);
+}
+
+/// Whether a row's values pass every column's filter.
+pub fn passes(filters: &std::collections::BTreeMap<usize, Vec<String>>, row: &[String]) -> bool {
+    filters.iter().all(|(c, keep)| keep.iter().any(|k| k == row.get(*c).map(String::as_str).unwrap_or("")))
+}
+
+/// A column's filter: only the rows whose value in column `col` is one of `keep` are shown, the
+/// others set aside as the find box's are (saved with the rest); `None` shows them all again -
+/// Excel's ticks on a heading, DevExpress's column filter.
+pub fn set_column_filter(h: HWND, col: usize, keep: Option<Vec<String>>) {
+    with_opts(h, |o| match keep {
+        Some(k) => {
+            o.filters.insert(col, k);
+        }
+        None => {
+            o.filters.remove(&col);
+        }
+    });
+    apply_filter(h);
+    redraw(header_of(h));
+    redraw(h);
+}
+
+/// Column `col`'s filter: the values it keeps, `None` when it keeps all.
+pub fn column_filter(h: HWND, col: usize) -> Option<Vec<String>> {
+    with_opts(h, |o| o.filters.get(&col).cloned())
+}
+
+/// Every column's filter taken off.
+pub fn clear_filters(h: HWND) {
+    with_opts(h, |o| o.filters.clear());
+    apply_filter(h);
+    redraw(header_of(h));
+    redraw(h);
+}
+
+/// AllowFilter: a drop-down on each heading opens the column's filter (on at first).
+pub fn set_allow_filter(h: HWND, on: bool) {
+    with_opts(h, |o| o.allow_filter = on);
+    if !on {
+        clear_filters(h);
+    }
+    filter_buttons(h);
+}
+
+/// AllowFilter, without making the grid one with properties of its own.
+fn filters_allowed(h: HWND) -> bool {
+    let m = OPTS.lock().unwrap_or_else(|e| e.into_inner());
+    m.as_ref().and_then(|m| m.get(&(h.0 as isize))).is_none_or(|o| o.allow_filter)
+}
+
+/// The headings' drop-downs: on each shown column's while filters are allowed.
+fn filter_buttons(h: HWND) {
+    const HDF_SPLITBUTTON: i32 = 0x0100_0000;
+    let on = filters_allowed(h);
+    let header = header_of(h);
+    for i in 0..columns(h) {
+        let want = on && column(h, i).visible;
+        let mut it = cc::HDITEMW { mask: cc::HDI_FORMAT, ..Default::default() };
+        unsafe {
+            wm::SendMessageW(header, cc::HDM_GETITEMW, Some(WPARAM(i)), Some(LPARAM(&mut it as *mut _ as isize)));
+        }
+        let fmt = if want { it.fmt.0 | HDF_SPLITBUTTON } else { it.fmt.0 & !HDF_SPLITBUTTON };
+        if fmt != it.fmt.0 {
+            it.fmt = cc::HEADER_CONTROL_FORMAT_FLAGS(fmt);
+            unsafe {
+                wm::SendMessageW(header, cc::HDM_SETITEMW, Some(WPARAM(i)), Some(LPARAM(&it as *const _ as isize)));
+            }
+        }
+    }
+}
+
+/// The filter box of column `col`, opened from its heading's drop-down.
+fn open_filter(h: HWND, col: usize) {
+    close_editor(h, true);
+    let header = header_of(h);
+    let mut r = RECT::default();
+    unsafe {
+        wm::SendMessageW(header, 0x1219 /* HDM_GETITEMDROPDOWNRECT */, Some(WPARAM(col)), Some(LPARAM(&mut r as *mut _ as isize)));
+        let mut pts = [POINT { x: r.left, y: r.top }, POINT { x: r.right, y: r.bottom }];
+        windows::Win32::Graphics::Gdi::MapWindowPoints(Some(header), None, &mut pts);
+        r = RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y };
+    }
+    // The values of the rows the other columns' filters leave, as Excel offers them.
+    let others: std::collections::BTreeMap<usize, Vec<String>> = with_opts(h, |o| o.filters.iter().filter(|(c, _)| **c != col).map(|(c, v)| (*c, v.clone())).collect());
+    let rows = grid_tagged_rows(h);
+    let values = crate::gridfilter::distinct(rows.iter().filter(|(_, r)| passes(&others, r)).map(|(_, r)| r.get(col).cloned().unwrap_or_default()));
+    let format = column(h, col).format;
+    let shown: Vec<(String, String)> = values.into_iter().map(|v| {
+        let s = if v.trim().is_empty() { crate::text::t("(empty)").to_string() } else { format_value(&format, &v) };
+        (v, s)
+    }).collect();
+    let chosen = column_filter(h, col);
+    match crate::gridfilter::ask(h, r, shown, chosen.as_deref()) {
+        Some(crate::gridfilter::Choice::Filter(keep)) => set_column_filter(h, col, keep),
+        Some(crate::gridfilter::Choice::Sort(up)) => sort_by(h, col, up),
+        None => {}
+    }
+}
+
+/// A detail grid, its master, the master's key column, its own, and the key it shows now.
+type Detail = (isize, isize, usize, usize, String);
+
+/// Every detail grid and its master.
+static DETAILS: std::sync::Mutex<Vec<Detail>> = std::sync::Mutex::new(Vec::new());
+
+/// Master-detail, as DevExpress's and WinForms' BindingSource have it: `detail` shows only the
+/// rows whose column `detail_col` holds the value of column `master_col` in `master`'s chosen row
+/// (none when no row is chosen), following it as another row is chosen; a row added to `detail`
+/// takes that value. The other rows are set aside, never lost - a bound detail's Save writes them
+/// all.
+pub fn set_master(detail: HWND, master: HWND, master_col: usize, detail_col: usize) {
+    {
+        let mut d = DETAILS.lock().unwrap_or_else(|e| e.into_inner());
+        d.retain(|x| x.0 != detail.0 as isize);
+        d.push((detail.0 as isize, master.0 as isize, master_col, detail_col, "\u{0}unset".into()));
+    }
+    follow_master(master);
+}
+
+/// The detail grids of `master` shown again for its chosen row, when it is another than before.
+pub fn follow_master(master: HWND) {
+    let mine: Vec<(isize, usize, usize, String)> = DETAILS.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|x| x.1 == master.0 as isize).map(|x| (x.0, x.2, x.3, x.4.clone())).collect();
+    if mine.is_empty() {
+        return;
+    }
+    let row = chosen_row(master);
+    for (detail, mc, dc, was) in mine {
+        let key = row.map(|r| cell(master, r, mc)).unwrap_or_else(|| "\u{0}none".into());
+        if key == was {
+            continue;
+        }
+        for x in DETAILS.lock().unwrap_or_else(|e| e.into_inner()).iter_mut().filter(|x| x.0 == detail && x.1 == master.0 as isize) {
+            x.4 = key.clone();
+        }
+        let d = HWND(detail as *mut _);
+        if !unsafe { wm::IsWindow(Some(d)) }.as_bool() {
+            continue;
+        }
+        with_opts(d, |o| o.master_filter = Some((dc, key)));
+        apply_filter(d);
+        // A detail's own details follow it too.
+        follow_master(d);
+    }
+}
+
+/// A detail grid's master key, for a row added to it.
+fn master_key(h: HWND) -> Option<(usize, String)> {
+    with_opts(h, |o| o.master_filter.clone()).filter(|(_, k)| !k.starts_with('\u{0}'))
+}
+
+/// HeaderMenu: a right-click on a heading offers sorting, filters, grouping and exporting.
+pub fn set_header_menu(h: HWND, on: bool) {
+    with_opts(h, |o| o.header_menu = on);
+}
+
+/// The menu of a right-click on a heading - DevExpress's column header menu: sort by the column,
+/// its filter, every filter off, group by it, the rows to Excel, to a PDF, or previewed.
+fn heading_menu(h: HWND, header: HWND) {
+    const SORT_UP: u32 = 1;
+    const SORT_DOWN: u32 = 2;
+    const FILTER: u32 = 3;
+    const CLEAR: u32 = 4;
+    const CLEAR_ALL: u32 = 5;
+    const GROUP: u32 = 6;
+    const XLSX: u32 = 7;
+    const PDF: u32 = 8;
+    const PREVIEW: u32 = 9;
+    const CSV: u32 = 10;
+    let mut pt = POINT::default();
+    unsafe {
+        let _ = wm::GetCursorPos(&mut pt);
+        let _ = windows::Win32::Graphics::Gdi::ScreenToClient(header, &mut pt);
+    }
+    let mut hit = cc::HDHITTESTINFO { pt, ..Default::default() };
+    let col = unsafe { wm::SendMessageW(header, cc::HDM_HITTEST, None, Some(LPARAM(&mut hit as *mut _ as isize))).0 };
+    let col = (col >= 0).then_some(col as usize).filter(|c| column(h, *c).visible);
+    let t = crate::text::t;
+    let mut items: Vec<(u32, &str)> = Vec::new();
+    if let Some(c) = col {
+        let cl = column(h, c);
+        if cl.allow_sort {
+            items.extend([(SORT_UP, t("Sort A to Z")), (SORT_DOWN, t("Sort Z to A")), (0, "")]);
+        }
+        if filters_allowed(h) {
+            items.push((FILTER, t("Filter...")));
+            if column_filter(h, c).is_some() {
+                items.push((CLEAR, t("Clear filter")));
+            }
+        }
+        items.push((GROUP, if cl.group { t("Ungroup") } else { t("Group by this column") }));
+    }
+    if with_opts(h, |o| !o.filters.is_empty()) {
+        items.push((CLEAR_ALL, t("Clear all filters")));
+    }
+    if !items.is_empty() {
+        items.push((0, ""));
+    }
+    items.extend([(XLSX, t("Export to Excel...")), (PDF, t("Export to PDF...")), (CSV, t("Export to CSV...")), (PREVIEW, t("Print preview..."))]);
+    let chosen = win::popup(h, &items);
+    let title = {
+        let root = unsafe { wm::GetAncestor(h, wm::GA_ROOT) };
+        let t = win::text_of(root);
+        if t.is_empty() { "Report".to_string() } else { t }
+    };
+    let save = |filter: &str, ext: &str| crate::components::file_dialog(h, true, "", filter, "", ext, &title, false).into_iter().next();
+    match (chosen, col) {
+        (SORT_UP, Some(c)) => sort_by(h, c, true),
+        (SORT_DOWN, Some(c)) => sort_by(h, c, false),
+        (FILTER, Some(c)) => open_filter(h, c),
+        (CLEAR, Some(c)) => set_column_filter(h, c, None),
+        (CLEAR_ALL, _) => clear_filters(h),
+        (GROUP, Some(c)) => {
+            let n = columns(h);
+            let on = !column(h, c).group;
+            for i in 0..n {
+                let mut k = column(h, i);
+                let want = on && i == c;
+                if k.group != want {
+                    k.group = want;
+                    set_column(h, i, k);
+                }
+            }
+        }
+        (XLSX, _) => {
+            if let Some(p) = save(t("Excel workbook|*.xlsx"), "xlsx") {
+                if let Err(e) = export_xlsx(h, &p) {
+                    win::message(Some(h), &e.to_string(), &title, wm::MB_ICONWARNING);
+                }
+            }
+        }
+        (CSV, _) => {
+            if let Some(p) = save(t("CSV file|*.csv"), "csv") {
+                if let Err(e) = export_csv(h, &p) {
+                    win::message(Some(h), &e.to_string(), &title, wm::MB_ICONWARNING);
+                }
+            }
+        }
+        (PDF, _) => {
+            if let Some(p) = save(t("PDF document|*.pdf"), "pdf") {
+                export_pdf(h, &p, &title);
+            }
+        }
+        (PREVIEW, _) => print_preview(h, &title),
+        _ => {}
+    }
 }
 
 /// The rows grouped by the grouping column's values - Windows' list groups, a heading
@@ -1350,6 +1658,121 @@ pub fn export_csv(h: HWND, path: &std::path::Path) -> std::io::Result<()> {
         out += "\r\n";
     }
     std::fs::write(path, out)
+}
+
+/// The shown columns, their headings and their widths in design pixels.
+fn shown_columns(h: HWND) -> (Vec<usize>, Vec<String>, Vec<i32>) {
+    let n = columns(h);
+    let shown: Vec<usize> = (0..n).filter(|c| column(h, *c).visible).collect();
+    let heads: Vec<String> = copy_headers_line(h, &shown).split('\t').map(String::from).collect();
+    let scale = win::px(h, 100).max(1);
+    let widths = shown.iter().map(|c| unsafe { wm::SendMessageW(h, cc::LVM_GETCOLUMNWIDTH, Some(WPARAM(*c)), None).0 as i32 } * 100 / scale).collect();
+    (shown, heads, widths)
+}
+
+/// The rows shown and their totals written to an Excel workbook (.xlsx): numbers and dates kept
+/// as Excel's, with the columns' formats, the headings bold and frozen with a filter on them -
+/// DevExpress's ExportToXlsx.
+pub fn export_xlsx(h: HWND, path: &std::path::Path) -> std::io::Result<()> {
+    use crate::xlsx::{cell_of, Cell, Sheet};
+    let (shown, headings, widths) = shown_columns(h);
+    let cols: Vec<Column> = shown.iter().map(|c| column(h, *c)).collect();
+    let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+    let data: Vec<Vec<Cell>> = (0..rows).map(|r| shown.iter().zip(&cols).map(|(c, col)| cell_of(&col.format, &cell(h, r, *c))).collect()).collect();
+    let totals = cols.iter().any(|c| c.summary != Summary::None).then(|| {
+        shown
+            .iter()
+            .zip(&cols)
+            .map(|(c, col)| match summary_text(h, *c, col).split_once(" = ") {
+                Some((_, v)) => match (col.summary, cell_of(&col.format, v)) {
+                    (_, Cell::Text(_) | Cell::Empty) => Cell::Text(v.to_string()),
+                    (Summary::Count, Cell::Number(x, _)) => Cell::Number(x, "#,##0".into()),
+                    (_, n) => n,
+                },
+                None => Cell::Empty,
+            })
+            .collect()
+    });
+    let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let sheet = Sheet { name, headings, widths: widths.iter().map(|w| (*w as f64 / 7.0).clamp(4.0, 80.0)).collect(), rows: data, totals };
+    crate::xlsx::write(path, &sheet)
+}
+
+/// The rows shown printed into a PDF at `path` - the title at the top, the headings on every
+/// page, the totals at the end, the page's number at its foot - through Windows' own
+/// "Microsoft Print to PDF": how many pages (0 when it could not).
+pub fn export_pdf(h: HWND, path: &std::path::Path, title: &str) -> usize {
+    let (report, data) = grid_report(h, title);
+    let pdf = crate::print::printers().into_iter().find(|p| p.contains("PDF")).unwrap_or_else(|| "Microsoft Print to PDF".into());
+    report.document(h, data).print_to_file(&pdf, path)
+}
+
+/// The grid's rows as they would print, in a preview window - DevExpress's ShowPrintPreview.
+pub fn print_preview(h: HWND, title: &str) {
+    let (report, data) = grid_report(h, title);
+    report.preview(h, data);
+}
+
+/// The grid as a report: its shown columns across the page, as wide as the grid has them (the
+/// page turned when they are wide), its rows' values as the grid shows them.
+pub fn grid_report(h: HWND, title: &str) -> (crate::report::Report, crate::report::Data) {
+    let (shown, headings, widths) = shown_columns(h);
+    let cols: Vec<Column> = shown.iter().map(|c| column(h, *c)).collect();
+    let totals: Vec<String> = shown.iter().zip(&cols).map(|(i, c)| summary_text(h, *i, c)).collect();
+    let rows = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize;
+    let values: Vec<Vec<String>> = (0..rows).map(|r| shown.iter().zip(&cols).map(|(c, col)| format_value(&col.format, &cell(h, r, *c))).collect()).collect();
+    report_of(title, &headings, &widths, &cols, &totals, values)
+}
+
+/// A report of a table: `headings` across the page as wide as `widths` share it, `values` row by
+/// row, `totals` (a column's, or empty) at the end.
+pub fn report_of(title: &str, headings: &[String], widths: &[i32], cols: &[Column], totals: &[String], values: Vec<Vec<String>>) -> (crate::report::Report, crate::report::Data) {
+    use crate::print::Align as PAlign;
+    use crate::report::{Band, BandKind, Data, Item, ItemKind, Report};
+    let total_px: i32 = widths.iter().sum::<i32>().max(1);
+    // A portrait page is 8.5 inches; wide tables turn it.
+    let landscape = total_px > 760;
+    let page = if landscape { 1100 } else { 850 } - 100;
+    let mut x = 0;
+    let at: Vec<(i32, i32)> = widths
+        .iter()
+        .map(|w| {
+            let wd = w * page / total_px;
+            let r = (x, wd);
+            x += wd;
+            r
+        })
+        .collect();
+    let align = |i: usize| match cols.get(i).map(|c| c.align).unwrap_or_default() {
+        Align::Left => PAlign::Left,
+        Align::Center => PAlign::Center,
+        Align::Right => PAlign::Right,
+    };
+    let names: Vec<String> = (0..headings.len()).map(|i| format!("c{i}")).collect();
+    let mut head: Vec<Item> = at.iter().zip(headings).enumerate().map(|(i, (p, t))| Item { kind: ItemKind::Label, text: t.clone(), bounds: [p.0 + 3, 3, p.1 - 6, 20], align: align(i), ..Default::default() }).collect();
+    head.push(Item { kind: ItemKind::Line, bounds: [0, 24, page, 0], ..Default::default() });
+    let mut bands = vec![
+        Band { kind: BandKind::ReportHeader, height: 45, items: vec![Item { kind: ItemKind::Label, text: title.to_string(), bounds: [0, 0, page, 35], ..Default::default() }], ..Default::default() },
+        Band { kind: BandKind::PageHeader, height: 25, items: head, ..Default::default() },
+        Band {
+            kind: BandKind::Detail,
+            height: 20,
+            items: at.iter().zip(&names).enumerate().map(|(i, (p, n))| Item { kind: ItemKind::Field, field: n.clone(), bounds: [p.0 + 3, 2, p.1 - 6, 17], align: align(i), ..Default::default() }).collect(),
+            ..Default::default()
+        },
+        Band {
+            kind: BandKind::PageFooter,
+            height: 25,
+            items: vec![Item { kind: ItemKind::Label, text: crate::text::t("Page {page} of {pages}").to_string(), bounds: [0, 5, page, 18], align: PAlign::Right, ..Default::default() }],
+            ..Default::default()
+        },
+    ];
+    if totals.iter().any(|t| !t.is_empty()) {
+        let mut items: Vec<Item> = at.iter().zip(totals).enumerate().filter(|(_, (_, t))| !t.is_empty()).map(|(i, (p, t))| Item { kind: ItemKind::Label, text: t.clone(), bounds: [p.0 + 3, 6, p.1 - 6, 18], align: align(i), bold: Some(true), ..Default::default() }).collect();
+        items.push(Item { kind: ItemKind::Line, bounds: [0, 2, page, 0], ..Default::default() });
+        bands.push(Band { kind: BandKind::ReportFooter, height: 28, items, ..Default::default() });
+    }
+    (Report { title: title.to_string(), landscape, bands, ..Default::default() }, Data::new(names, values))
 }
 
 /// The rows chosen, by place.
@@ -1540,7 +1963,19 @@ fn is_read_only(h: HWND) -> bool {
     READ_ONLY.lock().unwrap_or_else(|e| e.into_inner()).contains(&(h.0 as isize))
 }
 
-unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
+unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, a: usize, b: usize) -> LRESULT {
+    let r = unsafe { grid_proc_inner(h, msg, w, l, a, b) };
+    // What may choose another row: a master's details follow.
+    if matches!(msg, wm::WM_LBUTTONDOWN | wm::WM_LBUTTONUP | wm::WM_KEYDOWN | wm::WM_KEYUP | wm::WM_RBUTTONDOWN) || msg == cc::LVM_SETITEMSTATE || msg == cc::LVM_DELETEITEM || msg == cc::LVM_DELETEALLITEMS {
+        follow_master(h);
+    }
+    if msg == wm::WM_NCDESTROY {
+        DETAILS.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| x.0 != h.0 as isize && x.1 != h.0 as isize);
+    }
+    r
+}
+
+unsafe fn grid_proc_inner(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
     if is_read_only(h) && (msg == wm::WM_LBUTTONDBLCLK || (msg == wm::WM_KEYDOWN && (w.0 == 0x71 || w.0 == 0x2E))) {
         // Read only: a double-click, F2 or Delete do what a list's would.
         return unsafe { DefSubclassProc(h, msg, w, l) };
@@ -1557,12 +1992,22 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
                     return r;
                 }
             }
+            if hdr.code == cc::NM_RCLICK && with_opts(h, |o| o.header_menu) {
+                heading_menu(h, hdr.hwndFrom);
+                return LRESULT(1);
+            }
             match hdr.code as i32 {
                 -321 /* HDN_ITEMCHANGEDW */ | -301 /* HDN_ITEMCHANGEDA */ => {
                     let r = unsafe { DefSubclassProc(h, msg, w, l) };
                     redraw(h);
                     place_find(h);
                     return r;
+                }
+                -318 /* HDN_DROPDOWN */ => {
+                    if filters_allowed(h) && column(h, i).visible {
+                        open_filter(h, i);
+                    }
+                    return LRESULT(0);
                 }
                 -322 /* HDN_ITEMCLICKW */ => {
                     if column(h, i).allow_sort && column(h, i).visible {
@@ -1671,6 +2116,9 @@ unsafe extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
                     let blank: Vec<&str> = vec![""; columns(h).max(1)];
                     grid_add(h, &blank);
                     let last = unsafe { wm::SendMessageW(h, cc::LVM_GETITEMCOUNT, None, None).0 } as usize - 1;
+                    if let Some((c, key)) = master_key(h) {
+                        set_cell(h, last, c, &key);
+                    }
                     win::list_select(h, last);
                     if let Some(c) = editable_from(h, 0, true) {
                         open_editor(h, last, c);
