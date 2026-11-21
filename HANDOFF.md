@@ -10,7 +10,7 @@
   โปรเจกต์ใหม่เต็มจอ (`start`, `maximized`), เมนู Theme แสดงไฟล์ CSS ที่ใช้, โหมดมืด (แถบเครื่องมือ + scrollbar),
   ไอคอนในเมนู Format, ปุ่มปิดหน้าต่างล่าง, หน้าต่าง Project แบบ Solution Explorer (แถบปุ่ม, ค้นหา, Dependencies,
   ไฟล์ .rs ซ้อนใต้ฟอร์ม), แท็บเอกสารมีปุ่ม ✕ + คลิกกลางปิด, ดับเบิลคลิกฟอร์ม/control ไปที่โค้ด
-- **ออกรุ่นใหม่** (เมื่อเจ้านายสั่ง — main มี Properties/Events/Methods แบบ WinForms แล้ว ควรเป็น 0.2.0): แก้ `version` ใน `Cargo.toml` (workspace) → commit → `git tag vX.Y.Z` → push tag
+- **ออกรุ่นใหม่** (เมื่อเจ้านายสั่ง — ล่าสุด 0.2.0): แก้ `version` ใน `Cargo.toml` (workspace) → commit → `git tag vX.Y.Z` → push tag
   GitHub Actions build ตัวติดตั้งให้เอง → แล้ว `bash site/deploy.sh` ให้เว็บชี้รุ่นใหม่
 - การเซ็นโค้ด: SignPath **ไม่อนุมัติ** (ยังไม่มีคนรู้จักพอ) — สมัครใหม่ได้ภายหลัง ดู `docs/signpath-application.md`
   ทางฟรีอีกทาง: Microsoft Store (บัญชีนักพัฒนาฟรี, Microsoft เซ็นให้เฉพาะแพ็กเกจ **MSIX**) — ยังไม่ได้ทำ
@@ -179,7 +179,7 @@ Phai มีฐานเดียวกันแล้ว: **วาดเอง�
 
 ### 5. dogfooding: ทำโปรแกรมจริงของ Monrak ด้วย Phai Studio (Desktop Server / Desktop Access) ขาดอะไรเพิ่มทันที
 
-### 6. ออกรุ่น 0.2.0 เมื่อเจ้านายสั่ง (main เปลี่ยน API ของโค้ดที่สร้าง: field เป็น `phai_ui::ctl::*`)
+### 6. ✅ ออกรุ่น 0.2.0 แล้ว (2026-11-21, tag `v0.2.0`) — รุ่นถัดไปเมื่อเจ้านายสั่ง; push เฉพาะเมื่อเจ้านายสั่ง
 
 ## วิธีทำงาน (สำคัญ)
 - เครื่องมือ: cargo อยู่ที่ `/d/Tools/Rust/cargo/bin`; ตรวจก่อน commit: `cargo test -q --workspace` + `cargo clippy -q --workspace --all-targets`

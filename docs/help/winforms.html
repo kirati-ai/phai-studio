@@ -50,27 +50,44 @@
 <p>ตัวอักษรใน mask: <code>0</code> ตัวเลข, <code>9</code> ตัวเลขหรือเว้นว่าง, <code>L</code> ตัวอักษร, <code>A</code> ตัวอักษรหรือตัวเลข, <code>\</code> ใส่ตัวถัดไปตามที่เขียน</p>
 
 <h2>component (ไม่มีหน้าตาบนฟอร์ม)</h2>
-<p>component วางแล้วไปอยู่แถบด้านล่างฟอร์ม เหมือน Visual Studio</p>
+<p>component วางแล้วไปอยู่ในถาดด้านล่างพื้นที่ออกแบบ เหมือน Visual Studio ถาดมีแถบลายเฉียงคั่นอยู่ด้านบน ลากแถบนี้เพื่อปรับความสูงของถาดได้ (Phai Studio จำไว้ใช้ครั้งหน้า) คลิกที่ component เพื่อเลือกแล้วดูคุณสมบัติใน Properties ดับเบิลคลิกเพื่อเขียนโค้ด event ของมัน เช่น Tick ของ Timer ในถาดยังมี <b>menuStrip</b> และ <b>toolStrip</b> ของฟอร์มด้วย คลิกแล้วจะเปิดตัวออกแบบของแถบนั้นบนฟอร์ม</p>
 <table>
 <tr><th>component</th><th>ใช้ทำอะไร</th></tr>
-<tr><td>Open / Save file dialog</td><td>หน้าต่างเลือกไฟล์ของ Windows ตั้ง <code>title</code>, <code>filter</code> (<code>ไฟล์ข้อความ|*.txt|ทุกไฟล์|*.*</code>), <code>default_ext</code> แล้วเรียก <code>ui.open_file.show_dialog()</code> ได้ <code>Option&lt;PathBuf&gt;</code></td></tr>
+<tr><td>Open / Save file dialog</td><td>หน้าต่างเลือกไฟล์ของ Windows ตั้ง <code>title</code>, <code>filter</code> (<code>ไฟล์ข้อความ|*.txt|ทุกไฟล์|*.*</code>), <code>default_ext</code> แล้วเรียก <code>ui.open_file.show_dialog()</code> ได้ <code>Option&lt;PathBuf&gt;</code> มี event <b>FileOk</b>: ทำงานตอนกด Open หรือ Save ได้ไฟล์ที่เลือกจาก <code>e.file()</code> ถ้าไฟล์ใช้ไม่ได้ให้เรียก <code>e.cancel()</code> หน้าต่างเลือกไฟล์จะเปิดค้างไว้ให้เลือกใหม่</td></tr>
 <tr><td>Folder / Color / Font dialog</td><td>เลือกโฟลเดอร์, สี (<code>show_dialog("#12855f")</code> ได้ <code>#rrggbb</code>), ฟอนต์ (ได้ชื่อ ขนาด ตัวหนา ตัวเอียง)</td></tr>
 <tr><td>ErrorProvider</td><td>เครื่องหมายแดงข้าง control ที่กรอกผิด: <code>ui.errors.set_error(ui.name, "ใส่ชื่อด้วย")</code> ส่งข้อความว่างเพื่อลบ</td></tr>
 <tr><td>NotifyIcon</td><td>ไอคอนมุมขวาล่างของ taskbar มี <code>on_click</code>, <code>double_click</code>, เมนูคลิกขวา (<code>context_menu</code>) และ <code>show_balloon_tip(...)</code></td></tr>
 <tr><td>Timer</td><td>เรียก <code>on_tick</code> ทุกกี่มิลลิวินาทีตามที่ตั้ง</td></tr>
+<tr><td>Context menu</td><td>เมนูคลิกขวาของ control มี event <b>Opening</b> ทำงานก่อนเมนูขึ้น ใช้ติ๊ก ปิดใช้ หรือเปลี่ยนชื่อรายการตามสถานการณ์</td></tr>
 </table>
 
-<h2>เมนูแบบละเอียด</h2>
-<p>ในหน้าต่างแก้เมนู เขียนเมนูเป็นบรรทัด ย่อหน้าเข้าไปคือเมนูย่อย ชื่ออย่างเดียวในบรรทัดคือหัวเมนูย่อย:</p>
-<pre><code>&amp;View
-  word_wrap | Word wrap | checked | check_on_click
-  Zoom
-    zoom_in | Zoom in | Ctrl+= | SEARCH
-    zoom_max | Most | disabled</code></pre>
+<h2>ออกแบบเมนูบนฟอร์ม</h2>
+<p>เหมือน MenuStrip ของ Visual Studio: คลิกแถบเมนูบนฟอร์ม (หรือ <b>Menu bar</b> ใน Toolbox หรือ menuStrip ในถาด) แถบเมนูจะกลายเป็นตัวออกแบบ</p>
 <ul>
-  <li><code>checked</code> ติ๊กไว้ตั้งแต่เปิด, <code>check_on_click</code> กดแล้วสลับติ๊กเอง, <code>disabled</code> สีเทากดไม่ได้, ชื่อไอคอน (เช่น <code>SEARCH</code>) แสดงหน้าเมนู</li>
-  <li>ปุ่ม toolbar ที่เขียน <code>| toggle</code> เป็นปุ่มกดค้าง และติ๊กพร้อมกับเมนูที่ id เดียวกัน</li>
-  <li>จากโค้ด: <code>ui.item_checked("word_wrap")</code>, <code>ui.set_item_checked("word_wrap", true)</code>, <code>ui.set_item_enabled("zoom_max", false)</code></li>
+  <li>ท้ายแถบมีช่อง <b>พิมพ์ที่นี่</b> พิมพ์ชื่อเมนูใหม่ แล้วกด <kbd>Enter</kbd></li>
+  <li>คลิกเมนูเพื่อเปิด ใต้เมนูมี <b>พิมพ์ที่นี่</b> สำหรับเพิ่มรายการ และข้างรายการที่เลือกมี <b>พิมพ์ที่นี่</b> สำหรับทำเมนูย่อย</li>
+  <li>พิมพ์ <code>-</code> จะได้เส้นคั่น ใส่ <code>&amp;</code> หน้าตัวอักษรที่จะขีดเส้นใต้ (กด Alt+ตัวนั้น) id ของรายการสร้างจากข้อความให้เอง เช่น <code>&amp;Save As...</code> ได้ <code>save_as</code></li>
+  <li>คลิกรายการที่เลือกอยู่อีกครั้ง หรือกด <kbd>F2</kbd> หรือพิมพ์ทับ เพื่อแก้ข้อความ ใช้ลูกศรเลื่อนไปมา <kbd>Ctrl</kbd>+<kbd>↑</kbd><kbd>↓</kbd> ย้ายลำดับ <kbd>Delete</kbd> ลบ</li>
+  <li><b>ดับเบิลคลิก</b>รายการ จะพาไปเขียนโค้ด Click ของรายการนั้น</li>
+  <li>คลิกขวามี แก้ข้อความ, คุณสมบัติ, แทรกรายการ, แทรกเส้นคั่น, ย้าย, ลบ</li>
+</ul>
+<p>รายการที่เลือกจะขึ้นในหน้า <b>Properties</b> เหมือน control: (Name) คือ id, Text, Image (ไอคอน), ShortcutKeys (เช่น <code>Ctrl+S</code>), Checked (ติ๊กไว้), CheckOnClick (กดแล้วสลับติ๊ก), Enabled ส่วนแท็บ Events มี</p>
+<table>
+<tr><th>เลือก</th><th>Event</th></tr>
+<tr><td>เมนูบนแถบ (File, View)</td><td>DropDownOpening (ก่อนเมนูเปิด เหมาะสำหรับติ๊กหรือปิดใช้รายการ), DropDownClosed</td></tr>
+<tr><td>รายการเมนู</td><td>Click, CheckedChanged และถ้ามีเมนูย่อย DropDownOpening, DropDownClosed</td></tr>
+<tr><td>menuStrip (ทั้งแถบ)</td><td>MenuStart, MenuComplete (เริ่มและเลิกใช้แถบเมนู)</td></tr>
+</table>
+<p>ดับเบิลคลิกชื่อ event ในแท็บ Events เพื่อเขียนโค้ด จากโค้ดสั่งได้ด้วย: <code>ui.item_checked("word_wrap")</code>, <code>ui.set_item_checked("word_wrap", true)</code>, <code>ui.set_item_enabled("zoom_max", false)</code></p>
+
+<h2>ออกแบบแถบเครื่องมือบนฟอร์ม</h2>
+<p>เหมือน ToolStrip ของ Visual Studio: คลิกแถบเครื่องมือบนฟอร์ม (หรือ <b>Toolbar</b> ใน Toolbox หรือ toolStrip ในถาด)</p>
+<ul>
+  <li>ปุ่ม <b>+</b> ท้ายแถบเพิ่มปุ่มต่อท้าย ลูกศรข้าง ๆ มี ปุ่ม, เส้นคั่น และ <b>แทรกปุ่มมาตรฐาน</b> (New, Open, Save | Cut, Copy, Paste | Undo, Redo)</li>
+  <li>คลิกเพื่อเลือก <b>ดับเบิลคลิก</b>เพื่อเขียนโค้ด Click ของปุ่ม <kbd>←</kbd><kbd>→</kbd> เลือก <kbd>Ctrl</kbd>+<kbd>←</kbd><kbd>→</kbd> ย้าย <kbd>Delete</kbd> ลบ</li>
+  <li>คลิกขวามี ดูโค้ด, คุณสมบัติ, เลือกรูป, เปิด/ปิดใช้, คลิกแล้วค้างกด, เริ่มแบบกดค้าง, แทรกปุ่มหรือเส้นคั่นหน้าปุ่มนี้, ย้าย, ลบ</li>
+  <li>Properties ของปุ่ม: (Name), Text (คำแนะนำเมื่อชี้), Image, CheckOnClick, Checked, Enabled แท็บ Events มี Click, CheckedChanged และของ toolStrip ทั้งแถบมี ItemClicked (<code>e.index</code> คือลำดับปุ่ม)</li>
+  <li>ปุ่มที่ CheckOnClick กับรายการเมนูที่ id เดียวกัน ติ๊กพร้อมกัน</li>
 </ul>
 
 <h2>ฟอร์มซ้อนในฟอร์ม (MDI)</h2>
