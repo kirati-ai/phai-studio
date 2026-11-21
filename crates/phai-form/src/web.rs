@@ -31,11 +31,80 @@ pub fn left_out(f: &FormFile) -> Vec<String> {
     for c in &f.control {
         if !on_web(c.kind) {
             out.push(format!("{} ({})", c.id, c.kind.name()));
-        } else if c.bind.is_some() {
-            out.push(format!("{} (bound to a database)", c.id));
         }
     }
     out
+}
+
+/// The grids bound to a table: on the web they ask the data server.
+fn bound(f: &FormFile) -> Vec<&Control> {
+    f.control.iter().filter(|c| c.kind == Kind::Grid && c.bind.is_some()).collect()
+}
+
+/// A bound grid's name on the data server: `main_window/customers`.
+pub fn binding_name(f: &FormFile, c: &Control) -> String {
+    format!("{}/{}", snake(&f.form.name), c.id)
+}
+
+/// `data-server/src/main.rs`: the program's data server, serving the tables of every bound grid
+/// of `forms` (`None` when no grid is bound) - [`phai_data::server::run`] with the project's own
+/// `data_sources.rs`.
+pub fn data_server_main(forms: &[&FormFile]) -> Option<String> {
+    let mut tables = Vec::new();
+    for f in forms {
+        for c in bound(f) {
+            let Some(b) = &c.bind else { continue };
+            let list = |v: &[String]| v.iter().map(|x| lit(x)).collect::<Vec<_>>().join(", ");
+            tables.push(format!("        ({}, {}, {}, &[{}], &[{}]),", lit(&binding_name(f, c)), lit(&b.database), lit(&b.table), list(&b.columns), list(&b.keys)));
+        }
+    }
+    if tables.is_empty() {
+        return None;
+    }
+    Some(format!(
+        r#"//! Made by Phai Studio from the forms' bound grids - do not change this file; it is written again
+//! with each build for the web. The web app's tables, served to it over HTTP: run it beside the
+//! database, behind the web server's HTTPS at /phai-data/.
+//!
+//! cargo run --release      (in this folder)
+//! PHAI_DB_PASSWORD   the database's password, as the program on Windows takes it
+//! PHAI_DATA_TOKEN    the access key the app asks for once on each device (needed off this computer)
+//! PHAI_DATA_ADDR     where it listens, 127.0.0.1:8791 when unset
+
+#[path = "../../src/data_sources.rs"]
+mod data_sources;
+
+fn main() {{
+    let tables: &[phai_data::server::Table] = &[
+{}
+    ];
+    if let Err(e) = phai_data::server::run(data_sources::connection(), tables) {{
+        eprintln!("{{e}}");
+        std::process::exit(1);
+    }}
+}}
+"#,
+        tables.join("
+")
+    ))
+}
+
+/// `data-server/Cargo.toml`: a package of its own (its own workspace), needing phai-data alone -
+/// `phai_data` how the project names it.
+pub fn data_server_toml(package: &str, phai_data: &str) -> String {
+    format!(
+        r#"[package]
+name = "{package}-data-server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+phai-data = {phai_data}
+
+[workspace]
+"#
+    )
 }
 
 /// The tab control the pages belong to: the form's first.
@@ -234,6 +303,10 @@ pub fn generate(f: &FormFile) -> String {
     for c in &shown {
         let _ = writeln!(w, "    pub {}: phai_ui::ctl::{},", c.id, crate::codegen::ctl_type(c.kind));
     }
+    // A bound grid's table, on the program's data server.
+    for c in bound(f) {
+        let _ = writeln!(w, "    pub {}_data: phai_ui::data::Binding,", c.id);
+    }
     let _ = writeln!(w, "}}");
     let _ = writeln!(w);
 
@@ -336,6 +409,22 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "        form::DialogResult::None");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    for c in bound(f) {
+        let id = &c.id;
+        let _ = writeln!(w, "    /// {id}'s rows read again from the data server - the grid filled when they come.");
+        let _ = writeln!(w, "    pub fn reload_{id}(&self) -> Result<(), String> {{");
+        let _ = writeln!(w, "        self.{id}_data.load_into(self.{id}.hwnd());");
+        let _ = writeln!(w, "        Ok(())");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// What {id} holds written back through the data server, then read again. On the web the");
+        let _ = writeln!(w, "    /// answer comes later: 0 here, a message if it fails.");
+        let _ = writeln!(w, "    pub fn save_{id}(&self) -> Result<usize, String> {{");
+        let _ = writeln!(w, "        self.{id}_data.save_from(self.{id}.hwnd());");
+        let _ = writeln!(w, "        Ok(0)");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
     let _ = writeln!(w, "    /// Closes the window.");
     let _ = writeln!(w, "    pub fn close(&self) {{");
     let _ = writeln!(w, "        form::close(self.hwnd);");
@@ -466,13 +555,25 @@ pub fn generate(f: &FormFile) -> String {
             let _ = writeln!(w, "            {}: phai_ui::ctl::{}({}),", c.id, crate::codegen::ctl_type(c.kind), c.id);
         }
     }
+    for c in bound(f) {
+        let _ = writeln!(w, "            {}_data: phai_ui::data::Binding::new({}),", c.id, lit(&binding_name(f, c)));
+    }
     let _ = writeln!(w, "        }};");
     // The controls' methods.
     for c in &shown {
         if c.kind == Kind::Timer {
             continue;
         }
-        if let (Some(h), Some(on)) = (c.handler(), own_event(c)) {
+        // Save or Reload for a bound grid, then the button's own method.
+        let bound_button = if let Some((grid, what)) = c.bind_action.as_deref().and_then(|a| a.split_once(':')).filter(|(g, _)| f.control.iter().any(|x| x.id == *g && x.kind == Kind::Grid && x.bind.is_some())) {
+            let run = if what == "save" { format!("ui.save_{grid}().map(|_| ())") } else { format!("ui.reload_{grid}()") };
+            let after = c.handler().map(|h| format!(" e.{h}(ui);")).unwrap_or_default();
+            let _ = writeln!(w, "        form::on(ui.{}.hwnd(), \"click\", call(&me, |e: &mut E, ui: &{ui}| {{ if let Err(m) = {run} {{ phai_ui::win::message(&m); }}{after} }}));", c.id);
+            true
+        } else {
+            false
+        };
+        if let (Some(h), Some(on), false) = (c.handler(), own_event(c), bound_button) {
             if c.kind == Kind::Link {
                 let _ = writeln!(w, "        form::on_link(ui.{}.hwnd(), call(&me, |e: &mut E, ui: &{ui}| e.{h}(ui)));", c.id);
             } else {
@@ -519,6 +620,9 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "        {{");
     let _ = writeln!(w, "            let mut h = host.borrow_mut();");
     let _ = writeln!(w, "            let Host {{ ui, events }} = &mut *h;");
+    for c in bound(f) {
+        let _ = writeln!(w, "            let _ = ui.reload_{}();", c.id);
+    }
     let _ = writeln!(w, "            events.loaded(ui);");
     let _ = writeln!(w, "        }}");
     if let Some(h) = f.form.events.get("shown") {
@@ -1017,5 +1121,27 @@ dock = "bottom"
         assert!(code.contains("phai_ui::menu::context_menu(hwnd, ui.folders.hwnd(), vec![phai_ui::menu::Item { id: \"rename\", label: t(\"Rename\"), ..Default::default() }, phai_ui::menu::Item { separator: true, ..Default::default() }"), "{code}");
         assert!(code.contains("e.menu_opening(ui)"), "{code}");
         assert!(code.contains("\"remove\" => e.remove(ui),"), "{code}");
+    }
+
+    #[test]
+    fn a_bound_grid_asks_the_data_server_on_the_web() {
+        let mut f = FormFile::new("MainWindow");
+        let mut g = Control::new(Kind::Grid, "customers", [0, 0, 300, 200]);
+        g.columns = vec![("Id".into(), 60), ("Name".into(), 120)];
+        g.bind = Some(crate::model::Bind { database: "shop".into(), table: "customers".into(), columns: vec!["id".into(), "name".into()], keys: vec!["id".into()] });
+        let mut save = Control::new(Kind::Button, "save", [0, 210, 75, 23]);
+        save.bind_action = Some("customers:save".into());
+        f.control.push(g);
+        f.control.push(save);
+        assert!(left_out(&f).is_empty(), "{:?}", left_out(&f));
+        let code = generate(&f);
+        assert!(code.contains("pub customers_data: phai_ui::data::Binding,"), "{code}");
+        assert!(code.contains("customers_data: phai_ui::data::Binding::new(\"main_window/customers\"),"), "{code}");
+        assert!(code.contains("pub fn save_customers(&self) -> Result<usize, String> {"), "{code}");
+        assert!(code.contains("let _ = ui.reload_customers();"), "{code}");
+        assert!(code.contains("form::on(ui.save.hwnd(), \"click\", call(&me, |e: &mut E, ui: &MainWindowUi| { if let Err(m) = ui.save_customers().map(|_| ())"), "{code}");
+        let main = data_server_main(&[&f]).unwrap();
+        assert!(main.contains("(\"main_window/customers\", \"shop\", \"customers\", &[\"id\", \"name\"], &[\"id\"]),"), "{main}");
+        assert!(data_server_main(&[&FormFile::new("Empty")]).is_none());
     }
 }

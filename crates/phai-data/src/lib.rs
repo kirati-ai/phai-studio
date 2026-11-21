@@ -8,6 +8,7 @@
 //! this computer can read it back) - see [`protect`] and [`unprotect`].
 
 pub mod pg;
+pub mod server;
 pub mod schema;
 pub mod sqlite;
 pub mod wire;
@@ -501,6 +502,7 @@ pub fn rust_type(ty: &str, nullable: bool) -> String {
 
 // --- remembered passwords, encrypted by Windows -----------------------------------------------
 
+#[cfg(windows)]
 /// Encrypts `data` for this Windows user on this computer (DPAPI).
 pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
     use windows::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
@@ -514,6 +516,7 @@ pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
     Some(v)
 }
 
+#[cfg(windows)]
 /// Decrypts what [`protect`] made.
 pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
     use windows::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
@@ -686,6 +689,12 @@ impl Binding {
     /// are left to the table's defaults (an id that numbers itself).
     pub fn save(&self, rows: &[(usize, Vec<String>)]) -> Result<usize, String> {
         let loaded = self.loaded.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        self.save_against(&loaded, rows)
+    }
+
+    /// [`Binding::save`] against `loaded`, the rows as they were read - a web page's, which the
+    /// data server keeps nothing of between requests.
+    pub fn save_against(&self, loaded: &[Vec<String>], rows: &[(usize, Vec<String>)]) -> Result<usize, String> {
         let at = |name: &str| self.columns.iter().position(|c| c == name);
         let key_of = |row: &[String]| -> Result<Vec<(String, String)>, String> {
             if self.keys.is_empty() {
