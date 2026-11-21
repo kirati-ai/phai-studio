@@ -81,6 +81,18 @@ pub fn open(chosen: Option<usize>) {
     }
 }
 
+/// The designer's copy of the buttons taken again from the form - changed in Properties.
+pub fn reload() {
+    let h = HWND(OPEN.load(std::sync::atomic::Ordering::Relaxed) as *mut _);
+    if h.is_invalid() {
+        return;
+    }
+    if let (Some(d), Some(s)) = (state(h), studio()) {
+        d.tools = s.doc.form.toolbar.clone();
+        relayout(h);
+    }
+}
+
 fn px(h: HWND, v: i32) -> i32 {
     win::px(h, v)
 }
@@ -101,6 +113,16 @@ fn relayout(h: HWND) {
     cells.push((RECT { left: x, top: s.top + px(h, 4), right: x + px(h, 26), bottom: s.bottom - px(h, 4) }, Hit::Add));
     cells.push((RECT { left: x + px(h, 26), top: s.top + px(h, 4), right: x + px(h, 42), bottom: s.bottom - px(h, 4) }, Hit::AddMore));
     d.cells = cells;
+    // What is chosen, for Properties: a button, or the toolbar.
+    let sel = match d.sel.filter(|i| *i < d.tools.len()) {
+        Some(i) => crate::BarSel::Tool(i),
+        None => crate::BarSel::ToolStrip,
+    };
+    if let Some(s) = studio() {
+        if s.bar_sel.as_ref() != Some(&sel) {
+            s.choose_bar(Some(sel));
+        }
+    }
     let right = (x + px(h, 46)).max(s.right);
     unsafe {
         let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), s.left, s.top, right - s.left, s.bottom - s.top, wm::SWP_NOACTIVATE);

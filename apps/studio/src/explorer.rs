@@ -227,6 +227,15 @@ pub fn show_side_panes(side: HWND, explorer: bool, props: bool) -> bool {
     side_any(side)
 }
 
+/// Properties brought to the front of the side's tabs - right-click > Properties.
+pub fn front_props(side: HWND) {
+    if let Some(s) = unsafe { win::state::<Side>(side) } {
+        s.props_on = true;
+        s.active = 3;
+        s.arrange(side);
+    }
+}
+
 /// Whether any pane lies in the side itself - not hidden at the edge, not slid out.
 pub fn side_any(side: HWND) -> bool {
     unsafe { win::state::<Side>(side) }.is_some_and(|s| !s.docked().is_empty())
