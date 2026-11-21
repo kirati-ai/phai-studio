@@ -1092,6 +1092,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Run on Phone...", "รันบนมือถือ..."),
     ("Device Preview", "ดูบนอุปกรณ์"),
     ("Search...", "ค้นหา..."),
+    ("Group the rows by this column", "จัดกลุ่มแถวตามคอลัมน์นี้"),
+    ("The find box leaves only the rows it finds; off - it marks them.", "ช่องค้นหากรองให้เหลือเฉพาะแถวที่พบ; ปิด = แค่ไฮไลต์"),
     ("Display format", "รูปแบบการแสดง"),
     ("None", "ไม่มี"),
     ("Sum", "รวม"),

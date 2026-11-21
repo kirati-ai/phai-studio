@@ -11647,6 +11647,19 @@ impl MainWindowEvents for MainWindow {
         let (controls, need) = bound_controls(&f, "main", "customers", &cols);
         f.control.extend(controls);
         f.form.size[1] = f.form.size[1].max(need);
+        // The grid as DevExpress's: a format, a total, a rule, grouping, the find box always there.
+        {
+            use phai_form::HasProps;
+            let g = f.control.iter_mut().find(|c| c.kind == Kind::Grid).unwrap();
+            g.column_props = vec![
+                phai_form::ColumnProps { format: Some("n0".into()), read_only: Some(true), ..Default::default() },
+                phai_form::ColumnProps { summary: Some("count".into()), rules: vec!["contains net fore=#b00020 row".into()], ..Default::default() },
+                phai_form::ColumnProps { group: Some(true), align: Some("right".into()), ..Default::default() },
+            ];
+            g.set_prop("alternate_row_color", Some(phai_form::toml::Value::String("#f4f8f6".into())));
+            g.set_prop("show_footer", Some(phai_form::toml::Value::Boolean(true)));
+            g.set_prop("find_panel", Some(phai_form::toml::Value::String("always".into())));
+        }
         assert!(f.check().is_empty(), "{:?}", f.check());
         std::fs::write(&form_path, f.to_toml()).unwrap();
         std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
@@ -11656,7 +11669,7 @@ impl MainWindowEvents for MainWindow {
         let user = dir.join("src").join("main_window.rs");
         let text = std::fs::read_to_string(&user).unwrap().replacen(
             "impl MainWindowEvents for MainWindow {",
-            "impl MainWindowEvents for MainWindow {\n    fn loaded(&mut self, ui: &MainWindowUi) {\n        let rows = phai_ui::grid::grid_rows(ui.customers);\n        if rows.len() != 2 || rows[1][1] != \"Monrak Net\" { std::process::exit(3) }\n        phai_ui::grid::set_cell(ui.customers, 0, 1, \"สมชาย ใจดี\");\n        let n = ui.save_customers().unwrap_or(99);\n        let now = crate::data_sources::connection().query(None, \"SELECT name FROM customers WHERE id = 1\").unwrap();\n        let again = phai_ui::grid::grid_rows(ui.customers);\n        std::process::exit(if n == 1 && now.rows[0][0] == \"สมชาย ใจดี\" && again[0][1] == \"สมชาย ใจดี\" { 42 } else { 4 });\n    }\n",
+            "impl MainWindowEvents for MainWindow {\n    fn loaded(&mut self, ui: &MainWindowUi) {\n        let rows = phai_ui::grid::grid_rows(ui.customers);\n        if rows.len() != 2 || rows[1][1] != \"Monrak Net\" { std::process::exit(3) }\n        phai_ui::grid::set_cell(ui.customers, 0, 1, \"สมชาย ใจดี\");\n        // The changed row set aside by the find box: saved all the same.\n        phai_ui::grid::find(ui.customers.hwnd(), \"monrak\");\n        if phai_ui::grid::grid_rows(ui.customers).len() != 1 { std::process::exit(5) }\n        let n = ui.save_customers().unwrap_or(99);\n        let now = crate::data_sources::connection().query(None, \"SELECT name FROM customers WHERE id = 1\").unwrap();\n        let again = phai_ui::grid::grid_rows(ui.customers);\n        std::process::exit(if n == 1 && now.rows[0][0] == \"สมชาย ใจดี\" && again.len() == 1 && again[0][1] == \"Monrak Net\" { 42 } else { 4 });\n    }\n",
             1,
         );
         std::fs::write(&user, text).unwrap();
@@ -11670,7 +11683,7 @@ impl MainWindowEvents for MainWindow {
         assert!(out.status.success(), "the project's own tests: {}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-bind.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
-        assert_eq!(code, Some(42), "3: the grid was not filled, 4: the change was not saved");
+        assert_eq!(code, Some(42), "3: the grid was not filled, 4: the change was not saved, 5: the find box did not set rows aside");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

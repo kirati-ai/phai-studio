@@ -155,6 +155,7 @@ pub const CONTROL: &[Spec] = &[
     spec("row_height", "RowHeight", "Appearance", Ty::Int(0, 80), "0", &[Kind::Grid], How::Call, "The rows this tall, pixels; 0 - as the font makes them."),
     spec("show_footer", "ShowFooter", "Appearance", Ty::Bool, "false", &[Kind::Grid], How::Call, "A row under the rows with each column's total (a column's Summary)."),
     spec("find_panel", "FindPanel", "Behavior", Ty::Choice(FIND), "ctrl_f", &[Kind::Grid], How::Call, "The find box: Ctrl+F opens it, always there, or none."),
+    spec("find_filter", "FindFilter", "Behavior", Ty::Bool, "true", &[Kind::Grid], How::Call, "The find box leaves only the rows it finds; off - it marks them."),
     spec("copy_headers", "CopyColumnHeaders", "Behavior", Ty::Bool, "true", &[Kind::Grid], How::Call, "Ctrl+C copies the headings with the rows."),
     spec("allow_column_moving", "AllowColumnMoving", "Behavior", Ty::Bool, "false", &[Kind::Grid], How::Call, "Columns can be dragged by their headings into another order."),
     spec("check_boxes", "CheckBoxes", "Appearance", Ty::Bool, "false", &[Kind::List, Kind::Tree], How::Call, "A box to tick before each item."),

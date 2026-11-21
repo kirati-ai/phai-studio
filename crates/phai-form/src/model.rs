@@ -499,6 +499,9 @@ pub struct ColumnProps {
     /// Format rules, a line each: `> 1000 back=#ffe4e4 fore=#b00020 row`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<String>,
+    /// The rows grouped by its values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<bool>,
 }
 
 impl ColumnProps {
@@ -545,6 +548,9 @@ impl ColumnProps {
         if let Some(x) = self.summary.as_deref().filter(|x| !x.is_empty()) {
             f.push(format!("summary: phai_ui::grid::Summary::from_word({x:?})"));
         }
+        if self.group == Some(true) {
+            f.push("group: true".into());
+        }
         if !self.rules.is_empty() {
             f.push(format!("rules: phai_ui::grid::rules(&[{}])", self.rules.iter().map(|r| format!("{r:?}")).collect::<Vec<_>>().join(", ")));
         }
@@ -583,6 +589,7 @@ impl ColumnProps {
             format: self.format.clone().unwrap_or_default(),
             summary: phai_ui::grid::Summary::from_word(self.summary.as_deref().unwrap_or("")),
             rules: self.rules.iter().filter_map(|r| phai_ui::grid::Rule::parse(r)).collect(),
+            group: self.group == Some(true),
         }
     }
 }
