@@ -555,6 +555,38 @@ fn declarations(kind: &str, body: &str) -> String {
 }
 
 /// A theme file (with its `@import "phai:light"`) as the page's CSS.
+/// The page's CSS for the forms' grids, as the Windows grid draws them: every other row's
+/// colour, the headings' colours, each column's alignment, hidden columns left out.
+pub fn grids_css(forms: &[&FormFile]) -> String {
+    let mut out = String::new();
+    for c in forms.iter().flat_map(|f| f.control.iter()).filter(|c| c.kind == Kind::Grid) {
+        let id = &c.id;
+        let colour = |name: &str| c.word(name).filter(|v| phai_ui::theme::parse_color(v).is_some()).map(str::to_string);
+        if let Some(v) = colour("alternate_row_color") {
+            out += &format!("#{id} tbody tr:nth-child(even) td {{ background: {v}; }}\n");
+        }
+        if let Some(v) = colour("header_back_color") {
+            out += &format!("#{id} th {{ background: {v}; }}\n");
+        }
+        if let Some(v) = colour("header_fore_color") {
+            out += &format!("#{id} th {{ color: {v}; }}\n");
+        }
+        if c.int("row_height").is_some_and(|h| h > 0) {
+            out += &format!("#{id} td {{ height: {}px; }}\n", c.int("row_height").unwrap_or(0));
+        }
+        for (i, p) in c.column_props.iter().enumerate().filter(|(i, _)| *i < c.columns.len()) {
+            let n = i + 1;
+            if p.visible == Some(false) {
+                out += &format!("#{id} th:nth-child({n}), #{id} td:nth-child({n}) {{ display: none; }}\n");
+            }
+            if let Some(a) = p.align.as_deref().filter(|a| matches!(*a, "center" | "right")) {
+                out += &format!("#{id} th:nth-child({n}), #{id} td:nth-child({n}) {{ text-align: {a}; }}\n");
+            }
+        }
+    }
+    out
+}
+
 pub fn theme_css(theme: &str) -> String {
     let mut text = theme.to_string();
     for (key, sheet) in [("\"phai:light\"", phai_ui::theme::STANDARD_CSS), ("\"phai:dark\"", phai_ui::theme::DARK_CSS)] {
@@ -899,5 +931,23 @@ dock = "bottom"
         assert!(m.contains("\"short_name\": \"ร้าน\"") && m.contains("\"orientation\": \"portrait\""), "{m}");
         assert_eq!(json_str("a\"b\\c\n"), r#""a\"b\\c\u000a""#);
         assert!(service_worker("shop", "7").contains("pkg/shop_bg.wasm") && service_worker("shop", "7").contains("phai-shop-7"));
+    }
+
+    /// A grid looks in the browser as on Windows: every other row, the headings, each column's
+    /// alignment, hidden columns.
+    #[test]
+    fn a_grid_s_look_reaches_the_page() {
+        let mut f = FormFile::new("MainWindow");
+        let mut g = Control::new(Kind::Grid, "orders", [0, 0, 300, 200]);
+        g.columns = vec![("Name".into(), 100), ("Amount".into(), 80), ("Key".into(), 40)];
+        g.column_props = vec![Default::default(), crate::ColumnProps { align: Some("right".into()), ..Default::default() }, crate::ColumnProps { visible: Some(false), ..Default::default() }];
+        g.set_prop("alternate_row_color", Some(toml::Value::String("#f4f8f6".into())));
+        g.set_prop("header_back_color", Some(toml::Value::String("#12855f".into())));
+        f.control.push(g);
+        let css = grids_css(&[&f]);
+        assert!(css.contains("#orders tbody tr:nth-child(even) td { background: #f4f8f6; }"), "{css}");
+        assert!(css.contains("#orders th { background: #12855f; }"), "{css}");
+        assert!(css.contains("#orders th:nth-child(2), #orders td:nth-child(2) { text-align: right; }"), "{css}");
+        assert!(css.contains("#orders th:nth-child(3), #orders td:nth-child(3) { display: none; }"), "{css}");
     }
 }
