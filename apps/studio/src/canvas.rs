@@ -51,24 +51,85 @@ fn chip_label(f: &phai_form::FormFile, i: usize) -> (String, u16) {
 /// The component tray under the form, as Visual Studio's: the menu bar and the toolbar first,
 /// then one chip per component (a timer) - its index in the form (or [`CHIP_MENU`],
 /// [`CHIP_TOOLBAR`]) and its rectangle, design pixels.
-pub fn tray_chips(f: &phai_form::FormFile, size: [i32; 2]) -> Vec<(usize, [i32; 4])> {
-    let (ox, top) = origin(f);
-    let y = top + size[1] + 24;
-    let mut x = ox;
-    let mut out = Vec::new();
+pub fn tray_chips(f: &phai_form::FormFile, width: i32) -> Vec<(usize, [i32; 4])> {
+    let mut chips: Vec<(usize, i32)> = Vec::new();
     for (shown, i, name) in [(!f.menu.is_empty(), CHIP_MENU, "menuStrip"), (!f.toolbar.is_empty(), CHIP_TOOLBAR, "toolStrip")] {
         if shown {
-            let w = name.chars().count() as i32 * 7 + 44;
-            out.push((i, [x, y, w, 28]));
-            x += w + 8;
+            chips.push((i, name.chars().count() as i32 * 7 + 44));
         }
     }
     for (i, c) in f.control.iter().enumerate().filter(|(_, c)| c.kind.is_component()) {
-        let w = c.id.chars().count() as i32 * 7 + 44;
+        chips.push((i, c.id.chars().count() as i32 * 7 + 44));
+    }
+    // In the tray's own design pixels, under its splitter; a new row when one is full.
+    let (mut x, mut y) = (MARGIN, SPLIT + 8);
+    let mut out = Vec::new();
+    for (i, w) in chips {
+        if x > MARGIN && x + w > width - 8 {
+            x = MARGIN;
+            y += 36;
+        }
         out.push((i, [x, y, w, 28]));
         x += w + 8;
     }
     out
+}
+
+/// The tray's splitter: the band along its top dragged to make it taller or shorter.
+const SPLIT: i32 = 6;
+
+/// The tray's height, design pixels: as it was last dragged.
+fn tray_height() -> i32 {
+    crate::setting_pub("tray_height").and_then(|v| v.parse::<i32>().ok()).filter(|v| (40..=400).contains(v)).unwrap_or(58)
+}
+
+/// The tray's chips painted: each one's icon and name, the chosen one in the accent.
+fn paint_chips(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, width: i32) {
+    let dpi = win::dpi(h);
+    let p = |v: i32| scale(v, dpi);
+    let window = win::window_background();
+    let text = win::window_text();
+    let border = theme::style("group", State::default()).border_or(Color::rgb(229, 229, 229));
+    let chips = tray_chips(f, width);
+    let font = win::font(h, 0, false);
+    let mut lf = Gdi::LOGFONTW { lfHeight: -p(12), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::ANTIALIASED_QUALITY, ..Default::default() };
+    for (i, u) in "Segoe Fluent Icons".encode_utf16().enumerate() {
+        lf.lfFaceName[i] = u;
+    }
+    let icons = unsafe { Gdi::CreateFontIndirectW(&lf) };
+    let old = unsafe { Gdi::SelectObject(dc, font.into()) };
+    unsafe {
+        Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+    }
+    let chosen = studio().and_then(|s| s.selected);
+    let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
+    for (i, r) in &chips {
+        let (name, g) = chip_label(f, *i);
+        let rr = RECT { left: p(r[0]), top: p(r[1]), right: p(r[0] + r[2]), bottom: p(r[1] + r[3]) };
+        win::fill(dc, &rr, if chosen == Some(*i) { accent } else { border });
+        win::fill(dc, &RECT { left: rr.left + 1, top: rr.top + 1, right: rr.right - 1, bottom: rr.bottom - 1 }, window);
+        unsafe {
+            Gdi::SelectObject(dc, icons.into());
+            Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(accent.colorref()));
+        }
+        let mut gr = RECT { left: rr.left + p(6), top: rr.top, right: rr.left + p(26), bottom: rr.bottom };
+        let mut one = [g];
+        unsafe {
+            Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            Gdi::SelectObject(dc, font.into());
+            Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
+        }
+        let mut tr = RECT { left: rr.left + p(30), top: rr.top, right: rr.right - p(4), bottom: rr.bottom };
+        let mut words: Vec<u16> = name.encode_utf16().collect();
+        unsafe {
+            Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+        }
+    }
+    unsafe {
+        Gdi::SelectObject(dc, old);
+        let _ = Gdi::DeleteObject(icons.into());
+        let _ = Gdi::DeleteObject(font.into());
+    }
 }
 
 /// Where the form's client area starts on the canvas, design pixels.
@@ -112,6 +173,8 @@ enum Drag {
 pub struct Canvas {
     pub hwnd: HWND,
     pub surface: HWND,
+    /// The component tray along the bottom, as Visual Studio's: its splitter dragged.
+    pub tray: HWND,
     live: Vec<HWND>,
     toolbar: Option<HWND>,
     handles: Vec<HWND>,
@@ -165,7 +228,9 @@ impl Canvas {
             wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
-        Canvas { hwnd, surface, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], tag: HWND::default(), marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![], link: None }
+        let tray_class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiStudioTray", Some(tray_proc), None);
+        let tray = create_child(&tray_class, hwnd, WINDOW_EX_STYLE(0));
+        Canvas { hwnd, surface, tray, live: vec![], toolbar: None, handles: vec![], form_handles: vec![], tag: HWND::default(), marks: vec![], group: vec![], lines: vec![], drag: Drag::None, cursor: wm::IDC_ARROW, locked: false, tab_next: None, numbers: vec![], link: None }
     }
 
     /// Builds the form again from the model: size, controls, handles.
@@ -196,6 +261,7 @@ impl Canvas {
         live::set_user_controls(move |name| crate::user_control_form(folder.as_deref()?, name));
         let built = live::build(self.surface, f, s.font, 0);
         built.layout.apply(self.surface);
+        self.place_tray();
         // Design-time sample data (View > Sample Data in Designer): a few rows in each list and
         // grid, guessed from its columns - shown here only, the program starts empty.
         if crate::setting_pub("design_samples").as_deref() != Some("0") {
@@ -315,6 +381,27 @@ impl Canvas {
         [(x, y), (x + w / 2, y), (x + w, y), (x + w, y + h / 2), (x + w, y + h), (x + w / 2, y + h), (x, y + h), (x, y + h / 2)]
     }
 
+    /// The tray along the bottom when the form has something to put in it - over the form, as
+    /// Visual Studio's - and nowhere while code is shown.
+    pub fn place_tray(&self) {
+        let Some(s) = studio() else { return };
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetClientRect(self.hwnd, &mut r);
+        }
+        let dpi = win::dpi(self.hwnd);
+        let shown = s.doc.code.is_none() && !s.nothing && !tray_chips(&s.doc.form, unscale(r.right, dpi)).is_empty();
+        let th = scale(tray_height(), dpi);
+        win::move_to(self.tray, 0, r.bottom - th, r.right, th);
+        win::show(self.tray, shown);
+        if shown {
+            unsafe {
+                let _ = wm::SetWindowPos(self.tray, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE);
+                let _ = Gdi::InvalidateRect(Some(self.tray), None, true);
+            }
+        }
+    }
+
     pub fn place_handles(&self) {
         let Some(s) = studio() else { return };
         let dpi = win::dpi(self.surface);
@@ -330,12 +417,9 @@ impl Canvas {
         };
         // The tray drawn again, its chosen chip with it.
         let size = s.drag_size();
-        let chips = tray_chips(&s.doc.form, size);
-        if let (Some(first), Some(last)) = (chips.first(), chips.last()) {
-            let r = RECT { left: scale(first.1[0], dpi) - 2, top: scale(first.1[1], dpi) - 2, right: scale(last.1[0] + last.1[2], dpi) + 2, bottom: scale(last.1[1] + last.1[3], dpi) + 2 };
-            unsafe {
-                let _ = Gdi::InvalidateRect(Some(self.hwnd), Some(&r), true);
-            }
+        let _ = size;
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(self.tray), None, true);
         }
         // The others chosen: a small mark at each corner, as Visual Studio shows them.
         for h in self.marks.iter() {
@@ -813,11 +897,7 @@ impl Canvas {
     fn context(&mut self, on_surface: bool, l: LPARAM) {
         let Some(s) = studio() else { return };
         let p = self.design_point(if on_surface { self.surface } else { self.hwnd }, l);
-        let under = if on_surface {
-            self.hit(p)
-        } else {
-            tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]).map(|(i, _)| i).filter(|i| *i < s.doc.form.control.len())
-        };
+        let under = if on_surface { self.hit(p) } else { None };
         if under.is_none_or(|i| !s.selection().contains(&i)) {
             s.select(under);
             self.place_handles();
@@ -836,23 +916,6 @@ impl Canvas {
         let pts = [(m + size[0], top + size[1] / 2), (m + size[0], top + size[1]), (m + size[0] / 2, top + size[1])];
         unsafe {
             let _ = km::SetFocus(Some(self.surface));
-        }
-        // A chip in the component tray: that component chosen.
-        if let Some((i, _)) = tray_chips(&s.doc.form, s.drag_size()).into_iter().find(|(_, r)| p.0 >= r[0] && p.0 < r[0] + r[2] && p.1 >= r[1] && p.1 < r[1] + r[3]) {
-            // The menu bar's or toolbar's chip: designed on the form, as Visual Studio's.
-            if i == CHIP_MENU || i == CHIP_TOOLBAR {
-                s.select(None);
-                self.place_handles();
-                if i == CHIP_MENU {
-                    crate::menudesign::open(Some(0));
-                } else {
-                    crate::tooldesign::open(Some(0));
-                }
-                return;
-            }
-            s.select(Some(i));
-            self.place_handles();
-            return;
         }
         // The frame above the form: its menu bar opens the menus to edit, its title bar chooses the form.
         let inside_x = p.0 >= MARGIN && p.0 < MARGIN + size[0];
@@ -1117,34 +1180,6 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
             x += lw;
         }
     }
-    // The component tray: a chip for each, its toolbox icon and name; the chosen one marked.
-    let chips = tray_chips(f, size);
-    if !chips.is_empty() {
-        let chosen = studio().and_then(|s| s.selected);
-        let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
-        for (i, r) in &chips {
-            let (name, g) = chip_label(f, *i);
-            let rr = RECT { left: p(r[0]), top: p(r[1]), right: p(r[0] + r[2]), bottom: p(r[1] + r[3]) };
-            win::fill(dc, &rr, if chosen == Some(*i) { accent } else { border });
-            win::fill(dc, &RECT { left: rr.left + 1, top: rr.top + 1, right: rr.right - 1, bottom: rr.bottom - 1 }, window);
-            unsafe {
-                Gdi::SelectObject(dc, icons.into());
-                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(accent.colorref()));
-            }
-            let mut gr = RECT { left: rr.left + p(6), top: rr.top, right: rr.left + p(26), bottom: rr.bottom };
-            let mut one = [g];
-            unsafe {
-                Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
-                Gdi::SelectObject(dc, font.into());
-                Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
-            }
-            let mut tr = RECT { left: rr.left + p(30), top: rr.top, right: rr.right - p(4), bottom: rr.bottom };
-            let mut words: Vec<u16> = name.encode_utf16().collect();
-            unsafe {
-                Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
-            }
-        }
-    }
     unsafe {
         Gdi::SelectObject(dc, old);
         let _ = Gdi::DeleteObject(icons.into());
@@ -1156,6 +1191,153 @@ fn canvas_of(h: HWND) -> Option<&'static mut Canvas> {
     let s = studio()?;
     let c = s.canvas.as_mut()?;
     (c.hwnd == h || c.surface == h).then_some(c)
+}
+
+/// The tray's splitter being dragged: where the mouse began (screen y) and the height then.
+static TRAY_DRAG: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new(None);
+
+/// The chip under a point on the tray, as [`tray_chips`] gives them.
+fn tray_hit(h: HWND, l: LPARAM) -> Option<usize> {
+    let s = studio()?;
+    let dpi = win::dpi(h);
+    let (x, y) = win::point_of(l);
+    let (x, y) = (unscale(x, dpi), unscale(y, dpi));
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut r);
+    }
+    tray_chips(&s.doc.form, unscale(r.right, dpi)).into_iter().find(|(_, c)| x >= c[0] && x < c[0] + c[2] && y >= c[1] && y < c[1] + c[3]).map(|(i, _)| i)
+}
+
+extern "system" fn tray_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    let on_split = |l: LPARAM| win::point_of(l).1 < win::px(h, SPLIT);
+    match msg {
+        wm::WM_ERASEBKGND => {
+            let dc = Gdi::HDC(w.0 as *mut _);
+            let mut r = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(h, &mut r);
+            }
+            let bg = theme::style("canvas", State::default()).background_or(Color::rgb(243, 243, 243));
+            win::fill(dc, &r, bg);
+            // The splitter: a hatched band, as Visual Studio's between the form and its tray.
+            // A shade darker than the canvas, light or dark: seen as the line it is.
+            let border = if bg.is_dark() { Color::rgb(110, 110, 110) } else { Color::rgb(160, 160, 160) };
+            let band = RECT { bottom: win::px(h, SPLIT), ..r };
+            unsafe {
+                let brush = Gdi::CreateHatchBrush(Gdi::HS_BDIAGONAL, windows::Win32::Foundation::COLORREF(border.colorref()));
+                Gdi::SetBkColor(dc, windows::Win32::Foundation::COLORREF(bg.colorref()));
+                Gdi::FillRect(dc, &band, brush);
+                let _ = Gdi::DeleteObject(brush.into());
+            }
+            if let Some(s) = studio() {
+                paint_chips(dc, h, &s.doc.form, unscale(r.right, win::dpi(h)));
+            }
+            LRESULT(1)
+        }
+        wm::WM_SETCURSOR if win::loword(l.0 as usize) == 1 => {
+            let mut pt = POINT::default();
+            unsafe {
+                let _ = wm::GetCursorPos(&mut pt);
+                let _ = Gdi::ScreenToClient(h, &mut pt);
+            }
+            let id = if pt.y < win::px(h, SPLIT) || TRAY_DRAG.lock().map(|d| d.is_some()).unwrap_or(false) { wm::IDC_SIZENS } else { wm::IDC_ARROW };
+            unsafe {
+                wm::SetCursor(wm::LoadCursorW(None, id).ok());
+            }
+            LRESULT(1)
+        }
+        wm::WM_LBUTTONDOWN => {
+            let Some(s) = studio() else { return LRESULT(0) };
+            if on_split(l) {
+                let mut pt = POINT::default();
+                unsafe {
+                    let _ = wm::GetCursorPos(&mut pt);
+                    km::SetCapture(h);
+                }
+                *TRAY_DRAG.lock().unwrap_or_else(|e| e.into_inner()) = Some((pt.y, tray_height()));
+                return LRESULT(0);
+            }
+            match tray_hit(h, l) {
+                // The menu bar's or toolbar's chip: designed on the form, as Visual Studio's.
+                Some(CHIP_MENU) => {
+                    s.select(None);
+                    crate::menudesign::open(Some(0));
+                }
+                Some(CHIP_TOOLBAR) => {
+                    s.select(None);
+                    crate::tooldesign::open(Some(0));
+                }
+                // A component's chip: it chosen; the tray's own room: nothing chosen.
+                under => {
+                    s.select(under);
+                    if let Some(c) = s.canvas.as_ref() {
+                        unsafe {
+                            let _ = km::SetFocus(Some(c.surface));
+                        }
+                    }
+                }
+            }
+            if let Some(c) = s.canvas.as_ref() {
+                c.place_handles();
+            }
+            LRESULT(0)
+        }
+        wm::WM_MOUSEMOVE => {
+            let drag = *TRAY_DRAG.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((y0, h0)) = drag {
+                let mut pt = POINT::default();
+                unsafe {
+                    let _ = wm::GetCursorPos(&mut pt);
+                }
+                let nh = (h0 + unscale(y0 - pt.y, win::dpi(h))).clamp(40, 400);
+                crate::remember_setting_pub("tray_height", &nh.to_string());
+                if let Some(c) = studio().and_then(|s| s.canvas.as_ref()) {
+                    c.place_tray();
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_LBUTTONUP | wm::WM_CAPTURECHANGED => {
+            if TRAY_DRAG.lock().unwrap_or_else(|e| e.into_inner()).take().is_some() && msg == wm::WM_LBUTTONUP {
+                unsafe {
+                    let _ = km::ReleaseCapture();
+                }
+            }
+            LRESULT(0)
+        }
+        // A double-click on a component: its event's method, as Visual Studio's (a timer's Tick).
+        wm::WM_LBUTTONDBLCLK => {
+            if let Some(s) = studio() {
+                match tray_hit(h, l) {
+                    Some(i) if i < s.doc.form.control.len() => {
+                        s.select(Some(i));
+                        s.add_handler_for_selected();
+                    }
+                    _ => {}
+                }
+            }
+            LRESULT(0)
+        }
+        wm::WM_RBUTTONUP => {
+            if let Some(s) = studio() {
+                if let Some(i) = tray_hit(h, l).filter(|i| *i < s.doc.form.control.len()) {
+                    if !s.selection().contains(&i) {
+                        s.select(Some(i));
+                    }
+                    if let Some(c) = s.canvas.as_ref() {
+                        c.place_handles();
+                        unsafe {
+                            let _ = km::SetFocus(Some(c.surface));
+                        }
+                    }
+                    s.designer_menu(h);
+                }
+            }
+            LRESULT(0)
+        }
+        _ => win::def(h, msg, w, l),
+    }
 }
 
 extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -1263,6 +1445,9 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         wm::WM_SIZE => {
             if let Some(s) = studio() {
                 s.place_editors(win::loword(l.0 as usize) as i32, win::hiword(l.0 as usize) as i32);
+            }
+            if let Some(c) = canvas_of(h) {
+                c.place_tray();
             }
             LRESULT(0)
         }
