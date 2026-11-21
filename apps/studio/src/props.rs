@@ -1094,21 +1094,9 @@ impl Props {
         }
     }
 
+    /// The colour dialog, beside the click that opened it.
     fn pick_colour(&mut self, i: usize, value: &str) {
-        use windows::Win32::UI::Controls::Dialogs::{ChooseColorW, CC_FULLOPEN, CC_RGBINIT, CHOOSECOLORW};
-        static mut CUSTOM: [windows::Win32::Foundation::COLORREF; 16] = [windows::Win32::Foundation::COLORREF(0x00FF_FFFF); 16];
-        let start = phai_ui::theme::parse_color(value).map(|c| c.colorref()).unwrap_or(0x00FF_FFFF);
-        let mut cc = CHOOSECOLORW {
-            lStructSize: std::mem::size_of::<CHOOSECOLORW>() as u32,
-            hwndOwner: self.hwnd,
-            rgbResult: windows::Win32::Foundation::COLORREF(start),
-            lpCustColors: &raw mut CUSTOM as *mut _,
-            Flags: CC_FULLOPEN | CC_RGBINIT,
-            ..Default::default()
-        };
-        if unsafe { ChooseColorW(&mut cc) }.as_bool() {
-            let v = cc.rgbResult.0;
-            let hex = format!("#{:02x}{:02x}{:02x}", v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF);
+        if let Some(hex) = phai_ui::components::choose_colour(self.hwnd, value) {
             let key = self.props[i].key;
             self.commit(key, &hex);
         }

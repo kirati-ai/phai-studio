@@ -164,6 +164,52 @@ pub struct ColorDialog {
     pub owner: HWND,
 }
 
+/// Windows' colour dialog, starting at `start` (any CSS colour); the colour chosen as `#rrggbb`.
+/// It opens beside the mouse - where the click that asked for it was - kept on the screen.
+pub fn choose_colour(owner: HWND, start: &str) -> Option<String> {
+    static mut CUSTOM: [COLORREF; 16] = [COLORREF(0x00FF_FFFF); 16];
+    unsafe extern "system" fn hook(h: HWND, msg: u32, _: WPARAM, _: LPARAM) -> usize {
+        if msg == wm::WM_INITDIALOG {
+            unsafe {
+                let mut pt = windows::Win32::Foundation::POINT::default();
+                let _ = wm::GetCursorPos(&mut pt);
+                let mut r = RECT::default();
+                let _ = wm::GetWindowRect(h, &mut r);
+                let (w, ht) = (r.right - r.left, r.bottom - r.top);
+                // The screen the mouse is on, the taskbar left out.
+                let mon = Gdi::MonitorFromPoint(pt, Gdi::MONITOR_DEFAULTTONEAREST);
+                let mut mi = Gdi::MONITORINFO { cbSize: std::mem::size_of::<Gdi::MONITORINFO>() as u32, ..Default::default() };
+                let a = if Gdi::GetMonitorInfoW(mon, &mut mi).as_bool() { mi.rcWork } else { RECT { left: 0, top: 0, right: 1920, bottom: 1080 } };
+                // Below and left of the mouse, as a drop-down would open; moved in when it would leave the screen.
+                let mut x = pt.x - w + win::px(h, 24);
+                let mut y = pt.y + win::px(h, 12);
+                if y + ht > a.bottom {
+                    y = pt.y - ht - win::px(h, 12);
+                }
+                x = x.clamp(a.left, (a.right - w).max(a.left));
+                y = y.clamp(a.top, (a.bottom - ht).max(a.top));
+                let _ = wm::SetWindowPos(h, None, x, y, 0, 0, wm::SWP_NOSIZE | wm::SWP_NOZORDER);
+            }
+        }
+        0
+    }
+    let first = crate::theme::parse_color(start).map(|c| c.colorref()).unwrap_or(0x00FF_FFFF);
+    let mut cc = dlg::CHOOSECOLORW {
+        lStructSize: std::mem::size_of::<dlg::CHOOSECOLORW>() as u32,
+        hwndOwner: owner,
+        rgbResult: COLORREF(first),
+        lpCustColors: &raw mut CUSTOM as *mut _,
+        Flags: dlg::CC_FULLOPEN | dlg::CC_RGBINIT | dlg::CC_ENABLEHOOK,
+        lpfnHook: Some(hook),
+        ..Default::default()
+    };
+    if !unsafe { dlg::ChooseColorW(&mut cc) }.as_bool() {
+        return None;
+    }
+    let v = cc.rgbResult.0;
+    Some(format!("#{:02x}{:02x}{:02x}", v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF))
+}
+
 impl ColorDialog {
     pub fn new(owner: HWND) -> ColorDialog {
         ColorDialog { owner }
