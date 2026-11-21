@@ -32,10 +32,13 @@ const ID_EDIT_FK: i32 = 28;
 const ID_DEL_FK: i32 = 29;
 /// The database's tables at the left, as phpMyAdmin lists them: one chosen is designed.
 const ID_TABLES: i32 = 30;
+/// Columns, Indexes, Foreign Keys: one page each, as tabs.
+const ID_PAGES: i32 = 31;
 const ID_UPDATE: i32 = 1;
 const ID_CLOSE: i32 = 2;
 
 struct Designer {
+    pages: HWND,
     tables: HWND,
     /// The tables listed, after "(new table)".
     names: Vec<String>,
@@ -106,6 +109,7 @@ pub fn create(parent: HWND, conn: Connection, db: &str, existing: Option<TableDe
             labels.push(win::label(hwnd, l, 0, font));
         }
         let name = win::edit(hwnd, &name_text, ID_NAME, font, false);
+        let pages = phai_ui::controls::tabs(hwnd, ID_PAGES, font, &[t("Columns"), t("Indexes"), t("Foreign Keys")]);
         // The database's tables, the one designed chosen.
         let tables = win::list(hwnd, ID_TABLES, font, &[(&tf("Tables of {0}", &[&db]), 190)]);
         let names: Vec<String> = conn.tables(db).map(|v| v.into_iter().filter(|(_, view)| !view).map(|(n, _)| n).collect()).unwrap_or_default();
@@ -162,7 +166,7 @@ pub fn create(parent: HWND, conn: Connection, db: &str, existing: Option<TableDe
             columns: vec![ColDef { name: "id".into(), ty: phai_data::schema::types_for(conn.kind)[0].to_string(), nullable: false, pk: true, auto: true, ..Default::default() }],
             ..Default::default()
         });
-        win::set_state(hwnd, Box::new(Designer { tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, font, mono }));
+        win::set_state(hwnd, Box::new(Designer { pages, tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, font, mono }));
         refresh(hwnd);
         hwnd
     }
@@ -259,6 +263,9 @@ fn refresh(h: HWND) {
             select_row(l, i as usize);
         }
     }
+    // The tabs say how many each has.
+    let labels = [tf("Columns ({0})", &[&s.def.columns.len()]), tf("Indexes ({0})", &[&s.def.indexes.len()]), tf("Foreign Keys ({0})", &[&s.def.fkeys.len()])];
+    phai_ui::controls::tabs_relabel(s.pages, &[&labels[0], &labels[1], &labels[2]]);
     let script = s.conn.design_script(&s.db, s.old.as_ref(), &s.def);
     let text = if script.is_empty() { format!("-- {}", t("No changes")) } else { script.iter().map(|x| format!("{x};")).collect::<Vec<_>>().join("\r\n\r\n").replace('\n', "\r\n").replace("\r\r\n", "\r\n") };
     win::set_text(s.script, &text);
@@ -294,33 +301,30 @@ fn layout(h: HWND) {
     win::move_to(s.labels[0], x0, y, px(100), row);
     win::move_to(s.name, x0 + px(105), y, px(300), row);
     y += row + gap * 2;
-    let rest = r.bottom - y - row - m * 2;
-    let cols_h = rest * 36 / 100;
-    let small_h = rest * 15 / 100;
-    let script_h = rest - cols_h - small_h * 2 - (row + gap) * 4 + row;
+    let by = r.bottom - m - row;
     let button = |id: i32| s.buttons.iter().find(|(i, _)| *i == id).map(|(_, b)| *b).unwrap_or_default();
-    // Columns, with Add / Delete / Up / Down at the right.
-    win::move_to(s.labels[1], x0, y, list_w, row);
-    y += row;
-    win::move_to(s.cols, x0, y, list_w, cols_h);
-    for (k, id) in [ID_ADD_COL, ID_DEL_COL, ID_UP, ID_DOWN].iter().enumerate() {
-        win::move_to(button(*id), x0 + list_w + gap, y + k as i32 * (row + gap), bw, row);
-    }
-    y += cols_h + gap;
-    for (label, list, ids) in [(s.labels[2], s.idx, [ID_ADD_IDX, ID_EDIT_IDX, ID_DEL_IDX]), (s.labels[3], s.fk, [ID_ADD_FK, ID_EDIT_FK, ID_DEL_FK])] {
-        win::move_to(label, x0, y, list_w, row);
-        y += row;
-        win::move_to(list, x0, y, list_w, small_h);
-        for (k, id) in ids.iter().enumerate() {
-            win::move_to(button(*id), x0 + list_w + gap, y + k as i32 * (row + gap), bw, row);
+    // Columns, Indexes, Foreign Keys as tabs: the chosen one's list, its buttons at the right.
+    win::move_to(s.pages, x0, y, w, px(30));
+    y += px(30) + gap;
+    let script_h = ((by - y) * 28 / 100).max(px(80));
+    let page_h = (by - gap * 2 - row - script_h - gap) - y;
+    let chosen = phai_ui::controls::tabs_selected(s.pages);
+    let pages: [(HWND, &[i32]); 3] = [(s.cols, &[ID_ADD_COL, ID_DEL_COL, ID_UP, ID_DOWN]), (s.idx, &[ID_ADD_IDX, ID_EDIT_IDX, ID_DEL_IDX]), (s.fk, &[ID_ADD_FK, ID_EDIT_FK, ID_DEL_FK])];
+    for (k, (list, ids)) in pages.iter().enumerate() {
+        let on = k == chosen;
+        win::move_to(*list, x0, y, list_w, page_h);
+        win::show(*list, on);
+        for (j, id) in ids.iter().enumerate() {
+            win::move_to(button(*id), x0 + list_w + gap, y + j as i32 * (row + gap), bw, row);
+            win::show(button(*id), on);
         }
-        y += small_h + gap;
     }
+    for l in &s.labels[1..4] {
+        win::show(*l, false);
+    }
+    y += page_h + gap;
     win::move_to(s.labels[4], x0, y, w, row);
     y += row;
-    let by = r.bottom - m - row;
-    // The script takes what is left above the buttons.
-    let _ = script_h;
     win::move_to(s.script, x0, y, w, (by - gap * 2 - y).max(px(60)));
     win::move_to(button(ID_CLOSE), r.right - m - px(95), by, px(95), row);
     win::move_to(button(ID_UPDATE), r.right - m - px(95) * 2 - px(7), by, px(95), row);
@@ -600,6 +604,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let id = win::loword(w.0) as i32;
             let code = win::hiword(w.0);
             match id {
+                ID_PAGES => {
+                    close_editor(h, true);
+                    phai_ui::controls::tabs_select(s.pages, (code as usize) & 0x0FFF);
+                    layout(h);
+                }
                 ID_NAME if code == 0x0300 /* EN_CHANGE */ => {
                     s.def.name = win::text_of(s.name).trim().to_string();
                     refresh(h);
