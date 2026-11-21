@@ -261,7 +261,7 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
     let version = version_stamp();
     let icon = |size: u32| app.icon_file(project).and_then(|f| scaled_icon(&f, size, hex(&app.color))).unwrap_or_else(|| icon_png(size, hex(&app.color)));
     let files: Vec<(&str, Vec<u8>)> = vec![
-        ("index.html", phai_form::web::index_html(&app.name, &package, &page_css(project, &theme), &app.color, &version).into_bytes()),
+        ("index.html", phai_form::web::index_html(&app.name, &package, &(page_css(project, &theme) + "\n/* grids */\n" + &phai_form::web::grids_css(&all.iter().map(|(_, f)| f).collect::<Vec<_>>())), &app.color, &version).into_bytes()),
         ("manifest.webmanifest", phai_form::web::manifest(&app.name, &app.short, &app.color, &app.background, &app.orientation).into_bytes()),
         ("sw.js", phai_form::web::service_worker(&package, &version).into_bytes()),
         ("icon-192.png", icon(192)),

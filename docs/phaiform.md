@@ -102,7 +102,8 @@ parts = [120]
 | `group` | radio | เลขกลุ่ม radio ที่เลือกได้ทีละตัว |
 | `password` | edit | |
 | `items` | combo | คีย์อังกฤษ |
-| `columns` | list | `[หัว, กว้าง]` |
+| `columns` | list, grid | `[หัว, กว้าง]` |
+| `column_props` | grid | ค่าของแต่ละคอลัมน์ตามลำดับ (ดูหัวข้อ Data grid) |
 | `tabs` + `page` | tabs / ตัวอื่น | `tabs = ["General", "Advanced"]`; control ที่มี `page = 1` ขึ้นเฉพาะแท็บที่ 2 |
 | `parts` | statusbar | ความกว้างของช่องด้านขวา |
 | `items` | combo, tree | รายการ; ของ tree เว้นหน้าบรรทัด 2 ช่องต่อหนึ่งชั้น เช่น `["Thailand", "  Bangkok"]` |
@@ -221,6 +222,40 @@ data_binding = "people.name"
 ```
 
 `ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง
+
+## Data grid — ค่าของแต่ละคอลัมน์ (`column_props`)
+
+แบบ GridColumn ของ DevExpress — ตารางละช่องตามลำดับ `columns` ช่องที่ไม่ใส่คือค่าเริ่มต้น
+
+```toml
+[[control]]
+kind = "grid"
+id = "orders"
+columns = [["Name", 160], ["Paid", 60], ["Amount", 120]]
+alternate_row_color = "#f4f8f6"
+header_back_color = "#12855f"
+header_fore_color = "#ffffff"
+show_footer = true
+
+[[control.column_props]]
+sort = "asc"                 # asc / desc - เรียงตอนเปิด
+
+[[control.column_props]]
+editor = "check"             # text number date check combo (+ items = [...])
+align = "center"             # left center right
+
+[[control.column_props]]
+align = "right"
+format = "n2"                # n0..n6, c0..c6 (฿), p0..p6 (%), d, dt - แสดงเท่านั้น ค่าเดิมไม่เปลี่ยน
+summary = "sum"              # sum count avg min max - ใต้คอลัมน์
+rules = ["> 500 back=#ffe4e4 fore=#b00020", "empty back=#eeeeee row"]
+```
+
+ช่องอื่น: `visible = false`, `read_only = true`, `allow_sort = false`, `allow_size = false`, `group = true`
+(จัดกลุ่มแถวตามคอลัมน์นี้ ได้คอลัมน์เดียว) — ค่าของทั้ง grid อยู่ในตาราง props: `show_column_headers`,
+`column_auto_width`, `allow_add_rows`, `allow_delete_rows`, `editor_show_mode`, `enter_moves_next`,
+`allow_column_moving`, `alternate_row_color`, `header_back_color`, `header_fore_color`, `row_height`,
+`show_footer`, `find_panel` (`ctrl_f` `always` `off`), `find_filter`, `copy_headers`
 
 ## User control — control ของโปรเจกต์เอง
 
