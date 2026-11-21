@@ -83,6 +83,8 @@ pub enum Key {
     StyleEasing,
     /// A property of the chosen menu, menu item or toolbar button, by its name.
     Bar(&'static str),
+    /// An event of the chosen menu, menu item or toolbar button (`events::MENU_ITEM`...).
+    BarOn(&'static str),
     /// Its look moved into the theme as a class.
     StyleToTheme,
 }
@@ -373,6 +375,44 @@ impl Props {
         v
     }
 
+    /// The events of a menu, menu item or toolbar button - its Click first, its id's method - or
+    /// the menu bar's (MenuStart, MenuComplete) or the toolbar's (ItemClicked), the form's own.
+    fn gather_bar_events(&self, b: &crate::BarSel) -> Vec<Prop> {
+        let Some(s) = studio() else { return vec![] };
+        let f = &s.doc.form;
+        let methods = user_methods();
+        let row = |e: &phai_form::events::EventSpec, key: Key, value: Option<&String>| Prop { category: event_category(e.name), key, name: e.label, value: value.cloned().unwrap_or_default(), ed: Ed::Choice(methods.clone(), true), help: t(e.help).into(), parent: None, set: value.is_some() };
+        let click = |id: String| Prop { category: t("Action"), key: Key::Bar("click"), name: t("Click"), value: id, ed: Ed::ReadOnly, help: t("The method a click runs - double-click it here, or the item on the form, to write it.").into(), parent: None, set: true };
+        match b {
+            crate::BarSel::MenuStrip | crate::BarSel::ToolStrip => {
+                let names = if *b == crate::BarSel::MenuStrip { phai_form::events::MENU_STRIP } else { phai_form::events::TOOL_STRIP };
+                phai_form::events::FORM.iter().filter(|e| names.contains(&e.name)).map(|e| row(e, Key::FormOn(e.name), f.form.events.get(e.name))).collect()
+            }
+            crate::BarSel::Menu(i) => {
+                let Some(m) = f.menu.get(*i) else { return vec![] };
+                phai_form::events::MENU.iter().map(|e| row(e, Key::BarOn(e.name), m.events.get(e.name))).collect()
+            }
+            crate::BarSel::MenuItem(path) => {
+                let Some(it) = crate::menu_item(f, path).filter(|it| !it.separator) else { return vec![] };
+                let mut v = Vec::new();
+                if let Some(id) = it.id.clone().filter(|_| it.items.is_empty()) {
+                    v.push(click(id));
+                }
+                // A menu within it: its opening and closing; a tick: its turning over.
+                for e in phai_form::events::MENU_ITEM.iter().filter(|e| if e.name == "checked_changed" { it.items.is_empty() } else { !it.items.is_empty() }) {
+                    v.push(row(e, Key::BarOn(e.name), it.events.get(e.name)));
+                }
+                v
+            }
+            crate::BarSel::Tool(i) => {
+                let Some(tool) = f.toolbar.get(*i).filter(|t0| !t0.separator) else { return vec![] };
+                let mut v = vec![click(tool.id.clone())];
+                v.extend(phai_form::events::TOOL.iter().map(|e| row(e, Key::BarOn(e.name), tool.events.get(e.name))));
+                v
+            }
+        }
+    }
+
     /// The properties of a menu, menu item or toolbar button - or of the menu bar or toolbar.
     fn gather_bar(&self, b: &crate::BarSel) -> Vec<Prop> {
         let Some(s) = studio() else { return vec![] };
@@ -442,13 +482,7 @@ impl Props {
         // A part of the menu bar or toolbar: its own properties, as a ToolStripItem's.
         if let Some(b) = s.bar_sel.clone() {
             if self.mode == 1 {
-                // Its one event: Click, its id's method.
-                let id = match &b {
-                    crate::BarSel::MenuItem(path) => crate::menu_item(&s.doc.form, path).filter(|it| !it.separator && it.items.is_empty()).and_then(|it| it.id.clone()),
-                    crate::BarSel::Tool(i) => s.doc.form.toolbar.get(*i).filter(|t0| !t0.separator).map(|t0| t0.id.clone()),
-                    _ => None,
-                };
-                return id.map(|id| vec![Prop { category: t("Action"), key: Key::Bar("click"), name: t("Click"), value: id, ed: Ed::ReadOnly, help: t("The method a click runs - double-click the item on the form to write it.").into(), parent: None, set: true }]).unwrap_or_default();
+                return self.gather_bar_events(&b);
             }
             if self.mode != 0 {
                 return vec![];
@@ -1105,7 +1139,7 @@ impl Props {
                 self.arrange();
                 self.update_scroll();
             }
-            Line::Prop(i) if double && x < self.split() && matches!(self.props[i].key, Key::On(_) | Key::FormOn(_) | Key::Event) => {
+            Line::Prop(i) if double && x < self.split() && matches!(self.props[i].key, Key::On(_) | Key::FormOn(_) | Key::Event | Key::BarOn(_) | Key::Bar("click")) => {
                 // As Visual Studio: a double-click on an event writes its method and goes to it.
                 self.chosen = Some(k);
                 let key = self.props[i].key;
@@ -1309,14 +1343,21 @@ pub fn event_key_index(key: Key) -> usize {
     match key {
         Key::On(n) => 1 + phai_form::events::CONTROL.iter().position(|e| e.name == n).unwrap_or(0),
         Key::FormOn(n) => 1000 + phai_form::events::FORM.iter().position(|e| e.name == n).unwrap_or(0),
+        Key::BarOn(n) => 2000 + BAR_EVENTS.iter().position(|e| *e == n).unwrap_or(0),
+        Key::Bar("click") => 3000,
         _ => 0,
     }
 }
+
+/// The menus' and toolbar's events, by name, for posting one as a number.
+const BAR_EVENTS: &[&str] = &["checked_changed", "drop_down_opening", "drop_down_closed"];
 
 /// The key [`event_key_index`] posted.
 pub fn event_key_of(i: usize) -> Key {
     match i {
         0 => Key::Event,
+        3000.. => Key::Bar("click"),
+        2000.. => Key::BarOn(BAR_EVENTS.get(i - 2000).copied().unwrap_or("checked_changed")),
         1000.. => Key::FormOn(phai_form::events::FORM.get(i - 1000).map(|e| e.name).unwrap_or("shown")),
         _ => Key::On(phai_form::events::CONTROL.get(i - 1).map(|e| e.name).unwrap_or("click")),
     }

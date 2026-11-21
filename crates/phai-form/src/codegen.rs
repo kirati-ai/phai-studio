@@ -1039,12 +1039,26 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let menu_item = |h: &str| f.menu.iter().flat_map(|m| m.all_items()).find(|it| it.id.as_deref() == Some(h)).cloned();
     let toggles = |h: &str| menu_item(h).is_some_and(|it| it.check_on_click) || f.toolbar.iter().any(|t| t.id == h && t.toggle);
     for h in handlers.iter().filter(|h| menu_item(h).is_some() || f.toolbar.iter().any(|t| &t.id == *h) || in_context(h)) {
+        let mut calls = Vec::new();
         if toggles(h) {
             // CheckOnClick: the tick turns over, in the menu and on the toolbar, then its method.
             let bar = if f.toolbar.is_empty() { "None".to_string() } else { "Some(ui.toolbar)".to_string() };
-            let _ = writeln!(w, "                {} => {{ phai_ui::form::toggle_item(hwnd, {bar}, {}, l.0 != 0 && l.0 == ui.toolbar_handle()); events.{h}(ui) }}", const_name(h), const_name(h));
-        } else {
+            calls.push(format!("phai_ui::form::toggle_item(hwnd, {bar}, {}, l.0 != 0 && l.0 == ui.toolbar_handle());", const_name(h)));
+        }
+        calls.push(format!("events.{h}(ui);"));
+        // CheckedChanged: the menu item's, or the toolbar button's, after its Click.
+        let changed = menu_item(h).and_then(|it| it.events.get("checked_changed").cloned()).or_else(|| f.toolbar.iter().find(|t| t.id == *h).and_then(|t| t.events.get("checked_changed").cloned()));
+        if let Some(c) = changed.filter(|_| toggles(h)) {
+            calls.push(format!("events.{c}(ui);"));
+        }
+        // The toolbar's ItemClicked, from the toolbar only: the button's place.
+        if let (Some(ic), Some(k)) = (f.form.events.get("toolbar_item_clicked"), f.toolbar.iter().position(|t| t.id == *h)) {
+            calls.push(format!("if l.0 != 0 && l.0 == ui.toolbar_handle() {{ events.{ic}(ui, &phai_ui::events::ItemEventArgs {{ index: {k} }}); }}"));
+        }
+        if calls.len() == 1 {
             let _ = writeln!(w, "                {} => events.{h}(ui),", const_name(h));
+        } else {
+            let _ = writeln!(w, "                {} => {{ {} }}", const_name(h), calls.join(" "));
         }
     }
     for c in &f.control {
@@ -1113,10 +1127,57 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            LRESULT(0)");
     let _ = writeln!(w, "        }}");
+    // DropDownOpening and DropDownClosed: a menu (or the menu within an item) about to open, or
+    // closed - known by its handle, found as the menu bar's own are.
+    let mut drops: Vec<(String, Option<String>, Option<String>)> = Vec::new();
+    fn item_drops(items: &[crate::MenuItem], parent: &str, out: &mut Vec<(String, Option<String>, Option<String>)>) {
+        for (k, it) in items.iter().enumerate() {
+            if !it.items.is_empty() {
+                let chain = format!("wm::GetSubMenu({parent}, {k})");
+                out.push((chain.clone(), it.events.get("drop_down_opening").cloned(), it.events.get("drop_down_closed").cloned()));
+                item_drops(&it.items, &chain, out);
+            }
+        }
+    }
+    for (i, m) in f.menu.iter().enumerate() {
+        let chain = format!("wm::GetSubMenu(bar, {i})");
+        drops.push((chain.clone(), m.events.get("drop_down_opening").cloned(), m.events.get("drop_down_closed").cloned()));
+        item_drops(&m.items, &chain, &mut drops);
+    }
+    drops.retain(|(_, o, c)| o.is_some() || c.is_some());
+    if !drops.is_empty() {
+        let _ = writeln!(w, "        wm::WM_INITMENUPOPUP | 0x0125 /* WM_UNINITMENUPOPUP */ => {{");
+        let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
+        let _ = writeln!(w, "            let (m, opening) = (w.0 as isize, msg == wm::WM_INITMENUPOPUP);");
+        let _ = writeln!(w, "            let bar = unsafe {{ wm::GetMenu(hwnd) }};");
+        for (chain, o, c) in &drops {
+            let open = o.as_ref().map(|h| format!("events.{h}(ui);")).unwrap_or_default();
+            let close = c.as_ref().map(|h| format!("events.{h}(ui);")).unwrap_or_default();
+            let _ = writeln!(w, "            if m == unsafe {{ {chain} }}.0 as isize {{ if opening {{ {open} }} else {{ {close} }} }}");
+        }
+        let _ = writeln!(w, "            let _ = bar;");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
+    // MenuStart and MenuComplete: the menu bar taken up and let go (not a pop-up menu's loop).
+    let (start, complete) = (form_ev("menu_start"), form_ev("menu_complete"));
+    if start.is_some() || complete.is_some() {
+        let _ = writeln!(w, "        wm::WM_ENTERMENULOOP | wm::WM_EXITMENULOOP if w.0 == 0 => {{");
+        let _ = writeln!(w, "            let Host {{ ui, events, .. }} = host;");
+        let s = start.map(|h| format!("events.{h}(ui);")).unwrap_or_default();
+        let c = complete.map(|h| format!("events.{h}(ui);")).unwrap_or_default();
+        let _ = writeln!(w, "            if msg == wm::WM_ENTERMENULOOP {{ {s} }} else {{ {c} }}");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
+    }
     // A right-click on a control with a context menu: the menu, its choice coming as WM_COMMAND.
     let menu_of = |c: &Control| f.control.iter().find(|m| m.kind == Kind::ContextMenu && Some(&m.id) == c.context_menu.as_ref());
     // A context menu at (x, y), its choices coming as WM_COMMAND.
-    let popup = |w: &mut String, menu: &Control, pad: &str| {
+    // `call` runs the menu's Opening first: `events` and `ui` as they are where it opens.
+    let popup = |w: &mut String, menu: &Control, pad: &str, opening: &dyn Fn(&str) -> String| {
+        if let Some(h) = menu.events.get("opening") {
+            let _ = writeln!(w, "{pad}{}", opening(h));
+        }
         let _ = writeln!(w, "{pad}unsafe {{");
         let _ = writeln!(w, "{pad}    let m = wm::CreatePopupMenu().unwrap_or_default();");
         for (id, label) in menu.menu_items() {
@@ -1150,7 +1211,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
                 let _ = writeln!(w, "                    let mut p = windows::Win32::Foundation::POINT::default();");
                 let _ = writeln!(w, "                    unsafe {{ let _ = wm::GetCursorPos(&mut p); let _ = wm::SetForegroundWindow(hwnd); }}");
                 let _ = writeln!(w, "                    let (x, y) = (p.x, p.y);");
-                popup(w, menu, "                    ");
+                popup(w, menu, "                    ", &|h| format!("events.{h}(ui);"));
                 let _ = writeln!(w, "                }}");
             }
             let _ = writeln!(w, "            }}");
@@ -1166,7 +1227,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         for c in with_menu {
             let Some(menu) = menu_of(c) else { continue };
             let _ = writeln!(w, "            if from == host.ui.{}.hwnd().0 as isize {{", c.id);
-            popup(w, menu, "                ");
+            popup(w, menu, "                ", &|h| format!("host.events.{h}(&host.ui);"));
             let _ = writeln!(w, "                return LRESULT(0);");
             let _ = writeln!(w, "            }}");
         }

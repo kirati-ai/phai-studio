@@ -104,7 +104,7 @@ pub fn menus_from_text(text: &str) -> Result<Vec<Menu>, String> {
         }
         let indent = raw.chars().take_while(|c| *c == ' ' || *c == '\t').map(|c| if c == '\t' { 2 } else { 1 }).sum::<usize>();
         if indent == 0 {
-            menus.push(Menu { label: raw.trim().to_string(), items: vec![] });
+            menus.push(Menu { label: raw.trim().to_string(), items: vec![], events: Default::default() });
             stack.clear();
             continue;
         }
