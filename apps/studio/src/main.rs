@@ -5363,6 +5363,21 @@ impl Studio {
             Ok(b) => {
                 let left = if b.left_out.is_empty() { String::new() } else { format!(" - {}: {}", t("not on the web"), b.left_out.join(", ")) };
                 self.say_status(&format!("{}{left}", tf("Built for the web in {0}", &[&b.folder.display()])));
+                // Tried here or on a phone: the tables from the project's data server, started now.
+                let mut key = String::new();
+                if b.data_server && matches!(then_run, WebRun::Browser | WebRun::Phone) {
+                    let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else { return };
+                    if then_run == WebRun::Phone {
+                        // The phone is another computer: it asks for this key once.
+                        let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() ^ d.as_secs() as u32).unwrap_or(4711);
+                        key = format!("{:06}", n % 1_000_000);
+                    }
+                    let k = key.clone();
+                    let started = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Run in Browser"), t("Starting the data server..."), move |_| web::start_data_server(&dir, &k));
+                    if let Some(Err(e)) = started {
+                        win::message(Some(self.hwnd), &e, t("Run in Browser"), wm::MB_ICONWARNING);
+                    }
+                }
                 match then_run {
                     WebRun::No => {}
                     WebRun::Publish => {
@@ -5398,7 +5413,11 @@ impl Studio {
                         Ok(port) => {
                             let host = web::lan_address().map(|a| a.to_string()).unwrap_or_else(|| "localhost".into());
                             let url = format!("http://{host}:{port}/");
-                            self.say_status(&tf("On the phone: {0}", &[&url]));
+                            if key.is_empty() {
+                                self.say_status(&tf("On the phone: {0}", &[&url]));
+                            } else {
+                                self.say_status(&tf("On the phone: {0} - the data's access key: {1}", &[&url, &key]));
+                            }
                             phone::show(self.hwnd, &url);
                         }
                         Err(e) => {
@@ -11986,6 +12005,66 @@ impl MainWindowEvents for MainWindow {
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(&exe).status().unwrap().code();
         assert_eq!(code, Some(42), "1000 + the bits of what worked");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The same table on the web: the page built (its bound grid asking the data server), the
+    /// project's data server built and started, and the page's server passing `/phai-data/` on -
+    /// the rows read, one changed and saved, the key asked for when there is one.
+    #[test]
+    #[ignore = "builds a project for the web and its data server with cargo"]
+    fn a_bound_table_reaches_the_web_through_the_data_server() {
+        let dir = std::env::temp_dir().join(format!("phai-webdata-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let db = dir.join("shop.db");
+        let conn = phai_data::Connection { kind: phai_data::Kind::Sqlite, host: db.to_string_lossy().to_string(), ..Default::default() };
+        conn.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT); INSERT INTO customers (name, phone) VALUES ('Somchai', '081'), ('Monrak Net', '02');").unwrap();
+        let cols = conn.columns("main", "customers").unwrap();
+        let form_path = dir.join("src").join("main_window.phaiform");
+        let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
+        let (controls, need) = bound_controls(&f, "main", "customers", &cols);
+        f.control.extend(controls);
+        f.form.size[1] = f.form.size[1].max(need);
+        std::fs::write(&form_path, f.to_toml()).unwrap();
+        std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
+        bind_project_files(&dir, &conn).unwrap();
+        let built = crate::web::build(&dir, |_| {}).unwrap_or_else(|e| panic!("{e}"));
+        assert!(built.data_server && built.left_out.is_empty(), "{:?}", built.left_out);
+        assert!(std::fs::read_to_string(dir.join("data-server").join("src").join("main.rs")).unwrap().contains("\"main_window/customers\""));
+        use std::io::{Read as _, Write as _};
+        let post = |port: u16, path: &str, body: &str, key: &str| -> String {
+            let mut c = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            let auth = if key.is_empty() { String::new() } else { format!("Authorization: Bearer {key}
+") };
+            write!(c, "POST {path} HTTP/1.1
+Host: x
+Content-Type: application/json
+{auth}Content-Length: {}
+
+{body}", body.len()).unwrap();
+            let mut out = String::new();
+            c.read_to_string(&mut out).unwrap();
+            out
+        };
+        crate::web::start_data_server(&dir, "").unwrap_or_else(|e| panic!("{e}"));
+        let port = crate::web::serve(built.folder.clone()).unwrap();
+        let load = "{\"table\":\"main_window/customers\"}";
+        let got = post(port, "/phai-data/load", load, "");
+        assert!(got.starts_with("HTTP/1.1 200") && got.contains("[\"1\",\"Somchai\",\"081\"]"), "{got}");
+        let save = "{\"table\":\"main_window/customers\",\"loaded\":[[\"1\",\"Somchai\",\"081\"],[\"2\",\"Monrak Net\",\"02\"]],\"rows\":[[1,[\"1\",\"สมชาย\",\"081\"]],[2,[\"2\",\"Monrak Net\",\"02\"]]]}";
+        let got = post(port, "/phai-data/save", save, "");
+        assert!(got.contains("{\"changes\":1}"), "{got}");
+        assert_eq!(conn.query(None, "SELECT name FROM customers WHERE id = 1").unwrap().rows[0][0], "สมชาย");
+        // With a key (Run on Phone): none, no rows.
+        crate::web::start_data_server(&dir, "424242").unwrap();
+        assert!(post(port, "/phai-data/load", load, "").starts_with("HTTP/1.1 401"));
+        assert!(post(port, "/phai-data/load", load, "424242").starts_with("HTTP/1.1 200"));
+        // PHAI_WEBDATA_WAIT=seconds: the page kept up to be tried in a browser (key 424242).
+        if let Some(secs) = std::env::var("PHAI_WEBDATA_WAIT").ok().and_then(|s| s.parse::<u64>().ok()) {
+            std::fs::write(std::env::temp_dir().join("phai-webdata-port.txt"), port.to_string()).unwrap();
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

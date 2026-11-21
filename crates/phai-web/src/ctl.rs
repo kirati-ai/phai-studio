@@ -446,6 +446,55 @@ fn add_row(h: HWND, cells: &[&str], editable: bool) -> usize {
     body.children().length() as usize - 1
 }
 
+/// A bound grid filled from its table: each row tagged with its place (1, 2...), as Windows'
+/// grid_fill does, so that saving knows which row each one was.
+pub(crate) fn fill_tagged(h: HWND, rows: &[Vec<String>]) {
+    if let Some(b) = body_of(h) {
+        b.set_inner_html("");
+    }
+    for (i, r) in rows.iter().enumerate() {
+        let cells: Vec<&str> = r.iter().map(String::as_str).collect();
+        let at = add_row(h, &cells, true);
+        if let Some(tr) = body_of(h).and_then(|b| b.children().item(at as u32)) {
+            let _ = tr.set_attribute("data-tag", &(i + 1).to_string());
+        }
+    }
+}
+
+/// Every row with its tag: its place when the table was read, 0 for a row added since.
+pub(crate) fn tagged_rows(h: HWND) -> Vec<(usize, Vec<String>)> {
+    let Some(b) = body_of(h) else { return vec![] };
+    let rows = b.children();
+    (0..rows.length()).filter_map(|i| rows.item(i)).map(|r| (r.get_attribute("data-tag").and_then(|t| t.parse().ok()).unwrap_or(0), row_cells(&r))).collect()
+}
+
+/// A grid's own ways to add and take out rows, as on Windows: a double-click under the last row
+/// adds one, Ctrl+Delete takes out the chosen one.
+pub(crate) fn rows_editable(h: HWND) {
+    let Some(e) = el(h) else { return };
+    let add = Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
+        let in_row = ev.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()).is_some_and(|t| t.closest("tr").ok().flatten().is_some());
+        if !in_row {
+            let n = Grid(h).rows().first().map(|r| r.len()).unwrap_or_else(|| el(h).and_then(|e| e.query_selector_all("th").ok()).map(|l| l.length() as usize).unwrap_or(1));
+            let blank = vec![""; n.max(1)];
+            let at = add_row(h, &blank, true);
+            select_row(h, Some(at));
+        }
+    });
+    let _ = e.add_event_listener_with_callback("dblclick", add.as_ref().unchecked_ref());
+    add.forget();
+    let del = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
+        if ev.key() == "Delete" && ev.ctrl_key() {
+            if let Some(r) = selected_row(h) {
+                Grid(h).rows_remove_at(r);
+                ev.prevent_default();
+            }
+        }
+    });
+    let _ = e.add_event_listener_with_callback("keydown", del.as_ref().unchecked_ref());
+    del.forget();
+}
+
 fn cell_el(h: HWND, row: usize, col: usize) -> Option<web_sys::Element> {
     body_of(h)?.children().item(row as u32)?.children().item(col as u32)
 }
@@ -541,6 +590,12 @@ impl Grid {
     }
     pub fn rows_count(self) -> usize {
         body_of(self.0).map(|b| b.children().length() as usize).unwrap_or(0)
+    }
+    /// Row `at` taken out.
+    pub fn rows_remove_at(self, at: usize) {
+        if let Some(r) = body_of(self.0).and_then(|b| b.children().item(at as u32)) {
+            r.remove();
+        }
     }
     pub fn fill(self, rows: &[Vec<String>]) {
         self.rows_clear();

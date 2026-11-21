@@ -330,6 +330,9 @@ pub fn control(area: HWND, kind: &str, id: &str, class: &str, text: &str, p: Pla
     if matches!(kind, "list" | "grid") {
         crate::ctl::rows_choosable(h);
     }
+    if kind == "grid" {
+        crate::ctl::rows_editable(h);
+    }
     if kind == "tree" {
         crate::tree::make_tree(h);
     }

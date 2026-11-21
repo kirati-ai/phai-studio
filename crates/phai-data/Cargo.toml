@@ -26,6 +26,9 @@ base64 = "0.22"
 md5 = { package = "md-5", version = "0.10" }
 # SQLite: the library itself, built in.
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Windows' DPAPI keeps saved passwords (protect / unprotect); the data server builds elsewhere too.
+[target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security_Cryptography",

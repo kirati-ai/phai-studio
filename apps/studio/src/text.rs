@@ -1007,6 +1007,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its colours move to a new state's over this many milliseconds - 150 is quick; empty, at once.", "สีจะค่อย ๆ เปลี่ยนไปเป็นของสถานะใหม่ในเวลาเท่านี้ (มิลลิวินาที) 150 คือเร็ว ถ้าว่างจะเปลี่ยนทันที"),
     ("Easing", "ลักษณะการเคลื่อน"),
     ("Publish Web App...", "เผยแพร่เว็บแอป..."),
+    ("Starting the data server...", "กำลังเปิดเซิร์ฟเวอร์ข้อมูล..."),
+    ("On the phone: {0} - the data's access key: {1}", "บนมือถือ: {0} - รหัสเข้าใช้ข้อมูล: {1}"),
     ("Publish Web App", "เผยแพร่เว็บแอป"),
     ("Publish to - a folder, user@host:/path (SSH), or github-pages:", "เผยแพร่ไปที่ - โฟลเดอร์, user@host:/path (SSH) หรือ github-pages:"),
     ("Publishing the web app...", "กำลังเผยแพร่เว็บแอป..."),

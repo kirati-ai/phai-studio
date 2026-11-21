@@ -31,6 +31,10 @@ pub const LIBRARY: &[(&str, &str)] = &[
     ("Sort Z to A", "เรียง ฮ ถึง ก / Z ถึง A"),
     ("Clear filter", "ล้างตัวกรอง"),
     ("Search", "ค้นหา"),
+    // A bound grid on the web (`phai_web::data`).
+    ("The access key of the program's data:", "รหัสเข้าใช้ข้อมูลของโปรแกรม:"),
+    ("The data server answered {0}", "เซิร์ฟเวอร์ข้อมูลตอบกลับ {0}"),
+    ("The data server cannot be reached.", "ติดต่อเซิร์ฟเวอร์ข้อมูลไม่ได้"),
     ("Page {page} of {pages}", "หน้า {page} จาก {pages}"),
     ("Filter...", "กรอง..."),
     ("Clear all filters", "ล้างตัวกรองทั้งหมด"),

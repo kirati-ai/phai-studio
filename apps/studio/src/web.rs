@@ -201,6 +201,8 @@ fn hex(c: &str) -> (u8, u8, u8) {
 pub struct WebBuild {
     pub folder: PathBuf,
     pub left_out: Vec<String>,
+    /// A grid is bound to a table: `data-server/` written, the web app's tables come from it.
+    pub data_server: bool,
 }
 
 /// Builds `project` for the web, telling `say` each step. The `web/` folder ready to serve.
@@ -220,6 +222,20 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
     }
     let toml_path = project.join("Cargo.toml");
     let toml = std::fs::read_to_string(&toml_path).map_err(|e| e.to_string())?;
+    // The data server, when a grid is bound: its main written again, its Cargo.toml once.
+    let data_server = match phai_form::web::data_server_main(&all.iter().map(|(_, f)| f).collect::<Vec<_>>()) {
+        Some(main) => {
+            let dir = project.join("data-server");
+            std::fs::create_dir_all(dir.join("src")).map_err(|e| e.to_string())?;
+            std::fs::write(dir.join("src").join("main.rs"), main).map_err(|e| e.to_string())?;
+            if !dir.join("Cargo.toml").exists() {
+                let dep = toml.lines().find_map(|l| l.trim().strip_prefix("phai-data").map(|r| r.trim_start().trim_start_matches('=').trim().to_string())).unwrap_or_else(crate::project::phai_data_dependency);
+                std::fs::write(dir.join("Cargo.toml"), phai_form::web::data_server_toml(&package, &dep)).map_err(|e| e.to_string())?;
+            }
+            true
+        }
+        None => false,
+    };
     let new_toml = web_cargo_toml(&toml, &phai_web_dependency());
     if new_toml != toml {
         std::fs::write(&toml_path, new_toml).map_err(|e| e.to_string())?;
@@ -270,7 +286,16 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
     for (name, data) in files {
         std::fs::write(web.join(name), data).map_err(|e| e.to_string())?;
     }
-    Ok(WebBuild { folder: web, left_out })
+    // The data server elsewhere than beside the page: Cargo.toml's `data-url`, in the page.
+    let data_url = std::fs::read_to_string(&toml_path).ok().and_then(|t| crate::cargo::table_field(&t, crate::cargo::WEB_APP_TABLE, "data-url")).filter(|u| !u.trim().is_empty());
+    if let Some(u) = data_url {
+        let index = web.join("index.html");
+        if let Ok(html) = std::fs::read_to_string(&index) {
+            let meta = format!("<meta name=\"phai-data\" content=\"{}\">", u.trim().replace('"', "&quot;"));
+            std::fs::write(&index, html.replacen("<head>", &format!("<head>\n{meta}"), 1)).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(WebBuild { folder: web, left_out, data_server })
 }
 
 /// The page's own CSS: the theme's, made the web's, then the project's `web.css` as written -
@@ -556,6 +581,111 @@ pub fn with_reload(html: &str) -> String {
     }
 }
 
+/// The project's data server while its page is being tried: the project, whether it asks for a
+/// key, its port, the process, and the job that ends it when Studio ends.
+struct DataServer {
+    project: PathBuf,
+    key: String,
+    port: u16,
+    child: std::process::Child,
+    _job: isize,
+}
+
+static DATA: Mutex<Option<DataServer>> = Mutex::new(None);
+
+/// The data server's port the page servers pass `/phai-data/` on to; 0 when none runs.
+fn data_port() -> u16 {
+    let mut data = DATA.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(d) = data.as_mut() else { return 0 };
+    if d.child.try_wait().ok().flatten().is_none() { d.port } else { 0 }
+}
+
+/// A job that ends its processes when Studio ends (its handle is never closed before that).
+fn job_for(child: &std::process::Child) -> isize {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::System::JobObjects as jo;
+    unsafe {
+        let Ok(job) = jo::CreateJobObjectW(None, None) else { return 0 };
+        let mut info = jo::JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = jo::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let _ = jo::SetInformationJobObject(job, jo::JobObjectExtendedLimitInformation, &info as *const _ as *const _, std::mem::size_of_val(&info) as u32);
+        let _ = jo::AssignProcessToJobObject(job, windows::Win32::Foundation::HANDLE(child.as_raw_handle()));
+        job.0 as isize
+    }
+}
+
+/// The project's data server built and started on this computer, for Run in Browser (`key`
+/// empty) or Run on Phone (the access key the phone asks for once) - kept while it is the same
+/// project and key. What went wrong, if it could not.
+pub fn start_data_server(project: &Path, key: &str) -> Result<(), String> {
+    let mut data = DATA.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(d) = data.as_mut() {
+        if d.project == project && d.key == key && d.child.try_wait().ok().flatten().is_none() {
+            return Ok(());
+        }
+        let _ = d.child.kill();
+        *data = None;
+    }
+    let dir = project.join("data-server");
+    let cargo = crate::cargo::find_cargo().ok_or("cargo is not installed - rustup.rs")?;
+    let target = target_dir(project).join("data-server");
+    use std::os::windows::process::CommandExt;
+    let out = Command::new(&cargo).args(["build", "--release", "--quiet", "--target-dir"]).arg(&target).current_dir(&dir).creation_flags(0x0800_0000).output().map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr).to_string();
+        let lines: Vec<&str> = err.lines().filter(|l| l.contains("error")).take(8).collect();
+        return Err(format!("data-server: {}", if lines.is_empty() { err } else { lines.join("\n") }));
+    }
+    let package = crate::cargo::package_name(&dir).unwrap_or_default();
+    let exe = target.join("release").join(format!("{package}.exe"));
+    let port = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map(|a| a.port()).map_err(|e| e.to_string())?;
+    let child = Command::new(&exe)
+        .env("PHAI_DATA_ADDR", format!("127.0.0.1:{port}"))
+        .env("PHAI_DATA_TOKEN", key)
+        .current_dir(project)
+        .creation_flags(0x0800_0000)
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("{}: {e}", exe.display()))?;
+    let job = job_for(&child);
+    // Ready when it listens.
+    for _ in 0..50 {
+        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    *data = Some(DataServer { project: project.to_path_buf(), key: key.to_string(), port, child, _job: job });
+    Ok(())
+}
+
+/// A request for `/phai-data/...` passed on to the data server as it came, its answer back.
+fn pass_to_data(first: &str, head: &[String], reader: &mut BufReader<std::net::TcpStream>) -> Vec<u8> {
+    let port = data_port();
+    let unavailable = b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 44\r\nConnection: close\r\n\r\n{\"error\":\"the data server is not running\"}".to_vec();
+    if port == 0 {
+        return unavailable;
+    }
+    let length: usize = head.iter().find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.trim().parse().ok())).unwrap_or(0);
+    let mut body = vec![0u8; length.min(64 << 20)];
+    if reader.read_exact(&mut body).is_err() {
+        return unavailable;
+    }
+    let Ok(mut up) = std::net::TcpStream::connect(("127.0.0.1", port)) else { return unavailable };
+    let mut req = first.as_bytes().to_vec();
+    for l in head {
+        req.extend_from_slice(l.as_bytes());
+    }
+    req.extend_from_slice(b"\r\n");
+    req.extend_from_slice(&body);
+    if up.write_all(&req).is_err() {
+        return unavailable;
+    }
+    let mut answer = Vec::new();
+    let _ = up.read_to_end(&mut answer);
+    if answer.is_empty() { unavailable } else { answer }
+}
+
 fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: bool) {
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
@@ -571,9 +701,17 @@ fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: 
                     return;
                 }
                 // The rest of the request's head.
+                let mut head: Vec<String> = Vec::new();
                 let mut line = String::new();
                 while reader.read_line(&mut line).is_ok_and(|n| n > 2) {
-                    line.clear();
+                    head.push(std::mem::take(&mut line));
+                }
+                // The data server's requests, passed on: the page and its data at one address.
+                if first.split_whitespace().nth(1).is_some_and(|p| p.contains("/phai-data")) {
+                    let reply = pass_to_data(&first, &head, &mut reader);
+                    let _ = stream.write_all(&reply);
+                    let _ = stream.flush();
+                    return;
                 }
                 let ok = |kind: &str, data: Vec<u8>| {
                     let mut head = format!("HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n", data.len()).into_bytes();
