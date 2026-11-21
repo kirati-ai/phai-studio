@@ -55,6 +55,8 @@ struct Designer {
     font: Gdi::HFONT,
     /// A dialog or the form being rebuilt: losing the focus then does not close it.
     busy: bool,
+    /// A click on the chosen slot: its words edited once no second click makes it a double-click.
+    pending: Option<Slot>,
     done: bool,
 }
 
@@ -78,7 +80,8 @@ pub fn open(open: Option<usize>) {
     let menus = s.doc.form.menu.clone();
     let (bar, tops) = c.menu_bar_screen(&s.doc.form);
     win::init();
-    let class = win::register("PhaiMenuDesigner", Some(proc_), None);
+    // Double-clicks heard: one on an item opens its Click method.
+    let class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiMenuDesigner", Some(proc_), None);
     unsafe {
         let h = wm::CreateWindowExW(wm::WS_EX_LAYERED | wm::WS_EX_TOOLWINDOW, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP, bar.left, bar.top, 10, 10, Some(s.hwnd), None, Some(win::instance()), None).unwrap_or_default();
         let _ = wm::SetLayeredWindowAttributes(h, CLEAR, 0, wm::LWA_COLORKEY);
@@ -91,7 +94,7 @@ pub fn open(open: Option<usize>) {
             Some(i) if i < menus.len() => Some(Slot::Top(i)),
             _ => Some(Slot::Top(menus.len())),
         };
-        win::set_state(h, Box::new(Designer { menus, path, sel, edit: None, bar, tops, cells: vec![], panels: vec![], at: POINT { x: bar.left, y: bar.top }, font, busy: false, done: false }));
+        win::set_state(h, Box::new(Designer { menus, path, sel, edit: None, bar, tops, cells: vec![], panels: vec![], at: POINT { x: bar.left, y: bar.top }, font, busy: false, pending: None, done: false }));
         OPEN.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
         relayout(h);
         let _ = wm::ShowWindow(h, wm::SW_SHOW);
@@ -554,8 +557,16 @@ fn click(h: HWND, slot: Slot) {
         Slot::Sub { .. } => type_here = true,
     }
     relayout(h);
-    if type_here || again {
+    if type_here {
         begin_edit(h, slot, None);
+    } else if again {
+        // Edited only if this was not the first half of a double-click.
+        if let Some(d) = state(h) {
+            d.pending = Some(slot);
+        }
+        unsafe {
+            wm::SetTimer(Some(h), 1, windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime(), None);
+        }
     }
 }
 
@@ -839,8 +850,21 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             }
             LRESULT(0)
         }
+        wm::WM_TIMER => {
+            unsafe {
+                let _ = wm::KillTimer(Some(h), 1);
+            }
+            if let Some(slot) = d.pending.take() {
+                begin_edit(h, slot, None);
+            }
+            LRESULT(0)
+        }
         // A double-click on an item: its Click method, as Visual Studio's; on a menu, its words.
         wm::WM_LBUTTONDBLCLK => {
+            d.pending = None;
+            unsafe {
+                let _ = wm::KillTimer(Some(h), 1);
+            }
             if let Some(slot) = hit(h, l) {
                 let id = match slot {
                     Slot::Item { level, index } => list(&d.menus, &d.path, level).and_then(|l| l.get(index)).filter(|it| it.items.is_empty()).and_then(|it| it.id.clone()),
