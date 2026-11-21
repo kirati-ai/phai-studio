@@ -791,9 +791,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    /// then read again. How many changes were made.");
         let _ = writeln!(w, "    pub fn save_{id}(&self) -> Result<usize, String> {{");
         if c.kind == Kind::BindingSource {
-            let _ = writeln!(w, "        let n = self.{id}_data.save(&self.{id}.tagged_rows())?;");
+            let _ = writeln!(w, "        let n = self.{id}_data.save(&self.{id}.tagged_rows()).map_err(|e| phai_ui::text::lines(&e))?;");
         } else {
-            let _ = writeln!(w, "        let n = self.{id}_data.save(&phai_ui::grid::grid_tagged_rows(self.{id}))?;");
+            let _ = writeln!(w, "        let n = self.{id}_data.save(&phai_ui::grid::grid_tagged_rows(self.{id})).map_err(|e| phai_ui::text::lines(&e))?;");
         }
         let _ = writeln!(w, "        self.reload_{id}()?;");
         let _ = writeln!(w, "        Ok(n)");

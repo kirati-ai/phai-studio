@@ -188,7 +188,7 @@ impl Binding {
             false,
             Box::new(move |r| match r {
                 Ok(_) => me.load_into(grid),
-                Err(e) => win::message(&e),
+                Err(e) => win::message(&crate::text::lines(&e)),
             }),
         );
     }

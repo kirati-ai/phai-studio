@@ -33,6 +33,7 @@ pub const LIBRARY: &[(&str, &str)] = &[
     ("Search", "ค้นหา"),
     // A bound grid on the web (`phai_web::data`).
     ("The access key of the program's data:", "รหัสเข้าใช้ข้อมูลของโปรแกรม:"),
+    ("Someone else changed or deleted these rows since they were read, so nothing was saved. Reload, then make the changes again.", "มีคนอื่นแก้หรือลบแถวเหล่านี้หลังจากที่อ่านมา จึงยังไม่ได้บันทึกอะไรเลย กดโหลดใหม่ แล้วแก้อีกครั้ง"),
     ("The data server answered {0}", "เซิร์ฟเวอร์ข้อมูลตอบกลับ {0}"),
     ("The data server cannot be reached.", "ติดต่อเซิร์ฟเวอร์ข้อมูลไม่ได้"),
     ("Page {page} of {pages}", "หน้า {page} จาก {pages}"),
@@ -116,6 +117,15 @@ pub fn fill(template: &str, args: &[&dyn Display]) -> String {
         s = s.replace(&format!("{{{i}}}"), &a.to_string());
     }
     s
+}
+
+/// A message of several lines, each line that the tables have in the chosen language - a
+/// library's error (phai-data's), say, its first line a sentence and the rest names.
+pub fn lines(message: &str) -> String {
+    if !is_thai() {
+        return message.to_string();
+    }
+    message.lines().map(|l| lookup(l).unwrap_or(l)).collect::<Vec<_>>().join("\n")
 }
 
 /// The Thai for `en`, from the program's tables and then the library's.

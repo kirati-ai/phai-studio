@@ -341,6 +341,8 @@ impl Server {
         let Some(rows) = rows else { return error(400, "rows: [tag, [cells]] for each row the grid holds") };
         match t.binding.save_against(&loaded, &rows) {
             Ok(n) => Answer { status: 200, body: format!("{{\"changes\":{n}}}") },
+            // Someone else's change in the way: the page says so and reads the rows again.
+            Err(e) if e.starts_with(crate::SAVE_CONFLICT) => error(409, &e),
             Err(e) => error(500, &e),
         }
     }
@@ -400,6 +402,7 @@ impl Server {
             401 => "Unauthorized",
             404 => "Not Found",
             405 => "Method Not Allowed",
+            409 => "Conflict",
             413 => "Payload Too Large",
             _ => "Internal Server Error",
         };
@@ -465,6 +468,9 @@ mod tests {
         assert_eq!((a.status, a.body.as_str()), (200, "{\"changes\":3}"), "one changed, one added, one deleted");
         let names: Vec<String> = c.query(None, "SELECT name FROM customers ORDER BY id").unwrap().rows.into_iter().map(|r| r[0].clone()).collect();
         assert_eq!(names, ["เอ", "C"]);
+        let stale = "{\"table\":\"w/customers\",\"loaded\":[[\"1\",\"A\"]],\"rows\":[[1,[\"1\",\"X\"]]]}";
+        let a = s.answer("POST", "/phai-data/save", Some("Bearer k3y"), stale);
+        assert!(a.status == 409 && a.body.contains("id = 1"), "someone else's change in the way: {}", a.body);
         let open = Server { tables: s.tables, token: String::new() };
         assert_eq!(open.answer("POST", "/phai-data/load", None, "{\"table\":\"w/customers\"}").status, 401, "no key set: nothing served");
         assert_eq!(open.answer("POST", "/phai-data/load", Some("Bearer "), "{\"table\":\"w/customers\"}").status, 401);

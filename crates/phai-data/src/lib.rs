@@ -717,11 +717,15 @@ impl Binding {
         (!self.database.is_empty()).then_some(self.database.as_str())
     }
 
+    /// The SELECT the rows are read with.
+    fn select(&self) -> String {
+        let cols: Vec<String> = self.columns.iter().map(|c| self.conn.q(c)).collect();
+        format!("SELECT {} FROM {}", cols.join(", "), self.conn.table_ref(&self.database, &self.table))
+    }
+
     /// The table's rows, its columns in the binding's order - and kept, to know later what changed.
     pub fn load(&self) -> Result<Vec<Vec<String>>, String> {
-        let cols: Vec<String> = self.columns.iter().map(|c| self.conn.q(c)).collect();
-        let sql = format!("SELECT {} FROM {}", cols.join(", "), self.conn.table_ref(&self.database, &self.table));
-        let grid = self.conn.query(self.db(), &sql)?;
+        let grid = self.conn.query(self.db(), &self.select())?;
         *self.loaded.lock().unwrap_or_else(|e| e.into_inner()) = grid.rows.clone();
         Ok(grid.rows)
     }
@@ -747,10 +751,11 @@ impl Binding {
         let value = |v: &str| (v != "NULL").then(|| v.to_string());
         // What to do, worked out first: a row the grid cannot have changed (no key) stops it
         // before anything is written.
+        // Each changed or deleted row's place in `loaded`, to be checked against the table.
         enum Change {
-            Update(String, Option<String>, Vec<(String, String)>),
+            Update(usize, usize, Option<String>, Vec<(String, String)>),
             Insert(Vec<(String, Option<String>)>),
-            Delete(Vec<(String, String)>),
+            Delete(usize, Vec<(String, String)>),
         }
         let mut seen = vec![false; loaded.len()];
         let mut todo = Vec::new();
@@ -759,10 +764,10 @@ impl Binding {
                 Some(k) => {
                     seen[k] = true;
                     let before = &loaded[k];
-                    for (i, col) in self.columns.iter().enumerate() {
+                    for i in 0..self.columns.len() {
                         let (now, was) = (row.get(i).map(String::as_str).unwrap_or(""), before.get(i).map(String::as_str).unwrap_or(""));
                         if now != was {
-                            todo.push(Change::Update(col.clone(), value(now), key_of(before)?));
+                            todo.push(Change::Update(k, i, value(now), key_of(before)?));
                         }
                     }
                 }
@@ -776,7 +781,7 @@ impl Binding {
         }
         for (k, before) in loaded.iter().enumerate() {
             if !seen[k] {
-                todo.push(Change::Delete(key_of(before)?));
+                todo.push(Change::Delete(k, key_of(before)?));
             }
         }
         if todo.is_empty() {
@@ -784,17 +789,61 @@ impl Binding {
         }
         // All of it, or - when one fails - none of it.
         self.conn.transaction(&self.database, |tx| {
+            // Two people at the same rows: the rows changed or deleted here read again inside
+            // the transaction (MySQL and PostgreSQL lock them; SQLite's whole file is) - each
+            // must still be there, and what this person changed or deleted must still be as they
+            // read it, or nothing is saved. Another person's change to another cell of the row
+            // is kept; the same new value as theirs is no conflict.
+            if todo.iter().any(|c| !matches!(c, Change::Insert(_))) {
+                let lock = if self.conn.kind == Kind::Sqlite { "" } else { " FOR UPDATE" };
+                let now: std::collections::HashMap<Vec<String>, Vec<String>> = tx
+                    .query(&format!("{}{lock}", self.select()))?
+                    .into_iter()
+                    .filter_map(|r| key_of(&r).ok().map(|k| (k.into_iter().map(|(_, v)| v).collect(), r)))
+                    .collect();
+                let current = |k: usize| key_of(&loaded[k]).ok().and_then(|key| now.get(&key.into_iter().map(|(_, v)| v).collect::<Vec<_>>()));
+                let mut clashes: Vec<usize> = Vec::new();
+                for c in &todo {
+                    let clash = match c {
+                        Change::Update(k, i, v, _) => match current(*k) {
+                            None => Some(*k),
+                            Some(row) => {
+                                let (there, was) = (row.get(*i).map(String::as_str).unwrap_or(""), loaded[*k].get(*i).map(String::as_str).unwrap_or(""));
+                                let mine = v.as_deref().unwrap_or("NULL");
+                                (there != was && there != mine).then_some(*k)
+                            }
+                        },
+                        Change::Delete(k, _) => match current(*k) {
+                            None => None, // deleted already: as this person wanted
+                            Some(row) => (row != &loaded[*k]).then_some(*k),
+                        },
+                        Change::Insert(_) => None,
+                    };
+                    if let Some(k) = clash.filter(|k| !clashes.contains(k)) {
+                        clashes.push(k);
+                    }
+                }
+                if !clashes.is_empty() {
+                    let rows: Vec<String> = clashes.iter().filter_map(|&k| key_of(&loaded[k]).ok()).map(|key| key.iter().map(|(c, v)| format!("{c} = {v}")).collect::<Vec<_>>().join(", ")).collect();
+                    return Err(format!("{SAVE_CONFLICT}\n{}: {}", self.table, rows.join("; ")));
+                }
+            }
             for c in &todo {
                 match c {
-                    Change::Update(col, v, keys) => tx.update_cell(&self.table, col, v.as_deref(), keys)?,
+                    Change::Update(_, i, v, keys) => tx.update_cell(&self.table, &self.columns[*i], v.as_deref(), keys)?,
                     Change::Insert(values) => tx.insert_row(&self.table, values)?,
-                    Change::Delete(keys) => tx.delete_row(&self.table, keys)?,
+                    Change::Delete(_, keys) => tx.delete_row(&self.table, keys)?,
                 };
             }
             Ok(todo.len())
         })
     }
 }
+
+/// The first line of the error [`Binding::save`] gives when someone else changed or deleted a row
+/// since it was read; the rows' keys follow on the next line. A program shows it in its own
+/// language by this line (phai-ui's text tables have it).
+pub const SAVE_CONFLICT: &str = "Someone else changed or deleted these rows since they were read, so nothing was saved. Reload, then make the changes again.";
 
 /// One connection, kept open while its statements run.
 enum Open {
@@ -821,6 +870,16 @@ impl Transaction<'_> {
             Open::Sqlite(c) => sqlite::execute_on(c, sql, &refs, MAX_ROWS)?,
         };
         Ok(r.affected)
+    }
+
+    /// Every row of `sql`, as [`Connection::query`] gives them (`NULL` for NULL) - however many.
+    pub fn query(&mut self, sql: &str) -> Result<Vec<Vec<String>>, String> {
+        let results = match &mut self.open {
+            Open::MySql(c) => c.query(sql, usize::MAX)?,
+            Open::Postgres(c) => c.query(sql, usize::MAX)?,
+            Open::Sqlite(c) => sqlite::query_on(c, sql, usize::MAX)?,
+        };
+        Ok(to_grid(results).rows)
     }
 
     fn statement(&mut self, sql: &str) -> Result<(), String> {
@@ -853,6 +912,46 @@ impl Transaction<'_> {
 #[cfg(test)]
 mod binding_tests {
     use super::*;
+
+    #[test]
+    fn two_people_saving_the_same_row_do_not_overwrite_each_other() {
+        let path = std::env::temp_dir().join(format!("phai-two-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let c = Connection { host: path.to_string_lossy().to_string(), kind: Kind::Sqlite, ..Default::default() };
+        c.query(None, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, phone TEXT); INSERT INTO t (name, phone) VALUES ('A', '1'), ('B', '2'), ('C', '3');").unwrap();
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<String>>();
+        let (me, other) = (Binding::new(c.clone(), "main", "t", &["id", "name", "phone"], &["id"]), Binding::new(c.clone(), "main", "t", &["id", "name", "phone"], &["id"]));
+        let read = me.load().unwrap();
+        other.load().unwrap();
+        // The other person changes A's phone and B's name, and deletes C.
+        other.save(&[(1, s(&["1", "A", "111"])), (2, s(&["2", "BB", "2"]))]).unwrap();
+        // Another cell of A: kept with theirs.
+        assert_eq!(me.save_against(&read, &[(1, s(&["1", "AA", "1"])), (2, s(&["2", "B", "2"])), (3, s(&["3", "C", "3"]))]).unwrap(), 1);
+        assert_eq!(c.query(None, "SELECT name, phone FROM t WHERE id = 1").unwrap().rows, vec![s(&["AA", "111"])]);
+        // The cell they changed: nothing saved, the rows named.
+        let read = me.load().unwrap();
+        other.load().unwrap();
+        other.save(&[(1, s(&["1", "AA", "111"])), (2, s(&["2", "Bob", "2"]))]).unwrap();
+        let e = me.save_against(&read, &[(1, s(&["1", "AAA", "111"])), (2, s(&["2", "Ben", "2"]))]).unwrap_err();
+        assert!(e.starts_with(SAVE_CONFLICT) && e.ends_with("t: id = 2"), "{e}");
+        assert_eq!(c.query(None, "SELECT name FROM t WHERE id = 1").unwrap().rows, vec![s(&["AA"])], "not A's change either");
+        // The same new value as theirs: no conflict. A row they changed, deleted here: a conflict.
+        let read = me.load().unwrap();
+        other.load().unwrap();
+        other.save(&[(1, s(&["1", "Al", "111"]))]).unwrap();
+        assert!(me.save_against(&read, &[(1, s(&["1", "Al", "111"])), (2, s(&["2", "Bob", "2"]))]).is_ok());
+        let read = me.load().unwrap();
+        other.load().unwrap();
+        other.save(&[(1, s(&["1", "Al", "999"])), (2, s(&["2", "Bob", "2"]))]).unwrap();
+        assert!(me.save_against(&read, &[(2, s(&["2", "Bob", "2"]))]).unwrap_err().ends_with("t: id = 1"));
+        // A row they deleted: changing it is a conflict, deleting it is not.
+        let read = me.load().unwrap();
+        other.load().unwrap();
+        other.save(&[(1, s(&["1", "Al", "999"]))]).unwrap();
+        assert!(me.save_against(&read, &[(1, s(&["1", "Al", "999"])), (2, s(&["2", "Bo", "2"]))]).unwrap_err().ends_with("t: id = 2"));
+        assert_eq!(me.save_against(&read, &[(1, s(&["1", "Al", "999"]))]).unwrap(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn a_save_that_fails_halfway_changes_nothing() {

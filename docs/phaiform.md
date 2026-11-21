@@ -226,7 +226,7 @@ id = "name_box"
 data_binding = "people.name"
 ```
 
-`ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง; save ทำใน transaction เดียว (`Connection::transaction`) พังกลางทาง = ไม่บันทึกอะไรเลย
+`ui.people.move_next()`, `ui.people.add_new()`, `ui.save_people()` — ค่าที่พิมพ์ใน control กลับเข้าแถวเอง; save ทำใน transaction เดียว (`Connection::transaction`) พังกลางทาง = ไม่บันทึกอะไรเลย; สองคนแก้แถวเดียวกัน: อ่านแถวที่แก้/ลบอีกครั้งใน transaction (MySQL/PostgreSQL `FOR UPDATE`) ช่องที่เราแก้ถูกคนอื่นแก้ไปแล้ว หรือแถวหายไป หรือแถวที่จะลบถูกแก้ = ไม่บันทึก error ขึ้นต้นด้วย `phai_data::SAVE_CONFLICT` (เว็บได้ 409); คนอื่นแก้ช่องอื่นของแถว = เก็บของทั้งคู่
 
 ## Data grid — ค่าของแต่ละคอลัมน์ (`column_props`)
 

@@ -52,9 +52,13 @@ fn run(stmt: &mut rusqlite::Statement, params: &[Option<&str>], max: usize) -> R
 
 /// Every statement of `sql`, in order, and each one's result.
 pub fn query(path: &str, sql: &str, max: usize) -> Result<Vec<(Result1, bool)>, String> {
-    let c = open(path)?;
+    query_on(&open(path)?, sql, max)
+}
+
+/// [`query`] on a database already open - a transaction's.
+pub(crate) fn query_on(c: &rusqlite::Connection, sql: &str, max: usize) -> Result<Vec<(Result1, bool)>, String> {
     let mut out = Vec::new();
-    let mut batch = rusqlite::Batch::new(&c, sql);
+    let mut batch = rusqlite::Batch::new(c, sql);
     while let Some(mut stmt) = batch.next().map_err(err)? {
         out.push(run(&mut stmt, &[], max)?);
     }
