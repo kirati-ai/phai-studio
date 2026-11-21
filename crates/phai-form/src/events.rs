@@ -86,7 +86,28 @@ pub const CONTROL: &[EventSpec] = &[
     ev("position_changed", "PositionChanged", Args::None, &[Kind::BindingSource], Source::Hook(phai_ui_codes::POSITION_CHANGED), "Another row became the current one - moved to, added, taken out, or new rows given."),
     ev("print_page", "PrintPage", Args::Print, &[Kind::PrintDocument], Source::Hook(phai_ui_codes::PRINT_PAGE), "A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows."),
     ev("selection_changed", "SelectionChanged", Args::None, &[Kind::Grid], Source::Notify(-101), "Another row chosen."),
+    ev("opening", "Opening", Args::None, &[Kind::ContextMenu], Source::Form, "The menu is about to open - tick, grey or rename its items here."),
 ];
+
+/// A menu item's own, beyond its Click (its id's method).
+pub const MENU_ITEM: &[EventSpec] = &[
+    ev("checked_changed", "CheckedChanged", Args::None, &[], Source::Form, "Its tick turned over (CheckOnClick)."),
+    ev("drop_down_opening", "DropDownOpening", Args::None, &[], Source::Form, "The menu within it is about to open - tick or grey its items here."),
+    ev("drop_down_closed", "DropDownClosed", Args::None, &[], Source::Form, "The menu within it has closed."),
+];
+
+/// A menu on the bar's.
+pub const MENU: &[EventSpec] = &[
+    ev("drop_down_opening", "DropDownOpening", Args::None, &[], Source::Form, "The menu is about to open - tick or grey its items here."),
+    ev("drop_down_closed", "DropDownClosed", Args::None, &[], Source::Form, "The menu has closed."),
+];
+
+/// A toolbar button's own, beyond its Click (its id's method).
+pub const TOOL: &[EventSpec] = &[ev("checked_changed", "CheckedChanged", Args::None, &[], Source::Form, "It went down or came up (CheckOnClick).")];
+
+pub fn find_in(table: &'static [EventSpec], name: &str) -> Option<&'static EventSpec> {
+    table.iter().find(|e| e.name == name)
+}
 
 /// The form's own.
 pub const FORM: &[EventSpec] = &[
@@ -105,7 +126,14 @@ pub const FORM: &[EventSpec] = &[
     ev("key_down", "KeyDown", Args::Key, &[], Source::Form, "A key pressed anywhere in the window when KeyPreview is on - before the control has it; e.set_handled() keeps it from the control."),
     ev("key_up", "KeyUp", Args::Key, &[], Source::Form, "A key let go anywhere in the window when KeyPreview is on."),
     ev("key_press", "KeyPress", Args::KeyPress, &[], Source::Form, "A letter typed anywhere in the window when KeyPreview is on."),
+    ev("menu_start", "MenuStart", Args::None, &[], Source::Form, "The menu bar is being used: a menu opened from it, or Alt pressed."),
+    ev("menu_complete", "MenuComplete", Args::None, &[], Source::Form, "The menu bar is no longer being used."),
+    ev("toolbar_item_clicked", "ItemClicked", Args::Item, &[], Source::Form, "A toolbar button clicked - e.index, its place on the toolbar from 0 (separators count)."),
 ];
+
+/// The form's events that are the menu bar's, and the toolbar's - shown for those in Properties.
+pub const MENU_STRIP: &[&str] = &["menu_start", "menu_complete"];
+pub const TOOL_STRIP: &[&str] = &["toolbar_item_clicked"];
 
 /// The codes of `phai_ui::events`, here so the table is a constant.
 pub mod phai_ui_codes {

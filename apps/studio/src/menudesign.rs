@@ -451,7 +451,7 @@ fn set_words(h: HWND, slot: Slot, text: &str) {
     match slot {
         Slot::Top(i) if i < d.menus.len() => d.menus[i].label = text.to_string(),
         Slot::Top(i) => {
-            d.menus.push(Menu { label: text.to_string(), items: vec![] });
+            d.menus.push(Menu { label: text.to_string(), items: vec![], events: Default::default() });
             d.path = vec![i];
             // Its first item next.
             d.sel = Some(Slot::Item { level: 0, index: 0 });

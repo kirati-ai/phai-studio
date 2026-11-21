@@ -118,8 +118,8 @@ pub mod templates {
         f.form.set_size("min_size", Some([400, 260]));
         let item = |id: &str, label: &str, key: Option<&str>| MenuItem { id: Some(id.into()), label: Some(label.into()), key: key.map(str::to_string), ..Default::default() };
         f.menu = vec![
-            Menu { label: "&File".into(), items: vec![item("new_item", "New", Some("Ctrl+N")), item("open_item", "Open...", Some("Ctrl+O")), item("save_item", "Save", Some("Ctrl+S")), MenuItem { separator: true, ..Default::default() }, item("exit", "Exit", None)] },
-            Menu { label: "&Help".into(), items: vec![item("about", "About", None)] },
+            Menu { label: "&File".into(), items: vec![item("new_item", "New", Some("Ctrl+N")), item("open_item", "Open...", Some("Ctrl+O")), item("save_item", "Save", Some("Ctrl+S")), MenuItem { separator: true, ..Default::default() }, item("exit", "Exit", None)], events: Default::default() },
+            Menu { label: "&Help".into(), items: vec![item("about", "About", None)], events: Default::default() },
         ];
         f.toolbar = vec![
             Tool { id: "new_item".into(), label: "New".into(), glyph: "NEW".into(), toggle: false, ..Default::default() },

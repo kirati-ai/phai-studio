@@ -1635,6 +1635,40 @@ impl Studio {
         if let Key::Bar(name) = key {
             return self.apply_bar(name, text);
         }
+        // An event's method typed (or chosen) for a menu, menu item or toolbar button.
+        if let Key::BarOn(e) = key {
+            let Some(sel) = self.bar_sel.clone() else { return };
+            let h = text.trim().to_string();
+            if !h.is_empty() && !h.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+                return self.refresh_props();
+            }
+            let set = |m: &mut std::collections::BTreeMap<String, String>| {
+                if h.is_empty() {
+                    m.remove(e);
+                } else {
+                    m.insert(e.to_string(), h.clone());
+                }
+            };
+            self.edit(|f| match &sel {
+                BarSel::Menu(i) => {
+                    if let Some(m) = f.menu.get_mut(*i) {
+                        set(&mut m.events);
+                    }
+                }
+                BarSel::MenuItem(path) => {
+                    if let Some(it) = menu_item_mut(f, path) {
+                        set(&mut it.events);
+                    }
+                }
+                BarSel::Tool(i) => {
+                    if let Some(t0) = f.toolbar.get_mut(*i) {
+                        set(&mut t0.events);
+                    }
+                }
+                _ => {}
+            });
+            return self.refresh_props();
+        }
         // A composite typed in whole: its parts, one by one.
         match key {
             Key::Location | Key::Size | Key::FormSize => {
@@ -2504,8 +2538,55 @@ impl Studio {
     /// programmer's file with what the event gives it, and the code opened there.
     pub fn add_event_method(&mut self, key: Key) {
         let form = self.doc.form.form.name.clone();
+        // A menu item's or toolbar button's Click: its id's method.
+        if key == Key::Bar("click") {
+            let id = match self.bar_sel.clone() {
+                Some(BarSel::MenuItem(path)) => menu_item(&self.doc.form, &path).and_then(|it| it.id.clone()),
+                Some(BarSel::Tool(i)) => self.doc.form.toolbar.get(i).map(|t0| t0.id.clone()),
+                _ => None,
+            };
+            if let Some(id) = id.filter(|i| !i.is_empty()) {
+                self.open_item_handler(&id);
+            }
+            return;
+        }
         let (name, param) = match (key, self.selected) {
             (Key::Event, _) => return self.add_handler_for_selected(),
+            (Key::BarOn(e), _) => {
+                // Named as Visual Studio names it: the item's name, then the event.
+                let Some(sel) = self.bar_sel.clone() else { return };
+                let f = &self.doc.form;
+                let word = |label: &str| crate::menudesign::new_id(label, &[]);
+                let (base, now) = match &sel {
+                    BarSel::Menu(i) => (f.menu.get(*i).map(|m| word(&m.label)).unwrap_or_default(), f.menu.get(*i).and_then(|m| m.events.get(e).cloned())),
+                    BarSel::MenuItem(path) => (menu_item(f, path).map(|it| it.id.clone().unwrap_or_else(|| word(it.label.as_deref().unwrap_or("")))).unwrap_or_default(), menu_item(f, path).and_then(|it| it.events.get(e).cloned())),
+                    BarSel::Tool(i) => (f.toolbar.get(*i).map(|t0| t0.id.clone()).unwrap_or_default(), f.toolbar.get(*i).and_then(|t0| t0.events.get(e).cloned())),
+                    _ => return,
+                };
+                let name = now.clone().unwrap_or_else(|| format!("{base}_{e}"));
+                if now.is_none() {
+                    let n = name.clone();
+                    self.edit(|f| match &sel {
+                        BarSel::Menu(i) => {
+                            if let Some(m) = f.menu.get_mut(*i) {
+                                m.events.insert(e.to_string(), n);
+                            }
+                        }
+                        BarSel::MenuItem(path) => {
+                            if let Some(it) = menu_item_mut(f, path) {
+                                it.events.insert(e.to_string(), n);
+                            }
+                        }
+                        BarSel::Tool(i) => {
+                            if let Some(t0) = f.toolbar.get_mut(*i) {
+                                t0.events.insert(e.to_string(), n);
+                            }
+                        }
+                        _ => {}
+                    });
+                }
+                (name, None)
+            }
             (Key::FormOn(e), _) => {
                 let Some(spec) = phai_form::events::find_form(e) else { return };
                 let name = self.doc.form.form.events.get(e).cloned().unwrap_or_else(|| format!("{}_{e}", snake(&form)));
@@ -11721,11 +11802,25 @@ impl MainWindowEvents for MainWindow {
         f.menu = phai_form::bars::menus_from_text("&View\n  word_wrap | Word wrap | checked | check_on_click\n  Zoom\n    zoom_in | Zoom in | Ctrl+= | SEARCH\n    zoom_max | Most | disabled\n  bold | Bold | FONT | check_on_click\n").unwrap();
         f.toolbar = phai_form::bars::toolbar_from_text("bold | Bold | FONT | toggle\n").unwrap();
         f.form.events.insert("shown".into(), "begin".into());
+        // The menus' and toolbar's own events: a tick turning over, a menu opening, the
+        // toolbar's ItemClicked.
+        f.menu[0].items[0].events.insert("checked_changed".into(), "wrap_changed".into());
+        f.menu[0].events.insert("drop_down_opening".into(), "view_opening".into());
+        f.toolbar[0].events.insert("checked_changed".into(), "bold_changed".into());
+        f.form.events.insert("toolbar_item_clicked".into(), "tool_clicked".into());
+        // A context menu with its Opening, on a label: built, its right-click code compiled.
+        let mut cm = phai_form::Control::new(Kind::ContextMenu, "label_menu", [0, 0, 0, 0]);
+        cm.items = vec!["copy_words | Copy".into()];
+        cm.events.insert("opening".into(), "label_menu_opening".into());
+        let mut lab = phai_form::Control::new(Kind::Label, "words", [11, 80, 120, 23]);
+        lab.context_menu = Some("label_menu".into());
+        f.control.push(lab);
+        f.control.push(cm);
         assert!(f.check().is_empty(), "{:?}", f.check());
         assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
         std::fs::write(&form_path, f.to_toml()).unwrap();
         std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
-        crate::project::add_thai(&dir.join("src"), &[("&View", "&มุมมอง"), ("Word wrap", "ตัดบรรทัด"), ("Zoom", "ขยาย"), ("Zoom in", "ขยายเข้า"), ("Most", "มากสุด"), ("Bold", "ตัวหนา")]).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("&View", "&มุมมอง"), ("Word wrap", "ตัดบรรทัด"), ("Zoom", "ขยาย"), ("Zoom in", "ขยายเข้า"), ("Most", "มากสุด"), ("Bold", "ตัวหนา"), ("Copy", "คัดลอก"), ("Label", "ป้าย")]).unwrap();
         let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging as wm;
@@ -11733,6 +11828,9 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 #[derive(Default)]
 pub struct MainWindow {
     wraps: usize,
+    changed: usize,
+    opened: usize,
+    clicked: Option<usize>,
 }
 
 impl MainWindowEvents for MainWindow {
@@ -11755,12 +11853,37 @@ impl MainWindowEvents for MainWindow {
             if ui.item_checked("bold") && wm::GetMenuState(view, 2, wm::MF_BYPOSITION) & wm::MF_CHECKED.0 != 0 { bits |= 16 }
             ui.set_item_enabled("zoom_in", false);
             if wm::GetMenuState(zoom, 0, wm::MF_BYPOSITION) & wm::MF_GRAYED.0 != 0 { bits |= 32 }
+            // The View menu about to open: its DropDownOpening.
+            wm::SendMessageW(ui.hwnd, wm::WM_INITMENUPOPUP, Some(WPARAM(view.0 as usize)), Some(LPARAM(0)));
+            if self.opened == 1 { bits |= 64 }
+            // The tick's CheckedChanged ran once for word_wrap, once for bold (and ItemClicked once, from the toolbar).
+            if self.changed == 2 && self.clicked == Some(0) { bits |= 128 }
         }
-        std::process::exit(if bits == 63 { 42 } else { 1000 + bits });
+        std::process::exit(if bits == 255 { 42 } else { 1000 + bits });
     }
 
     fn word_wrap(&mut self, _ui: &MainWindowUi) {
         self.wraps += 1;
+    }
+
+    fn wrap_changed(&mut self, _ui: &MainWindowUi) {
+        self.changed += 1;
+    }
+
+    fn bold_changed(&mut self, _ui: &MainWindowUi) {
+        self.changed += 1;
+    }
+
+    fn view_opening(&mut self, _ui: &MainWindowUi) {
+        self.opened += 1;
+    }
+
+    fn label_menu_opening(&mut self, _ui: &MainWindowUi) {}
+
+    fn copy_words(&mut self, _ui: &MainWindowUi) {}
+
+    fn tool_clicked(&mut self, _ui: &MainWindowUi, e: &phai_ui::events::ItemEventArgs) {
+        self.clicked = Some(e.index);
     }
 }
 "##;

@@ -106,6 +106,9 @@ pub struct Menu {
     pub label: String,
     #[serde(default)]
     pub items: Vec<MenuItem>,
+    /// Its events' methods: `drop_down_opening`, `drop_down_closed` (`events::MENU`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub events: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -134,6 +137,10 @@ pub struct MenuItem {
     /// A menu of its own that opens beside it - DropDownItems; it has no id then.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub items: Vec<MenuItem>,
+    /// Its events' methods beyond its Click: `checked_changed`, `drop_down_opening`,
+    /// `drop_down_closed` (`events::MENU_ITEM`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub events: std::collections::BTreeMap<String, String>,
 }
 
 impl MenuItem {
@@ -177,6 +184,9 @@ pub struct Tool {
     /// Greyed, not to be clicked - Enabled = false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub disabled: bool,
+    /// Its events' methods beyond its Click: `checked_changed` (`events::TOOL`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub events: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1172,6 +1182,28 @@ impl FormFile {
         for c in &self.control {
             for (e, h) in &c.events {
                 if let Some(s) = crate::events::find(c.kind, e) {
+                    add(h, s.args);
+                }
+            }
+        }
+        // The menus' and their items', the toolbar's buttons'.
+        for m in &self.menu {
+            for (e, h) in &m.events {
+                if let Some(s) = crate::events::find_in(crate::events::MENU, e) {
+                    add(h, s.args);
+                }
+            }
+            for it in m.all_items() {
+                for (e, h) in &it.events {
+                    if let Some(s) = crate::events::find_in(crate::events::MENU_ITEM, e) {
+                        add(h, s.args);
+                    }
+                }
+            }
+        }
+        for t in &self.toolbar {
+            for (e, h) in &t.events {
+                if let Some(s) = crate::events::find_in(crate::events::TOOL, e) {
                     add(h, s.args);
                 }
             }
