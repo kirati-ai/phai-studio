@@ -93,6 +93,8 @@ const ID_BUILD: i32 = 140;
 const ID_RUN: i32 = 141;
 const ID_STOP: i32 = 142;
 const ID_CLOSE: i32 = 106;
+/// The active tab closed - posted by a Table Designer's Close.
+pub const ID_CLOSE_DOC: i32 = ID_CLOSE;
 const ID_DEBUG: i32 = 143;
 const ID_VIEW_TOOLBOX: i32 = 180;
 const ID_VIEW_EXPLORER: i32 = 181;
@@ -423,11 +425,13 @@ pub struct Doc {
     pub pinned: bool,
     /// When it was last the one shown: Ctrl+Tab lists the documents by it.
     pub seen: u64,
+    /// A Table Designer, when this tab holds one ("lotto.user [Design]").
+    pub table: Option<HWND>,
 }
 
 impl Doc {
     pub fn new(form: FormFile, path: Option<PathBuf>) -> Doc {
-        Doc { form, path, dirty: false, code: None, crlf: false, preview: false, pinned: false, seen: 0 }
+        Doc { form, path, dirty: false, code: None, crlf: false, preview: false, pinned: false, seen: 0, table: None }
     }
 }
 
@@ -485,6 +489,9 @@ impl Tab {
     }
 
     fn label(&self) -> String {
+        if let Some(h) = self.doc.table {
+            return win::text_of(h);
+        }
         let name = self.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| t("Untitled").to_string());
         if self.doc.dirty {
             format!("{name} •")
@@ -2588,6 +2595,26 @@ impl Studio {
             if let Some(h) = t.doc.code {
                 win::show(h, false);
             }
+            if let Some(h) = t.doc.table {
+                win::show(h, false);
+            }
+        }
+        // A Table Designer fills the document area.
+        if let (Some(h), Some(c)) = (self.doc.table, self.canvas.as_ref()) {
+            win::show(c.surface, false);
+            if !self.crumb.is_invalid() {
+                win::show(self.crumb, false);
+            }
+            let mut r = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(c.hwnd, &mut r);
+            }
+            win::move_to(h, 0, 0, r.right, r.bottom);
+            unsafe {
+                let _ = wm::SetWindowPos(h, Some(wm::HWND_TOP), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_SHOWWINDOW);
+                let _ = km::SetFocus(Some(h));
+            }
+            return;
         }
         if let Some(c) = self.canvas.as_ref() {
             win::show(c.surface, active.is_none());
@@ -2618,6 +2645,40 @@ impl Studio {
                 }
             }
         }
+    }
+
+    /// The Table Designer in a document tab, as Visual Studio opens a table's design - the tab
+    /// already designing that table, if one is.
+    pub fn open_table_designer(&mut self, conn: phai_data::Connection, db: &str, def: Option<phai_data::schema::TableDef>) {
+        let Some(parent) = self.canvas.as_ref().map(|c| c.hwnd) else { return };
+        if let Some(d) = def.as_ref() {
+            let title = format!("{db}.{} [Design]", d.name);
+            if self.doc.table.is_some_and(|h| win::text_of(h) == title) {
+                return self.after_switch();
+            }
+            if let Some(i) = self.tabs.iter().enumerate().position(|(i, t)| i != self.active && t.doc.table.is_some_and(|h| win::text_of(h) == title)) {
+                return self.activate(i);
+            }
+        }
+        let h = designer::create(parent, conn, db, def);
+        let blank = !self.nothing && self.doc.path.is_none() && !self.doc.dirty && self.doc.form.control.is_empty() && self.doc.code.is_none() && self.doc.table.is_none();
+        if !self.nothing && !blank {
+            self.stash();
+            self.tabs.push(Tab::empty());
+            self.active = self.tabs.len() - 1;
+        }
+        self.nothing = false;
+        self.doc = Doc { table: Some(h), ..Doc::new(FormFile::new("Table"), None) };
+        self.undo.clear();
+        self.redo.clear();
+        self.selected = None;
+        self.after_switch();
+    }
+
+    /// The tabs' names again - a Table Designer's changed.
+    pub fn relabel_tabs(&mut self) {
+        self.refresh_tabs();
+        self.say_title();
     }
 
     /// Opens a code file in an editor tab - or the tab it is already in.
@@ -3908,6 +3969,9 @@ impl Studio {
 
     /// The code editor fills the canvas - split, the two share it, one above the other.
     pub fn place_editors(&mut self, w: i32, h: i32) {
+        if let Some(t) = self.doc.table {
+            return win::move_to(t, 0, 0, w, h);
+        }
         let Some(code) = self.doc.code else { return };
         match self.split_view {
             Some(second) => {
@@ -4039,7 +4103,9 @@ impl Studio {
             win::show(c.hwnd, true);
         }
         self.load_theme();
-        if self.doc.code.is_none() {
+        if self.doc.table.is_some() {
+            // A Table Designer: nothing of a form's or a code file's to show.
+        } else if self.doc.code.is_none() {
             self.rebuild();
         } else {
             self.refresh_outline();
@@ -4053,7 +4119,7 @@ impl Studio {
         self.say_selection();
         self.refresh_tabs();
         let path = self.doc.path.clone();
-        if let Some(e) = self.explorer.as_mut() {
+        if let Some(e) = self.explorer.as_mut().filter(|_| self.doc.table.is_none()) {
             e.show_project_of(path.as_deref());
         }
         self.track_active();
@@ -4097,7 +4163,7 @@ impl Studio {
         controls::tabs_marks(self.tabbar, &marks);
         let mut labels: Vec<String> = Vec::new();
         for (i, tab) in self.tabs.iter().enumerate() {
-            labels.push(if i == self.active { Tab { doc: Doc { dirty: self.doc.dirty, ..Doc::new(FormFile::new("X"), self.doc.path.clone()) }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
+            labels.push(if i == self.active && self.doc.table.is_some() { self.doc.table.map(win::text_of).unwrap_or_default() } else if i == self.active { Tab { doc: Doc { dirty: self.doc.dirty, ..Doc::new(FormFile::new("X"), self.doc.path.clone()) }, undo: vec![], redo: vec![], selected: None }.label() } else { tab.label() });
         }
         let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         controls::tabs_relabel(self.tabbar, &refs);
@@ -4486,6 +4552,15 @@ impl Studio {
         if !self.may_leave() {
             return false;
         }
+        if let Some(h) = self.doc.table {
+            if !designer::may_close(h) {
+                return false;
+            }
+            self.doc.table = None;
+            unsafe {
+                let _ = wm::DestroyWindow(h);
+            }
+        }
         if let Some(h) = self.doc.code.take() {
             if let (Some(l), Some(p)) = (self.lsp.as_ref(), self.doc.path.as_ref()) {
                 l.did_close(p);
@@ -4541,6 +4616,9 @@ impl Studio {
     fn say_title(&self) {
         if self.nothing {
             return win::set_text(self.hwnd, "Phai Studio");
+        }
+        if let Some(h) = self.doc.table {
+            return win::set_text(self.hwnd, &format!("{} - Phai Studio", win::text_of(h)));
         }
         let name = self.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| t("Untitled").to_string());
         win::set_text(self.hwnd, &format!("{}{name} - Phai Studio", if self.doc.dirty { "• " } else { "" }));
@@ -4675,6 +4753,11 @@ impl Studio {
 
     /// Writes the form, its generated code and - the first time - the programmer's file.
     fn save(&mut self, choose: bool) -> bool {
+        // A Table Designer: Ctrl+S updates the database, as Visual Studio's does.
+        if let Some(h) = self.doc.table {
+            designer::update(h);
+            return true;
+        }
         // A code file: its text, with the line ends it came with.
         if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
             // Tools > Options > Text Editor > Formatting: rustfmt first, as Format Document does.
@@ -7879,7 +7962,8 @@ impl Studio {
                 if let (Some(t), Some(sv)) = (t, self.servers.as_mut()) {
                     if t == "-" {
                         if let Some(c) = sv.conns.first().cloned() {
-                            designer::open(owner, c, "main", None);
+                            let _ = owner;
+                            self.open_table_designer(c, "main", None);
                         }
                     } else {
                         sv.design_first(owner, &t);

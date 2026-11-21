@@ -46,6 +46,13 @@ pub struct Servers {
     nodes: Vec<Node>,
 }
 
+/// The Table Designer opened in a document tab.
+fn design(c: Connection, db: &str, def: Option<phai_data::schema::TableDef>) {
+    if let Some(s) = studio() {
+        s.open_table_designer(c, db, def);
+    }
+}
+
 fn file() -> Option<PathBuf> {
     Some(crate::settings_dir_pub()?.join("connections.txt"))
 }
@@ -372,6 +379,28 @@ impl Servers {
     }
 
     /// A branch read from the database again.
+    /// Every open database named `db` read again - a table made, changed or renamed in it.
+    pub fn reload_database(&mut self, db: &str) {
+        fn walk(tree: HWND, item: isize, out: &mut Vec<isize>) {
+            let mut it = item;
+            while it != 0 {
+                out.push(it);
+                let child = unsafe { wm::SendMessageW(tree, 0x110A, Some(WPARAM(4 /* TVGN_CHILD */)), Some(LPARAM(it))).0 };
+                walk(tree, child, out);
+                it = unsafe { wm::SendMessageW(tree, 0x110A, Some(WPARAM(1 /* TVGN_NEXT */)), Some(LPARAM(it))).0 };
+            }
+        }
+        let root = unsafe { wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(0 /* TVGN_ROOT */)), None).0 };
+        let mut all = Vec::new();
+        walk(self.tree, root, &mut all);
+        for item in all {
+            let data = item_data(self.tree, item).unwrap_or(-1);
+            if self.node_of(data).is_some_and(|n| n.kind == Kind::Database && n.db == db && n.loaded) {
+                self.reload(item);
+            }
+        }
+    }
+
     fn reload(&mut self, item: isize) {
         let data = item_data(self.tree, item).unwrap_or(-1);
         if let Some(x) = self.nodes.get_mut(data as usize) {
@@ -395,29 +424,22 @@ impl Servers {
             if db.is_empty() {
                 return false;
             }
-            crate::designer::open(owner, c, &db, None);
+            design(c, &db, None);
             return true;
         };
         match n.kind {
             Kind::Database => {
-                // A new table; the database's tables read again after.
+                // A new table, in a tab; Update reads the database's tables again.
                 let c = self.conns[n.conn].clone();
-                if crate::designer::open(owner, c, &n.db, None) {
-                    self.reload(item);
-                }
+                design(c, &n.db, None);
+                let _ = item;
                 true
             }
             Kind::Table { view: false } | Kind::Column => {
                 let c = self.conns[n.conn].clone();
                 let (d2, t2, c2) = (n.db.clone(), n.table.clone(), c.clone());
                 match dialogs::wait_for(Some(owner), t("Design Table"), t("Connecting..."), move |_| c2.table_def(&d2, &t2)) {
-                    Some(Ok(def)) => {
-                        if crate::designer::open(owner, c, &n.db, Some(def)) {
-                            // The table's parent - the database - read again: the table may have a new name.
-                            let parent = unsafe { wm::SendMessageW(self.tree, 0x110A, Some(WPARAM(3 /* TVGN_PARENT */)), Some(LPARAM(item))).0 };
-                            self.reload(if parent != 0 { parent } else { item });
-                        }
-                    }
+                    Some(Ok(def)) => design(c, &n.db, Some(def)),
                     Some(Err(e)) => {
                         win::message(Some(owner), &e, t("Design Table"), wm::MB_ICONWARNING);
                     }
@@ -433,7 +455,8 @@ impl Servers {
     pub fn design_first(&mut self, owner: HWND, table: &str) {
         let Some(c) = self.conns.first().cloned() else { return };
         let def = c.table_def("main", table).ok();
-        crate::designer::open(owner, c, "main", def);
+        let _ = owner;
+        design(c, "main", def);
     }
 
     /// A click on the first connection's [+], as the mouse makes it (messages to the tree, the
