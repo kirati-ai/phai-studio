@@ -72,6 +72,7 @@ const fn runtime_only(mut s: Spec) -> Spec {
 }
 
 const ALIGN: &[&str] = &["left", "center", "right"];
+const EDIT_ON: &[&str] = &["double_click", "click", "f2"];
 const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
 const TEXTS: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Number];
 const CURSORS: &[&str] = &["default", "hand", "ibeam", "wait", "cross", "help", "no", "size_all", "size_we", "size_ns"];
@@ -140,6 +141,14 @@ pub const CONTROL: &[Spec] = &[
     spec("grid_lines", "GridLines", "Appearance", Ty::Bool, "true", &[Kind::Grid], How::Call, "Lines between rows and columns."),
     spec("full_row_select", "FullRowSelect", "Behavior", Ty::Bool, "true", &[Kind::List, Kind::Tree], How::Call, "A click chooses the whole row."),
     spec("multi_select", "MultiSelect", "Behavior", Ty::Bool, "true", &[Kind::List, Kind::Grid], How::Call, "Several rows can be chosen at once."),
+    // A grid's own, as DevExpress's GridView has them (OptionsView, OptionsBehavior).
+    spec("show_column_headers", "ShowColumnHeaders", "Appearance", Ty::Bool, "true", &[Kind::Grid], How::Call, "The row of headings over the columns."),
+    spec("column_auto_width", "ColumnAutoWidth", "Layout", Ty::Bool, "false", &[Kind::Grid], How::Call, "The columns share the grid's width - no scrolling sideways."),
+    spec("allow_add_rows", "AllowAddRows", "Behavior", Ty::Bool, "true", &[Kind::Grid], How::Call, "A double-click under the last row adds one."),
+    spec("allow_delete_rows", "AllowDeleteRows", "Behavior", Ty::Bool, "true", &[Kind::Grid], How::Call, "Delete takes the chosen row out."),
+    spec("editor_show_mode", "EditorShowMode", "Behavior", Ty::Choice(EDIT_ON), "double_click", &[Kind::Grid], How::Call, "What opens a cell for typing: a double-click, a click, or F2 only."),
+    spec("enter_moves_next", "EnterMoveNextColumn", "Behavior", Ty::Bool, "false", &[Kind::Grid], How::Call, "Enter keeps the cell and opens the next one."),
+    spec("allow_column_moving", "AllowColumnMoving", "Behavior", Ty::Bool, "false", &[Kind::Grid], How::Call, "Columns can be dragged by their headings into another order."),
     spec("check_boxes", "CheckBoxes", "Appearance", Ty::Bool, "false", &[Kind::List, Kind::Tree], How::Call, "A box to tick before each item."),
     spec("header", "HeaderStyle", "Appearance", Ty::Choice(&["clickable", "none"]), "clickable", &[Kind::List], How::Call, "The column headings shown, or none."),
     spec("hide_selection", "HideSelection", "Behavior", Ty::Bool, "false", &[Kind::List, Kind::Tree], How::Call, "The chosen row stops showing when it loses the focus."),

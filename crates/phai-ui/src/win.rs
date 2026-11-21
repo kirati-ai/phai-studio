@@ -1296,6 +1296,7 @@ pub fn list(parent: HWND, id: i32, f: HFONT, columns: &[(&str, i32)]) -> HWND {
     let h = child(parent, "SysListView32", "", WINDOW_STYLE(LVS_REPORT | LVS_SHOWSELALWAYS) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::List);
     unsafe {
+        let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(list_frame_proc), 9, 0);
         wm::SendMessageW(h, cc::LVM_SETEXTENDEDLISTVIEWSTYLE, Some(WPARAM(0)), Some(LPARAM(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER)));
         for (i, (heading, width)) in columns.iter().enumerate() {
             let mut text = wide(heading);
@@ -1390,25 +1391,118 @@ pub fn list_select(h: impl Into<HWND>, row: usize) {
 }
 
 /// `NM_CUSTOMDRAW` from a list view: the selected row in the theme's `list:selected` colours
-/// instead of Windows' blue.
+/// instead of Windows' blue. A grid's check-box columns are drawn here too ([`crate::grid`]).
 pub fn list_custom_draw(l: LPARAM) -> LRESULT {
     use windows::Win32::UI::Controls as cc;
     unsafe {
         let cd = &mut *(l.0 as *mut cc::NMLVCUSTOMDRAW);
+        let h = cd.nmcd.hdr.hwndFrom;
+        let selected = |cd: &mut cc::NMLVCUSTOMDRAW| {
+            let state = wm::SendMessageW(h, cc::LVM_GETITEMSTATE, Some(WPARAM(cd.nmcd.dwItemSpec)), Some(LPARAM(cc::LVIS_SELECTED.0 as isize)));
+            if state.0 as u32 & cc::LVIS_SELECTED.0 != 0 {
+                let s = style_of(h, Kind::List, State { selected: true, ..Default::default() });
+                cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !(cc::CDIS_SELECTED.0 | cc::CDIS_FOCUS.0));
+                cd.clrTextBk = cr(s.background_or(Color::rgb(231, 243, 239)));
+                cd.clrText = cr(s.color_or(window_text_for(h)));
+                true
+            } else {
+                false
+            }
+        };
         match cd.nmcd.dwDrawStage {
             cc::CDDS_PREPAINT => LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize),
             cc::CDDS_ITEMPREPAINT => {
-                let state = wm::SendMessageW(cd.nmcd.hdr.hwndFrom, cc::LVM_GETITEMSTATE, Some(WPARAM(cd.nmcd.dwItemSpec)), Some(LPARAM(cc::LVIS_SELECTED.0 as isize)));
-                if state.0 as u32 & cc::LVIS_SELECTED.0 != 0 {
-                    let s = style_of(cd.nmcd.hdr.hwndFrom, Kind::List, State { selected: true, ..Default::default() });
-                    cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !(cc::CDIS_SELECTED.0 | cc::CDIS_FOCUS.0));
-                    cd.clrTextBk = cr(s.background_or(Color::rgb(231, 243, 239)));
-                    cd.clrText = cr(s.color_or(window_text_for(cd.nmcd.hdr.hwndFrom)));
+                selected(cd);
+                // A grid with check-box columns: each cell asked about.
+                if crate::grid::has_check_columns(h) {
+                    return LRESULT(cc::CDRF_NOTIFYSUBITEMDRAW as isize);
+                }
+                LRESULT(cc::CDRF_DODEFAULT as isize)
+            }
+            s if s.0 == cc::CDDS_ITEMPREPAINT.0 | cc::CDDS_SUBITEM.0 => {
+                let sel = selected(cd);
+                let bg = if sel { style_of(h, Kind::List, State { selected: true, ..Default::default() }).background_or(Color::rgb(231, 243, 239)) } else { window_background_for(h) };
+                if crate::grid::draw_check_cell(h, cd.nmcd.hdc, cd.nmcd.dwItemSpec, cd.iSubItem as usize, bg, window_text_for(h)) {
+                    return LRESULT(cc::CDRF_SKIPDEFAULT as isize);
                 }
                 LRESULT(cc::CDRF_DODEFAULT as isize)
             }
             _ => LRESULT(cc::CDRF_DODEFAULT as isize),
         }
+    }
+}
+
+static FRAMED: Mutex<Vec<isize>> = Mutex::new(Vec::new());
+
+/// A list framed whatever its style says - a grid, as WinForms' DataGridView has its single
+/// border. Its colour and width are its CSS's `border-color` and `border-width`.
+pub fn list_framed(h: HWND) {
+    let mut v = FRAMED.lock().unwrap_or_else(|e| e.into_inner());
+    if !v.contains(&(h.0 as isize)) {
+        v.push(h.0 as isize);
+    }
+    drop(v);
+    frame_changed(h);
+}
+
+fn frame_changed(h: HWND) {
+    unsafe {
+        let _ = wm::SetWindowPos(h, None, 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE | wm::SWP_FRAMECHANGED);
+    }
+}
+
+/// A list's border: its width in pixels (0: none) and colour - its own `border-width` and
+/// `border-color` when it has them; a framed list's 1 pixel otherwise.
+fn list_border(h: HWND) -> (i32, Color) {
+    let own = with_css(h, |c| (c.own.border_width, c.own.border_color)).unwrap_or((None, None));
+    let framed = FRAMED.lock().unwrap_or_else(|e| e.into_inner()).contains(&(h.0 as isize));
+    let width = match own {
+        (Some(w), _) => w,
+        (None, Some(_)) => 1,
+        _ if framed => 1,
+        _ => 0,
+    };
+    let colour = own.1.unwrap_or_else(|| style_of(h, Kind::List, State::default()).border_or(Color::rgb(212, 212, 212)));
+    (px(h, width.max(0)), colour)
+}
+
+unsafe extern "system" fn list_frame_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id: usize, _data: usize) -> LRESULT {
+    use windows::Win32::UI::Shell::DefSubclassProc;
+    match msg {
+        wm::WM_NCCALCSIZE if w.0 != 0 => {
+            let r = unsafe { DefSubclassProc(h, msg, w, l) };
+            let (bw, _) = list_border(h);
+            if bw > 0 {
+                let p = unsafe { &mut *(l.0 as *mut wm::NCCALCSIZE_PARAMS) };
+                p.rgrc[0].left += bw;
+                p.rgrc[0].top += bw;
+                p.rgrc[0].right -= bw;
+                p.rgrc[0].bottom -= bw;
+            }
+            r
+        }
+        wm::WM_NCPAINT => {
+            let r = unsafe { DefSubclassProc(h, msg, w, l) };
+            let (bw, colour) = list_border(h);
+            if bw > 0 {
+                unsafe {
+                    let dc = Gdi::GetWindowDC(Some(h));
+                    let mut wr = RECT::default();
+                    let _ = wm::GetWindowRect(h, &mut wr);
+                    let (ww, wh) = (wr.right - wr.left, wr.bottom - wr.top);
+                    for edge in [RECT { left: 0, top: 0, right: ww, bottom: bw }, RECT { left: 0, top: wh - bw, right: ww, bottom: wh }, RECT { left: 0, top: 0, right: bw, bottom: wh }, RECT { left: ww - bw, top: 0, right: ww, bottom: wh }] {
+                        fill(dc, &edge, colour);
+                    }
+                    Gdi::ReleaseDC(Some(h), dc);
+                }
+            }
+            r
+        }
+        wm::WM_NCDESTROY => {
+            FRAMED.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| *x != h.0 as isize);
+            unsafe { DefSubclassProc(h, msg, w, l) }
+        }
+        _ => unsafe { DefSubclassProc(h, msg, w, l) },
     }
 }
 
@@ -2219,6 +2313,10 @@ pub fn set_own_style(h: HWND, decls: &str) -> Result<(), theme::ThemeError> {
         c.own_text = decls.trim().to_string();
     });
     theme_native(h);
+    // A list's border may be thicker or thinner now: its edge worked out again.
+    if kind_of(h) == Some(Kind::List) {
+        frame_changed(h);
+    }
     unsafe {
         let _ = Gdi::InvalidateRect(Some(h), None, true);
         let _ = Gdi::RedrawWindow(Some(h), None, None, Gdi::RDW_FRAME | Gdi::RDW_INVALIDATE);

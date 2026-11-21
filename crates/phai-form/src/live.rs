@@ -223,6 +223,11 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             phai_ui::props::apply(h, s.name, &text);
         }
     }
+    if c.kind == Kind::Grid {
+        for (i, p) in c.column_props.iter().enumerate().filter(|(i, p)| !p.is_default() && *i < c.columns.len()) {
+            phai_ui::grid::set_column(h, i, p.to_column());
+        }
+    }
     if c.enabled == Some(false) {
         win::enable(h, false);
     }

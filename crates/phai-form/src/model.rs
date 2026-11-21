@@ -386,6 +386,10 @@ pub struct Control {
     pub items: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub columns: Vec<(String, i32)>,
+    /// A grid's columns' own properties, by place - as DevExpress's GridColumn: shown, aligned,
+    /// read only, how a cell is edited, sorting and sizing. Missing ones are the defaults.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_props: Vec<ColumnProps>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tabs: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -459,6 +463,109 @@ pub struct Control {
     pub more: Props,
 }
 
+/// A grid column's properties ([`Control::column_props`]); `None` is the default.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ColumnProps {
+    /// Shown (default) or hidden - its cells kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+    /// `left` (default), `center`, `right`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only: Option<bool>,
+    /// How a cell is edited: `text` (default), `number`, `date`, `check`, `combo`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor: Option<String>,
+    /// A `combo` column's choices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<String>,
+    /// Sorted by it when filled: `asc` or `desc`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    /// A click on its heading sorts (default true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_sort: Option<bool>,
+    /// Its edge can be dragged (default true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_size: Option<bool>,
+}
+
+impl ColumnProps {
+    pub fn is_default(&self) -> bool {
+        *self == ColumnProps::default()
+    }
+
+    /// The words of the call that gives a grid's column these properties, as the generated code
+    /// writes it: `phai_ui::grid::Column { ... }`.
+    pub fn rust(&self) -> String {
+        let mut f = Vec::new();
+        if self.visible == Some(false) {
+            f.push("visible: false".to_string());
+        }
+        match self.align.as_deref() {
+            Some("center") => f.push("align: phai_ui::grid::Align::Center".into()),
+            Some("right") => f.push("align: phai_ui::grid::Align::Right".into()),
+            _ => {}
+        }
+        if self.read_only == Some(true) {
+            f.push("read_only: true".into());
+        }
+        match self.editor.as_deref() {
+            Some("number") => f.push("editor: phai_ui::grid::Editor::Number".into()),
+            Some("date") => f.push("editor: phai_ui::grid::Editor::Date".into()),
+            Some("check") => f.push("editor: phai_ui::grid::Editor::Check".into()),
+            Some("combo") => f.push(format!("editor: phai_ui::grid::Editor::Combo(vec![{}])", self.items.iter().map(|s| format!("{s:?}.to_string()")).collect::<Vec<_>>().join(", "))),
+            _ => {}
+        }
+        if self.allow_sort == Some(false) {
+            f.push("allow_sort: false".into());
+        }
+        if self.allow_size == Some(false) {
+            f.push("allow_size: false".into());
+        }
+        match self.sort.as_deref() {
+            Some("asc") => f.push("sort: Some(true)".into()),
+            Some("desc") => f.push("sort: Some(false)".into()),
+            _ => {}
+        }
+        if f.is_empty() {
+            "phai_ui::grid::Column::new()".into()
+        } else {
+            format!("phai_ui::grid::Column {{ {}, ..phai_ui::grid::Column::new() }}", f.join(", "))
+        }
+    }
+
+    /// The same as the grid takes it, for the designer's canvas.
+    pub fn to_column(&self) -> phai_ui::grid::Column {
+        use phai_ui::grid::{Align, Column, Editor};
+        Column {
+            visible: self.visible != Some(false),
+            align: match self.align.as_deref() {
+                Some("center") => Align::Center,
+                Some("right") => Align::Right,
+                _ => Align::Left,
+            },
+            read_only: self.read_only == Some(true),
+            editor: match self.editor.as_deref() {
+                Some("number") => Editor::Number,
+                Some("date") => Editor::Date,
+                Some("check") => Editor::Check,
+                Some("combo") => Editor::Combo(self.items.clone()),
+                _ => Editor::Text,
+            },
+            allow_sort: self.allow_sort != Some(false),
+            allow_size: self.allow_size != Some(false),
+            sort: match self.sort.as_deref() {
+                Some("asc") => Some(true),
+                Some("desc") => Some(false),
+                _ => None,
+            },
+        }
+    }
+}
+
 /// Which table a grid shows: its database (`main` for SQLite), the table, the columns in the
 /// grid's order, and the primary key that finds a row again to change or delete it. The server
 /// itself is the project's, in `src/data_sources.rs`.
@@ -508,6 +615,7 @@ impl Control {
             password: None,
             items: vec![],
             columns: vec![],
+            column_props: vec![],
             tabs: vec![],
             page: None,
             parts: vec![],
@@ -853,6 +961,7 @@ impl FormFile {
             out.extend(wrong("image", c.image.is_none() || c.kind == Kind::Picture));
             out.extend(wrong("cols", c.cols.is_none() || c.kind == Kind::Table));
             out.extend(wrong("columns", c.columns.is_empty() || matches!(c.kind, Kind::List | Kind::Grid)));
+            out.extend(wrong("column_props", c.column_props.is_empty() || c.kind == Kind::Grid));
             out.extend(wrong("tabs", c.tabs.is_empty() || c.kind == Kind::Tabs));
             out.extend(wrong("bind", c.bind.is_none() || matches!(c.kind, Kind::Grid | Kind::BindingSource)));
             out.extend(wrong("bind_action", c.bind_action.is_none() || c.kind == Kind::Button));

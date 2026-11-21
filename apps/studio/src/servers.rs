@@ -46,11 +46,10 @@ pub struct Servers {
     nodes: Vec<Node>,
 }
 
-/// The Table Designer opened in a document tab.
+/// The Table Designer, in its own window over Studio's.
 fn design(c: Connection, db: &str, def: Option<phai_data::schema::TableDef>) {
-    if let Some(s) = studio() {
-        s.open_table_designer(c, db, def);
-    }
+    let owner = studio().map(|s| s.hwnd).unwrap_or_default();
+    crate::designer::open(owner, c, db, def);
 }
 
 fn file() -> Option<PathBuf> {

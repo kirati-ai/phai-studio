@@ -679,6 +679,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         for call in prop_calls(c, false, false) {
             let _ = writeln!(w, "        {call}");
         }
+        // A grid's columns' own properties.
+        if c.kind == Kind::Grid {
+            for (i, p) in c.column_props.iter().enumerate().filter(|(i, p)| !p.is_default() && *i < c.columns.len()) {
+                let _ = writeln!(w, "        phai_ui::grid::set_column({}, {i}, {});", c.id, p.rust());
+            }
+        }
         if c.kind == Kind::Tabs && first_page(f) > 0 {
             let _ = writeln!(w, "        controls::tabs_select({}, {});", c.id, first_page(f));
         }
@@ -1503,5 +1509,27 @@ mod tests {
         assert!(more.contains("    fn print(&mut self, _ui: &MainWindowUi) {\n        \n    }\n}"), "{more}");
         assert!(add_handler(&more, "MainWindow", "print").is_none());
         assert!(add_handler("struct X;", "MainWindow", "print").is_none(), "nowhere to put it");
+    }
+
+    /// A grid's columns' own properties are kept in the file as written and given to the grid by
+    /// the generated code, only those not at their defaults.
+    #[test]
+    fn a_grid_column_s_properties_survive_saving_and_reach_the_code() {
+        let mut f = FormFile::new("MainWindow");
+        let mut g = Control::new(Kind::Grid, "people", [10, 10, 300, 200]);
+        g.columns = vec![("Name".into(), 120), ("Paid".into(), 60), ("Size".into(), 80)];
+        g.column_props = vec![
+            crate::ColumnProps::default(),
+            crate::ColumnProps { editor: Some("check".into()), align: Some("center".into()), ..Default::default() },
+            crate::ColumnProps { editor: Some("combo".into()), items: vec!["S".into(), "M".into()], sort: Some("desc".into()), ..Default::default() },
+        ];
+        f.control.push(g);
+        let again = FormFile::parse(&f.to_toml()).expect("reads back");
+        assert_eq!(again.control[0].column_props, f.control[0].column_props);
+        let code = generate(&again, &Options::default());
+        assert!(!code.contains("set_column(people, 0,"), "a column at its defaults is left alone");
+        assert!(code.contains("phai_ui::grid::set_column(people, 1, phai_ui::grid::Column { align: phai_ui::grid::Align::Center, editor: phai_ui::grid::Editor::Check, ..phai_ui::grid::Column::new() });"), "{code}");
+        assert!(code.contains("editor: phai_ui::grid::Editor::Combo(vec![\"S\".to_string(), \"M\".to_string()])"), "{code}");
+        assert!(code.contains("sort: Some(false)"), "{code}");
     }
 }
