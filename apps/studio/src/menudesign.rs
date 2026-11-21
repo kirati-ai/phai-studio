@@ -66,6 +66,11 @@ fn state<'a>(h: HWND) -> Option<&'a mut Designer> {
 
 static OPEN: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
+/// Whether the designer is open - its chip in the tray shown chosen.
+pub fn is_open() -> bool {
+    OPEN.load(std::sync::atomic::Ordering::Relaxed) != 0
+}
+
 /// Opens the designer over the form's menu bar, menu `open` dropped down (the "Type Here" of an
 /// empty bar chosen when there is none).
 pub fn open(open: Option<usize>) {
@@ -96,6 +101,7 @@ pub fn open(open: Option<usize>) {
         };
         win::set_state(h, Box::new(Designer { menus, path, sel, edit: None, bar, tops, cells: vec![], panels: vec![], at: POINT { x: bar.left, y: bar.top }, font, busy: false, pending: None, done: false }));
         OPEN.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
+        crate::canvas::refresh_tray();
         relayout(h);
         let _ = wm::ShowWindow(h, wm::SW_SHOW);
         let _ = km::SetFocus(Some(h));
@@ -525,6 +531,7 @@ fn close(h: HWND) {
         d.done = true;
     }
     OPEN.store(0, std::sync::atomic::Ordering::Relaxed);
+    crate::canvas::refresh_tray();
     unsafe {
         let _ = wm::DestroyWindow(h);
     }
