@@ -562,15 +562,8 @@ fn tile_width(gallery: HWND) -> i32 {
 /// Windows' colour dialog, starting at `start`; the colour chosen as `#rrggbb` - the colour
 /// tray's "More colours".
 pub fn choose_colour(owner: HWND, start: &str) -> Option<String> {
-    use windows::Win32::UI::Controls::Dialogs::{ChooseColorW, CC_FULLOPEN, CC_RGBINIT, CHOOSECOLORW};
-    static mut CUSTOM: [COLORREF; 16] = [COLORREF(0x00FF_FFFF); 16];
-    let first = theme::parse_color(start).map(|c| c.colorref()).unwrap_or(0x00FF_FFFF);
-    let mut cc = CHOOSECOLORW { lStructSize: std::mem::size_of::<CHOOSECOLORW>() as u32, hwndOwner: owner, rgbResult: COLORREF(first), lpCustColors: &raw mut CUSTOM as *mut _, Flags: CC_FULLOPEN | CC_RGBINIT, ..Default::default() };
-    if !unsafe { ChooseColorW(&mut cc) }.as_bool() {
-        return None;
-    }
-    let v = cc.rgbResult.0;
-    Some(format!("#{:02x}{:02x}{:02x}", v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF))
+    // Beside the click that asked for it.
+    phai_ui::components::choose_colour(owner, start)
 }
 
 // --- the gallery of ready themes ----------------------------------------------------------------
