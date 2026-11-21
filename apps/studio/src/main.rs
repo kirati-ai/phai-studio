@@ -2278,7 +2278,13 @@ impl Studio {
                     self.add_handler_for_selected();
                 }
             }
-            PROPERTIES => self.show_pane(Pane::Properties, true),
+            PROPERTIES => {
+                self.show_pane(Pane::Properties, true);
+                // A data grid's properties are its columns', as DevExpress's grid opens its designer.
+                if self.selected.and_then(|i| self.doc.form.control.get(i)).is_some_and(|c| c.kind == Kind::Grid) {
+                    self.edit_grid_columns();
+                }
+            }
             id => self.command(id as i32),
         }
     }
