@@ -4100,6 +4100,10 @@ impl Studio {
         self.show_branch();
         // Last, so nothing shown above leaves the form's surface over the editor.
         self.show_code();
+        // The component tray: a form's, not a code file's.
+        if let Some(c) = self.canvas.as_ref() {
+            c.place_tray();
+        }
     }
 
     /// Nothing open: no tab, no form's surface, no project, no properties.
@@ -4110,6 +4114,7 @@ impl Studio {
         // The whole designer area away: the form, its grips and marks with it.
         if let Some(c) = self.canvas.as_ref() {
             win::show(c.hwnd, false);
+            win::show(c.tray, false);
         }
         controls::tabs_relabel(self.tabbar, &[]);
         if let Some(e) = self.explorer.as_mut() {
