@@ -73,6 +73,7 @@ const fn runtime_only(mut s: Spec) -> Spec {
 
 const ALIGN: &[&str] = &["left", "center", "right"];
 const EDIT_ON: &[&str] = &["double_click", "click", "f2"];
+const FIND: &[&str] = &["ctrl_f", "always", "off"];
 const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
 const TEXTS: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Number];
 const CURSORS: &[&str] = &["default", "hand", "ibeam", "wait", "cross", "help", "no", "size_all", "size_we", "size_ns"];
@@ -148,6 +149,13 @@ pub const CONTROL: &[Spec] = &[
     spec("allow_delete_rows", "AllowDeleteRows", "Behavior", Ty::Bool, "true", &[Kind::Grid], How::Call, "Delete takes the chosen row out."),
     spec("editor_show_mode", "EditorShowMode", "Behavior", Ty::Choice(EDIT_ON), "double_click", &[Kind::Grid], How::Call, "What opens a cell for typing: a double-click, a click, or F2 only."),
     spec("enter_moves_next", "EnterMoveNextColumn", "Behavior", Ty::Bool, "false", &[Kind::Grid], How::Call, "Enter keeps the cell and opens the next one."),
+    spec("alternate_row_color", "AlternateRowColor", "Appearance", Ty::Color, "", &[Kind::Grid], How::Call, "Every other row's background, for rows easier to follow."),
+    spec("header_back_color", "HeaderBackColor", "Appearance", Ty::Color, "", &[Kind::Grid], How::Call, "The headings' background (and the footer's)."),
+    spec("header_fore_color", "HeaderForeColor", "Appearance", Ty::Color, "", &[Kind::Grid], How::Call, "The headings' words (and the footer's)."),
+    spec("row_height", "RowHeight", "Appearance", Ty::Int(0, 80), "0", &[Kind::Grid], How::Call, "The rows this tall, pixels; 0 - as the font makes them."),
+    spec("show_footer", "ShowFooter", "Appearance", Ty::Bool, "false", &[Kind::Grid], How::Call, "A row under the rows with each column's total (a column's Summary)."),
+    spec("find_panel", "FindPanel", "Behavior", Ty::Choice(FIND), "ctrl_f", &[Kind::Grid], How::Call, "The find box: Ctrl+F opens it, always there, or none."),
+    spec("copy_headers", "CopyColumnHeaders", "Behavior", Ty::Bool, "true", &[Kind::Grid], How::Call, "Ctrl+C copies the headings with the rows."),
     spec("allow_column_moving", "AllowColumnMoving", "Behavior", Ty::Bool, "false", &[Kind::Grid], How::Call, "Columns can be dragged by their headings into another order."),
     spec("check_boxes", "CheckBoxes", "Appearance", Ty::Bool, "false", &[Kind::List, Kind::Tree], How::Call, "A box to tick before each item."),
     spec("header", "HeaderStyle", "Appearance", Ty::Choice(&["clickable", "none"]), "clickable", &[Kind::List], How::Call, "The column headings shown, or none."),

@@ -18,6 +18,12 @@ static TABLES: RwLock<Vec<&'static [(&'static str, &'static str)]>> = RwLock::ne
 /// The library's own words.
 pub const LIBRARY: &[(&str, &str)] = &[
     ("OK", "ตกลง"),
+    ("Count", "จำนวน"),
+    ("Sum", "รวม"),
+    ("Average", "เฉลี่ย"),
+    ("Min", "ต่ำสุด"),
+    ("Max", "สูงสุด"),
+    ("Find...", "ค้นหา..."),
     ("Cancel", "ยกเลิก"),
     ("Yes", "ใช่"),
     ("No", "ไม่"),

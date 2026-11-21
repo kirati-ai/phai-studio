@@ -490,6 +490,15 @@ pub struct ColumnProps {
     /// Its edge can be dragged (default true).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_size: Option<bool>,
+    /// How its values are shown: `n2`, `c2`, `p0`, `d`, `dt`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// The footer's total under it: `sum`, `count`, `avg`, `min`, `max`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    /// Format rules, a line each: `> 1000 back=#ffe4e4 fore=#b00020 row`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<String>,
 }
 
 impl ColumnProps {
@@ -530,6 +539,15 @@ impl ColumnProps {
             Some("desc") => f.push("sort: Some(false)".into()),
             _ => {}
         }
+        if let Some(x) = self.format.as_deref().filter(|x| !x.is_empty()) {
+            f.push(format!("format: {x:?}.to_string()"));
+        }
+        if let Some(x) = self.summary.as_deref().filter(|x| !x.is_empty()) {
+            f.push(format!("summary: phai_ui::grid::Summary::from_word({x:?})"));
+        }
+        if !self.rules.is_empty() {
+            f.push(format!("rules: phai_ui::grid::rules(&[{}])", self.rules.iter().map(|r| format!("{r:?}")).collect::<Vec<_>>().join(", ")));
+        }
         if f.is_empty() {
             "phai_ui::grid::Column::new()".into()
         } else {
@@ -562,6 +580,9 @@ impl ColumnProps {
                 Some("desc") => Some(false),
                 _ => None,
             },
+            format: self.format.clone().unwrap_or_default(),
+            summary: phai_ui::grid::Summary::from_word(self.summary.as_deref().unwrap_or("")),
+            rules: self.rules.iter().filter_map(|r| phai_ui::grid::Rule::parse(r)).collect(),
         }
     }
 }

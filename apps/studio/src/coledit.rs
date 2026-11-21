@@ -1,7 +1,8 @@
 //! The Data grid's column editor, as DevExpress's Grid Designer has its Columns page: the columns
 //! down the left - add, remove, move, or retrieve them from the bound table - and the chosen
 //! one's properties beside them: caption, field, width, shown, alignment, read only, how a cell
-//! is edited (text, number, date, check box, drop-down and its items), sorting and sizing.
+//! is edited (text, number, date, check box, drop-down and its items), sorting and sizing, how
+//! its values are shown, its footer total and its format rules.
 
 use phai_form::ColumnProps;
 use phai_ui::text::{t, tf};
@@ -41,12 +42,18 @@ const ID_ITEMS: i32 = 27;
 const ID_SORT: i32 = 28;
 const ID_ALLOW_SORT: i32 = 29;
 const ID_ALLOW_SIZE: i32 = 30;
+const ID_FORMAT: i32 = 31;
+const ID_SUMMARY: i32 = 32;
+const ID_RULES: i32 = 33;
 const ID_OK: i32 = 1;
 const ID_CANCEL: i32 = 2;
 
 const ALIGNS: [&str; 3] = ["left", "center", "right"];
 const EDITORS: [&str; 5] = ["text", "number", "date", "check", "combo"];
 const SORTS: [&str; 3] = ["", "asc", "desc"];
+const SUMMARIES: [&str; 6] = ["", "sum", "count", "avg", "min", "max"];
+/// The formats offered (others may be typed): none, numbers, baht, percent, dates.
+const FORMATS: [&str; 9] = ["", "n0", "n2", "c0", "c2", "p0", "p2", "d", "dt"];
 
 struct Dialog {
     cols: Vec<Col>,
@@ -68,6 +75,9 @@ struct Dialog {
     sort: HWND,
     allow_sort: HWND,
     allow_size: HWND,
+    format: HWND,
+    summary: HWND,
+    rules: HWND,
     buttons: Vec<(i32, HWND)>,
     /// The boxes being filled: their changes are not the person's.
     loading: bool,
@@ -110,6 +120,9 @@ pub fn edit(owner: HWND, cols: Vec<Col>, fields: Option<Fields>) -> Option<Vec<C
         let sort = row(t("Sorted"), win::combo(hwnd, ID_SORT, font, &[t("No"), t("Ascending"), t("Descending")]));
         let allow_sort = row("", win::checkbox(hwnd, t("A click on its heading sorts"), ID_ALLOW_SORT, font, true));
         let allow_size = row("", win::checkbox(hwnd, t("Its width can be dragged"), ID_ALLOW_SIZE, font, true));
+        let format = row(t("Display format"), win::combo_with(hwnd, ID_FORMAT, font, &FORMATS, true));
+        let summary = row(t("Footer total"), win::combo(hwnd, ID_SUMMARY, font, &[t("None"), t("Sum"), t("Count"), t("Average"), t("Min"), t("Max")]));
+        let rules = row(t("Format rules"), win::button(hwnd, t("Format Rules..."), ID_RULES, font, false));
         let mut buttons = Vec::new();
         for (id, text, glyph) in [(ID_ADD, t("Add"), 0xE710u16), (ID_REMOVE, t("Remove"), 0xE74D), (ID_UP, t("Move Up"), 0xE74A), (ID_DOWN, t("Move Down"), 0xE74B), (ID_RETRIEVE, t("Retrieve Fields"), 0xE72C), (ID_OK, t("OK"), 0), (ID_CANCEL, t("Cancel"), 0)] {
             let b = win::button(hwnd, text, id, font, id == ID_OK);
@@ -123,7 +136,7 @@ pub fn edit(owner: HWND, cols: Vec<Col>, fields: Option<Fields>) -> Option<Vec<C
                 win::enable(*b, false);
             }
         }
-        win::set_state(hwnd, Box::new(Dialog { cols, bound, fields, known, list, rows, caption, field, width, visible, align, read_only, editor, items, sort, allow_sort, allow_size, buttons, loading: false, ok: false, done: false }));
+        win::set_state(hwnd, Box::new(Dialog { cols, bound, fields, known, list, rows, caption, field, width, visible, align, read_only, editor, items, sort, allow_sort, allow_size, format, summary, rules, buttons, loading: false, ok: false, done: false }));
         fill_list(hwnd, 0);
         let (w, h) = (win::px(hwnd, 820), win::px(hwnd, 560));
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, w, h, wm::SWP_NOZORDER | wm::SWP_NOMOVE);
@@ -201,6 +214,9 @@ fn load(h: HWND) {
     set_combo(d.sort, SORTS.iter().position(|a| Some(*a) == c.props.sort.as_deref()).unwrap_or(0));
     win::set_checked(d.allow_sort, c.props.allow_sort != Some(false));
     win::set_checked(d.allow_size, c.props.allow_size != Some(false));
+    win::set_text(d.format, c.props.format.as_deref().unwrap_or(""));
+    set_combo(d.summary, SUMMARIES.iter().position(|a| Some(*a) == c.props.summary.as_deref()).unwrap_or(0));
+    win::set_text(d.rules, &if c.props.rules.is_empty() { t("Format Rules...").to_string() } else { tf("Format Rules ({0})...", &[&c.props.rules.len()]) });
     d.loading = false;
 }
 
@@ -229,6 +245,9 @@ fn store(h: HWND) {
     c.props.sort = pick(d.sort, &SORTS);
     c.props.allow_sort = (!win::is_checked(d.allow_sort)).then_some(false);
     c.props.allow_size = (!win::is_checked(d.allow_size)).then_some(false);
+    let f = win::text_of(d.format).trim().to_string();
+    c.props.format = (!f.is_empty()).then_some(f);
+    c.props.summary = pick(d.summary, &SUMMARIES);
     let caption = if c.props.visible == Some(false) { tf("{0} (hidden)", &[&c.caption]) } else { c.caption.clone() };
     let field = c.field.clone();
     let combo = c.props.editor.as_deref() == Some("combo");
@@ -316,7 +335,37 @@ fn command(h: HWND, id: i32, code: u32) {
                 store(h);
             }
         }
-        ID_ALIGN | ID_EDITOR | ID_SORT if code == 1 => store(h),
+        ID_ALIGN | ID_EDITOR | ID_SORT | ID_SUMMARY if code == 1 => store(h),
+        ID_FORMAT if code == 5 /* CBN_EDITCHANGE */ => store(h),
+        ID_FORMAT if code == 1 => {
+            let k = win::combo_selected(d.format);
+            if let Some(f) = usize::try_from(k).ok().and_then(|k| FORMATS.get(k)) {
+                d.loading = true;
+                win::set_text(d.format, f);
+                d.loading = false;
+                store(h);
+            }
+        }
+        ID_RULES => {
+            let Some(i) = chosen(d) else { return };
+            let now = d.cols[i].props.rules.join("\n");
+            let help = t("One rule a line: a test, then the colours - the whole row with row. Tests: = != > >= < <= contains empty notempty. Like: > 1000 back=#ffe4e4 fore=#b00020 row");
+            if let Some(text) = phai_ui::dialogs::ask_lines(Some(h), t("Format Rules"), help, &now) {
+                let mut kept = Vec::new();
+                let mut bad = Vec::new();
+                for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                    match phai_ui::grid::Rule::parse(line) {
+                        Some(r) => kept.push(r.text()),
+                        None => bad.push(line.to_string()),
+                    }
+                }
+                if !bad.is_empty() {
+                    win::message(Some(h), &tf("Not rules, left out:\n{0}", &[&bad.join("\n")]), t("Format Rules"), wm::MB_ICONWARNING);
+                }
+                d.cols[i].props.rules = kept;
+                load(h);
+            }
+        }
         ID_VISIBLE | ID_READ_ONLY | ID_ALLOW_SORT | ID_ALLOW_SIZE => store(h),
         _ => {}
     }

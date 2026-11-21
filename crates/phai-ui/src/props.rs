@@ -348,6 +348,41 @@ pub fn enter_moves_next(h: HWND, on: bool) {
     crate::grid::set_enter_moves_next(h, on);
 }
 
+/// AlternateRowColor: every other row's background.
+pub fn alternate_row_color(h: HWND, c: &str) {
+    crate::grid::set_alternate_row_color(h, c);
+}
+
+/// HeaderBackColor: the headings' background.
+pub fn header_back_color(h: HWND, c: &str) {
+    crate::grid::set_header_back_color(h, c);
+}
+
+/// HeaderForeColor: the headings' words.
+pub fn header_fore_color(h: HWND, c: &str) {
+    crate::grid::set_header_fore_color(h, c);
+}
+
+/// RowHeight: the rows this tall.
+pub fn row_height(h: HWND, px: i32) {
+    crate::grid::set_row_height(h, px);
+}
+
+/// ShowFooter: the totals under the rows.
+pub fn show_footer(h: HWND, on: bool) {
+    crate::grid::set_show_footer(h, on);
+}
+
+/// FindPanel: `ctrl_f`, `always` or `off`.
+pub fn find_panel(h: HWND, mode: &str) {
+    crate::grid::set_find_panel(h, mode);
+}
+
+/// CopyColumnHeaders: Ctrl+C copies the headings too.
+pub fn copy_headers(h: HWND, on: bool) {
+    crate::grid::set_copy_headers(h, on);
+}
+
 /// AllowColumnMoving: columns dragged by their headings into another order.
 pub fn allow_column_moving(h: HWND, on: bool) {
     list_ex(h, 0x10 /* LVS_EX_HEADERDRAGDROP */, on);
@@ -561,6 +596,13 @@ pub fn apply(h: HWND, name: &str, value: &str) {
         "editor_show_mode" => editor_show_mode(h, value),
         "enter_moves_next" => enter_moves_next(h, yes),
         "allow_column_moving" => allow_column_moving(h, yes),
+        "alternate_row_color" => alternate_row_color(h, value),
+        "header_back_color" => header_back_color(h, value),
+        "header_fore_color" => header_fore_color(h, value),
+        "row_height" => row_height(h, n),
+        "show_footer" => show_footer(h, yes),
+        "find_panel" => find_panel(h, value),
+        "copy_headers" => copy_headers(h, yes),
         "check_boxes" => check_boxes(h, yes),
         "header" => header(h, value),
         "hide_selection" => hide_selection(h, yes),
