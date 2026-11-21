@@ -501,11 +501,12 @@ pub fn file_for(root: &Path, request_line: &str) -> Option<PathBuf> {
     out.is_file().then_some(out)
 }
 
-/// Serves `root` on this computer only: the port.
+/// Serves `root` on this computer only: the port. Its own page's data requests are given the
+/// session's key ([`session_key`]).
 pub fn serve(root: PathBuf) -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
-    serve_with(listener, Arc::new(Mutex::new(root)), false);
+    serve_with(listener, Arc::new(Mutex::new(root)), false, true);
     Ok(port)
 }
 
@@ -527,7 +528,7 @@ pub fn serve_lan(root: PathBuf) -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind(("0.0.0.0", PHONE_PORT)).or_else(|_| std::net::TcpListener::bind("0.0.0.0:0"))?;
     let port = listener.local_addr()?.port();
     let folder = Arc::new(Mutex::new(root));
-    serve_with(listener, folder.clone(), true);
+    serve_with(listener, folder.clone(), true, false);
     *lan = Some((folder, port));
     Ok(port)
 }
@@ -585,7 +586,6 @@ pub fn with_reload(html: &str) -> String {
 /// key, its port, the process, and the job that ends it when Studio ends.
 struct DataServer {
     project: PathBuf,
-    key: String,
     port: u16,
     child: std::process::Child,
     _job: isize,
@@ -614,13 +614,20 @@ fn job_for(child: &std::process::Child) -> isize {
     }
 }
 
-/// The project's data server built and started on this computer, for Run in Browser (`key`
-/// empty) or Run on Phone (the access key the phone asks for once) - kept while it is the same
-/// project and key. What went wrong, if it could not.
-pub fn start_data_server(project: &Path, key: &str) -> Result<(), String> {
+/// The access key of the data servers Studio starts, one for its whole run: Run in Browser's
+/// page is given it by the page server, a phone asks for it once (it is on the status bar).
+pub fn session_key() -> &'static str {
+    static KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    KEY.get_or_init(|| phai_data::server::random_key(6))
+}
+
+/// The project's data server built and started on this computer, with [`session_key`] - kept
+/// while it is the same project. What went wrong, if it could not.
+pub fn start_data_server(project: &Path) -> Result<(), String> {
+    let key = session_key();
     let mut data = DATA.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(d) = data.as_mut() {
-        if d.project == project && d.key == key && d.child.try_wait().ok().flatten().is_none() {
+        if d.project == project && d.child.try_wait().ok().flatten().is_none() {
             return Ok(());
         }
         let _ = d.child.kill();
@@ -655,18 +662,33 @@ pub fn start_data_server(project: &Path, key: &str) -> Result<(), String> {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    *data = Some(DataServer { project: project.to_path_buf(), key: key.to_string(), port, child, _job: job });
+    *data = Some(DataServer { project: project.to_path_buf(), port, child, _job: job });
     Ok(())
 }
 
-/// A request for `/phai-data/...` passed on to the data server as it came, its answer back.
-fn pass_to_data(first: &str, head: &[String], reader: &mut BufReader<std::net::TcpStream>) -> Vec<u8> {
+/// The value of a request's header, if it has it.
+fn header<'a>(head: &'a [String], name: &str) -> Option<&'a str> {
+    head.iter().find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim()))
+}
+
+/// Whether a request is this computer's own page asking: addressed to `localhost` or `127.0.0.1`
+/// (not a name of another site that leads here) and from that page, not another site's.
+fn own_page(head: &[String]) -> bool {
+    let Some(host) = header(head, "host") else { return false };
+    let name = host.rsplit_once(':').map_or(host, |(n, _)| n);
+    let local = matches!(name.to_ascii_lowercase().as_str(), "localhost" | "127.0.0.1");
+    local && header(head, "origin").is_none_or(|o| o.eq_ignore_ascii_case(&format!("http://{host}")))
+}
+
+/// A request for `/phai-data/...` passed on to the data server as it came, its answer back -
+/// given the session's key when `give_key` and it is this computer's own page asking.
+fn pass_to_data(first: &str, head: &[String], reader: &mut BufReader<std::net::TcpStream>, give_key: bool) -> Vec<u8> {
     let port = data_port();
     let unavailable = b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: 44\r\nConnection: close\r\n\r\n{\"error\":\"the data server is not running\"}".to_vec();
     if port == 0 {
         return unavailable;
     }
-    let length: usize = head.iter().find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.trim().parse().ok())).unwrap_or(0);
+    let length: usize = header(head, "content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
     let mut body = vec![0u8; length.min(64 << 20)];
     if reader.read_exact(&mut body).is_err() {
         return unavailable;
@@ -675,6 +697,9 @@ fn pass_to_data(first: &str, head: &[String], reader: &mut BufReader<std::net::T
     let mut req = first.as_bytes().to_vec();
     for l in head {
         req.extend_from_slice(l.as_bytes());
+    }
+    if give_key && header(head, "authorization").is_none() && own_page(head) {
+        req.extend_from_slice(format!("Authorization: Bearer {}\r\n", session_key()).as_bytes());
     }
     req.extend_from_slice(b"\r\n");
     req.extend_from_slice(&body);
@@ -686,7 +711,9 @@ fn pass_to_data(first: &str, head: &[String], reader: &mut BufReader<std::net::T
     if answer.is_empty() { unavailable } else { answer }
 }
 
-fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: bool) {
+/// Serves `root` on `listener`: `live` pages reload when the build changes; `give_key` gives this
+/// computer's own page the data server's key.
+fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: bool, give_key: bool) {
     std::thread::spawn(move || {
         for stream in listener.incoming().flatten() {
             let root = root.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -708,7 +735,7 @@ fn serve_with(listener: std::net::TcpListener, root: Arc<Mutex<PathBuf>>, live: 
                 }
                 // The data server's requests, passed on: the page and its data at one address.
                 if first.split_whitespace().nth(1).is_some_and(|p| p.contains("/phai-data")) {
-                    let reply = pass_to_data(&first, &head, &mut reader);
+                    let reply = pass_to_data(&first, &head, &mut reader, give_key);
                     let _ = stream.write_all(&reply);
                     let _ = stream.flush();
                     return;
@@ -917,6 +944,17 @@ mod tests {
     }
 
     #[test]
+    fn only_this_computer_s_own_page_is_given_the_data_key() {
+        let h = |lines: &[&str]| lines.iter().map(|l| format!("{l}\r\n")).collect::<Vec<_>>();
+        assert!(own_page(&h(&["Host: localhost:5000"])));
+        assert!(own_page(&h(&["Host: 127.0.0.1:5000", "Origin: http://127.0.0.1:5000"])));
+        assert!(!own_page(&h(&["Host: localhost:5000", "Origin: https://evil.example"])), "another site open in the browser");
+        assert!(!own_page(&h(&["Host: evil.example:5000", "Origin: http://evil.example:5000"])), "a name of another site leading here");
+        assert!(!own_page(&h(&["Host: 192.168.1.5:8790"])), "another computer");
+        assert!(!own_page(&h(&["Origin: http://localhost:5000"])), "no address");
+    }
+
+    #[test]
     fn the_project_s_web_css_comes_after_the_theme() {
         let dir = std::env::temp_dir().join(format!("phai-webcss-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -938,7 +976,7 @@ mod tests {
         // As Run on Phone serves, on this computer only - no firewall question in a test.
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        serve_with(listener, Arc::new(Mutex::new(dir.clone())), true);
+        serve_with(listener, Arc::new(Mutex::new(dir.clone())), true, false);
         let page = get(port, "/");
         assert!(page.contains("hi") && page.contains("__phai_stamp") && page.find("__phai_stamp") < page.find("</body>"), "{page}");
         assert!(!get(port, "/app.js").contains("__phai_stamp"), "only pages have it");
