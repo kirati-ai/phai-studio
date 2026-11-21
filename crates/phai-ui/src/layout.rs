@@ -210,6 +210,7 @@ impl Layout {
         let (ox, oy) = if scrolls { crate::form::update_scrollbars(parent, (scale(size.0, dpi), scale(size.1, dpi))) } else { (0, 0) };
         let items: Vec<Item> = self.items.iter().map(|(_, i)| *i).collect();
         let rects = self.in_panes(arrange(self.design, size, self.padding, &items));
+        let mut combos = Vec::new();
         unsafe {
             let Ok(mut batch) = wm::BeginDeferWindowPos(rects.len() as i32) else { return };
             for ((h, _), r) in self.items.iter().zip(&rects) {
@@ -224,12 +225,23 @@ impl Layout {
                 } else {
                     (None, wm::SWP_NOZORDER | wm::SWP_NOACTIVATE)
                 };
+                // A drop-down: its window's height is its list's room; its box takes the height
+                // designed (below).
+                let hgt = if crate::win::kind_of(*h) == Some(crate::win::Kind::Combo) {
+                    combos.push((*h, hgt));
+                    hgt + scale(240, dpi)
+                } else {
+                    hgt
+                };
                 match wm::DeferWindowPos(batch, *h, after, x, y, w.max(0), hgt.max(0), flags) {
                     Ok(b) => batch = b,
                     Err(_) => return,
                 }
             }
             let _ = wm::EndDeferWindowPos(batch);
+        }
+        for (h, height) in combos {
+            crate::win::combo_box_height(h, height);
         }
     }
 }
