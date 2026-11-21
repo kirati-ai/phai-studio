@@ -1,4 +1,5 @@
-//! The Table Designer, as Visual Studio's: a grid of the table's columns - name, data type, allow
+//! The Database Designer: the server's databases (a new one made here too) and each one's tables
+//! at the left; the table chosen designed beside them, as Visual Studio's Table Designer: a grid of the table's columns - name, data type, allow
 //! nulls, primary key, identity, default - edited in place with a click; its indexes and foreign
 //! keys below; and the script that makes the design so, written as you go. Update runs it.
 //! A window of its own, as the other designers are; Ctrl+S updates.
@@ -34,10 +35,15 @@ const ID_DEL_FK: i32 = 29;
 const ID_TABLES: i32 = 30;
 /// Columns, Indexes, Foreign Keys: one page each, as tabs.
 const ID_PAGES: i32 = 31;
+/// The server's databases, and New Database.
+const ID_DBS: i32 = 32;
+const ID_NEW_DB: i32 = 33;
 const ID_UPDATE: i32 = 1;
 const ID_CLOSE: i32 = 2;
 
 struct Designer {
+    dbs: HWND,
+    databases: Vec<String>,
     pages: HWND,
     tables: HWND,
     /// The tables listed, after "(new table)".
@@ -69,9 +75,29 @@ fn check(b: bool) -> &'static str {
     if b { "✓" } else { "" }
 }
 
-/// The window's title: "Table Designer - lotto.user".
+/// The window's title: "Database Designer - lotto.user".
 fn title_of(db: &str, table: Option<&str>) -> String {
-    tf("Table Designer - {0}", &[&format!("{db}.{}", table.unwrap_or("new_table"))])
+    tf("Database Designer - {0}", &[&format!("{db}.{}", table.unwrap_or("new_table"))])
+}
+
+/// A table list's rows: "(new table)", then each table.
+fn fill_tables(list: HWND, names: &[String]) {
+    unsafe {
+        wm::SendMessageW(list, cc::LVM_DELETEALLITEMS, None, None);
+    }
+    win::list_add(list, &[t("(new table)")]);
+    win::list_set_image(list, 0, 0);
+    for (i, n) in names.iter().enumerate() {
+        win::list_add(list, &[n]);
+        win::list_set_image(list, i + 1, 1);
+    }
+}
+
+fn table_names(conn: &Connection, db: &str) -> Vec<String> {
+    if db.is_empty() {
+        return vec![];
+    }
+    conn.tables(db).map(|v| v.into_iter().filter(|(_, view)| !view).map(|(n, _)| n).collect()).unwrap_or_default()
 }
 
 /// Icons: the buttons' and the lists' - glyphs of Windows' icon font.
@@ -107,21 +133,29 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         };
         let name_text = existing.as_ref().map(|d| d.name.clone()).unwrap_or_else(|| "new_table".into());
         let mut labels = Vec::new();
-        for l in [t("Table name"), t("Columns"), t("Indexes"), t("Foreign Keys"), t("Script")] {
+        for l in [t("Table name"), t("Columns"), t("Indexes"), t("Foreign Keys"), t("Script"), t("Database")] {
             labels.push(win::label(hwnd, l, 0, font));
         }
         let name = win::edit(hwnd, &name_text, ID_NAME, font, false);
         let pages = phai_ui::controls::tabs(hwnd, ID_PAGES, font, &[t("Columns"), t("Indexes"), t("Foreign Keys")]);
         // The database's tables, the one designed chosen.
-        let tables = win::list(hwnd, ID_TABLES, font, &[(&tf("Tables of {0}", &[&db]), 190)]);
-        let names: Vec<String> = conn.tables(db).map(|v| v.into_iter().filter(|(_, view)| !view).map(|(n, _)| n).collect()).unwrap_or_default();
-        win::list_icons(tables, &[G_ADD, G_TABLE]);
-        win::list_add(tables, &[t("(new table)")]);
-        win::list_set_image(tables, 0, 0);
-        for (i, n) in names.iter().enumerate() {
-            win::list_add(tables, &[n]);
-            win::list_set_image(tables, i + 1, 1);
+        // The server's databases, the one designed in chosen; SQLite's one is its file.
+        let mut databases: Vec<String> = if conn.kind == phai_data::Kind::Sqlite { vec![db.to_string()] } else { conn.databases().unwrap_or_default() };
+        if !db.is_empty() && !databases.iter().any(|d| d == db) {
+            databases.insert(0, db.to_string());
         }
+        let refs: Vec<&str> = databases.iter().map(String::as_str).collect();
+        let dbs = win::combo(hwnd, ID_DBS, font, &refs);
+        if let Some(i) = databases.iter().position(|d| d == db) {
+            wm::SendMessageW(dbs, 0x014E /* CB_SETCURSEL */, Some(WPARAM(i)), None);
+        }
+        let new_db = win::button(hwnd, t("New Database..."), ID_NEW_DB, font, false);
+        win::set_button_glyph(new_db, G_ADD);
+        win::enable(new_db, conn.kind != phai_data::Kind::Sqlite);
+        let tables = win::list(hwnd, ID_TABLES, font, &[(t("Tables"), 190)]);
+        let names = table_names(&conn, db);
+        win::list_icons(tables, &[G_ADD, G_TABLE]);
+        fill_tables(tables, &names);
         let at = existing.as_ref().and_then(|d| names.iter().position(|n| *n == d.name)).map(|i| i + 1).unwrap_or(0);
         win::list_select(tables, at);
         let cols = win::list(hwnd, ID_COLS, font, &[(t("Column Name"), 170), (t("Data Type"), 150), (t("Allow Nulls"), 80), (t("Primary Key"), 85), (t("Identity"), 70), (t("Default"), 140)]);
@@ -135,7 +169,7 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
         win::list_icons(fk, &[G_LINK]);
         let script = win::edit_lines(hwnd, "", ID_SCRIPT, mono);
         wm::SendMessageW(script, 0x00CF /* EM_SETREADONLY */, Some(WPARAM(1)), None);
-        let mut buttons = Vec::new();
+        let mut buttons = vec![(ID_NEW_DB, new_db)];
         for (id, label) in [
             (ID_ADD_COL, t("Add Column")),
             (ID_DEL_COL, t("Delete Column")),
@@ -168,7 +202,7 @@ pub fn open(owner: HWND, conn: Connection, db: &str, existing: Option<TableDef>)
             columns: vec![ColDef { name: "id".into(), ty: phai_data::schema::types_for(conn.kind)[0].to_string(), nullable: false, pk: true, auto: true, ..Default::default() }],
             ..Default::default()
         });
-        win::set_state(hwnd, Box::new(Designer { pages, tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, font, mono }));
+        win::set_state(hwnd, Box::new(Designer { dbs, databases, pages, tables, names, conn, db: db.to_string(), old: existing, def, name, cols, idx, fk, script, labels, buttons, editor: None, done: false, font, mono }));
         refresh(hwnd);
         // In the middle of the screen, as large as fits.
         let (w, h) = (win::px(hwnd, 1100), win::px(hwnd, 760));
@@ -206,7 +240,61 @@ pub fn may_close(h: HWND) -> bool {
     if s.conn.design_script(&s.db, s.old.as_ref(), &s.def).is_empty() {
         return true;
     }
-    win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Table Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES
+    win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Database Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES
+}
+
+/// Another database chosen: its tables at the left, a new table to design in it.
+fn switch_database(h: HWND, db: &str) {
+    let Some(s) = state(h) else { return };
+    if s.db == db {
+        return;
+    }
+    if !may_close(h) {
+        if let Some(i) = s.databases.iter().position(|d| *d == s.db) {
+            unsafe {
+                wm::SendMessageW(s.dbs, 0x014E, Some(WPARAM(i)), None);
+            }
+        }
+        return;
+    }
+    s.db = db.to_string();
+    s.names = table_names(&s.conn, db);
+    fill_tables(s.tables, &s.names);
+    win::list_select(s.tables, 0);
+    show_def(h, None);
+}
+
+/// New Database: its name asked, made on the server, chosen - Server Explorer reads the server
+/// again.
+fn new_database(h: HWND) {
+    let Some(s) = state(h) else { return };
+    let Some(name) = dialogs::ask(Some(h), t("New Database"), t("The new database's name - letters, digits, _ and -:"), "", false) else { return };
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return;
+    }
+    let (c, n) = (s.conn.clone(), name.clone());
+    match dialogs::wait_for(Some(h), t("New Database"), t("Saving..."), move |_| c.create_database(&n)) {
+        Some(Ok(())) => {
+            s.databases.push(name.clone());
+            unsafe {
+                let w = win::wide(&name);
+                wm::SendMessageW(s.dbs, 0x0143 /* CB_ADDSTRING */, None, Some(LPARAM(w.as_ptr() as isize)));
+                wm::SendMessageW(s.dbs, 0x014E, Some(WPARAM(s.databases.len() - 1)), None);
+            }
+            switch_database(h, &name);
+            if let Some(st) = crate::studio() {
+                st.say_status(&tf("Database {0} made", &[&name]));
+                if let Some(sv) = st.servers.as_mut() {
+                    sv.reload_servers();
+                }
+            }
+        }
+        Some(Err(e)) => {
+            win::message(Some(h), &e, t("Database Designer"), wm::MB_ICONWARNING);
+        }
+        None => {}
+    }
 }
 
 /// The title again: another table chosen, or one made.
@@ -225,7 +313,7 @@ fn choose_table(h: HWND, k: usize) {
         return;
     }
     if !s.conn.design_script(&s.db, s.old.as_ref(), &s.def).is_empty() && s.old.is_some() {
-        let ask = win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Table Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION);
+        let ask = win::message(Some(h), t("The changes to this table are not updated yet. Leave them?"), t("Database Designer"), wm::MB_YESNO | wm::MB_ICONQUESTION);
         if ask != wm::IDYES {
             let back = now.and_then(|n| s.names.iter().position(|x| *x == n)).map(|i| i + 1).unwrap_or(0);
             win::list_select(s.tables, back);
@@ -236,12 +324,18 @@ fn choose_table(h: HWND, k: usize) {
         Some(name) => match s.conn.table_def(&s.db, name) {
             Ok(d) => Some(d),
             Err(e) => {
-                win::message(Some(h), &e, t("Table Designer"), wm::MB_ICONWARNING);
+                win::message(Some(h), &e, t("Database Designer"), wm::MB_ICONWARNING);
                 return;
             }
         },
         None => None,
     };
+    show_def(h, def);
+}
+
+/// `def`'s design shown (none: a new table's).
+fn show_def(h: HWND, def: Option<TableDef>) {
+    let Some(s) = state(h) else { return };
     s.old = def.clone();
     s.def = def.unwrap_or_else(|| TableDef {
         name: "new_table".into(),
@@ -315,9 +409,14 @@ fn layout(h: HWND) {
     }
     let px = |v| win::px(h, v);
     let (m, row, gap, bw) = (px(11), px(23), px(6), px(140));
-    // The tables down the left; the design beside them.
+    // The database and the tables down the left; the design beside them.
     let side = px(210);
-    win::move_to(s.tables, m, m, side, r.bottom - 2 * m);
+    win::move_to(s.labels[5], m, m + px(3), side, row);
+    win::move_to(s.dbs, m, m + row, side, px(300));
+    let nb = s.buttons.iter().find(|(i, _)| *i == ID_NEW_DB).map(|(_, b)| *b).unwrap_or_default();
+    win::move_to(nb, m, m + row * 2 + gap, side, row);
+    let ty = m + row * 3 + gap * 3;
+    win::move_to(s.tables, m, ty, side, r.bottom - m - ty);
     let x0 = m + side + gap * 2;
     let w = r.right - x0 - m;
     let list_w = w - bw - gap;
@@ -535,7 +634,7 @@ pub fn update(h: HWND) {
     close_editor(h, true);
     let Some(s) = state(h) else { return };
     if s.def.name.trim().is_empty() || s.def.columns.is_empty() {
-        win::message(Some(h), t("A table needs a name and at least one column."), t("Table Designer"), wm::MB_ICONINFORMATION);
+        win::message(Some(h), t("A table needs a name and at least one column."), t("Database Designer"), wm::MB_ICONINFORMATION);
         return;
     }
     let script = s.conn.design_script(&s.db, s.old.as_ref(), &s.def);
@@ -544,7 +643,7 @@ pub fn update(h: HWND) {
     }
     let (c, db) = (s.conn.clone(), s.db.clone());
     let sql = script.join(";\n") + ";";
-    match dialogs::wait_for(Some(h), t("Table Designer"), t("Saving..."), move |_| c.query(Some(&db), &sql)) {
+    match dialogs::wait_for(Some(h), t("Database Designer"), t("Saving..."), move |_| c.query(Some(&db), &sql)) {
         Some(Ok(_)) => {
             let name = s.def.name.clone();
             if let Ok(d) = s.conn.table_def(&s.db, &name) {
@@ -579,7 +678,7 @@ pub fn update(h: HWND) {
             }
         }
         Some(Err(e)) => {
-            win::message(Some(h), &e, t("Table Designer"), wm::MB_ICONWARNING);
+            win::message(Some(h), &e, t("Database Designer"), wm::MB_ICONWARNING);
         }
         None => {}
     }
@@ -628,6 +727,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let id = win::loword(w.0) as i32;
             let code = win::hiword(w.0);
             match id {
+                ID_DBS if code == 1 /* CBN_SELCHANGE */ => {
+                    let k = win::combo_selected(s.dbs);
+                    if let Some(d) = usize::try_from(k).ok().and_then(|k| s.databases.get(k)).cloned() {
+                        switch_database(h, &d);
+                    }
+                }
+                ID_NEW_DB => new_database(h),
                 ID_PAGES => {
                     close_editor(h, true);
                     phai_ui::controls::tabs_select(s.pages, (code as usize) & 0x0FFF);
