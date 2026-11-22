@@ -133,6 +133,51 @@ pub fn take_kept<E: 'static>(hwnd: HWND) -> Option<E> {
     KEPT.with(|k| k.borrow_mut().remove(&(hwnd.0 as isize))).and_then(|b| b.downcast::<E>().ok()).map(|b| *b)
 }
 
+thread_local! {
+    /// Windows in full screen: their style, place and menu bar before, to go back to.
+    static FULL: std::cell::RefCell<HashMap<isize, (i32, RECT, isize)>> = Default::default();
+}
+
+/// The window over the whole of its screen, no frame and no menu bar - or back as it was. As
+/// WinForms' `FormBorderStyle = None` with `WindowState = Maximized`, the menu bar hidden too.
+pub fn set_full_screen(hwnd: HWND, on: bool) {
+    use windows::Win32::Graphics::Gdi;
+    let key = hwnd.0 as isize;
+    let was = FULL.with(|f| f.borrow().get(&key).copied());
+    unsafe {
+        match (on, was) {
+            (true, None) => {
+                let style = wm::GetWindowLongW(hwnd, wm::GWL_STYLE);
+                let mut rect = RECT::default();
+                let _ = wm::GetWindowRect(hwnd, &mut rect);
+                let menu = wm::GetMenu(hwnd);
+                let monitor = Gdi::MonitorFromWindow(hwnd, Gdi::MONITOR_DEFAULTTONEAREST);
+                let mut info = Gdi::MONITORINFO { cbSize: std::mem::size_of::<Gdi::MONITORINFO>() as u32, ..Default::default() };
+                if !Gdi::GetMonitorInfoW(monitor, &mut info).as_bool() {
+                    return;
+                }
+                FULL.with(|f| f.borrow_mut().insert(key, (style, rect, menu.0 as isize)));
+                let _ = wm::SetMenu(hwnd, None);
+                wm::SetWindowLongW(hwnd, wm::GWL_STYLE, (wm::WS_POPUP | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN).0 as i32);
+                let m = info.rcMonitor;
+                let _ = wm::SetWindowPos(hwnd, Some(wm::HWND_TOP), m.left, m.top, m.right - m.left, m.bottom - m.top, wm::SWP_FRAMECHANGED | wm::SWP_SHOWWINDOW);
+            }
+            (false, Some((style, r, menu))) => {
+                FULL.with(|f| f.borrow_mut().remove(&key));
+                wm::SetWindowLongW(hwnd, wm::GWL_STYLE, style);
+                let _ = wm::SetMenu(hwnd, (menu != 0).then_some(wm::HMENU(menu as *mut _)));
+                let _ = wm::SetWindowPos(hwnd, None, r.left, r.top, r.right - r.left, r.bottom - r.top, wm::SWP_FRAMECHANGED | wm::SWP_SHOWWINDOW | wm::SWP_NOZORDER);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether the window is in full screen ([`set_full_screen`]).
+pub fn is_full_screen(hwnd: HWND) -> bool {
+    FULL.with(|f| f.borrow().contains_key(&(hwnd.0 as isize)))
+}
+
 /// The frame's style for FormBorderStyle (`sizable`, `fixed_single`, `fixed_dialog`, `fixed_tool`,
 /// `sizable_tool`, `none`) and the title bar's buttons: (style, extended style).
 pub fn frame(border: &str, maximize_box: bool, minimize_box: bool, control_box: bool, top_most: bool) -> (wm::WINDOW_STYLE, wm::WINDOW_EX_STYLE) {
