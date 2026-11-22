@@ -162,6 +162,13 @@ icon_spacing = [120, 76]                        # ที่ว่างต่อ
 ```
 
 ในโค้ด: `ui.computers.items_add_with_icon(&["ACC-PC01
+
+แบบตัวอักษร: `font_family = "Consolas"` (= CSS `#id { font-family: Consolas }`; ใน theme.css ใช้กับชนิดหรือ class ได้)
+ช่องพิมพ์เปลี่ยนเป็นจุดรหัสผ่านตอนรัน: `ui.answer.set_password(true)` (UseSystemPasswordChar)
+
+หน้าต่างถามแล้วอ่านค่ากลับหลังปิด (แบบอ่าน field ของฟอร์ม WinForms หลัง `ShowDialog()`):
+`if let (DialogResult::Ok, Some(f)) = AskFormUi::show_dialog_for(ui.hwnd, AskForm::new(..)) { f.answer }` —
+อ่านค่าจาก control เก็บไว้ใน event `closed` ของฟอร์ม (`[form] events = { closed = "closed" }`)
 somchai"], 1)`, `set_item_icon(row, n)`, `set_icons("...")`
 
 ## หน้าตาตามสถานะ และ transition (แท็บ Style 🖌)

@@ -733,14 +733,15 @@ pub fn fill(dc: HDC, r: &RECT, c: Color) {
 /// for neither, and the control keeps its own. Kept for the life of the process, one per size,
 /// weight and scale.
 pub fn css_font(h: HWND, s: &Style) -> Option<HFONT> {
-    /// (points, weight, DPI) to the font.
-    type Fonts = HashMap<(i32, i32, i32), isize>;
+    /// (points, weight, DPI, typeface) to the font.
+    type Fonts = HashMap<(i32, i32, i32, String), isize>;
     static FONTS: Mutex<Option<Fonts>> = Mutex::new(None);
-    if s.font_size.is_none() && s.font_weight.is_none() {
+    if s.font_size.is_none() && s.font_weight.is_none() && s.font_family.is_none() {
         return None;
     }
     let d = dpi(h);
     // A weight alone keeps the size the control has - a 14 pt label made bold stays 14 pt.
+    // A typeface or a weight alone keeps the size the control has.
     let own_height = if s.font_size.is_none() {
         unsafe {
             let f = HFONT(wm::SendMessageW(h, wm::WM_GETFONT, None, None).0 as *mut _);
@@ -754,7 +755,7 @@ pub fn css_font(h: HWND, s: &Style) -> Option<HFONT> {
     } else {
         None
     };
-    let key = (s.font_size.unwrap_or(0), s.font_weight.unwrap_or(0), d * 1000 + own_height.unwrap_or(0));
+    let key = (s.font_size.unwrap_or(0), s.font_weight.unwrap_or(0), d * 1000 + own_height.unwrap_or(0), s.font_family.clone().unwrap_or_default());
     let mut map = FONTS.lock().unwrap_or_else(|e| e.into_inner());
     let f = map.get_or_insert_with(HashMap::new).entry(key).or_insert_with(|| unsafe {
         let mut metrics = wm::NONCLIENTMETRICSW { cbSize: std::mem::size_of::<wm::NONCLIENTMETRICSW>() as u32, ..Default::default() };
@@ -768,6 +769,12 @@ pub fn css_font(h: HWND, s: &Style) -> Option<HFONT> {
         }
         if let Some(wt) = s.font_weight {
             lf.lfWeight = wt;
+        }
+        if let Some(face) = &s.font_family {
+            lf.lfFaceName = [0; 32];
+            for (i, u) in face.encode_utf16().take(31).enumerate() {
+                lf.lfFaceName[i] = u;
+            }
         }
         Gdi::CreateFontIndirectW(&lf).0 as isize
     });

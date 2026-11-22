@@ -55,6 +55,32 @@ pub fn take_result(hwnd: HWND) -> DialogResult {
     RESULTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).remove(&(hwnd.0 as isize)).unwrap_or(DialogResult::Cancel)
 }
 
+thread_local! {
+    /// The windows whose program objects are wanted back when they close, and those given back.
+    static WANTED: std::cell::RefCell<std::collections::HashSet<isize>> = Default::default();
+    static KEPT: std::cell::RefCell<HashMap<isize, Box<dyn std::any::Any>>> = Default::default();
+}
+
+/// `hwnd`'s program object is to be given back when it closes ([`keep`], [`take_kept`]) - what
+/// `show_dialog_for` asks, so the program reads what was typed, as a WinForms form's fields after
+/// `ShowDialog()`.
+pub fn want_back(hwnd: HWND) {
+    WANTED.with(|w| w.borrow_mut().insert(hwnd.0 as isize));
+}
+
+/// A closing window's program object, kept when [`want_back`] asked for it (and dropped now
+/// otherwise).
+pub fn keep(hwnd: HWND, events: Box<dyn std::any::Any>) {
+    if WANTED.with(|w| w.borrow_mut().remove(&(hwnd.0 as isize))) {
+        KEPT.with(|k| k.borrow_mut().insert(hwnd.0 as isize, events));
+    }
+}
+
+/// The program object [`keep`] kept for `hwnd`.
+pub fn take_kept<E: 'static>(hwnd: HWND) -> Option<E> {
+    KEPT.with(|k| k.borrow_mut().remove(&(hwnd.0 as isize))).and_then(|b| b.downcast::<E>().ok()).map(|b| *b)
+}
+
 /// The frame's style for FormBorderStyle (`sizable`, `fixed_single`, `fixed_dialog`, `fixed_tool`,
 /// `sizable_tool`, `none`) and the title bar's buttons: (style, extended style).
 pub fn frame(border: &str, maximize_box: bool, minimize_box: bool, control_box: bool, top_most: bool) -> (wm::WINDOW_STYLE, wm::WINDOW_EX_STYLE) {

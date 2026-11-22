@@ -89,6 +89,8 @@ pub struct Style {
     pub font_weight: Option<i32>,
     /// Points.
     pub font_size: Option<i32>,
+    /// The typeface - `font-family: Consolas` - its first name.
+    pub font_family: Option<String>,
     /// The tick of a checkbox, the dot of a radio, a selected tab's line.
     pub accent_color: Option<Color>,
     /// Toolbar glyphs.
@@ -333,7 +335,7 @@ impl Style {
         if top.background.is_some() && top.gradient.is_none() {
             self.gradient = None;
         }
-        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, accent_color, icon_color, transition, gradient, shadow, animation);
+        over!(background, color, border_color, border_width, border_radius, font_weight, font_size, font_family, accent_color, icon_color, transition, gradient, shadow, animation);
         self
     }
 
@@ -398,6 +400,7 @@ enum Value {
     Gradient(Gradient),
     Shadow(Option<Shadow>),
     Animation(Option<Animation>),
+    Text(String),
 }
 
 #[derive(Clone, Debug)]
@@ -457,6 +460,7 @@ enum Prop {
     BorderRadius,
     FontWeight,
     FontSize,
+    FontFamily,
     AccentColor,
     IconColor,
     Transition,
@@ -475,6 +479,7 @@ impl Prop {
             "border-radius" => Prop::BorderRadius,
             "font-weight" => Prop::FontWeight,
             "font-size" => Prop::FontSize,
+            "font-family" => Prop::FontFamily,
             "accent-color" => Prop::AccentColor,
             "icon-color" => Prop::IconColor,
             "transition" => Prop::Transition,
@@ -494,6 +499,7 @@ impl Prop {
             Prop::BorderRadius => "border-radius",
             Prop::FontWeight => "font-weight",
             Prop::FontSize => "font-size",
+            Prop::FontFamily => "font-family",
             Prop::AccentColor => "accent-color",
             Prop::IconColor => "icon-color",
             Prop::Transition => "transition",
@@ -759,6 +765,7 @@ fn apply(s: &mut Style, p: Prop, v: &Value) {
         (Prop::BorderRadius, Value::Number(n)) => s.border_radius = Some(*n),
         (Prop::FontWeight, Value::Number(n)) => s.font_weight = Some(*n),
         (Prop::FontSize, Value::Number(n)) => s.font_size = Some(*n),
+        (Prop::FontFamily, Value::Text(f)) => s.font_family = Some(f.clone()),
         (Prop::Transition, Value::Transition(ms, e)) => s.transition = Some((*ms, *e)),
         (Prop::Animation, Value::Animation(a)) => s.animation = a.clone(),
         _ => {}
@@ -1216,6 +1223,11 @@ fn parse_value(prop: Prop, text: &str) -> Option<Value> {
     if prop == Prop::Animation {
         return if t == "none" { Some(Value::Animation(None)) } else { Animation::parse(t).map(|a| Value::Animation(Some(a))) };
     }
+    if prop == Prop::FontFamily {
+        // The first of the list, its quotes off: `"Cascadia Mono", Consolas` - Cascadia Mono.
+        let first = t.split(',').next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'').trim();
+        return (!first.is_empty() && first.len() < 32).then(|| Value::Text(first.to_string()));
+    }
     if prop == Prop::Transition {
         // `150ms`, `0.2s ease-out`, `background 200ms linear` - every colour, whatever is named.
         let mut ms = None;
@@ -1458,6 +1470,15 @@ mod tests {
             assert!(STANDARD_CSS.contains(word), "the standard sheet should say {word}");
         }
         assert!(!Theme::parse(STANDARD_CSS).unwrap().is_dark());
+    }
+
+    #[test]
+    fn a_typeface_is_the_first_of_font_family() {
+        let t = Theme::parse("textarea { font-family: \"Cascadia Mono\", Consolas, monospace; font-size: 10pt } label { font-family: Consolas }").unwrap();
+        let s = t.style(&Query::kind("textarea"));
+        assert_eq!((s.font_family.as_deref(), s.font_size), (Some("Cascadia Mono"), Some(10)));
+        assert_eq!(t.style(&Query::kind("label")).font_family.as_deref(), Some("Consolas"));
+        assert_eq!(t.style(&Query::kind("button")).font_family, None);
     }
 
     #[test]

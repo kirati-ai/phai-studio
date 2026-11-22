@@ -386,6 +386,16 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        phai_ui::form::take_result(hwnd)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    let _ = writeln!(w, "    /// As [`Self::show_dialog`], `events` given back when the window has closed - to read what");
+    let _ = writeln!(w, "    /// was typed in it, as a WinForms form's fields after `ShowDialog()`:");
+    let _ = writeln!(w, "    /// `if let (DialogResult::Ok, Some(f)) = Ui::show_dialog_for(owner, f) {{ f.answer }}`.");
+    let _ = writeln!(w, "    pub fn show_dialog_for<E: {events} + 'static>(owner: HWND, events: E) -> (phai_ui::form::DialogResult, Option<E>) {{");
+    let _ = writeln!(w, "        let hwnd = Self::make(Some(owner), events);");
+    let _ = writeln!(w, "        phai_ui::form::want_back(hwnd);");
+    let _ = writeln!(w, "        win::modal_loop(hwnd, owner);");
+    let _ = writeln!(w, "        (phai_ui::form::take_result(hwnd), phai_ui::form::take_kept::<E>(hwnd))");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
     if user_control {
         let fm = &f.form;
         let _ = writeln!(w, "    /// Puts this user control on `parent` - a form, or a panel on it - as control `id`, at its");
@@ -1468,6 +1478,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "                unsafe {{");
     let _ = writeln!(w, "                    let _ = Gdi::DeleteObject(host.ui.font.into());");
     let _ = writeln!(w, "                }}");
+    let _ = writeln!(w, "                // Given back to show_dialog_for, when it asked.");
+    let _ = writeln!(w, "                phai_ui::form::keep(hwnd, Box::new(host.events));");
     let _ = writeln!(w, "            }}");
     let _ = writeln!(w, "            win::def(hwnd, msg, w, l)");
     let _ = writeln!(w, "        }}");

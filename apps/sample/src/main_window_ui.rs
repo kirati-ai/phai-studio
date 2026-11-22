@@ -115,6 +115,16 @@ impl MainWindowUi {
         phai_ui::form::take_result(hwnd)
     }
 
+    /// As [`Self::show_dialog`], `events` given back when the window has closed - to read what
+    /// was typed in it, as a WinForms form's fields after `ShowDialog()`:
+    /// `if let (DialogResult::Ok, Some(f)) = Ui::show_dialog_for(owner, f) { f.answer }`.
+    pub fn show_dialog_for<E: MainWindowEvents + 'static>(owner: HWND, events: E) -> (phai_ui::form::DialogResult, Option<E>) {
+        let hwnd = Self::make(Some(owner), events);
+        phai_ui::form::want_back(hwnd);
+        win::modal_loop(hwnd, owner);
+        (phai_ui::form::take_result(hwnd), phai_ui::form::take_kept::<E>(hwnd))
+    }
+
     fn make<E: MainWindowEvents + 'static>(owner: Option<HWND>, events: E) -> HWND {
         win::init();
         if let Ok(sheet) = theme::Theme::parse(include_str!("../theme.css")) {
@@ -406,6 +416,8 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
                 unsafe {
                     let _ = Gdi::DeleteObject(host.ui.font.into());
                 }
+                // Given back to show_dialog_for, when it asked.
+                phai_ui::form::keep(hwnd, Box::new(host.events));
             }
             win::def(hwnd, msg, w, l)
         }

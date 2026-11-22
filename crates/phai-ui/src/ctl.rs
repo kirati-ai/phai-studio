@@ -601,6 +601,16 @@ pub trait TextEdit: Control {
 }
 
 impl TextEdit for TextBox {}
+
+impl TextBox {
+    /// Its letters shown as dots, or as they are - UseSystemPasswordChar, set while it runs.
+    pub fn set_password(self, on: bool) {
+        send(self.0, 0x00CC /* EM_SETPASSWORDCHAR */, if on { 0x25CF } else { 0 }, 0);
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::InvalidateRect(Some(self.0), None, true);
+        }
+    }
+}
 impl TextEdit for RichTextBox {}
 
 macro_rules! text_edit_methods {
