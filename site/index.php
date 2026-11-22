@@ -231,6 +231,10 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.9', '23 พ.ย. 2569', [
+            'หน้าต่าง About ใหม่: ไอคอน ชื่อและรุ่น ลิงก์เว็บไซต์ ข้อตกลงสัญญาอนุญาต ซอร์สโค้ด และแจ้งปัญหา',
+            'About บอกรุ่นของเครื่องมือที่ใช้ร่วมกัน (Rust, Cargo, rust-analyzer, Git, Windows) และปุ่มคัดลอกข้อมูลไว้แนบตอนแจ้งปัญหา',
+        ]],
         ['0.2.8', '23 พ.ย. 2569', [
             'ปุ่มตรวจหารุ่นใหม่ (Help และหน้า About): ดาวน์โหลด ตรวจไฟล์ แล้วติดตั้งรุ่นล่าสุดให้',
             'หน้า About ใหม่: ลิงก์เว็บ phai-studio.monrak.net และซอร์สโค้ด คลิกได้',
@@ -448,6 +452,10 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.9', '23 Nov 2026', [
+            'A new About window: icon, name and version, links to the website, the license terms, the source code and the issues',
+            'About lists the versions of the tools Phai Studio works with (Rust, Cargo, rust-analyzer, Git, Windows), copied in one click for a problem report',
+        ]],
         ['0.2.8', '23 Nov 2026', [
             'Check for updates (Help and About): the newest version downloaded, checked and installed',
             'A new About: links to phai-studio.monrak.net and the source code',
