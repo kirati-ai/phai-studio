@@ -244,6 +244,7 @@ fn event_const(code: u16) -> &'static str {
         e::PRINT_PAGE => "PRINT_PAGE",
         e::POSITION_CHANGED => "POSITION_CHANGED",
         e::FILE_OK => "FILE_OK",
+        e::PAINT => "PAINT",
         _ => "RESIZE",
     }
 }

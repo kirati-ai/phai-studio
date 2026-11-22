@@ -163,6 +163,12 @@ icon_spacing = [120, 76]                        # ที่ว่างต่อ
 
 ในโค้ด: `ui.computers.items_add_with_icon(&["ACC-PC01
 
+control ที่โปรแกรมวาดเอง (event `Paint` ของ WinForms) — panel หรือ picture: `events = { paint = "draw_screen" }`
+→ `fn draw_screen(&mut self, ui, e: &phai_ui::paint::PaintEventArgs)`: `e.clear("#2a2a2c")`, `e.fill_rect`, `e.draw_line`,
+`e.draw_text`, `e.draw_text_centered`, `e.draw_pixels(&bgra, (w, h), e.fit(w, h))` (ภาพ BGRA เช่นจากการจับหน้าจอ),
+`e.hdc()` สำหรับ GDI เอง — วาดลงภาพในหน่วยความจำก่อนแล้วขึ้นจอทีเดียว ไม่กะพริบ; `ui.screen.invalidate()` ให้วาดใหม่,
+`ui.screen.client_size()` ขนาดพื้นที่วาด
+
 คอลัมน์ของ list ชิดซ้าย/กลาง/ขวา: `column_align = "left, right, left"` (ColumnHeader.TextAlign — ขนาดไฟล์ชิดขวา)
 กล่องถาม/แจ้งแบบ `MessageBox.Show`: `phai_ui::form::message_box(ui.hwnd, "ลบไหม?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`
 ตำแหน่ง (`bounds`) นับจากบนสุดของพื้นที่ในหน้าต่าง รวม toolbar ด้วย (แบบ WinForms) — control ที่ไม่ dock วางใต้ toolbar (y ≥ 34)

@@ -39,6 +39,8 @@ pub const PRINT_PAGE: u16 = 15;
 pub const POSITION_CHANGED: u16 = 16;
 /// A file dialog's Open or Save clicked: [`FileOkEventArgs`].
 pub const FILE_OK: u16 = 17;
+/// A panel or picture the program draws itself: [`crate::paint::PaintEventArgs`].
+pub const PAINT: u16 = 18;
 
 /// The bit of `event` in a [`hook`]'s mask.
 pub const fn bit(event: u16) -> u32 {
@@ -299,6 +301,12 @@ unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usiz
         }
     };
     match msg {
+        // Drawn by the program's Paint: into memory, then onto the screen - nothing erased first.
+        wm::WM_ERASEBKGND if wants(PAINT) => return LRESULT(1),
+        wm::WM_PAINT if wants(PAINT) => {
+            crate::paint::paint(h, |e| raise(form, k.id, PAINT, e));
+            return LRESULT(0);
+        }
         wm::WM_SETFOCUS => send(ENTER, &()),
         wm::WM_KILLFOCUS => send(LEAVE, &()),
         wm::WM_KEYDOWN | wm::WM_SYSKEYDOWN | wm::WM_KEYUP | wm::WM_SYSKEYUP => {

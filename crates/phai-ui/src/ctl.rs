@@ -92,6 +92,14 @@ pub trait Control: Copy {
     fn bounds(self) -> RECT {
         win::rect_in_parent(self.hwnd())
     }
+    /// Its inside's width and height in pixels - ClientSize; what a Paint method draws on.
+    fn client_size(self) -> (i32, i32) {
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetClientRect(self.hwnd(), &mut r);
+        }
+        (r.right - r.left, r.bottom - r.top)
+    }
     /// Moved and sized, pixels. The window's layout puts it back where the form says when the
     /// window is sized; change the form for good.
     fn set_bounds(self, x: i32, y: i32, w: i32, h: i32) {
@@ -217,6 +225,9 @@ macro_rules! control {
             }
             pub fn bounds(self) -> RECT {
                 Control::bounds(self)
+            }
+            pub fn client_size(self) -> (i32, i32) {
+                Control::client_size(self)
             }
             pub fn set_bounds(self, x: i32, y: i32, w: i32, h: i32) {
                 Control::set_bounds(self, x, y, w, h)

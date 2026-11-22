@@ -17,6 +17,7 @@ pub enum Args {
     Files,
     Print,
     FileOk,
+    Paint,
 }
 
 impl Args {
@@ -31,6 +32,7 @@ impl Args {
             Args::Item => Some("phai_ui::events::ItemEventArgs"),
             Args::Files => Some("phai_ui::events::FileDropEventArgs"),
             Args::Print => Some("phai_ui::print::PrintPageEventArgs"),
+            Args::Paint => Some("phai_ui::paint::PaintEventArgs"),
             Args::FileOk => Some("phai_ui::events::FileOkEventArgs"),
         }
     }
@@ -86,6 +88,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
     ev("double_click", "MouseDoubleClick", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0203), "The icon in the corner clicked twice - as often, to show the window again."),
     ev("position_changed", "PositionChanged", Args::None, &[Kind::BindingSource], Source::Hook(phai_ui_codes::POSITION_CHANGED), "Another row became the current one - moved to, added, taken out, or new rows given."),
+    ev("paint", "Paint", Args::Paint, &[Kind::Panel, Kind::Picture], Source::Hook(phai_ui_codes::PAINT), "The program draws it - e.clear, e.fill_rect, e.draw_text, e.draw_pixels(&bgra, (w, h), e.fit(w, h)), in its own pixels; ui.x.invalidate() asks again."),
     ev("print_page", "PrintPage", Args::Print, &[Kind::PrintDocument], Source::Hook(phai_ui_codes::PRINT_PAGE), "A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows."),
     ev("selection_changed", "SelectionChanged", Args::None, &[Kind::Grid], Source::Notify(-101), "Another row chosen."),
     ev("opening", "Opening", Args::None, &[Kind::ContextMenu], Source::Form, "The menu is about to open - tick, grey or rename its items here."),
@@ -157,6 +160,7 @@ pub mod phai_ui_codes {
     pub const PRINT_PAGE: u16 = phai_ui::events::PRINT_PAGE;
     pub const POSITION_CHANGED: u16 = phai_ui::events::POSITION_CHANGED;
     pub const FILE_OK: u16 = phai_ui::events::FILE_OK;
+    pub const PAINT: u16 = phai_ui::events::PAINT;
 }
 
 /// Whether controls of `kind` raise `e`: an empty list is every control on the form.
