@@ -100,7 +100,7 @@
     });
 })();
 
-// cards fade in once; cards and headings drift a little with the scrollbar; the strip shows how far down you are
+// cards fade in once; headings drift a little with the scrollbar; the strip shows how far down you are
 (() => {
     const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const cards = [...document.querySelectorAll('.card, .slider')];
@@ -109,7 +109,8 @@
     const words = window.HUD_WORDS || [];
     const items = [];
     if (!calm) {
-        cards.forEach((el, i) => { el.classList.add('reveal'); items.push({ el, depth: [0.6, 1, 1.4][i % 3], amp: 60, now: 0 }); });
+        // cards only fade and rise in once: they never drift apart, so a row stays a straight row
+        cards.forEach((el) => el.classList.add('reveal'));
         document.querySelectorAll('.section h2, .section .sub, .section .label, .hero h1, .hero .lead').forEach((el, i) => {
             el.classList.add('glide');
             items.push({ el, depth: [0.5, 0.8][i % 2], amp: 36, now: 0 });

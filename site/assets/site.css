@@ -141,8 +141,8 @@ main, .foot { position: relative; z-index: 2; }
 .card:hover .icon { transform: scale(1.1) rotate(-6deg); background: var(--green); color: #fff; box-shadow: 0 6px 16px rgb(var(--green-rgb) / .3); }
 
 /* fade in once, then drift a little with the scrollbar */
-.reveal { opacity: 0; translate: 0 var(--drift, 18px); }
-.reveal.shown { opacity: 1; }
+.reveal { opacity: 0; translate: 0 18px; transition: opacity .7s ease-out, translate .7s ease-out, transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+.reveal.shown { opacity: 1; translate: none; }
 .glide { translate: 0 var(--drift, 0px); will-change: translate; }
 
 @media (hover: none), (prefers-reduced-motion: reduce) { .card, .card:hover { transform: none; } }
@@ -254,3 +254,12 @@ h3.part + .muted { margin: 0 0 16px; }
 /* A tool's own icon (a picture, not a font glyph) turns white on the green, as the glyphs do. */
 #learn .card.lesson.tool .icon img { transition: filter .3s; }
 #learn .card.lesson.tool:hover .icon img, #learn .card.lesson.tool:focus-visible .icon img { filter: brightness(0) invert(1); }
+/* Every card in a grid the same size: each row as tall as the tallest card anywhere in the grid. */
+.grid.g3, .grid.g4 { grid-auto-rows: 1fr; }
+/* Every card with an icon: the icon on the left, everything else beside it. */
+.card:not(.row):not(.contact):not(.lesson):not(.made):has(> .icon) { display: grid; grid-template-columns: 44px 1fr; column-gap: 16px; align-content: start; }
+.card:not(.row):not(.contact):not(.lesson):not(.made):has(> .icon) > .icon { grid-row: 1 / span 9; margin-bottom: 0; }
+.card:not(.row):not(.contact):not(.lesson):not(.made):has(> .icon) > :not(.icon) { grid-column: 2; }
+.card:not(.row):not(.contact):not(.lesson):not(.made):has(> .icon) > h3 { margin-top: 10px; }
+/* The screenshots smaller than the page's width, in the middle. */
+.gallery { max-width: 920px; margin-inline: auto; }
