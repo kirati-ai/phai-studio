@@ -231,6 +231,11 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.5', '22 พ.ย. 2569', [
+            'วาดเองด้วย event Paint และล้อเมาส์ (MouseWheel) ใช้ได้บนเว็บและมือถือ (PWA) ด้วยคำสั่งชุดเดียวกับบน Windows',
+            'panel และ picture รับคีย์บอร์ดเองได้ (KeyDown, KeyPress): คลิกหรือกด Tab เข้าไปแล้วรับปุ่มลูกศรได้เลย',
+            'แท็บ แถวในรายการ และ label ค่อย ๆ เปลี่ยนสี (transition) และเคลื่อนไหว (animation) ได้ พร้อมลุคของสถานะ selected',
+        ]],
         ['0.2.4', '22 พ.ย. 2569', [
             'คู่มือหน้าใหม่ "ทำตัวติดตั้ง (Publish)": ทีละขั้นตั้งแต่ build จนได้ setup.exe ทุกช่องของหน้าต่าง Publish ตัวติดตั้งทำอะไรบนเครื่องผู้ใช้ สวิตช์ติดตั้งเงียบ และสิ่งที่ควรรู้ก่อนแจก',
             'หน้าต่างที่ถามหลายช่อง (เช่น Publish และ Project Properties) กว้างพอกับข้อความ ไม่ตัดคำทิ้งอีก',
@@ -428,6 +433,11 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.5', '22 Nov 2026', [
+            'Drawing with the Paint event and the mouse wheel (MouseWheel) work on the web and on phones (PWA) too, with the same calls as on Windows',
+            'A panel or picture takes the keyboard itself (KeyDown, KeyPress): click it or Tab to it and the arrow keys are its own',
+            'Tabs, the rows of a list and labels change colour smoothly (transition) and move (animation), and have a look of their own when selected',
+        ]],
         ['0.2.4', '22 Nov 2026', [
             'A new guide page, "Making an installer (Publish)": step by step from the build to setup.exe, every field of the Publish window, what the setup does on the user\'s computer, its silent switches, and what to know before handing it out',
             'Windows that ask several things (Publish, Project Properties and others) as wide as their words: nothing cut off any more',
