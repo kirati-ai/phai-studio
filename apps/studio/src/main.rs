@@ -219,6 +219,7 @@ const ID_THEME_EDITOR: i32 = 791;
 const ID_ADD_FORM: i32 = 291;
 /// Project > Add User Control: a control of the project's own, made as a form.
 const ID_ADD_USER_CONTROL: i32 = 293;
+const ID_IMPORT_WINFORMS: i32 = 2903;
 /// Project > Add Report: a printed report of the project's, designed in the Report Designer.
 const ID_ADD_REPORT: i32 = 292;
 /// Build > Build for Web: the project as a web page that installs as an app on phones.
@@ -1468,6 +1469,7 @@ fn build_menu() -> HMENU {
         add(proj, ID_ADD_FORM, t("Add Form..."), "");
         add(proj, ID_ADD_USER_CONTROL, t("Add User Control..."), "");
         add(proj, ID_ADD_REPORT, t("Add Report..."), "");
+        add(proj, ID_IMPORT_WINFORMS, t("Import WinForms Form..."), "");
         sep(proj);
         add(proj, ID_MANAGE_CRATES, t("Manage Crates..."), "");
         sep(proj);
@@ -5261,6 +5263,43 @@ impl Studio {
         }
     }
 
+    /// Project > Import WinForms Form...: a form made in Visual Studio - its `.Designer.cs` - brought
+    /// into the project as a form of its own, to go on with by drag and drop; its C# code stays
+    /// behind, its events become empty methods.
+    fn import_winforms(&mut self) {
+        let caption = t("Import WinForms Form");
+        let Some(dir) = self.doc.path.as_deref().and_then(cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Open a form of the project first, so the imported form can join it."), caption, wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Some(cs) = file_dialog(self.hwnd, false, t("WinForms designer files (*.Designer.cs)"), "*.Designer.cs;*.cs", "") else { return };
+        let (path, warnings) = match import_winforms_file(&dir, &cs) {
+            Ok(r) => r,
+            Err(e) => {
+                win::message(Some(self.hwnd), &e, caption, wm::MB_ICONWARNING);
+                return;
+            }
+        };
+        self.open_path(&path);
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(Some(&path));
+        }
+        let name = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let mut text = tf("{0} came over from WinForms. Its C# stays behind: its events are empty methods in {1}.rs to write in Rust.", &[&self.doc.form.form.name, &name]);
+        text.push_str("\n\n");
+        text.push_str(t("Its words have no Thai yet - the project's test lists them; add them to src/text.rs."));
+        if !warnings.is_empty() {
+            text.push_str("\n\n");
+            text.push_str(t("What did not come over:"));
+            for w in &warnings {
+                text.push_str("\n- ");
+                text.push_str(w);
+            }
+        }
+        win::message(Some(self.hwnd), &text, caption, wm::MB_ICONINFORMATION);
+        self.say_status(&tf("{0} came over from WinForms", &[&self.doc.form.form.name]));
+    }
+
     /// Server Explorer's "Add to Form", as dragging a table from Data Sources in Visual Studio: a
     /// grid bound to the table under what the form has, with Reload and Save buttons below it;
     /// the project told where the data is (`src/data_sources.rs`, phai-data in Cargo.toml).
@@ -8209,6 +8248,7 @@ impl Studio {
             ID_WEB_APP => self.web_app_settings(),
             ID_ADD_FORM => self.add_form(false),
             ID_ADD_USER_CONTROL => self.add_form(true),
+            ID_IMPORT_WINFORMS => self.import_winforms(),
             ID_ADD_REPORT => match self.doc.path.as_deref().and_then(cargo::project_of) {
                 Some(dir) => {
                     if let Some(path) = repdesign::add_report(self.hwnd, &dir) {
@@ -10617,11 +10657,26 @@ fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
     write_new(dir, name, false)
 }
 
+/// A WinForms `.Designer.cs` read into project `dir` as a form: its form file, what the project
+/// writes from it, and what did not come over. An error to show when it cannot.
+fn import_winforms_file(dir: &Path, cs: &Path) -> Result<(PathBuf, Vec<String>), String> {
+    let bytes = std::fs::read(cs).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
+    let im = phai_form::winforms::import(&String::from_utf8_lossy(&bytes)).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
+    let mut f = im.form;
+    let src = dir.join("src");
+    let file = snake(&f.form.name);
+    if phai_form::form_path(&src, &file).exists() || src.join(format!("{file}.rs")).exists() || src.join(format!("{file}_ui.rs")).exists() {
+        return Err(tf("The project already has {0}", &[&file]));
+    }
+    if dir.join("theme.css").is_file() {
+        f.form.theme = Some("../theme.css".into());
+    }
+    let (path, _) = write_form(dir, &f, &[]).map_err(|e| format!("{}\n\n{e}", tf("{0} cannot be saved", &[&file])))?;
+    Ok((path, im.warnings))
+}
+
 /// A new form, or a new user control: a form that is a control other forms hold.
 fn write_new(dir: &Path, name: &str, user_control: bool) -> std::io::Result<(PathBuf, bool)> {
-    let src = dir.join("src");
-    let file = snake(name);
-    let path = src.join(format!("{file}.{}", phai_form::FORM_EXT));
     let mut f = FormFile::new(name);
     f.form.title = name.to_string();
     f.form.size = if user_control { [300, 150] } else { [400, 300] };
@@ -10631,12 +10686,22 @@ fn write_new(dir: &Path, name: &str, user_control: bool) -> std::io::Result<(Pat
     if dir.join("theme.css").is_file() {
         f.form.theme = Some("../theme.css".into());
     }
+    write_form(dir, &f, &[(name, &format!("ฟอร์ม {name}"))])
+}
+
+/// Form `f` written into project `dir`: its form file, the code Phai Studio keeps from it, the
+/// file of its events' methods, Thai for `thai`, and `mod` lines in main.rs - whether those went in.
+fn write_form(dir: &Path, f: &FormFile, thai: &[(&str, &str)]) -> std::io::Result<(PathBuf, bool)> {
+    let src = dir.join("src");
+    let name = &f.form.name;
+    let file = snake(name);
+    let path = src.join(format!("{file}.{}", phai_form::FORM_EXT));
     let opts = theme_options(&path, f.form.theme.as_deref());
     std::fs::create_dir_all(&src)?;
     std::fs::write(&path, f.to_toml())?;
-    std::fs::write(src.join(format!("{file}_ui.rs")), codegen::generate(&f, &opts))?;
-    std::fs::write(src.join(format!("{file}.rs")), codegen::user_stub(&f))?;
-    project::add_thai(&src, &[(name, &format!("ฟอร์ม {name}"))])?;
+    std::fs::write(src.join(format!("{file}_ui.rs")), codegen::generate(f, &opts))?;
+    std::fs::write(src.join(format!("{file}.rs")), codegen::user_stub(f))?;
+    project::add_thai(&src, thai)?;
     let main_rs = src.join("main.rs");
     let declared = std::fs::read_to_string(&main_rs).map(|text| declare_form(&text, name)).and_then(|text| std::fs::write(&main_rs, text)).is_ok();
     Ok((path, declared))
@@ -10906,6 +10971,48 @@ fn main()"), "{out}");
         let exe = target.join("debug").join(format!("{}.exe", crate::project::package_name(&dir.file_name().unwrap().to_string_lossy())));
         let code = std::process::Command::new(exe).env("PHAI_SHOT", std::env::temp_dir().join("phai-addform.png")).env("PHAI_SHOT_DELAY", "20000").status().unwrap().code();
         assert_eq!(code, Some(42), "the program ended when its second window closed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// WinForms forms imported into a real project - a small one written here, and the 21 of an
+    /// older C# program when they are on this computer - built by Cargo without a warning.
+    #[test]
+    #[ignore = "builds a project with cargo"]
+    fn winforms_forms_import_and_build() {
+        let dir = std::env::temp_dir().join(format!("phai-winforms-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::project::create(&dir).unwrap();
+        let cs = dir.join("OrderForm.Designer.cs");
+        std::fs::write(&cs, "partial class OrderForm { private void InitializeComponent() {
+            _menu = new MenuStrip(); _file = new ToolStripMenuItem(); _save = new ToolStripMenuItem();
+            _name = new TextBox(); _ok = new Button(); _board = new Panel(); _clock = new System.Windows.Forms.Timer(components);
+            _grid = new DataGridView(); _col = new DataGridViewTextBoxColumn();
+            _menu.Items.AddRange(new ToolStripItem[] { _file }); _menu.Size = new Size(400, 24);
+            _file.DropDownItems.AddRange(new ToolStripItem[] { _save }); _file.Text = \"File\";
+            _save.Text = \"Save\"; _save.Click += Save_Click; _save.CheckedChanged += Save_CheckedChanged;
+            _name.Location = new Point(12, 40); _name.Size = new Size(200, 23); _name.TextChanged += Name_TextChanged; _name.KeyDown += Name_KeyDown; _name.MouseMove += Board_MouseMove;
+            _ok.Location = new Point(220, 40); _ok.Size = new Size(75, 23); _ok.Text = \"OK\"; _ok.Click += Ok_Click;
+            _board.Location = new Point(12, 70); _board.Size = new Size(200, 100); _board.Paint += Board_Paint; _board.MouseMove += Board_MouseMove;
+            _grid.Columns.AddRange(new DataGridViewColumn[] { _col }); _col.HeaderText = \"Item\"; _grid.Location = new Point(220, 70); _grid.Size = new Size(160, 100);
+            _clock.Tick += Clock_Tick;
+            ClientSize = new Size(400, 224); Controls.Add(_grid); Controls.Add(_board); Controls.Add(_ok); Controls.Add(_name); Controls.Add(_menu);
+            Text = \"Order\"; FormClosing += OrderForm_FormClosing; } }").unwrap();
+        let (path, _) = import_winforms_file(&dir, &cs).unwrap();
+        assert!(path.ends_with("order_form.phf"));
+        assert!(import_winforms_file(&dir, &cs).is_err(), "not twice");
+        let real = std::path::Path::new(r"D:\Project.NET\phai-desk");
+        let mut n = 1;
+        for e in std::fs::read_dir(real).into_iter().flatten().flatten() {
+            if e.path().to_string_lossy().ends_with(".Designer.cs") {
+                import_winforms_file(&dir, &e.path()).unwrap();
+                n += 1;
+            }
+        }
+        let target = std::env::temp_dir().join("phai-addform-target");
+        let out = std::process::Command::new(crate::cargo::find_cargo().unwrap()).args(["build", "--quiet"]).current_dir(&dir).env("CARGO_TARGET_DIR", &target).output().unwrap();
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(out.status.success(), "{n} forms: {err}");
+        assert_eq!(err.matches("warning").count(), 0, "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

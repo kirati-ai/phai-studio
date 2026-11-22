@@ -201,6 +201,15 @@ impl Layout {
     /// change. Design pixels are scaled to the parent's DPI after arranging, so an anchored
     /// control keeps its distance in design pixels at any scale.
     pub fn apply(&self, parent: HWND) {
+        /// A window other controls lie on: a group frame, a panel (flow and table ones too), a split container.
+        fn holds_others(h: HWND) -> bool {
+            if crate::win::kind_of(h) == Some(crate::win::Kind::Group) {
+                return true;
+            }
+            let mut buf = [0u16; 32];
+            let n = unsafe { wm::GetClassNameW(h, &mut buf) } as usize;
+            matches!(String::from_utf16_lossy(&buf[..n]).as_str(), "PhaiPanel" | "PhaiPanelOutlined" | "PhaiSplit")
+        }
         let dpi = crate::win::dpi(parent);
         let mut c = RECT::default();
         unsafe {
@@ -223,13 +232,7 @@ impl Layout {
                 let (w, hgt) = (scale(r.x + r.w, dpi) - x, scale(r.y + r.h, dpi) - y);
                 let w = crate::win::auto_width(*h).unwrap_or(w);
                 let (x, y) = (x - ox, y - oy);
-                // A group frame goes to the back, whenever it was made: every sibling must clip it,
-                // or it paints over what it gathers.
-                let (after, flags) = if crate::win::kind_of(*h) == Some(crate::win::Kind::Group) {
-                    (Some(wm::HWND_BOTTOM), wm::SWP_NOACTIVATE)
-                } else {
-                    (None, wm::SWP_NOZORDER | wm::SWP_NOACTIVATE)
-                };
+                let (after, flags) = (None, wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
                 // A drop-down: its window's height is its list's room; its box takes the height
                 // designed (below).
                 let hgt = if crate::win::kind_of(*h) == Some(crate::win::Kind::Combo) {
@@ -244,6 +247,15 @@ impl Layout {
                 }
             }
             let _ = wm::EndDeferWindowPos(batch);
+            // Group frames, panels and split containers go to the back, whenever they were made:
+            // every control on them must clip them, or they paint over what they hold. One on
+            // another lies in front of it, so the largest go furthest back - sent back last; of
+            // two as large, the one first in the form stays in front, as with every other control.
+            let mut holders: Vec<(i64, usize, HWND)> = self.items.iter().zip(&rects).enumerate().filter(|(_, ((h, _), _))| holds_others(*h)).map(|(i, ((h, _), r))| (r.w as i64 * r.h as i64, i, *h)).collect();
+            holders.sort_by_key(|(area, i, _)| (*area, *i));
+            for (_, _, h) in holders {
+                let _ = wm::SetWindowPos(h, Some(wm::HWND_BOTTOM), 0, 0, 0, 0, wm::SWP_NOMOVE | wm::SWP_NOSIZE | wm::SWP_NOACTIVATE | wm::SWP_NOOWNERZORDER);
+            }
         }
         for (h, height) in combos {
             crate::win::combo_box_height(h, height);

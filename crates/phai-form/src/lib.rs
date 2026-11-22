@@ -10,6 +10,7 @@ pub mod props;
 pub mod report;
 pub mod sample;
 pub mod web;
+pub mod winforms;
 
 pub use model::*;
 pub use toml;

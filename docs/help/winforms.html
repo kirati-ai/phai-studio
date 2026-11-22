@@ -103,7 +103,7 @@
 <main>
 <button class="nav-open" type="button" title="เปิดเมนู" aria-label="เปิดเมนู"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
 <h1>control และความสามารถเพิ่มเติม</h1>
-<p class="lead">นอกจาก control พื้นฐาน Phai Studio มี control และความสามารถแบบ WinForms ครบชุด ทุกอย่างวางจากกล่องเครื่องมือ ตั้งค่าในหน้าต่าง Properties แล้วเรียกจากโค้ดผ่าน <code>ui.ชื่อ</code> เหมือน control อื่น</p>
+<p class="lead">นอกจาก control พื้นฐาน Phai Studio มี control และความสามารถแบบ WinForms ครบชุด (ฟอร์มที่ทำใน Visual Studio นำเข้ามาได้ด้วย ดู<a href="#winforms-import">ข้างล่าง</a>) ทุกอย่างวางจากกล่องเครื่องมือ ตั้งค่าในหน้าต่าง Properties แล้วเรียกจากโค้ดผ่าน <code>ui.ชื่อ</code> เหมือน control อื่น</p>
 
 <h2>control เพิ่มเติม</h2>
 <table>
@@ -161,6 +161,17 @@
 
 <h2>ฟอร์มซ้อนในฟอร์ม (MDI)</h2>
 <p>ตั้ง <code>IsMdiContainer</code> ของฟอร์มหลัก แล้วเปิดฟอร์มอื่นข้างในด้วย <code>EditorUi::show_mdi_child(ui.hwnd, editor::Editor::default())</code> จัดเรียงด้วย <code>ui.layout_mdi("cascade")</code> (หรือ <code>tile_horizontal</code>, <code>tile_vertical</code>) ใช้ <kbd>Ctrl</kbd>+<kbd>Tab</kbd> สลับ และ <kbd>Ctrl</kbd>+<kbd>F4</kbd> ปิดฟอร์มลูก</p>
+
+<h2>นำฟอร์มจาก WinForms เข้ามา</h2>
+<p>มีโปรแกรมเก่าที่ทำด้วย C# หรือ VB.NET ใน Visual Studio? เปิดฟอร์มของโปรเจกต์ใน Phai Studio แล้วเลือก <b>Project &gt; Import WinForms Form...</b> เลือกไฟล์ <code>Form1.Designer.cs</code> ของฟอร์มนั้น ฟอร์มจะเข้ามาเป็นฟอร์มใหม่ของโปรเจกต์ (<code>form1.phf</code> กับ <code>form1.rs</code>) หน้าตาเหมือนเดิม แล้วแก้ต่อด้วยการลากวางได้ทันที</p>
+<figure><img class="shot" src="img/winforms-import.png" alt="ฟอร์มตั้งค่าจากโปรแกรม C# เดิม เปิดในตัวออกแบบของ Phai Studio" width="520"><figcaption>ฟอร์มที่ทำใน Visual Studio ที่ 200% เข้ามาในขนาดปกติ พร้อมสี ตัวอักษร และกลุ่มเดิม</figcaption></figure>
+<ul>
+  <li><b>สิ่งที่มาด้วย</b>: control ทุกตัวที่ Phai มี (ปุ่ม ช่องกรอก รายการ ตาราง แท็บ กลุ่ม panel split และอื่น ๆ) ตำแหน่ง ขนาด anchor dock สี ตัวอักษร ข้อความ เมนู แถบเครื่องมือ แถบสถานะ เมนูคลิกขวา timer และ dialog</li>
+  <li><b>ขนาด</b>: ฟอร์มที่ออกแบบบนจอ 150% หรือ 200% ถูกย่อกลับเป็นขนาดปกติเอง (อ่านจาก <code>AutoScaleDimensions</code>)</li>
+  <li><b>event</b>: <code>ok.Click += Ok_Click</code> กลายเป็น <code>on_click = "ok_click"</code> และเมธอดว่าง <code>fn ok_click</code> ใน <code>form1.rs</code> ให้เขียนด้วย Rust</li>
+  <li><b>สิ่งที่ไม่มาด้วย</b>: โค้ด C# ใน <code>Form1.cs</code> (ต้องเขียนใหม่ด้วย Rust), รูปที่เก็บใน <code>.resx</code> และ control ที่เขียนขึ้นเอง (กลายเป็น panel) — Phai Studio บอกรายการทั้งหมดหลังนำเข้า</li>
+  <li>ข้อความในฟอร์มยังไม่มีภาษาไทย เทสต์ของโปรเจกต์จะบอกว่าคำไหน ให้เพิ่มใน <code>src/text.rs</code></li>
+</ul>
 
 <h2>ลากข้อความจาก control หนึ่งไปวางอีกตัว</h2>
 <p>ใน event MouseDown ของ control ต้นทาง เรียก <code>ui.list.do_drag_drop("ข้อความ")</code> ป้ายเล็ก ๆ จะตามเมาส์ไป control ปลายทางที่มี event DragDrop ได้ <code>e.text</code> และ <code>e.source</code> กด <kbd>Esc</kbd> เพื่อยกเลิก ไฟล์ที่ลากมาจาก Explorer เข้า <code>e.files</code></p>

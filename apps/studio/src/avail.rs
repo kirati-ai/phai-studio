@@ -120,7 +120,7 @@ impl Now {
             ID_TOGGLE_BP | ID_BP_CONDITION => self.rust,
             ID_CLEAR_BPS => self.breakpoints,
             // Project
-            ID_ADD_FORM | ID_ADD_USER_CONTROL | ID_ADD_REPORT | ID_MANAGE_CRATES | ID_PROJECT_PROPS => self.project,
+            ID_ADD_FORM | ID_ADD_USER_CONTROL | ID_ADD_REPORT | ID_IMPORT_WINFORMS | ID_MANAGE_CRATES | ID_PROJECT_PROPS => self.project,
             // Tools > Data: a connection first; a query to run.
             ID_NEW_QUERY | ID_TABLE_DESIGNER => self.conns,
             ID_EXECUTE => self.query,
