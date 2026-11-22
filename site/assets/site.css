@@ -231,3 +231,17 @@ main, .foot { position: relative; z-index: 2; }
 .nb { white-space: nowrap; }
 p, li, h1, h2, h3, figcaption, blockquote, small, span { text-wrap: pretty; }
 h1, h2 { text-wrap: balance; }
+
+/* The guide in two parts (tools a page each, Rust lessons) and the made-with card. */
+.grid.g4 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 960px) { .grid.g4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px) { .grid.g4 { grid-template-columns: 1fr; } }
+h3.part { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; font-size: 1.15rem; }
+h3.part.mt { margin-top: 36px; }
+h3.part .ti { color: var(--green); font-size: 1.3rem; }
+h3.part + .muted { margin: 0 0 16px; }
+.card.tool .icon img { width: 26px; height: 26px; }
+.card.tool p { font-size: .92rem; }
+.card.made { display: grid; grid-template-columns: 3fr 2fr; gap: 28px; align-items: center; }
+.made-shot img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(15, 60, 40, .12); }
+@media (max-width: 760px) { .card.made { grid-template-columns: 1fr; } }

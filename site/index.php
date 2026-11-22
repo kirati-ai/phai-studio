@@ -100,33 +100,53 @@ $T = $th ? [
     'lead' => 'ลากวางปุ่ม ช่องกรอก ตาราง ลงบนฟอร์ม ดับเบิลคลิกเขียนโค้ด กด F5 ก็ได้โปรแกรม Windows จริง พร้อมตัวแก้โค้ดที่เติมคำให้ ดีบักเกอร์ เทสต์ Git และทำตัวติดตั้งให้ด้วย หน้าจอภาษาไทย และมีคู่มือสอน Rust ภาษาไทยในตัว',
     'btnDownload' => 'ดาวน์โหลดตัวติดตั้ง', 'btnGithub' => 'โค้ดบน GitHub', 'btnGuide' => 'อ่านคู่มือภาษาไทย',
     'meta' => fn ($c) => "รุ่น {$release['version']} · {$mb} MB · Windows 10/11 (64 บิต) · <b>ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง</b> · เข้าชม {$c['visitors']} คน",
-    'learnH' => 'หัดเขียน Rust ด้วยภาษาไทย',
-    'learnSub' => 'Rust เป็นภาษาที่เร็วและปลอดภัย แต่ตำราส่วนใหญ่เป็นภาษาอังกฤษ Phai Studio จึงมีคู่มือภาษาไทยในตัว (กด F1) เริ่มจากศูนย์ทีละบท ทุกตัวอย่างลองรันได้จริง เพื่อให้นักเรียน นักศึกษา และคนทำงานที่อยากเขียนโปรแกรมเอง เริ่มได้โดยไม่ติดเรื่องภาษา',
+    'learnH' => 'เรียนเขียนโปรแกรมด้วยภาษาไทย',
+    'learnSub' => 'คู่มือภาษาไทยในตัวโปรแกรม สำหรับนักเรียน นักศึกษา และคนทำงานที่อยากเขียนโปรแกรมเอง มีสองส่วน: เครื่องมือทุกตัวใน Toolbox ทีละหน้า และบทเรียนภาษา Rust ตั้งแต่ศูนย์ ทุกตัวอย่างลองรันได้จริง',
+    'toolsH' => 'เครื่องมือทีละตัว', 'toolsSub' => '43 หน้า ทุกเครื่องมือใน Toolbox และฟอร์ม: ใช้ทำอะไร ตัวอย่างโค้ด Method, Properties และ Events - เลือก control บนฟอร์มแล้วกด F1 เปิดหน้าของมันทันที',
+    'rustH' => 'ภาษา Rust ทีละบท', 'rustSub' => '11 บท ตั้งแต่ตัวแปรจนถึง thread พร้อมบทอ่านข้อความ error ของคอมไพเลอร์',
+    'madeH' => 'สร้างด้วย Phai Studio', 'madeSub' => 'โปรแกรมจริงที่ออกแบบและเขียนด้วย Phai Studio ทั้งตัว',
+    'madeName' => 'คอนโซลของ Phai Desk', 'madeP' => 'โปรแกรมรีโมทและดูแลคอมพิวเตอร์ในสำนักงาน ทั้ง 7 หน้าต่าง (รายการเครื่อง ดูจอ ส่งไฟล์ แชท โปรแกรมในเครื่อง log) ออกแบบด้วยการลากวางใน Phai Studio แล้วทำตัวติดตั้งด้วย Publish',
+    'madeLink' => 'รู้จัก Phai Desk',
     'learn' => [
-        ['ti-player-play', 'บทที่ 1–3', 'เริ่มต้น ตัวแปรและชนิดข้อมูล if / loop / match'],
-        ['ti-key', 'บทที่ 4', 'ความเป็นเจ้าของ (ownership) และการยืม หัวใจของ Rust อธิบายด้วยภาพ'],
-        ['ti-box', 'บทที่ 5–7', 'struct, enum, การจัดการข้อผิดพลาด, Vec และ HashMap'],
-        ['ti-puzzle', 'บทที่ 8–9', 'trait, generic, โมดูล และการเขียนเทสต์'],
-        ['ti-alert-triangle', 'บทที่ 10', 'อ่านข้อความ error ของคอมไพเลอร์ให้เป็น พร้อมวิธีแก้ที่เจอบ่อย'],
-        ['ti-arrows-split', 'บทที่ 11', 'ทำงานหลายอย่างพร้อมกันด้วย thread อย่างปลอดภัย'],
+        ['ti-player-play', 'บทที่ 1–3', 'เริ่มต้น ตัวแปรและชนิดข้อมูล if / loop / match', 'rust-01'],
+        ['ti-key', 'บทที่ 4', 'ความเป็นเจ้าของ (ownership) และการยืม หัวใจของ Rust อธิบายด้วยภาพ', 'rust-04'],
+        ['ti-box', 'บทที่ 5–7', 'struct, enum, การจัดการข้อผิดพลาด, Vec และ HashMap', 'rust-05'],
+        ['ti-puzzle', 'บทที่ 8–9', 'trait, generic, โมดูล และการเขียนเทสต์', 'rust-08'],
+        ['ti-alert-triangle', 'บทที่ 10', 'อ่านข้อความ error ของคอมไพเลอร์ให้เป็น พร้อมวิธีแก้ที่เจอบ่อย', 'rust-10'],
+        ['ti-arrows-split', 'บทที่ 11', 'ทำงานหลายอย่างพร้อมกันด้วย thread อย่างปลอดภัย', 'rust-11'],
+    ],
+    'tools' => [
+        ['form', 'ฟอร์ม', 'เปิดหน้าต่าง กล่องถาม ถามก่อนปิด'],
+        ['button', 'ปุ่ม', 'กดแล้วทำอะไรสักอย่าง'],
+        ['edit', 'ช่องข้อความ', 'อ่านและตรวจสิ่งที่พิมพ์'],
+        ['combo', 'รายการเลือก', 'เลือกหนึ่งอย่างจากรายการ'],
+        ['list', 'รายการ', 'ตารางหลายคอลัมน์'],
+        ['grid', 'ตารางข้อมูล', 'แก้ในช่อง เรียง ส่งออก'],
+        ['timer', 'ตัวจับเวลา', 'ทำซ้ำทุกวินาที'],
+        ['printdocument', 'เอกสารสำหรับพิมพ์', 'วาดหน้ากระดาษแล้วพิมพ์'],
     ],
     'learnBtn' => 'เปิดคู่มือ', 'learnShot' => 'โปรแกรมหน้าจอภาษาไทยที่สร้างด้วย Phai Studio',
     'featH' => 'ครบตั้งแต่ออกแบบหน้าจอ จนถึงตัวติดตั้ง',
     'featSub' => 'ทุกอย่างที่ต้องใช้ทำโปรแกรม Windows หนึ่งตัว อยู่ในโปรแกรมเดียว',
     'feat' => [
-        ['ti-layout-dashboard', 'ออกแบบฟอร์ม', 'ลากวางปุ่ม ช่องกรอก ตาราง เมนู แถบเครื่องมือ จัดแนว จัดระยะ แก้คุณสมบัติในหน้าต่าง Properties ตกแต่งด้วย CSS'],
+        ['ti-layout-dashboard', 'ออกแบบฟอร์ม', 'ลากวางปุ่ม ช่องกรอก ตาราง เมนู แถบเครื่องมือ จัดแนว จัดระยะ แก้คุณสมบัติในหน้าต่าง Properties'],
         ['ti-code', 'ตัวแก้โค้ด', 'สีตามไวยากรณ์ เติมคำอัตโนมัติ ไปยังที่ประกาศ หาที่ใช้ เปลี่ยนชื่อ จัดรูปแบบ พับโค้ด ด้วย rust-analyzer'],
-        ['ti-hammer', 'Build และ Publish', 'build แบบ Debug/Release เห็น error เป็นรายการ คลิกไปที่บรรทัดได้ Publish ออกมาเป็นตัวติดตั้งไฟล์เดียว'],
+        ['ti-table', 'ตารางข้อมูล', 'แก้ในช่องได้ กรองที่หัวคอลัมน์ จัดกลุ่ม ผลรวม ค้นหา ตารางหลัก-ย่อย และส่งออกเป็น Excel, PDF, CSV'],
+        ['ti-database', 'ฐานข้อมูล', 'ต่อ PostgreSQL, MySQL/MariaDB, SQLite ออกแบบตาราง รันคำสั่ง SQL และผูกข้อมูลกับฟอร์มโดยไม่ต้องเขียนโค้ด'],
+        ['ti-printer', 'รายงานพิมพ์', 'ออกแบบรายงานด้วยการลากวาง หัว-ท้ายกระดาษ จัดกลุ่ม ผลรวม ดูก่อนพิมพ์ และบันทึกเป็น PDF'],
+        ['ti-palette', 'ตกแต่งด้วย CSS', 'สี เส้นขอบ มุมมน เงา สีไล่ และภาพเคลื่อนไหว ของทั้งโปรแกรมจากไฟล์ธีมเดียว พร้อมตัวแก้ธีม'],
+        ['ti-device-mobile', 'เว็บและมือถือ', 'ฟอร์มเดิมรันในเบราว์เซอร์ และติดตั้งลงมือถือได้ทั้ง Android และ iPhone เผยแพร่เว็บแอปได้จาก Phai Studio'],
+        ['ti-hammer', 'Build และ Publish', 'build แบบ Debug/Release เพิ่มไลบรารีจาก crates.io แล้ว Publish เป็นตัวติดตั้งไฟล์เดียว พร้อมไอคอนของโปรแกรม'],
         ['ti-bug', 'ดีบักเกอร์ของตัวเอง', 'breakpoint ทีละบรรทัด ดูตัวแปร call stack thread หน่วยความจำ disassembly และ data breakpoint'],
         ['ti-flask', 'เทสต์และ Code Coverage', 'รันเทสต์ทั้งหมดหรือทีละตัว เห็นผลผ่าน/ไม่ผ่าน และแถบสีบอกบรรทัดที่เทสต์ครอบคลุม'],
         ['ti-git-branch', 'Git', 'commit, push, pull, branch, ประวัติไฟล์, blame และหน้าต่างแก้ conflict'],
-        ['ti-database', 'ฐานข้อมูล', 'Server Explorer ต่อ PostgreSQL, MySQL/MariaDB, SQLite ดูตาราง รันคำสั่ง SQL'],
-        ['ti-package', 'จัดการ crate', 'ค้นหาไลบรารีจาก crates.io แล้วกดเพิ่มหรือลบได้ เหมือน NuGet ของ Visual Studio'],
         ['ti-language', 'ไทย / อังกฤษ', 'สลับภาษาหน้าจอได้ทันที โปรแกรมที่สร้างก็ทำสองภาษาได้ และแสดงตัวอักษรไทยถูกต้อง'],
     ],
     'shotsH' => 'หน้าจอจริง', 'shotsSub' => 'ภาพจากการใช้งานจริง หน้าตาแบบ Windows มาตรฐาน คนที่เคยใช้ Visual Studio คุ้นมือทันที',
     'shots' => [
         ['designer', 'ออกแบบฟอร์ม', 'ลากวางปุ่ม ช่องกรอก และตาราง แล้วแก้คุณสมบัติในหน้าต่าง Properties'],
+        ['theme', 'แต่งธีม', 'เลือกธีมสำเร็จรูป หรือปรับสีทุกส่วนของหน้าจอ เห็นผลทันทีก่อนบันทึก'],
+        ['help', 'คู่มือทุกเครื่องมือ', 'ทุก control ใน Toolbox มีหน้าคู่มือภาษาไทย พร้อมตัวอย่างโค้ด - กด F1 เปิดได้ทันที'],
         ['editor', 'ตัวแก้โค้ด', 'สีตามไวยากรณ์ จำนวนที่ใช้งาน และเติมคำอัตโนมัติด้วย rust-analyzer'],
         ['debugger', 'ดีบักทีละบรรทัด', 'หยุดที่ breakpoint และดู thread ทั้งหมดของโปรแกรม'],
         ['breakpoints', 'Breakpoints', 'breakpoint แบบมีเงื่อนไข และนับจำนวนครั้ง เปิดปิดได้จากรายการ'],
@@ -188,7 +208,7 @@ $T = $th ? [
             'บันทึกข้อมูลทั้งชุดในครั้งเดียว (transaction) และหลายคนแก้แถวเดียวกันไม่บันทึกทับกัน',
         ]],
         ['0.2.0', '21 พ.ย. 2569', [
-            'Data grid แบบ DevExpress: ตั้งค่ารายคอลัมน์ ตัวแก้ค่าในช่อง รูปแบบตัวเลขและวันที่ กฎสี ผลรวม ค้นหา และจัดกลุ่ม',
+            'ตารางข้อมูลเต็มรูปแบบ: ตั้งค่ารายคอลัมน์ ตัวแก้ค่าในช่อง รูปแบบตัวเลขและวันที่ กฎสี ผลรวม ค้นหา และจัดกลุ่ม',
             'Database Designer: สร้างฐานข้อมูลและออกแบบตารางในหน้าเดียว',
             'ออกแบบเมนูและ toolbar บนฟอร์มได้โดยตรง พร้อม Properties และ Events',
             'ตัวแก้โค้ดแบบ Visual Studio: sticky scroll, สีวงเล็บ, ชนิดข้อมูลแสดงในบรรทัด, ตัดบรรทัด และเทียบไฟล์',
@@ -231,33 +251,53 @@ $T = $th ? [
     'lead' => 'Drag buttons, text boxes and grids onto a form, double-click to write the code, press F5 and you have a real Windows program. A code editor that completes for you, a debugger, tests, Git and an installer maker come with it, in English or Thai, with a Thai Rust guide built in.',
     'btnDownload' => 'Download the installer', 'btnGithub' => 'Code on GitHub', 'btnGuide' => 'Read the guide (Thai)',
     'meta' => fn ($c) => "Version {$release['version']} · {$mb} MB · Windows 10/11 (64-bit) · <b>Downloaded {$c['downloads']} times</b> · {$c['visitors']} visitors",
-    'learnH' => 'Learn Rust in Thai',
-    'learnSub' => 'Rust is fast and safe, but most books are in English. Phai Studio carries a Thai guide (press F1) that starts from zero, one lesson at a time, with examples that really run, so students and working people who want to write their own programs can start without a language barrier.',
+    'learnH' => 'Learn to program, in Thai',
+    'learnSub' => 'A Thai guide inside the program, for students and anyone who wants to write their own programs, in two parts: every tool of the Toolbox a page at a time, and Rust from zero - every example really runs.',
+    'toolsH' => 'Every tool, a page each', 'toolsSub' => '43 pages, every Toolbox tool and the form: what it is for, code examples, its methods, properties and events - choose a control on the form and press F1 to open its page',
+    'rustH' => 'Rust, a lesson at a time', 'rustSub' => '11 lessons from variables to threads, with one on reading the compiler\'s errors',
+    'madeH' => 'Made with Phai Studio', 'madeSub' => 'A real program designed and written in Phai Studio from start to finish',
+    'madeName' => 'The Phai Desk console', 'madeP' => 'Remote support and care for the office\'s computers: all 7 of its windows (the computers, the remote screen, files, chat, this computer\'s software and log) designed by drag and drop in Phai Studio, and its installer made with Publish',
+    'madeLink' => 'About Phai Desk',
     'learn' => [
-        ['ti-player-play', 'Lessons 1–3', 'Getting started, variables and types, if / loop / match'],
-        ['ti-key', 'Lesson 4', 'Ownership and borrowing, the heart of Rust, explained with pictures'],
-        ['ti-box', 'Lessons 5–7', 'struct, enum, handling errors, Vec and HashMap'],
-        ['ti-puzzle', 'Lessons 8–9', 'traits, generics, modules and writing tests'],
-        ['ti-alert-triangle', 'Lesson 10', 'Reading compiler errors, and the fixes for the common ones'],
-        ['ti-arrows-split', 'Lesson 11', 'Doing several things at once, safely, with threads'],
+        ['ti-player-play', 'Lessons 1–3', 'Getting started, variables and types, if / loop / match', 'rust-01'],
+        ['ti-key', 'Lesson 4', 'Ownership and borrowing, the heart of Rust, in pictures', 'rust-04'],
+        ['ti-box', 'Lessons 5–7', 'struct, enum, handling errors, Vec and HashMap', 'rust-05'],
+        ['ti-puzzle', 'Lessons 8–9', 'Traits, generics, modules and writing tests', 'rust-08'],
+        ['ti-alert-triangle', 'Lesson 10', 'Reading the compiler\'s error messages, and the fixes for the common ones', 'rust-10'],
+        ['ti-arrows-split', 'Lesson 11', 'Doing several things at once with threads, safely', 'rust-11'],
+    ],
+    'tools' => [
+        ['form', 'Form', 'Windows, dialogs, asking before closing'],
+        ['button', 'Button', 'Click it and something happens'],
+        ['edit', 'TextBox', 'Reading and checking what was typed'],
+        ['combo', 'ComboBox', 'One choice from a list'],
+        ['list', 'ListView', 'A table of rows and columns'],
+        ['grid', 'DataGridView', 'Edit in place, sort, export'],
+        ['timer', 'Timer', 'Again every second'],
+        ['printdocument', 'PrintDocument', 'Draw a page and print it'],
     ],
     'learnBtn' => 'Open the guide', 'learnShot' => 'A program with a Thai interface, made with Phai Studio',
     'featH' => 'From the first form to the installer',
     'featSub' => 'Everything it takes to make a Windows program, in one place',
     'feat' => [
-        ['ti-layout-dashboard', 'Form designer', 'Drag buttons, text boxes, grids, menus and toolbars; align and space them; set properties in the Properties window; style with CSS'],
+        ['ti-layout-dashboard', 'Form designer', 'Drag buttons, text boxes, grids, menus and toolbars; align and space them; set properties in the Properties window'],
         ['ti-code', 'Code editor', 'Syntax colours, completion, go to definition, find references, rename, formatting and folding, with rust-analyzer'],
-        ['ti-hammer', 'Build and Publish', 'Debug and Release builds, errors in a list that takes you to the line, and Publish to a one-file installer'],
+        ['ti-table', 'Data grid', 'Edit in the cells, filter from the headings, group, totals, find, master-detail, and export to Excel, PDF and CSV'],
+        ['ti-database', 'Databases', 'PostgreSQL, MySQL/MariaDB and SQLite: design tables, run SQL, and bind data to a form without code'],
+        ['ti-printer', 'Printed reports', 'Design reports by drag and drop: page headers and footers, groups, totals, a print preview and PDF'],
+        ['ti-palette', 'Styled with CSS', 'Colours, borders, rounded corners, shadows, gradients and animation for the whole program from one theme file, with a theme editor'],
+        ['ti-device-mobile', 'Web and phones', 'The same forms run in a browser and install on Android and iPhone; publish a web app straight from Phai Studio'],
+        ['ti-hammer', 'Build and Publish', 'Debug and Release builds, libraries from crates.io, and Publish to a one-file installer with the program\'s own icon'],
         ['ti-bug', 'Its own debugger', 'Breakpoints, stepping, locals, call stack, threads, memory, disassembly and data breakpoints'],
         ['ti-flask', 'Tests and code coverage', 'Run every test or one, see what passed and failed, and a coloured bar by every line the tests reach'],
         ['ti-git-branch', 'Git', 'Commit, push, pull, branches, file history, blame and a merge conflict editor'],
-        ['ti-database', 'Databases', 'Server Explorer for PostgreSQL, MySQL/MariaDB and SQLite: browse tables, run SQL'],
-        ['ti-package', 'Crates', 'Search crates.io and add or remove libraries with a click, like Visual Studio\'s NuGet'],
         ['ti-language', 'English / Thai', 'Switch the interface language at once; the programs you make can be bilingual too, with Thai shown right'],
     ],
     'shotsH' => 'Real screens', 'shotsSub' => 'Taken from real use: a standard Windows look that anyone who has used Visual Studio knows',
     'shots' => [
         ['designer', 'Form designer', 'Drag buttons, text boxes and grids, and set their properties in the Properties window'],
+        ['theme', 'Theme editor', 'Start from a ready theme or set every colour of the screen, and see it before saving'],
+        ['help', 'A guide for every tool', 'Every Toolbox control has its own guide page with examples - F1 opens it'],
         ['editor', 'Code editor', 'Syntax colours, reference counts and completion, with rust-analyzer'],
         ['debugger', 'Step by step', 'Stopped at a breakpoint, with every thread of the program'],
         ['breakpoints', 'Breakpoints', 'Conditions and hit counts, ticked on and off from the list'],
@@ -319,7 +359,7 @@ $T = $th ? [
             'Saving is one transaction, and two people editing the same row no longer overwrite each other',
         ]],
         ['0.2.0', '21 Nov 2026', [
-            'A DevExpress-style data grid: per-column settings, in-cell editors, number and date formats, colour rules, totals, find and grouping',
+            'A full data grid: per-column settings, in-cell editors, number and date formats, colour rules, totals, find and grouping',
             'Database Designer: make databases and design their tables in one place',
             'Menus and toolbars designed right on the form, with their properties and events',
             'A Visual Studio-style code editor: sticky scroll, bracket colours, inline type hints, word wrap and file compare',
@@ -442,15 +482,37 @@ $base = 'https://phai-studio.monrak.net/';
 
 <section id="learn" class="section">
     <div class="wrap">
-        <span class="label">Learn Rust in Thai</span>
+        <span class="label">Learn in Thai</span>
         <h2><?= e($T['learnH']) ?></h2>
         <p class="sub"><?= e($T['learnSub']) ?></p>
+        <h3 class="part"><i class="ti ti-tools"></i> <?= e($T['toolsH']) ?></h3>
+        <p class="muted"><?= e($T['toolsSub']) ?></p>
+        <div class="grid g4">
+            <?php foreach ($T['tools'] as [$tag, $b, $s]): ?>
+                <a class="card lesson tool" href="<?= $B ?>help/ctl-<?= $tag ?>.html" target="_blank" rel="noopener"><div class="icon"><img src="<?= $B ?>help/icons/<?= $tag ?>.png" alt="" width="26" height="26"></div><b><?= e($b) ?></b><p><?= e($s) ?></p></a>
+            <?php endforeach ?>
+        </div>
+        <h3 class="part mt"><i class="ti ti-brand-rust"></i> <?= e($T['rustH']) ?></h3>
+        <p class="muted"><?= e($T['rustSub']) ?></p>
         <div class="grid g3">
-            <?php foreach ($T['learn'] as [$icon, $b, $s]): ?>
-                <a class="card lesson" href="<?= $B ?>help/" target="_blank" rel="noopener"><div class="icon"><i class="ti <?= $icon ?>"></i></div><b><?= e($b) ?></b><p><?= e($s) ?></p></a>
+            <?php foreach ($T['learn'] as [$icon, $b, $s, $page]): ?>
+                <a class="card lesson" href="<?= $B ?>help/<?= $page ?>.html" target="_blank" rel="noopener"><div class="icon"><i class="ti <?= $icon ?>"></i></div><b><?= e($b) ?></b><p><?= e($s) ?></p></a>
             <?php endforeach ?>
         </div>
         <p class="mt"><a class="btn btn-primary" href="<?= $B ?>help/" target="_blank" rel="noopener"><i class="ti ti-book"></i> <?= e($T['learnBtn']) ?></a></p>
+    </div>
+</section>
+
+<section id="made" class="section tint">
+    <div class="wrap">
+        <span class="label">Made with Phai Studio</span>
+        <h2><?= e($T['madeH']) ?></h2>
+        <p class="sub"><?= e($T['madeSub']) ?></p>
+        <article class="card made">
+            <a class="made-shot" href="<?= v('shots/phaidesk.jpg') ?>" data-gallery data-caption="<?= e($T['madeName']) ?>"><img src="<?= v('shots/phaidesk.jpg') ?>" alt="<?= e($T['madeName']) ?>" width="1432" height="1046" loading="lazy"></a>
+            <div><h3><?= e($T['madeName']) ?></h3><p><?= e($T['madeP']) ?></p>
+                <p class="mt"><a class="btn btn-ghost" href="https://phai-desk.monrak.net/" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> <?= e($T['madeLink']) ?></a></p></div>
+        </article>
     </div>
 </section>
 
