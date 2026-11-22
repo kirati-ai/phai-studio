@@ -176,9 +176,23 @@ pub fn scan(dir: &std::path::Path, skip: &[&str]) -> Vec<String> {
 
 /// What is wrong with the Thai for `used`: a sentence with none, an entry left in English, or a
 /// placeholder lost. Empty when all is well - assert on it in a program's test.
+/// Words the same in every language - a name (`PhaiDesk`), a language's own name (`English`):
+/// [`problems`] does not ask Thai of them.
+pub fn keep(words: &'static [&'static str]) {
+    KEEP.write().unwrap_or_else(|e| e.into_inner()).extend_from_slice(words);
+}
+
+static KEEP: std::sync::RwLock<Vec<&'static str>> = std::sync::RwLock::new(Vec::new());
+
 pub fn problems(used: &[String]) -> Vec<String> {
     let mut out = Vec::new();
+    let kept = KEEP.read().unwrap_or_else(|e| e.into_inner()).clone();
     for en in used {
+        // Nothing to translate: no English letters ("-", "100%"), Thai already, or kept as it is.
+        let thai_already = en.chars().any(|c| ('\u{0E00}'..='\u{0E7F}').contains(&c));
+        if !en.chars().any(|c| c.is_ascii_alphabetic()) || thai_already || kept.contains(&en.as_str()) {
+            continue;
+        }
         let Some(th) = lookup(en) else {
             out.push(format!("no Thai for {en:?}"));
             continue;

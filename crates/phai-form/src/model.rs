@@ -1296,7 +1296,12 @@ impl FormFile {
                     add(t);
                 }
             }
-            c.items.iter().for_each(|s| add(s));
+            // A context menu's items are `method | label`: the label is the words.
+            if c.kind == Kind::ContextMenu {
+                c.menu_items().iter().for_each(|(_, l)| add(l));
+            } else {
+                c.items.iter().for_each(|s| add(s));
+            }
             // A bound grid's headings that are its table's own column names are shown as they are,
             // not translated; one renamed in the form is a sentence like any other.
             c.columns.iter().enumerate().filter(|(i, (s, _))| c.bind.as_ref().is_none_or(|b| b.columns.get(*i) != Some(s))).for_each(|(_, (s, _))| add(s));
