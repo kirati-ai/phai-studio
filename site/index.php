@@ -231,6 +231,10 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.7', '23 พ.ย. 2569', [
+            'แก้โปรแกรมล้มตอนเปิดหน้าต่าง เมื่อมีช่องเลือก (combo) ที่ยังว่างและสูงกว่าขนาดปกติ',
+            'ดับเบิลคลิกไฟล์ .phf ตอน Phai Studio เปิดอยู่ จะเปิดในหน้าต่างเดิม ไม่เปิด Studio ตัวใหม่',
+        ]],
         ['0.2.6', '22 พ.ย. 2569', [
             'ไฟล์ฟอร์มใช้นามสกุลสั้นลงเป็น .phf (เดิม .phaiform) ไฟล์เก่ายังเปิดได้ และ Studio ถามว่าจะเปลี่ยนชื่อให้ทั้งโปรเจกต์ไหม (git เก็บประวัติไว้ให้)',
             'ไฟล์ .phf มีไอคอนของตัวเองใน Explorer และดับเบิลคลิกแล้วเปิดใน Phai Studio ทันที',
@@ -437,6 +441,10 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.7', '23 Nov 2026', [
+            'Fixed a crash when a window opens with an empty drop-down list taller than its normal size',
+            'A .phf file double-clicked while Phai Studio is open opens in that window instead of a second Phai Studio',
+        ]],
         ['0.2.6', '22 Nov 2026', [
             'Form files have a shorter name, .phf (they were .phaiform): older ones still open, and Studio offers to rename a whole project\'s forms (git keeps their history)',
             '.phf files have their own icon in Explorer and open in Phai Studio on a double-click',

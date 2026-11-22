@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/phai-ui", "crates/phai-form", "crates/phai-design", "crates/phai-editor", "crates/phai-debug", "crates/phai-data", "crates/phai-pack", "crates/phai-web", "apps/setup", "apps/gallery", "apps/studio", "apps/sample"]
 
 [workspace.package]
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 publish = false
 license = "MIT"
