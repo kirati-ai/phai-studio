@@ -231,6 +231,13 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.8', '23 พ.ย. 2569', [
+            'ปุ่มตรวจหารุ่นใหม่ (Help และหน้า About): ดาวน์โหลด ตรวจไฟล์ แล้วติดตั้งรุ่นล่าสุดให้',
+            'หน้า About ใหม่: ลิงก์เว็บ phai-studio.monrak.net และซอร์สโค้ด คลิกได้',
+            'Publish ตั้งไฟล์ที่โปรแกรมเปิดได้ (เช่น .score) ให้มีไอคอนของตัวเองและดับเบิลคลิกแล้วเปิดในโปรแกรม',
+            'หน้าตัวติดตั้งแสดงไอคอนของโปรแกรม',
+            'สัญญาอนุญาตใหม่: ตัว Phai Studio เป็น PolyForm Perimeter 1.0.1 (ใช้ฟรีทุกงาน รวมทำโปรแกรมขาย แต่ห้ามทำเป็นโปรแกรมที่แข่งกับ Phai Studio) ไลบรารีที่ติดไปกับโปรแกรมของคุณยังเป็น MIT',
+        ]],
         ['0.2.7', '23 พ.ย. 2569', [
             'แก้โปรแกรมล้มตอนเปิดหน้าต่าง เมื่อมีช่องเลือก (combo) ที่ยังว่างและสูงกว่าขนาดปกติ',
             'ดับเบิลคลิกไฟล์ .phf ตอน Phai Studio เปิดอยู่ จะเปิดในหน้าต่างเดิม ไม่เปิด Studio ตัวใหม่',
@@ -441,6 +448,13 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.8', '23 Nov 2026', [
+            'Check for updates (Help and About): the newest version downloaded, checked and installed',
+            'A new About: links to phai-studio.monrak.net and the source code',
+            'Publish sets the files a program opens (.score, say): their own icon in Explorer, opened in the program on a double-click',
+            'The setup shows the program\'s icon',
+            'New license: Phai Studio itself is PolyForm Perimeter 1.0.1 (free for any work, programs you sell included, but not for a product that competes with Phai Studio); the libraries that go into your programs stay MIT',
+        ]],
         ['0.2.7', '23 Nov 2026', [
             'Fixed a crash when a window opens with an empty drop-down list taller than its normal size',
             'A .phf file double-clicked while Phai Studio is open opens in that window instead of a second Phai Studio',
