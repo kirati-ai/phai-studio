@@ -227,6 +227,8 @@ pub fn with_package_field(text: &str, key: &str, value: &str, list: bool) -> Str
 
 /// The table of Cargo.toml the web app's settings are kept in - cargo itself leaves it alone.
 pub const WEB_APP_TABLE: &str = "[package.metadata.phai-web]";
+/// The project's own settings Phai Studio keeps: the program file's icon.
+pub const PHAI_TABLE: &str = "[package.metadata.phai]";
 
 /// A field of `table` (`[package.metadata.phai-web]`) in a Cargo.toml's text, without quotes.
 pub fn table_field(text: &str, table: &str, key: &str) -> Option<String> {

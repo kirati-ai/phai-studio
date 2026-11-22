@@ -746,6 +746,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Package name (the program's file name):", "ชื่อแพ็กเกจ (ชื่อไฟล์โปรแกรม):"),
     ("Version:", "เวอร์ชัน:"),
     ("Rust edition (2021 or 2024):", "Rust edition (2021 หรือ 2024):"),
+    ("Icon of the program's file - an .ico of the project:", "ไอคอนของไฟล์โปรแกรม - ไฟล์ .ico ในโปรเจกต์:"),
+    ("build.rs is your own, so it was left as it is: add the icon to it, or rename it and set the icon again for Phai Studio's.", "build.rs เป็นของคุณเอง จึงไม่ได้แก้: ใส่ไอคอนในนั้นเอง หรือเปลี่ยนชื่อไฟล์แล้วตั้งไอคอนอีกครั้งให้ Phai Studio เขียนให้"),
     ("Description:", "คำอธิบาย:"),
     ("Authors (comma between):", "ผู้เขียน (คั่นด้วยจุลภาค):"),
     ("A package name is letters, digits, - and _ only.", "ชื่อแพ็กเกจใช้ได้แค่ตัวอักษร ตัวเลข - และ _"),

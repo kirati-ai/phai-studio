@@ -3809,10 +3809,12 @@ impl Studio {
         };
         let get = |k: &str| cargo::package_field(&dir, k).unwrap_or_default();
         let version = cargo::package_version(&dir).unwrap_or_default();
-        let now = [get("name"), version, get("edition"), get("description"), get("authors")];
+        let icon_now = std::fs::read_to_string(dir.join("Cargo.toml")).ok().and_then(|t| cargo::table_field(&t, cargo::PHAI_TABLE, "icon")).unwrap_or_default();
+        let now = [get("name"), version, get("edition"), get("description"), get("authors"), icon_now];
         let answers = match std::env::var("PHAI_PROPS_TEST") {
-            // `PHAI_PROPS_TEST=description`: that description set, the rest as it is.
-            Ok(d) => vec![now[0].clone(), now[1].clone(), now[2].clone(), d, now[4].clone()],
+            // `PHAI_PROPS_TEST=description`: that description set, the rest as it is
+            // (`PHAI_PROPS_ICON=art/app.ico` the icon too).
+            Ok(d) => vec![now[0].clone(), now[1].clone(), now[2].clone(), d, now[4].clone(), std::env::var("PHAI_PROPS_ICON").unwrap_or_else(|_| now[5].clone())],
             Err(_) => {
                 let fields = [
                     phai_ui::dialogs::Field::Text(t("Package name (the program's file name):"), &now[0]),
@@ -3820,6 +3822,7 @@ impl Studio {
                     phai_ui::dialogs::Field::Text(t("Rust edition (2021 or 2024):"), &now[2]),
                     phai_ui::dialogs::Field::Text(t("Description:"), &now[3]),
                     phai_ui::dialogs::Field::Text(t("Authors (comma between):"), &now[4]),
+                    phai_ui::dialogs::Field::Text(t("Icon of the program's file - an .ico of the project:"), &now[5]),
                 ];
                 let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("{0} Properties", &[&now[0]]), &fields) else { return };
                 a
@@ -3837,6 +3840,26 @@ impl Studio {
                 text = cargo::with_package_field(&text, key, answers[k].trim(), *list);
             }
         }
+        // The program file's icon: kept in Cargo.toml, embedded by the build.rs Phai Studio writes.
+        let icon = answers.get(5).map(|s| s.trim().replace('\\', "/")).unwrap_or_default();
+        if icon != now[5] {
+            if !icon.is_empty() && !dir.join(&icon).is_file() {
+                win::message(Some(self.hwnd), &tf("{0} is not in the project", &[&icon]), "Phai Studio", wm::MB_ICONWARNING);
+                return;
+            }
+            text = cargo::with_table_field(&text, cargo::PHAI_TABLE, "icon", &icon);
+            let build = dir.join("build.rs");
+            let old = std::fs::read_to_string(&build).unwrap_or_default();
+            // Phai Studio's own build.rs (an older one too) is brought up to date; one the
+            // programmer wrote is theirs.
+            if old.is_empty() || old.starts_with(project::BUILD_RS_MARK) || old.starts_with("//! Embeds a manifest that names Common Controls 6.") {
+                if old != project::BUILD_RS {
+                    let _ = std::fs::write(&build, project::BUILD_RS);
+                }
+            } else if !icon.is_empty() {
+                win::message(Some(self.hwnd), t("build.rs is your own, so it was left as it is: add the icon to it, or rename it and set the icon again for Phai Studio's."), "Phai Studio", wm::MB_ICONINFORMATION);
+            }
+        }
         match std::fs::write(dir.join("Cargo.toml"), &text) {
             Ok(()) => {
                 controls::status_text(self.status, 0, &tf("Saved {0}", &[&"Cargo.toml"]));
@@ -3851,6 +3874,7 @@ impl Studio {
         }
         if std::env::var_os("PHAI_PROPS_TEST").is_some() {
             println!("description now: {}", cargo::package_field(&dir, "description").unwrap_or_default());
+            println!("icon now: {}", std::fs::read_to_string(dir.join("Cargo.toml")).ok().and_then(|t| cargo::table_field(&t, cargo::PHAI_TABLE, "icon")).unwrap_or_default());
         }
     }
 
