@@ -156,6 +156,19 @@ $T = $th ? [
         ['coverage', 'Code Coverage', 'แถบสีบอกบรรทัดที่เทสต์ครอบคลุม และยังไม่ครอบคลุม'],
         ['program', 'โปรแกรมที่สร้าง', 'โปรแกรม Windows หน้าจอภาษาไทย ที่สร้างด้วย Phai Studio'],
     ],
+    'shotMore' => [
+        'designer' => ['ลากเครื่องมือจาก Toolbox ทางซ้ายมาวางบนฟอร์ม', 'เลือก control แล้วแก้ค่าในหน้าต่าง Properties ทางขวา', 'ดับเบิลคลิก control เพื่อเขียนโค้ดตอนผู้ใช้กด', 'กด F1 เปิดคู่มือของ control ที่เลือกอยู่'],
+        'theme' => ['คลิกธีมสำเร็จรูปด้านบนเพื่อเริ่ม', 'ปรับสีทีละส่วน เช่น สีหลัก พื้นหลัง ตัวอักษร', 'ดูผลในตัวอย่างทางขวาทันที ก่อนกดบันทึก', 'ธีมเป็นไฟล์ CSS ไฟล์เดียว ใช้กับทั้งโปรแกรม'],
+        'help' => ['ทุก control ใน Toolbox มีหน้าของตัวเอง 43 หน้า', 'บอกว่าใช้ทำอะไร พร้อมภาพโปรแกรมตัวอย่าง', 'โค้ดตัวอย่างทุกชิ้น build ได้จริง', 'มี Method, Properties และ Events ครบ ค้นหาในเมนูได้'],
+        'editor' => ['สีตามไวยากรณ์ของ Rust อ่านง่าย', 'บอกจำนวนที่ถูกเรียกใช้เหนือฟังก์ชันและ struct', 'เติมคำ ไปยังที่ประกาศ เปลี่ยนชื่อ ด้วย rust-analyzer', 'พับโค้ดเป็นส่วน ๆ ได้'],
+        'debugger' => ['คลิกหน้าบรรทัดเพื่อตั้ง breakpoint (จุดแดง)', 'กด F5 โปรแกรมหยุดที่บรรทัดนั้น ลูกศรเหลืองชี้บรรทัดที่จะทำต่อ', 'เดินทีละบรรทัด แล้วดูค่าตัวแปรที่แท็บด้านล่าง', 'Locals, Watch, Call Stack และ Threads อยู่ในที่เดียว'],
+        'breakpoints' => ['รวม breakpoint ทุกจุดในโปรเจกต์', 'ใส่เงื่อนไขให้หยุดเฉพาะเมื่อจริง เช่น i == 5', 'ให้หยุดเมื่อผ่านครบจำนวนครั้งที่ตั้งไว้', 'ติ๊กเปิด-ปิดได้โดยไม่ต้องลบ'],
+        'memory' => ['ระหว่างโปรแกรมหยุด ดูหน่วยความจำเป็นเลขฐานสิบหก', 'เห็นทั้งตัวเลขและตัวอักษรที่เก็บอยู่', 'เหมาะกับการเรียนว่าข้อมูลถูกเก็บอย่างไร'],
+        'disassembly' => ['ภาษาเครื่องที่ Rust แปลออกมาจริง', 'แต่ละช่วงคู่กับบรรทัดซอร์สโค้ดที่มา', 'เห็นว่าโค้ดที่เขียนกลายเป็นคำสั่งอะไรบ้าง'],
+        'tests' => ['รวมเทสต์ #[test] ทุกตัวในโปรเจกต์', 'รันทั้งหมดหรือเลือกรันทีละตัว', 'เห็นทันทีว่าตัวไหนผ่าน ตัวไหนไม่ผ่าน และเพราะอะไร'],
+        'coverage' => ['รันเทสต์แล้ววัดว่าเทสต์วิ่งผ่านบรรทัดไหนบ้าง', 'แถบสีข้างบรรทัดบอกบรรทัดที่ครอบคลุมแล้ว และที่ยังไม่ครอบคลุม', 'รู้ว่าควรเขียนเทสต์เพิ่มตรงไหน'],
+        'program' => ['โปรแกรม Windows จริงที่สร้างจาก Phai Studio', 'ได้ไฟล์ .exe ไฟล์เดียว ไม่ต้องลงอะไรเพิ่ม', 'หน้าจอภาษาไทยได้เต็มที่', 'Publish ทำตัวติดตั้งให้ในคลิกเดียว'],
+    ],
     'statVisitors' => 'ผู้เข้าชมทั้งหมด', 'statDownloads' => 'ดาวน์โหลดแล้ว', 'statVersion' => 'เวอร์ชัน', 'cta' => 'ดาวน์โหลด',
     'zoom' => 'คลิกเพื่อดูภาพเต็ม', 'prev' => 'ก่อนหน้า', 'next' => 'ถัดไป', 'close' => 'ปิด',
     'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'วิทยาทาน · โอเพนซอร์ส', 'คู่มือ RUST ภาษาไทย', 'ดาวน์โหลดฟรี'],
@@ -306,6 +319,19 @@ $T = $th ? [
         ['tests', 'Tests', 'Run every test or one, and see what passed and failed'],
         ['coverage', 'Code coverage', 'A coloured bar by every line the tests reach, and the ones they miss'],
         ['program', 'What you make', 'A Windows program with a Thai interface, made with Phai Studio'],
+    ],
+    'shotMore' => [
+        'designer' => ['Drag tools from the Toolbox on the left onto the form', 'Choose a control and set it in the Properties window on the right', 'Double-click a control to write what happens when it is used', 'F1 opens the guide page of the chosen control'],
+        'theme' => ['Click a ready theme at the top to start from it', 'Set each colour: the accent, backgrounds, words', 'See it in the preview on the right before saving', 'A theme is one CSS file for the whole program'],
+        'help' => ['Every Toolbox control has its own page: 43 of them', 'What it is for, with a picture of an example program', 'Every example builds as it stands', 'Its methods, properties and events, and a search over the menu'],
+        'editor' => ['Rust in syntax colours, easy to read', 'How many times each function and struct is used, above it', 'Completion, go to definition and rename with rust-analyzer', 'Fold the code into parts'],
+        'debugger' => ['Click by a line to set a breakpoint (the red dot)', 'F5: the program stops there; the yellow arrow shows the next line', 'Step line by line and watch the variables in the tabs below', 'Locals, Watch, Call Stack and Threads in one place'],
+        'breakpoints' => ['Every breakpoint in the project in one list', 'A condition, so it stops only when true, like i == 5', 'Or stop once it has been passed a set number of times', 'Tick them off and on without deleting them'],
+        'memory' => ['While the program is paused, its memory in hex', 'Both the numbers and the characters they hold', 'A way to learn how data is really stored'],
+        'disassembly' => ['The machine code Rust really made', 'Each part beside the source line it came from', 'See what the code you wrote turns into'],
+        'tests' => ['Every #[test] in the project', 'Run them all, or one at a time', 'See at once which passed, which failed, and why'],
+        'coverage' => ['Run the tests and measure which lines they reach', 'A coloured bar by each line: reached, or not yet', 'Know where more tests are needed'],
+        'program' => ['A real Windows program made with Phai Studio', 'One .exe file, nothing else to install', 'A Thai interface, in full', 'Publish makes its installer in one click'],
     ],
     'statVisitors' => 'Visitors', 'statDownloads' => 'Downloads', 'statVersion' => 'Version', 'cta' => 'Download',
     'zoom' => 'Click to see it full size', 'prev' => 'Previous', 'next' => 'Next', 'close' => 'Close',
@@ -463,14 +489,19 @@ $base = 'https://phai-studio.monrak.net/';
             <div class="slider">
                 <div class="slides">
                     <?php foreach ($T['shots'] as $i => [$f, $h, $p]): ?>
-                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e("$h — $p") ?>" data-h="<?= e($h) ?>" data-p="<?= e($p) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
+                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e("$h — $p") ?>" data-h="<?= e($h) ?>" data-p="<?= e($p) ?>" data-more="<?= e(json_encode($T['shotMore'][$f] ?? [], JSON_UNESCAPED_UNICODE)) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
                     <?php endforeach ?>
                 </div>
                 <button type="button" class="nav-btn sl-prev" aria-label="<?= e($T['prev']) ?>"><i class="ti ti-chevron-left"></i></button>
                 <button type="button" class="nav-btn sl-next" aria-label="<?= e($T['next']) ?>"><i class="ti ti-chevron-right"></i></button>
                 <span class="zoom"><i class="ti ti-photo"></i> <?= e($T['zoom']) ?></span>
             </div>
-            <p class="caption" id="shot-caption"><b><?= e($T['shots'][0][1]) ?></b> — <?= e($T['shots'][0][2]) ?></p>
+            <div class="shot-info" id="shot-caption" aria-live="polite">
+                <span class="shot-n"><b>01</b> / <?= sprintf('%02d', count($T['shots'])) ?></span>
+                <h3><?= e($T['shots'][0][1]) ?></h3>
+                <p><?= e($T['shots'][0][2]) ?></p>
+                <ul><?php foreach ($T['shotMore'][$T['shots'][0][0]] ?? [] as $m): ?><li><?= e($m) ?></li><?php endforeach ?></ul>
+            </div>
         </div>
     </div>
 </section>

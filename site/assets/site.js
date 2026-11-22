@@ -1,7 +1,8 @@
 // phai-studio.monrak.net: the page's motion, after monrak.net and desktopserver.monrak.net, without libraries.
 // The slider and its gallery, every card's hover, cards fading in, and the strip that says how far down you are.
 
-// slider: moves on by itself every few seconds, and by the arrows or a swipe; the caption follows.
+// slider: moves on by itself every few seconds, and by the arrows or a swipe; the panel beside it
+// (its number, name, line and points) follows.
 // It waits while the pointer or focus is on it, while it is off screen or the tab hidden, and never
 // moves by itself for a reader who asked for less motion. It never scrolls the page.
 (() => {
@@ -19,10 +20,14 @@
         warm(at); warm(at + 1);
         track.style.transform = 'translateX(' + (-100 * at) + '%)';
         const s = slides[at];
-        cap.innerHTML = '';
-        const b = document.createElement('b');
-        b.textContent = s.dataset.h;
-        cap.append(b, ' — ' + s.dataset.p);
+        const pad = (k) => String(k).padStart(2, '0');
+        cap.querySelector('.shot-n b').textContent = pad(at + 1);
+        cap.querySelector('h3').textContent = s.dataset.h;
+        cap.querySelector('p').textContent = s.dataset.p;
+        const ul = cap.querySelector('ul');
+        ul.innerHTML = '';
+        for (const m of JSON.parse(s.dataset.more || '[]')) { const li = document.createElement('li'); li.textContent = m; ul.append(li); }
+        cap.classList.remove('fresh'); void cap.offsetWidth; cap.classList.add('fresh');
         if (window.thaiWrap) window.thaiWrap(cap);
     };
     warm(1);
