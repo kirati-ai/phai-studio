@@ -250,3 +250,9 @@ h3.part + .muted { margin: 0 0 16px; }
 #learn .card.lesson .icon { grid-row: 1 / 3; align-self: center; margin-bottom: 0; }
 #learn .card.lesson b { margin: 2px 0 2px; }
 #learn .card.lesson p { margin: 0; }
+/* Tighter guide cards: the tool's name is what is read first, the line under it smaller and quieter. */
+#learn .card.lesson { padding: 14px 16px; grid-template-columns: 40px 1fr; column-gap: 12px; }
+#learn .card.lesson .icon { width: 40px; height: 40px; border-radius: 10px; font-size: 1.25rem; }
+#learn .card.lesson.tool .icon img { width: 24px; height: 24px; }
+#learn .card.lesson.tool b { margin: 0 0 1px; font-family: var(--sans, inherit); font-weight: 600; font-size: 1rem; line-height: 1.35; letter-spacing: 0; text-transform: none; color: var(--text); }
+#learn .card.lesson p { font-size: .86rem; line-height: 1.5; }
