@@ -57,6 +57,8 @@ pub struct MouseEventArgs {
     pub button: MouseButton,
     pub ctrl: bool,
     pub shift: bool,
+    /// The wheel's turn in MouseWheel - as on Windows.
+    pub delta: i32,
 }
 
 /// The form about to close - WinForms' FormClosingEventArgs.

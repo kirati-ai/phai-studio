@@ -529,7 +529,7 @@ pub fn on_mouse(h: HWND, event: &str, mut f: impl FnMut(&MouseEventArgs) + 'stat
             2 => MouseButton::Right,
             _ => MouseButton::None,
         };
-        f(&MouseEventArgs { x: m.offset_x(), y: m.offset_y(), button, ctrl: m.ctrl_key(), shift: m.shift_key() });
+        f(&MouseEventArgs { x: m.offset_x(), y: m.offset_y(), button, ctrl: m.ctrl_key(), shift: m.shift_key(), delta: 0 });
     });
     let _ = e.add_event_listener_with_callback(event, c.as_ref().unchecked_ref());
     c.forget();

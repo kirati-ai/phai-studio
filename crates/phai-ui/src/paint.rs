@@ -58,10 +58,23 @@ impl PaintEventArgs {
         self.text(text, &mut r, css, Gdi::DT_NOPREFIX);
     }
 
-    /// Words centred in the control - "Connecting...".
+    /// Words centred in the control - "Connecting..." - their lines kept, long ones wrapped
+    /// inside a margin, the block in the middle.
     pub fn draw_text_centered(&self, text: &str, css: &str) {
-        let mut r = RECT { left: 0, top: 0, right: self.width, bottom: self.height };
-        self.text(text, &mut r, css, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+        if text.is_empty() {
+            return;
+        }
+        let margin = (self.width / 10).min(40);
+        let flags = Gdi::DT_CENTER | Gdi::DT_WORDBREAK | Gdi::DT_NOPREFIX;
+        let mut measure = RECT { left: margin, top: 0, right: (self.width - margin).max(margin + 1), bottom: self.height };
+        let mut w: Vec<u16> = text.encode_utf16().collect();
+        unsafe {
+            Gdi::DrawTextW(self.dc, &mut w, &mut measure, flags | Gdi::DT_CALCRECT);
+        }
+        let h = measure.bottom - measure.top;
+        let top = ((self.height - h) / 2).max(0);
+        let mut r = RECT { left: margin, top, right: (self.width - margin).max(margin + 1), bottom: top + h };
+        self.text(text, &mut r, css, flags);
     }
 
     fn text(&self, text: &str, r: &mut RECT, css: &str, flags: Gdi::DRAW_TEXT_FORMAT) {
@@ -92,6 +105,18 @@ impl PaintEventArgs {
             Gdi::SetStretchBltMode(self.dc, if w < pw { Gdi::HALFTONE } else { Gdi::COLORONCOLOR });
             let _ = Gdi::SetBrushOrgEx(self.dc, 0, 0, None);
             Gdi::StretchDIBits(self.dc, x, y, w, h, 0, 0, pw, ph, Some(bgra.as_ptr() as *const _), &info, Gdi::DIB_RGB_COLORS, Gdi::SRCCOPY);
+        }
+    }
+
+    /// As [`Self::draw_pixels`], the picture's own transparency kept (its fourth byte) - a mouse
+    /// pointer, an icon over what is drawn already.
+    pub fn draw_pixels_alpha(&self, bgra: &[u8], size: (i32, i32), place: (i32, i32, i32, i32)) {
+        let ((pw, ph), (x, y, w, h)) = (size, place);
+        if let Some(icon) = crate::icon::from_bgra(bgra, pw, ph, 0, 0, true) {
+            unsafe {
+                let _ = windows::Win32::UI::WindowsAndMessaging::DrawIconEx(self.dc, x, y, icon, w.max(1), h.max(1), 0, None, windows::Win32::UI::WindowsAndMessaging::DI_NORMAL);
+                let _ = windows::Win32::UI::WindowsAndMessaging::DestroyIcon(icon);
+            }
         }
     }
 

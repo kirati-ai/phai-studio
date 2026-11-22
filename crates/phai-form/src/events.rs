@@ -81,6 +81,7 @@ pub const CONTROL: &[EventSpec] = &[
     ev("mouse_down", "MouseDown", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_DOWN), "A mouse button pressed over it - e.x, e.y, e.button."),
     ev("mouse_up", "MouseUp", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_UP), "A mouse button let go over it."),
     ev("mouse_move", "MouseMove", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_MOVE), "The mouse moves over it."),
+    ev("mouse_wheel", "MouseWheel", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_WHEEL), "The mouse wheel turned over it - e.delta, 120 a notch, more than 0 away from you."),
     ev("resize", "Resize", Args::None, &[], Source::Hook(phai_ui_codes::RESIZE), "Its size changed - the window was sized, and it is anchored or docked."),
     ev("drag_drop", "DragDrop", Args::Files, &[], Source::Hook(phai_ui_codes::DRAG_DROP), "Dropped on it: files from Explorer (e.files) or words dragged from another control (e.text, e.source)."),
     ev("checked_changed", "CheckedChanged", Args::None, &[Kind::Checkbox, Kind::Radio], Source::Command(0), "Ticked or unticked."),
@@ -161,6 +162,7 @@ pub mod phai_ui_codes {
     pub const POSITION_CHANGED: u16 = phai_ui::events::POSITION_CHANGED;
     pub const FILE_OK: u16 = phai_ui::events::FILE_OK;
     pub const PAINT: u16 = phai_ui::events::PAINT;
+    pub const MOUSE_WHEEL: u16 = phai_ui::events::MOUSE_WHEEL;
 }
 
 /// Whether controls of `kind` raise `e`: an empty list is every control on the form.

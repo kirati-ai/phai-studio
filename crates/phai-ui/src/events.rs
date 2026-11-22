@@ -41,6 +41,8 @@ pub const POSITION_CHANGED: u16 = 16;
 pub const FILE_OK: u16 = 17;
 /// A panel or picture the program draws itself: [`crate::paint::PaintEventArgs`].
 pub const PAINT: u16 = 18;
+/// The mouse wheel turned over a control: [`MouseEventArgs::delta`].
+pub const MOUSE_WHEEL: u16 = 19;
 
 /// The bit of `event` in a [`hook`]'s mask.
 pub const fn bit(event: u16) -> u32 {
@@ -106,6 +108,9 @@ pub struct MouseEventArgs {
     pub button: MouseButton,
     pub ctrl: bool,
     pub shift: bool,
+    /// The wheel's turn in MouseWheel: 120 a notch, more than 0 away from the person - WinForms'
+    /// `Delta`; 0 for the other mouse events.
+    pub delta: i32,
 }
 
 /// The form about to close - WinForms' FormClosingEventArgs.
@@ -265,7 +270,7 @@ fn mods() -> (bool, bool, bool) {
 
 fn mouse(l: LPARAM, button: MouseButton) -> MouseEventArgs {
     let (ctrl, shift, _) = mods();
-    MouseEventArgs { x: (l.0 & 0xFFFF) as i16 as i32, y: ((l.0 >> 16) & 0xFFFF) as i16 as i32, button, ctrl, shift }
+    MouseEventArgs { x: (l.0 & 0xFFFF) as i16 as i32, y: ((l.0 >> 16) & 0xFFFF) as i16 as i32, button, ctrl, shift, delta: 0 }
 }
 
 unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usize, _: usize) -> LRESULT {
@@ -305,6 +310,16 @@ unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usiz
         wm::WM_ERASEBKGND if wants(PAINT) => return LRESULT(1),
         wm::WM_PAINT if wants(PAINT) => {
             crate::paint::paint(h, |e| raise(form, k.id, PAINT, e));
+            return LRESULT(0);
+        }
+        // The wheel over it - its place from the screen's to its own, as the other mouse events.
+        wm::WM_MOUSEWHEEL if wants(MOUSE_WHEEL) => {
+            let mut p = windows::Win32::Foundation::POINT { x: (l.0 & 0xFFFF) as i16 as i32, y: ((l.0 >> 16) & 0xFFFF) as i16 as i32 };
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::ScreenToClient(h, &mut p);
+            }
+            let (ctrl, shift, _) = mods();
+            send(MOUSE_WHEEL, &MouseEventArgs { x: p.x, y: p.y, button: MouseButton::None, ctrl, shift, delta: ((w.0 >> 16) & 0xFFFF) as i16 as i32 });
             return LRESULT(0);
         }
         wm::WM_SETFOCUS => send(ENTER, &()),

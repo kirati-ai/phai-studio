@@ -245,6 +245,7 @@ fn event_const(code: u16) -> &'static str {
         e::POSITION_CHANGED => "POSITION_CHANGED",
         e::FILE_OK => "FILE_OK",
         e::PAINT => "PAINT",
+        e::MOUSE_WHEEL => "MOUSE_WHEEL",
         _ => "RESIZE",
     }
 }
