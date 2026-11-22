@@ -42,7 +42,7 @@ pub fn from_store(exe: &Path) -> bool {
 /// How a project names one of the Phai libraries, `local` its copy on this machine. That copy
 /// while it is there; from the repository Phai Studio was built from when it is not - or when
 /// Phai Studio came from the Store, whose folder moves with each update, or the setting
-/// `library_from_git` is `1`. From git, pinned to this Phai Studio's release (`tag = "v0.2.0"`),
+/// `library_from_git` is `1`. From git, pinned to this Phai Studio's release (`tag = "v0.2.1"`),
 /// so the project builds the same next year.
 pub fn library_dependency(local: &Path) -> String {
     let repo = env!("CARGO_PKG_REPOSITORY");
