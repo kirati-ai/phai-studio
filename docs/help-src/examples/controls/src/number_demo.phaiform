@@ -1,0 +1,29 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "NumberDemo"
+title = "NumericUpDown"
+size = [360, 120]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "ask"
+text = "Tickets:"
+bounds = [16, 18, 80, 24]
+
+[[control]]
+kind = "number"
+id = "tickets"
+bounds = [100, 16, 80, 24]
+on_change = "tickets_changed"
+min = 1
+max = 10
+value = 2
+
+[[control]]
+kind = "label"
+id = "price"
+text = ""
+bounds = [16, 56, 328, 24]

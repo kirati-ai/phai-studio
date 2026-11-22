@@ -24,6 +24,16 @@ mod listbox_demo;
 mod listbox_demo_ui;
 mod masked_demo;
 mod masked_demo_ui;
+mod notifyicon_demo;
+mod notifyicon_demo_ui;
+mod number_demo;
+mod number_demo_ui;
+mod picture_demo;
+mod picture_demo_ui;
+mod progress_demo;
+mod progress_demo_ui;
+mod radio_demo;
+mod radio_demo_ui;
 
 fn main() {
     match std::env::args().nth(1).as_deref().unwrap_or("") {
@@ -38,6 +48,11 @@ fn main() {
         "list" => list_demo_ui::ListDemoUi::run(list_demo::ListDemo::default()),
         "listbox" => listbox_demo_ui::ListboxDemoUi::run(listbox_demo::ListboxDemo::default()),
         "masked" => masked_demo_ui::MaskedDemoUi::run(masked_demo::MaskedDemo::default()),
+        "notifyicon" => notifyicon_demo_ui::NotifyiconDemoUi::run(notifyicon_demo::NotifyiconDemo::default()),
+        "number" => number_demo_ui::NumberDemoUi::run(number_demo::NumberDemo::default()),
+        "picture" => picture_demo_ui::PictureDemoUi::run(picture_demo::PictureDemo::default()),
+        "progress" => progress_demo_ui::ProgressDemoUi::run(progress_demo::ProgressDemo::default()),
+        "radio" => radio_demo_ui::RadioDemoUi::run(radio_demo::RadioDemo::default()),
         other => eprintln!("no demo called {other:?}"),
     }
 }

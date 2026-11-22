@@ -1,0 +1,37 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ProgressDemo"
+title = "ProgressBar"
+size = [360, 140]
+start = "center"
+
+[[control]]
+kind = "progress"
+id = "work"
+bounds = [16, 16, 328, 22]
+min = 0
+max = 100
+value = 30
+step = 10
+
+[[control]]
+kind = "button"
+id = "next"
+text = "One step more"
+bounds = [16, 52, 150, 30]
+on_click = "next_clicked"
+
+[[control]]
+kind = "button"
+id = "again"
+text = "From the start"
+bounds = [178, 52, 150, 30]
+on_click = "again_clicked"
+
+[[control]]
+kind = "label"
+id = "done"
+text = ""
+bounds = [16, 94, 328, 24]

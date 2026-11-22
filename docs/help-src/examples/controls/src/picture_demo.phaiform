@@ -1,0 +1,30 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "PictureDemo"
+title = "PictureBox"
+size = [360, 230]
+start = "center"
+
+[[control]]
+kind = "picture"
+id = "photo"
+bounds = [16, 16, 180, 180]
+image = "pictures/phai.png"
+cursor = "hand"
+
+[control.events]
+click = "photo_click"
+
+[[control]]
+kind = "label"
+id = "mode"
+text = "SizeMode: zoom"
+bounds = [206, 16, 140, 24]
+
+[[control]]
+kind = "label"
+id = "hint"
+text = "Click the picture"
+bounds = [206, 44, 140, 24]

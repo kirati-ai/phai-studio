@@ -64,7 +64,8 @@ def build():
 def photograph(kind):
     exe = os.path.join(PROJ, 'target', 'debug', 'control-examples.exe')
     shot = os.path.join(HERE, 'data', 'shots', f'ctl-{kind}.png')
-    subprocess.run([exe, kind], env=dict(ENV, PHAI_SHOT=shot, PHAI_SHOT_DELAY='2'), timeout=60)
+    # From the project's folder, as cargo run is: pictures/ and other files are found from there.
+    subprocess.run([exe, kind], cwd=PROJ, env=dict(ENV, PHAI_SHOT=shot, PHAI_SHOT_DELAY='2'), timeout=60)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,39 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "RadioDemo"
+title = "RadioButton"
+size = [360, 170]
+start = "center"
+
+[[control]]
+kind = "radio"
+id = "small"
+text = "Small cup"
+bounds = [16, 16, 150, 24]
+checked = true
+group = 1
+on_click = "size_clicked"
+
+[[control]]
+kind = "radio"
+id = "medium"
+text = "Medium cup"
+bounds = [16, 44, 150, 24]
+group = 1
+on_click = "size_clicked"
+
+[[control]]
+kind = "radio"
+id = "large"
+text = "Large cup"
+bounds = [16, 72, 150, 24]
+group = 1
+on_click = "size_clicked"
+
+[[control]]
+kind = "label"
+id = "price"
+text = ""
+bounds = [16, 112, 328, 24]

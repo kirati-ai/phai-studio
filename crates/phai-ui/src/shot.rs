@@ -15,18 +15,26 @@ pub fn capture(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
     // windows (a ListView in Details, seen in the guide's demos) it hands back the frame with a
     // black inside. Then the window is asked to draw itself instead (flag 0).
     let full = capture_with(hwnd, PW_RENDERFULLCONTENT)?;
-    if mostly_black(&full.0) {
-        if let Some(own) = capture_with(hwnd, 0).filter(|c| !mostly_black(&c.0)) {
+    if mostly_black(&full) {
+        if let Some(own) = capture_with(hwnd, 0).filter(|c| !mostly_black(c)) {
             return Some(own);
         }
     }
     Some(full)
 }
 
-/// More than nine pixels in ten pure black: a picture PrintWindow could not take.
-fn mostly_black(px: &[u8]) -> bool {
-    let all = px.len() / 4;
-    let black = px.as_chunks::<4>().0.iter().filter(|p| p[0] == 0 && p[1] == 0 && p[2] == 0).count();
+/// More than nine pixels in ten of its inside pure black (the title bar left out, which the
+/// black ones keep): a picture PrintWindow could not take.
+fn mostly_black((px, w, h): &(Vec<u8>, u32, u32)) -> bool {
+    let (w, h) = (*w as usize, *h as usize);
+    let rows = h * 3 / 10..h * 9 / 10;
+    let (mut all, mut black) = (0usize, 0usize);
+    for y in rows {
+        for p in px[y * w * 4..(y + 1) * w * 4].as_chunks::<4>().0 {
+            all += 1;
+            black += usize::from(p[0] == 0 && p[1] == 0 && p[2] == 0);
+        }
+    }
     all > 0 && black * 10 > all * 9
 }
 

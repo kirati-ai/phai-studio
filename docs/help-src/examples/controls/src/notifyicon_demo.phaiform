@@ -1,0 +1,29 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "NotifyiconDemo"
+title = "NotifyIcon"
+size = [360, 120]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "hint"
+text = "Look at the corner of the taskbar, by the clock."
+bounds = [16, 16, 328, 24]
+
+[[control]]
+kind = "button"
+id = "tell"
+text = "Send a notice"
+bounds = [16, 52, 160, 30]
+class = "primary"
+on_click = "tell_clicked"
+
+[[control]]
+kind = "notifyicon"
+id = "tray"
+text = "Phai demo - click to bring me back"
+bounds = [0, 0, 0, 0]
+on_click = "tray_clicked"
