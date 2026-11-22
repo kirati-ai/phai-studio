@@ -166,6 +166,34 @@ $T = $th ? [
         'อยากคุยเรื่องอื่น ๆ หรืออยากให้ช่วย ทักมาที่ <a href="https://www.monrak.net/">Monrak Net</a> ได้เลย',
     ],
     'contact' => 'คุยกับ Monrak Net',
+    'histH' => 'มีอะไรใหม่',
+    'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
+    'hist' => [
+        ['0.2.1', '22 พ.ย. 2569', [
+            'ตารางข้อมูล: ตัวกรองแบบ Excel ที่หัวคอลัมน์ ส่งออกเป็น Excel และ PDF และตารางหลัก-ตารางย่อย (master-detail)',
+            'ภาพเคลื่อนไหวด้วย CSS (animation และ @keyframes)',
+            'เว็บแอป: ตารางที่ผูกฐานข้อมูลใช้บนเว็บได้ผ่านเซิร์ฟเวอร์ข้อมูล มีเมนูคลิกขวาและ tree และเผยแพร่เว็บแอปจาก Phai Studio ได้เลย',
+            'บันทึกข้อมูลทั้งชุดในครั้งเดียว (transaction) และหลายคนแก้แถวเดียวกันไม่บันทึกทับกัน',
+        ]],
+        ['0.2.0', '21 พ.ย. 2569', [
+            'Data grid แบบ DevExpress: ตั้งค่ารายคอลัมน์ ตัวแก้ค่าในช่อง รูปแบบตัวเลขและวันที่ กฎสี ผลรวม ค้นหา และจัดกลุ่ม',
+            'Database Designer: สร้างฐานข้อมูลและออกแบบตารางในหน้าเดียว',
+            'ออกแบบเมนูและ toolbar บนฟอร์มได้โดยตรง พร้อม Properties และ Events',
+            'ตัวแก้โค้ดแบบ Visual Studio: sticky scroll, สีวงเล็บ, ชนิดข้อมูลแสดงในบรรทัด, ตัดบรรทัด และเทียบไฟล์',
+        ]],
+        ['0.1.3', '20 พ.ย. 2569', [
+            'เว็บแอป (PWA): ฟอร์มเดิมรันในเบราว์เซอร์และติดตั้งลงมือถือได้ทั้ง Android และ iPhone',
+            'control ของ WinForms ครบ: Properties, Methods และ Events แบบ Visual Studio, UserControl, MDI, SplitContainer, การพิมพ์ และ DataBindings',
+            'แต่งหน้าตา: แท็บ Style, Theme Editor, ตัวตรวจสด (F12) ในโปรแกรมที่กำลังรัน, เงาและไล่สี',
+        ]],
+        ['0.1.2', '19 พ.ย. 2569', [
+            'โปรแกรมหลายหน้าต่าง (Project > Add Form)',
+            'ลากตารางจากฐานข้อมูลลงฟอร์ม ได้ตารางพร้อมปุ่มโหลดและบันทึก',
+        ]],
+        ['0.1.0', '18 พ.ย. 2569', [
+            'รุ่นแรก: ออกแบบฟอร์มแบบลากวาง ตัวแก้โค้ด build รัน ดีบัก Git และทำตัวติดตั้ง พร้อมคู่มือภาษาไทย',
+        ]],
+    ],
     'dlH' => 'ดาวน์โหลด', 'dlName' => 'Phai Studio (ตัวติดตั้ง)',
     'dlDesc' => 'ไฟล์เดียว มีโปรแกรม ตัวถอนการติดตั้ง และคู่มือภาษาไทยในตัว',
     'dlMeta' => fn ($c) => "รุ่น {$release['version']} · วันที่ {$date} · ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง",
@@ -257,6 +285,34 @@ $T = $th ? [
         'Want to talk about anything else, or need a hand? Say hello to <a href="https://www.monrak.net/">Monrak Net</a>',
     ],
     'contact' => 'Talk to Monrak Net',
+    'histH' => "What's new",
+    'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
+    'hist' => [
+        ['0.2.1', '22 Nov 2026', [
+            'Data grid: Excel-style filters on the headings, export to Excel and PDF, and master-detail grids',
+            'CSS animation (animation and @keyframes)',
+            'Web apps: grids bound to a database work on the web through a data server, with context menus and trees, and web apps publish straight from Phai Studio',
+            'Saving is one transaction, and two people editing the same row no longer overwrite each other',
+        ]],
+        ['0.2.0', '21 Nov 2026', [
+            'A DevExpress-style data grid: per-column settings, in-cell editors, number and date formats, colour rules, totals, find and grouping',
+            'Database Designer: make databases and design their tables in one place',
+            'Menus and toolbars designed right on the form, with their properties and events',
+            'A Visual Studio-style code editor: sticky scroll, bracket colours, inline type hints, word wrap and file compare',
+        ]],
+        ['0.1.3', '20 Nov 2026', [
+            'Web apps (PWA): the same forms run in a browser and install on Android and iPhone',
+            "WinForms' controls in full: Visual Studio's properties, methods and events, UserControl, MDI, SplitContainer, printing and DataBindings",
+            'Styling: the Style tab, the Theme Editor, a live inspector (F12) in the running program, shadows and gradients',
+        ]],
+        ['0.1.2', '19 Nov 2026', [
+            'Programs with several windows (Project > Add Form)',
+            'A database table dragged onto a form becomes a grid with Reload and Save',
+        ]],
+        ['0.1.0', '18 Nov 2026', [
+            'The first release: drag-and-drop form design, a code editor, build, run, debug, Git and installers, with a Thai guide',
+        ]],
+    ],
     'dlH' => 'Download', 'dlName' => 'Phai Studio (installer)',
     'dlDesc' => 'One file with the program, its uninstaller and the Thai guide',
     'dlMeta' => fn ($c) => "Version {$release['version']} · {$date} · Downloaded {$c['downloads']} times",
@@ -305,6 +361,7 @@ $base = 'https://phai-studio.monrak.net/';
             <a class="hide-sm" href="#learn"><?= e($T['nav']['learn']) ?></a>
             <a class="hide-sm" href="#features"><?= e($T['nav']['features']) ?></a>
             <a class="hide-sm" href="#install"><?= e($T['nav']['install']) ?></a>
+            <a class="hide-sm" href="#history"><?= e($T['histH']) ?></a>
             <a class="lang" href="?lang=<?= $th ? 'en' : 'th' ?>"><i class="ti ti-world"></i> <?= $th ? 'EN' : 'ไทย' ?></a>
             <a class="cta" href="#download"><?= e($T['cta']) ?> <i class="ti ti-arrow-right"></i></a>
         </nav>
@@ -450,6 +507,20 @@ $base = 'https://phai-studio.monrak.net/';
         <p class="note"><i class="ti ti-certificate"></i> <?= $T['dlSign'] ?></p>
         <p class="note mt"><?= e($T['dlGit']) ?></p>
         <pre><code>git clone https://github.com/kirati-ai/phai-studio.git</code></pre>
+    </div>
+</section>
+
+<section id="history" class="section">
+    <div class="wrap">
+        <span class="label">Releases</span>
+        <h2><?= e($T['histH']) ?></h2>
+        <p class="sub"><?= $T['histSub'] ?></p>
+        <div class="history">
+            <?php foreach ($T['hist'] as [$ver, $when, $items]): ?>
+                <article class="card release"><h3><?= e($ver) ?> <small><?= e($when) ?></small></h3>
+                    <ul class="muted"><?php foreach ($items as $it): ?><li><?= e($it) ?></li><?php endforeach ?></ul></article>
+            <?php endforeach ?>
+        </div>
     </div>
 </section>
 </main>
