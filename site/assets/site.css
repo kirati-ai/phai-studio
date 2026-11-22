@@ -22,7 +22,7 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+html { font-size: 14px; scroll-behavior: smooth; scroll-padding-top: 72px; }   /* every rem 2px smaller than the browser's 16px */
 body { margin: 0; background: var(--surface); color: var(--text); font: 1rem/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
 a { color: var(--green); }
 img { max-width: 100%; }
