@@ -1,0 +1,31 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ErrorproviderDemo"
+title = "ErrorProvider"
+size = [360, 130]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "email_label"
+text = "E-mail:"
+bounds = [16, 18, 70, 24]
+
+[[control]]
+kind = "edit"
+id = "email"
+bounds = [90, 16, 220, 24]
+
+[[control]]
+kind = "button"
+id = "send"
+text = "Send"
+bounds = [90, 52, 120, 30]
+class = "primary"
+on_click = "send_clicked"
+
+[[control]]
+kind = "errorprovider"
+id = "errors"

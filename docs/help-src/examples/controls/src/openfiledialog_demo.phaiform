@@ -1,0 +1,28 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "OpenfiledialogDemo"
+title = "OpenFileDialog"
+size = [400, 240]
+start = "center"
+
+[[control]]
+kind = "button"
+id = "open"
+text = "Open a text file..."
+bounds = [16, 16, 170, 30]
+class = "primary"
+on_click = "open_clicked"
+
+[[control]]
+kind = "textarea"
+id = "contents"
+bounds = [16, 56, 368, 140]
+anchor = "all"
+
+[[control]]
+kind = "openfiledialog"
+id = "open_dialog"
+filter = "Text files|*.txt|All files|*.*"
+title = "Open a text file"

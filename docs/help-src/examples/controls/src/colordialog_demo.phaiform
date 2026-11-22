@@ -1,0 +1,34 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ColordialogDemo"
+title = "ColorDialog"
+size = [360, 200]
+start = "center"
+
+[[control]]
+kind = "button"
+id = "pick"
+text = "Choose a colour..."
+bounds = [16, 16, 170, 30]
+on_click = "pick_clicked"
+
+[[control]]
+kind = "label"
+id = "code"
+text = ""
+bounds = [196, 20, 148, 24]
+
+[[control]]
+kind = "panel"
+id = "swatch"
+bounds = [16, 56, 328, 100]
+border = "fixed"
+
+[control.events]
+paint = "swatch_paint"
+
+[[control]]
+kind = "colordialog"
+id = "colours"

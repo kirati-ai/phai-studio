@@ -1,0 +1,27 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "FolderbrowserdialogDemo"
+title = "FolderBrowserDialog"
+size = [400, 130]
+start = "center"
+
+[[control]]
+kind = "button"
+id = "choose"
+text = "Choose a folder..."
+bounds = [16, 16, 170, 30]
+class = "primary"
+on_click = "choose_clicked"
+
+[[control]]
+kind = "label"
+id = "chosen"
+text = "No folder yet"
+bounds = [16, 58, 368, 40]
+
+[[control]]
+kind = "folderbrowserdialog"
+id = "folder_dialog"
+title = "Which folder?"

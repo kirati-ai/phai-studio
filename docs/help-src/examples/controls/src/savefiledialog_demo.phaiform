@@ -1,0 +1,35 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "SavefiledialogDemo"
+title = "SaveFileDialog"
+size = [400, 240]
+start = "center"
+
+[[control]]
+kind = "button"
+id = "save"
+text = "Save as..."
+bounds = [16, 16, 140, 30]
+class = "primary"
+on_click = "save_clicked"
+
+[[control]]
+kind = "label"
+id = "saved"
+text = ""
+bounds = [166, 20, 218, 24]
+
+[[control]]
+kind = "textarea"
+id = "contents"
+bounds = [16, 56, 368, 140]
+anchor = "all"
+
+[[control]]
+kind = "savefiledialog"
+id = "save_dialog"
+default_ext = "txt"
+filter = "Text files|*.txt"
+title = "Save the note"

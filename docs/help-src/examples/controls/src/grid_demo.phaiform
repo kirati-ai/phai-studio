@@ -1,0 +1,34 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "GridDemo"
+title = "DataGridView"
+size = [420, 260]
+start = "center"
+
+[[control]]
+kind = "grid"
+id = "scores"
+bounds = [16, 16, 388, 170]
+columns = [["Name", 200], ["Score", 120]]
+
+[[control]]
+kind = "button"
+id = "total"
+text = "Average"
+bounds = [16, 196, 120, 30]
+on_click = "total_clicked"
+
+[[control]]
+kind = "button"
+id = "best"
+text = "Best first"
+bounds = [146, 196, 120, 30]
+on_click = "best_clicked"
+
+[[control]]
+kind = "label"
+id = "result"
+text = ""
+bounds = [276, 200, 128, 24]

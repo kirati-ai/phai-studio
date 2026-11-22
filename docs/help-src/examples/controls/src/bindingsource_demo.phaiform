@@ -1,0 +1,61 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "BindingsourceDemo"
+title = "BindingSource"
+size = [360, 180]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name:"
+bounds = [16, 18, 70, 24]
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [90, 16, 250, 24]
+data_binding = "people.name"
+
+[[control]]
+kind = "label"
+id = "phone_label"
+text = "Phone:"
+bounds = [16, 50, 70, 24]
+
+[[control]]
+kind = "edit"
+id = "phone"
+bounds = [90, 48, 250, 24]
+data_binding = "people.phone"
+
+[[control]]
+kind = "button"
+id = "back"
+text = "<"
+bounds = [90, 86, 40, 30]
+on_click = "back_clicked"
+
+[[control]]
+kind = "label"
+id = "place"
+text = ""
+bounds = [138, 90, 90, 24]
+text_align = "center"
+
+[[control]]
+kind = "button"
+id = "next"
+text = ">"
+bounds = [236, 86, 40, 30]
+on_click = "next_clicked"
+
+[[control]]
+kind = "bindingsource"
+id = "people"
+fields = "name, phone"
+
+[control.events]
+position_changed = "people_moved"

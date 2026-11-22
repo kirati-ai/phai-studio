@@ -1,0 +1,25 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "FontdialogDemo"
+title = "FontDialog"
+size = [360, 130]
+start = "center"
+
+[[control]]
+kind = "button"
+id = "pick"
+text = "Choose a font..."
+bounds = [16, 16, 170, 30]
+on_click = "pick_clicked"
+
+[[control]]
+kind = "label"
+id = "chosen"
+text = "Segoe UI, 9 pt"
+bounds = [16, 58, 328, 24]
+
+[[control]]
+kind = "fontdialog"
+id = "fonts"

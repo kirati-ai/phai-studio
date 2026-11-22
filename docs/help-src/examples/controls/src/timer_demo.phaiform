@@ -1,0 +1,29 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "TimerDemo"
+title = "Timer"
+size = [360, 130]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "time"
+text = "0 s"
+bounds = [16, 12, 328, 36]
+font_size = 18
+bold = true
+
+[[control]]
+kind = "button"
+id = "start_stop"
+text = "Stop"
+bounds = [16, 58, 120, 30]
+on_click = "start_stop_clicked"
+
+[[control]]
+kind = "timer"
+id = "clock"
+on_tick = "clock_ticked"
+value = 1000

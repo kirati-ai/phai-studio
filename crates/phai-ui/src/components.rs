@@ -308,7 +308,9 @@ const MARK: i32 = 16;
 fn place_mark(control: HWND, mark: HWND) {
     let r = win::rect_in_parent(control);
     let s = win::px(control, MARK);
-    let visible = unsafe { wm::IsWindowVisible(control) }.as_bool();
+    // The control's own visibility, not IsWindowVisible's (which asks its window too): an error set
+    // while the window is being made - in its Load - would otherwise leave the mark hidden for good.
+    let visible = unsafe { wm::GetWindowLongW(control, wm::GWL_STYLE) } as u32 & wm::WS_VISIBLE.0 != 0;
     unsafe {
         let _ = wm::SetWindowPos(mark, Some(wm::HWND_TOP), r.right + win::px(control, 4), r.top + (r.bottom - r.top - s) / 2, s, s, wm::SWP_NOACTIVATE | if visible { wm::SWP_SHOWWINDOW } else { wm::SWP_HIDEWINDOW });
     }
