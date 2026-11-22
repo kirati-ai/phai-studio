@@ -1,0 +1,582 @@
+{
+  "form": {
+    "events": [
+      {
+        "arg": null,
+        "category": "พฤติกรรม",
+        "help": "ทำงานครั้งเดียวเมื่อสร้างหน้าต่าง ก่อนแสดง",
+        "method": "loaded",
+        "name": "Load"
+      },
+      {
+        "arg": null,
+        "category": "พฤติกรรม",
+        "help": "หน้าต่างขึ้นบนจอเป็นครั้งแรก",
+        "method": "shown",
+        "name": "Shown"
+      },
+      {
+        "arg": "phai_ui::events::ClosingEventArgs",
+        "category": "พฤติกรรม",
+        "help": "หน้าต่างกำลังจะปิด - เรียก e.cancel() เพื่อไม่ให้ปิด",
+        "method": "closing",
+        "name": "FormClosing"
+      },
+      {
+        "arg": null,
+        "category": "พฤติกรรม",
+        "help": "หน้าต่างปิดแล้ว",
+        "method": "closed",
+        "name": "FormClosed"
+      },
+      {
+        "arg": null,
+        "category": "การจัดวาง",
+        "help": "ขนาดหน้าต่างเปลี่ยน",
+        "method": "resize",
+        "name": "Resize"
+      },
+      {
+        "arg": null,
+        "category": "พฤติกรรม",
+        "help": "หน้าต่างขึ้นมาอยู่หน้าสุดและรับแป้นพิมพ์",
+        "method": "activated",
+        "name": "Activated"
+      },
+      {
+        "arg": null,
+        "category": "พฤติกรรม",
+        "help": "หน้าต่างอื่นขึ้นมาอยู่หน้า",
+        "method": "deactivate",
+        "name": "Deactivate"
+      },
+      {
+        "arg": null,
+        "category": "การกระทำ",
+        "help": "คลิกที่ตัวหน้าต่าง ไม่ใช่ control ข้างใน",
+        "method": "click",
+        "name": "Click"
+      },
+      {
+        "arg": null,
+        "category": "การกระทำ",
+        "help": "ดับเบิลคลิกที่ตัวหน้าต่าง",
+        "method": "double_click",
+        "name": "DoubleClick"
+      },
+      {
+        "arg": "phai_ui::events::MouseEventArgs",
+        "category": "เมาส์",
+        "help": "กดปุ่มเมาส์บนตัวหน้าต่าง",
+        "method": "mouse_down",
+        "name": "MouseDown"
+      },
+      {
+        "arg": "phai_ui::events::MouseEventArgs",
+        "category": "เมาส์",
+        "help": "ปล่อยปุ่มเมาส์บนตัวหน้าต่าง",
+        "method": "mouse_up",
+        "name": "MouseUp"
+      },
+      {
+        "arg": "phai_ui::events::MouseEventArgs",
+        "category": "เมาส์",
+        "help": "เมาส์เคลื่อนบนตัวหน้าต่าง",
+        "method": "mouse_move",
+        "name": "MouseMove"
+      },
+      {
+        "arg": "phai_ui::events::FileDropEventArgs",
+        "category": "การกระทำ",
+        "help": "มีไฟล์ถูกลากจาก Explorer มาวางบนหน้าต่าง - e.files",
+        "method": "drag_drop",
+        "name": "DragDrop"
+      },
+      {
+        "arg": "phai_ui::events::KeyEventArgs",
+        "category": "แป้นพิมพ์",
+        "help": "กดแป้นที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview - ก่อน control ได้รับ; e.set_handled() เพื่อไม่ให้ control ได้รับ",
+        "method": "key_down",
+        "name": "KeyDown"
+      },
+      {
+        "arg": "phai_ui::events::KeyEventArgs",
+        "category": "แป้นพิมพ์",
+        "help": "ปล่อยแป้นที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview",
+        "method": "key_up",
+        "name": "KeyUp"
+      },
+      {
+        "arg": "phai_ui::events::KeyPressEventArgs",
+        "category": "แป้นพิมพ์",
+        "help": "พิมพ์ตัวอักษรที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview",
+        "method": "key_press",
+        "name": "KeyPress"
+      },
+      {
+        "arg": null,
+        "category": "การกระทำ",
+        "help": "เริ่มใช้แถบเมนู: เปิดเมนูจากแถบ หรือกด Alt",
+        "method": "menu_start",
+        "name": "MenuStart"
+      },
+      {
+        "arg": null,
+        "category": "การกระทำ",
+        "help": "เลิกใช้แถบเมนูแล้ว",
+        "method": "menu_complete",
+        "name": "MenuComplete"
+      },
+      {
+        "arg": "phai_ui::events::ItemEventArgs",
+        "category": "การกระทำ",
+        "help": "คลิกปุ่มบนแถบเครื่องมือ - e.index คือลำดับของปุ่มเริ่มจาก 0 (นับเส้นคั่นด้วย)",
+        "method": "toolbar_item_clicked",
+        "name": "ItemClicked"
+      }
+    ],
+    "properties": [
+      {
+        "category": "ออกแบบ",
+        "default": "MainWindow",
+        "help": "ชื่อหน้าต่างในโค้ด: ชื่อ struct และชื่อไฟล์",
+        "name": "ชื่อ",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "MainWindow",
+        "help": "ข้อความบนแถบชื่อ - คีย์ภาษาอังกฤษ โปรแกรมแปลให้",
+        "name": "หัวเรื่อง",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "",
+        "help": "ขนาดตัวอักษร (พอยต์) ของทุก control ว่างไว้คือ 9 ของ Windows",
+        "name": "ขนาดฟอนต์",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "",
+        "help": "ไฟล์ CSS ที่ทุก control ใช้สี",
+        "name": "ธีม",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "480, 320",
+        "help": "ขนาดด้านในหน้าต่าง ที่สเกล 100%",
+        "name": "ขนาด",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "480",
+        "help": "ขนาดด้านในหน้าต่าง ที่สเกล 100%",
+        "name": "กว้าง",
+        "part": true
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "320",
+        "help": "ขนาดด้านในหน้าต่าง ที่สเกล 100%",
+        "name": "สูง",
+        "part": true
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "กลางจอ",
+        "help": "หน้าต่างขึ้นที่ไหนตอนเปิด: กลางจอ หรือตามที่ Windows วางให้",
+        "name": "ตำแหน่งเริ่มต้น",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "ปกติ",
+        "help": "เต็มจอ: หน้าต่างเปิดขึ้นมาเต็มจอ",
+        "name": "สถานะหน้าต่าง",
+        "part": false
+      },
+      {
+        "category": "อื่น ๆ",
+        "default": "",
+        "help": "ปุ่มที่ถูกกดเมื่อกด Enter ไม่ว่าโฟกัสอยู่ที่ไหน",
+        "name": "AcceptButton",
+        "part": false
+      },
+      {
+        "category": "อื่น ๆ",
+        "default": "",
+        "help": "ปุ่มที่ถูกกดเมื่อกด Esc",
+        "name": "CancelButton",
+        "part": false
+      },
+      {
+        "category": "อื่น ๆ",
+        "default": "False",
+        "help": "KeyDown, KeyUp และ KeyPress ของหน้าต่างได้รับแป้นที่กดใน control ก่อนตัว control",
+        "name": "KeyPreview",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "sizable",
+        "help": "Sizable: ลากขอบย่อขยายได้, Fixed: ลากไม่ได้, Dialog: กรอบแบบกล่องโต้ตอบ, Tool: แถบชื่อเล็ก, None: ไม่มีกรอบเลย",
+        "name": "FormBorderStyle",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "stack",
+        "help": "บนจอที่แคบกว่าฟอร์ม (มือถือ บนเว็บ): stack เรียง control ลงมาทีละตัว กว้างเต็มจอ ตามลำดับการอ่าน ขนาดพอให้นิ้วกด; zoom ย่อทั้งฟอร์มให้พอดีจอ",
+        "name": "PhoneLayout",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "True",
+        "help": "ปุ่มขยายเต็มจอบนแถบชื่อ",
+        "name": "MaximizeBox",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "True",
+        "help": "ปุ่มย่อหน้าต่างบนแถบชื่อ",
+        "name": "MinimizeBox",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "True",
+        "help": "ปุ่มและเมนูบนแถบชื่อ ถ้าปิดจะไม่มีทั้งหมด",
+        "name": "ControlBox",
+        "part": false
+      },
+      {
+        "category": "ออกแบบ",
+        "default": "False",
+        "help": "ไม่ใช่หน้าต่าง แต่เป็น control ที่ฟอร์มอื่นในโปรเจกต์วางได้ (kind usercontrol)",
+        "name": "UserControl",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "False",
+        "help": "ฟอร์มอื่นเปิดข้างในได้ (show_mdi_child) เรียงซ้อนหรือเรียงต่อกัน",
+        "name": "IsMdiContainer",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "False",
+        "help": "อยู่เหนือหน้าต่างอื่นทุกหน้าต่างเสมอ",
+        "name": "TopMost",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "True",
+        "help": "มีปุ่มบนแถบงาน (taskbar)",
+        "name": "ShowInTaskbar",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "100",
+        "help": "ความทึบเป็นเปอร์เซ็นต์ ยิ่งน้อยยิ่งเห็นสิ่งที่อยู่ข้างหลัง",
+        "name": "Opacity",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
+        "default": "",
+        "help": "ไฟล์ .ico ในโปรเจกต์ สำหรับแถบชื่อและปุ่มบนแถบงาน",
+        "name": "Icon",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "",
+        "help": "ขนาดภายในที่เล็กที่สุดที่ลากย่อได้ ที่สเกล 100%",
+        "name": "MinimumSize",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "",
+        "help": "ขนาดภายในที่ใหญ่ที่สุดที่ลากขยายได้ ที่สเกล 100%",
+        "name": "MaximumSize",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "",
+        "help": "สีพื้นหลังของหน้าต่างนี้ทับธีม control ข้างในวางบนสีนี้",
+        "name": "BackColor",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "",
+        "help": "สีตัวอักษรของหน้าต่างนี้ทับธีม",
+        "name": "ForeColor",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "",
+        "help": "ไฟล์รูปในโปรเจกต์ ใช้เป็นพื้นหลังใต้ control ของหน้าต่าง",
+        "name": "BackgroundImage",
+        "part": false
+      },
+      {
+        "category": "รูปลักษณ์",
+        "default": "tile",
+        "help": "Tile: ปูซ้ำ, None: ขนาดจริงมุมซ้ายบน, Center: อยู่กลาง, Stretch: ยืดเต็มหน้าต่าง, Zoom: ขยายเต็มที่โดยคงสัดส่วน",
+        "name": "BackgroundImageLayout",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "False",
+        "help": "เมื่อหน้าต่างเล็กกว่าที่ออกแบบ จะมีแถบเลื่อนและ control เลื่อนตาม",
+        "name": "AutoScroll",
+        "part": false
+      },
+      {
+        "category": "การจัดวาง",
+        "default": "0",
+        "help": "ระยะว่างรอบขอบหน้าต่าง (พิกเซล) สำหรับ control ที่ dock",
+        "name": "Padding",
+        "part": false
+      },
+      {
+        "category": "พฤติกรรม",
+        "default": "False",
+        "help": "ลากไฟล์จาก Explorer มาวางบนหน้าต่างได้ - ใช้ event DragDrop",
+        "name": "AllowDrop",
+        "part": false
+      }
+    ]
+  },
+  "tools": [
+    {
+      "component": false,
+      "label": "ฟอร์ม",
+      "tag": "form"
+    },
+    {
+      "component": false,
+      "label": "แถบเมนู",
+      "tag": "menubar"
+    },
+    {
+      "component": false,
+      "label": "แถบเครื่องมือ",
+      "tag": "toolbar"
+    },
+    {
+      "component": false,
+      "label": "ป้าย",
+      "tag": "label"
+    },
+    {
+      "component": false,
+      "label": "ช่องข้อความ",
+      "tag": "edit"
+    },
+    {
+      "component": false,
+      "label": "ช่องข้อความหลายบรรทัด",
+      "tag": "textarea"
+    },
+    {
+      "component": false,
+      "label": "กล่องข้อความหลายรูปแบบ",
+      "tag": "richtext"
+    },
+    {
+      "component": false,
+      "label": "ปุ่ม",
+      "tag": "button"
+    },
+    {
+      "component": false,
+      "label": "ช่องติ๊ก",
+      "tag": "checkbox"
+    },
+    {
+      "component": false,
+      "label": "ตัวเลือก",
+      "tag": "radio"
+    },
+    {
+      "component": false,
+      "label": "รายการเลือก",
+      "tag": "combo"
+    },
+    {
+      "component": false,
+      "label": "รายการ",
+      "tag": "list"
+    },
+    {
+      "component": false,
+      "label": "ตารางข้อมูล",
+      "tag": "grid"
+    },
+    {
+      "component": false,
+      "label": "มุมมองต้นไม้",
+      "tag": "tree"
+    },
+    {
+      "component": false,
+      "label": "รูปภาพ",
+      "tag": "picture"
+    },
+    {
+      "component": false,
+      "label": "วันที่",
+      "tag": "date"
+    },
+    {
+      "component": false,
+      "label": "ตัวเลข",
+      "tag": "number"
+    },
+    {
+      "component": false,
+      "label": "ตัวเลื่อน",
+      "tag": "slider"
+    },
+    {
+      "component": false,
+      "label": "แถบความคืบหน้า",
+      "tag": "progress"
+    },
+    {
+      "component": false,
+      "label": "กลุ่ม",
+      "tag": "group"
+    },
+    {
+      "component": false,
+      "label": "แท็บ",
+      "tag": "tabs"
+    },
+    {
+      "component": false,
+      "label": "จัดเรียงต่อกัน (Flow)",
+      "tag": "flow"
+    },
+    {
+      "component": false,
+      "label": "จัดเป็นตาราง (Table)",
+      "tag": "table"
+    },
+    {
+      "component": false,
+      "label": "แถบสถานะ",
+      "tag": "statusbar"
+    },
+    {
+      "component": true,
+      "label": "ตัวจับเวลา",
+      "tag": "timer"
+    },
+    {
+      "component": true,
+      "label": "เมนูคลิกขวา",
+      "tag": "contextmenu"
+    },
+    {
+      "component": false,
+      "label": "แผง",
+      "tag": "panel"
+    },
+    {
+      "component": false,
+      "label": "กล่องรายการ",
+      "tag": "listbox"
+    },
+    {
+      "component": false,
+      "label": "กล่องรายการติ๊ก",
+      "tag": "checkedlist"
+    },
+    {
+      "component": false,
+      "label": "ลิงก์",
+      "tag": "link"
+    },
+    {
+      "component": false,
+      "label": "ช่องกรอกตามแบบ",
+      "tag": "masked"
+    },
+    {
+      "component": false,
+      "label": "ปฏิทินเดือน",
+      "tag": "calendar"
+    },
+    {
+      "component": true,
+      "label": "หน้าต่างเปิดไฟล์",
+      "tag": "openfiledialog"
+    },
+    {
+      "component": true,
+      "label": "หน้าต่างบันทึกไฟล์",
+      "tag": "savefiledialog"
+    },
+    {
+      "component": true,
+      "label": "หน้าต่างเลือกโฟลเดอร์",
+      "tag": "folderbrowserdialog"
+    },
+    {
+      "component": true,
+      "label": "หน้าต่างเลือกสี",
+      "tag": "colordialog"
+    },
+    {
+      "component": true,
+      "label": "หน้าต่างเลือกฟอนต์",
+      "tag": "fontdialog"
+    },
+    {
+      "component": true,
+      "label": "ตัวบอกข้อผิดพลาด",
+      "tag": "errorprovider"
+    },
+    {
+      "component": true,
+      "label": "ไอคอนมุมจอ",
+      "tag": "notifyicon"
+    },
+    {
+      "component": false,
+      "label": "แบ่งสองช่อง",
+      "tag": "split"
+    },
+    {
+      "component": true,
+      "label": "เอกสารสำหรับพิมพ์",
+      "tag": "printdocument"
+    },
+    {
+      "component": true,
+      "label": "แหล่งข้อมูลผูก",
+      "tag": "bindingsource"
+    },
+    {
+      "component": false,
+      "label": "User control (control ของโปรเจกต์)",
+      "tag": "usercontrol"
+    }
+  ]
+}

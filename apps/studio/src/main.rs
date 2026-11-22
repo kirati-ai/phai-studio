@@ -10,6 +10,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bottom;
+mod helpdata;
 mod canvas;
 mod coledit;
 mod menudesign;
@@ -2194,6 +2195,23 @@ impl Studio {
             }
         }
         phai_editor::view::set_lenses(h, all);
+    }
+
+    /// F1's page, as Visual Studio's: in the designer, the selected control's own page of the
+    /// guide (`ctl-<kind>.html`), the menu bar's or toolbar's, or the Form's with nothing chosen;
+    /// the guide's Phai Studio page anywhere else, or when that control has no page yet.
+    fn help_topic(&self) -> String {
+        let page = if self.code_shown().is_some() {
+            None
+        } else if let Some(b) = &self.bar_sel {
+            Some(if matches!(b, BarSel::ToolStrip | BarSel::Tool(_)) { "toolbar" } else { "menubar" }.to_string())
+        } else {
+            match self.selected.and_then(|i| self.doc.form.control.get(i)) {
+                Some(c) => Some(c.kind.name().to_string()),
+                None => Some("form".to_string()),
+            }
+        };
+        page.map(|k| format!("ctl-{k}.html")).filter(|p| help_page(p).is_some()).unwrap_or_else(|| "studio.html".to_string())
     }
 
     /// The Thai guide's page `page` opened in the browser: from beside Phai Studio when it is
@@ -8068,7 +8086,7 @@ impl Studio {
             }
             ID_RUN_ALL_TESTS => self.start_job(cargo::Job::Test, true),
             ID_COVERAGE => self.analyze_coverage(),
-            ID_HELP_STUDIO => self.open_help("studio.html"),
+            ID_HELP_STUDIO => self.open_help(&self.help_topic()),
             ID_HELP_RUST => self.open_help("rust-01.html"),
             ID_HELP_ERRORS => self.open_help("rust-10.html"),
             ID_ABOUT => {
@@ -9299,6 +9317,14 @@ fn main() {
         theme::set(Theme::dark());
     }
     win::init();
+    // `--help-data <folder>`: the icons and tables the guide's control pages are made from.
+    if let Some(p) = args.iter().position(|a| a == "--help-data").and_then(|i| args.get(i + 1)) {
+        if let Err(e) = helpdata::export(Path::new(p)) {
+            eprintln!("--help-data: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     // `--report file.phaireport`: the Report Designer alone (`--report-preview`: its preview too).
     if let Some(p) = args.iter().position(|a| a == "--report").and_then(|i| args.get(i + 1)) {
         repdesign::run_alone(Path::new(p), args.iter().any(|a| a == "--report-preview"));

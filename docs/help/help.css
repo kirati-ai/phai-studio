@@ -81,3 +81,15 @@ kbd { font-family: "Segoe UI", sans-serif; font-size: 0.85em; border: 1px solid 
   main { padding: 20px 16px 60px; }
   table { display: block; overflow-x: auto; }
 }
+
+/* The Toolbox pages (ctl-*.html): the tool's icon by its name, reference tables, pictures. */
+.tool-head { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+.tool-head h1 { margin: 0; }
+.tool-head .lead { margin: 4px 0 0; }
+.tool-icon { width: 48px; height: 48px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; flex: none; }
+table.ref td:first-child { white-space: nowrap; }
+table.ref tr.group td { background: var(--panel); font-weight: 600; color: var(--accent); }
+.muted { color: var(--muted); }
+figure { margin: 16px 0; }
+figure img.shot { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }

@@ -1,0 +1,34 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "My first window"
+size = [420, 220]
+start = "center"
+key_preview = true
+
+[form.events]
+closing = "main_window_closing"
+key_down = "main_window_key_down"
+
+[[control]]
+kind = "label"
+id = "greeting"
+text = "Hello!"
+bounds = [16, 16, 388, 40]
+anchor = "left top right"
+
+[[control]]
+kind = "button"
+id = "ask_name"
+text = "What is your name?"
+bounds = [16, 72, 180, 30]
+on_click = "ask_name_clicked"
+
+[[control]]
+kind = "button"
+id = "open_note"
+text = "Open a note"
+bounds = [208, 72, 180, 30]
+on_click = "open_note_clicked"

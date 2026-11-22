@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ฟอร์ม (Form) - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<a href="report.html">รายงานพิมพ์</a>
+<h4>เรียน Rust</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+<h4>Toolbox ทีละตัว</h4>
+<a href="ctl-form.html" class="here">ฟอร์ม (Form)</a>
+</nav>
+<main>
+<div class="tool-head"><img class="tool-icon" src="icons/form.png" alt="" width="48" height="48"><div><h1>ฟอร์ม (Form)</h1><p class="lead">ในกล่องเครื่องมือ: <b>ฟอร์ม</b> · เทียบกับ WinForms: <code>Form</code></p></div></div>
+<p>ฟอร์มคือ<b>หน้าต่าง</b>หนึ่งบาน โปรแกรมหนึ่งมีได้หลายฟอร์ม เช่น หน้าต่างหลัก กล่องถามชื่อ หน้าต่างตั้งค่า
+เราวาง control (ปุ่ม ช่องพิมพ์ ตาราง …) ลงบนฟอร์มด้วยการลากจากกล่องเครื่องมือ แล้วเขียนโค้ดว่าเมื่อเกิดอะไรขึ้นให้ทำอะไร</p>
+<figure><img class="shot" src="img/form-running.png" alt="หน้าต่างของตัวอย่างในหน้านี้ตอนรัน" width="420"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>
+<div class="note">กด <kbd>F1</kbd> ในตัวออกแบบตอนที่ไม่ได้เลือก control ตัวไหน จะเปิดหน้านี้ - เลือก control แล้วกด <kbd>F1</kbd> จะเปิดหน้าของ control นั้น</div>
+<h2>ฟอร์มหนึ่งมี 3 ไฟล์</h2>
+<table class="ref"><tr><th>ไฟล์</th><th>คืออะไร</th><th>แก้เองไหม</th></tr>
+<tr><td><code>main_window.phaiform</code></td><td>หน้าตาของฟอร์ม: ขนาด ชื่อ control ทุกตัวและตำแหน่ง - ตัวออกแบบแก้ไฟล์นี้ให้เวลาลากวาง</td><td>ลากวางในตัวออกแบบ (หรือแก้มือก็ได้)</td></tr>
+<tr><td><code>main_window_ui.rs</code></td><td>โค้ดที่ Phai Studio <b>เขียนให้</b>ทุกครั้งที่บันทึก: สร้างหน้าต่าง สร้าง control ต่อ event</td><td><b>ห้ามแก้</b> - บันทึกครั้งหน้าจะถูกเขียนทับ</td></tr>
+<tr><td><code>main_window.rs</code></td><td><b>โค้ดของเรา</b>: ฟอร์มจำอะไรไว้ และเมื่อเกิด event แต่ละอย่างให้ทำอะไร</td><td>ใช่ - ไฟล์ของเรา</td></tr>
+</table>
+<p>เพิ่มฟอร์มใหม่ในโปรเจกต์: เมนู <b>Project &gt; Add Form...</b> แล้วตั้งชื่อ (หรือ <b>File &gt; New &gt; Form</b> <kbd>Ctrl</kbd>+<kbd>N</kbd>) - Phai Studio สร้างให้ครบทั้ง 3 ไฟล์</p>
+<h2>โครงของโค้ด</h2>
+<p>โค้ดของฟอร์มคือ <b>struct</b> หนึ่งตัว (ฟอร์มจำอะไรไว้) กับ <code>impl MainWindowEvents</code> (เกิดอะไรขึ้นแล้วทำอะไร) และโปรแกรมเริ่มที่ <code>main()</code> ซึ่งเปิดหน้าต่างหลัก:</p>
+<pre><code>#![windows_subsystem = &quot;windows&quot;]
+
+mod main_window;
+mod main_window_ui;
+mod name_form;
+mod name_form_ui;
+mod note_form;
+mod note_form_ui;
+
+fn main() {
+    // Open the main window; the program ends when it closes.
+    main_window_ui::MainWindowUi::run(main_window::MainWindow::default());
+}</code></pre>
+<pre><code>#[derive(Default)]
+pub struct MainWindow {
+    // What the program remembers while the window is open.
+    name: String,
+}</code></pre>
+<p>method ทุกตัวใน <code>impl MainWindowEvents for MainWindow</code> ได้ <code>&amp;mut self</code> (ข้อมูลของฟอร์ม แก้ได้) กับ <code>ui</code> (ตัวหน้าต่างและ control ทุกตัว) - event ไหนไม่เขียน ก็ไม่ทำอะไร</p>
+<h2>ตัวอย่าง</h2>
+<h3>1. ทำอะไรตอนหน้าต่างเปิด (Load)</h3>
+<p>method <code>loaded</code> ทำงานครั้งเดียวก่อนหน้าต่างแสดง - ที่ที่ดีที่สุดสำหรับใส่ค่าเริ่มต้น ดับเบิลคลิกที่พื้นฟอร์มในตัวออกแบบตอนที่โค้ดยังไม่มี method เลย Phai Studio จะเขียน <code>loaded</code> ให้ (ถ้ามีแล้วจะพาไปที่โค้ด):</p>
+<pre><code>fn loaded(&amp;mut self, ui: &amp;MainWindowUi) {
+    // Runs once, just before the window shows.
+    ui.set_title(&quot;Hello window&quot;);
+    ui.greeting.set_text(&quot;Press a button below.&quot;);
+}</code></pre>
+<h3>2. เปิดหน้าต่างอีกบาน (Show)</h3>
+<p>สร้างฟอร์ม <code>NoteForm</code> ไว้ก่อน แล้วในปุ่มของหน้าต่างหลัก เรียก <code>NoteFormUi::show</code> - หน้าต่างใหม่เปิดข้าง ๆ และหน้าต่างหลักใช้ต่อได้ทันที:</p>
+<pre><code>fn open_note_clicked(&amp;mut self, ui: &amp;MainWindowUi) {
+    // Open NoteForm beside this window; this one carries on at once.
+    NoteFormUi::show(ui.hwnd, NoteForm);
+}</code></pre>
+<h3>3. เปิดกล่องถาม แล้วอ่านคำตอบ (ShowDialog)</h3>
+<p>ฟอร์ม <code>NameForm</code> มีช่องพิมพ์ <code>answer</code> ปุ่ม <code>ok</code> (DialogResult = Ok) และ <code>cancel</code> (DialogResult = Cancel) ฟอร์มตั้ง AcceptButton = ok และ CancelButton = cancel ไว้ จึงกด <kbd>Enter</kbd> / <kbd>Esc</kbd> ได้ด้วย:</p>
+<pre><code># Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = &quot;NameForm&quot;
+title = &quot;Your name&quot;
+size = [320, 120]
+start = &quot;center&quot;
+accept_button = &quot;ok&quot;
+border = &quot;fixed_dialog&quot;
+cancel_button = &quot;cancel&quot;
+maximize_box = false
+minimize_box = false
+
+[form.events]
+closed = &quot;closed&quot;
+
+[[control]]
+kind = &quot;label&quot;
+id = &quot;prompt&quot;
+text = &quot;Type your name:&quot;
+bounds = [12, 12, 296, 20]
+
+[[control]]
+kind = &quot;edit&quot;
+id = &quot;answer&quot;
+bounds = [12, 36, 296, 23]
+
+[[control]]
+kind = &quot;button&quot;
+id = &quot;ok&quot;
+text = &quot;OK&quot;
+bounds = [152, 80, 75, 26]
+class = &quot;primary&quot;
+dialog_result = &quot;ok&quot;
+
+[[control]]
+kind = &quot;button&quot;
+id = &quot;cancel&quot;
+text = &quot;Cancel&quot;
+bounds = [233, 80, 75, 26]
+dialog_result = &quot;cancel&quot;</code></pre>
+<p>ตอนหน้าต่างปิด (event FormClosed) เก็บสิ่งที่พิมพ์ไว้ใน struct:</p>
+<pre><code>#[derive(Default)]
+pub struct NameForm {
+    /// What was typed, read when the window has closed.
+    pub name: String,
+}
+
+impl NameFormEvents for NameForm {
+    fn closed(&amp;mut self, ui: &amp;NameFormUi) {
+        // Keep the text before the window is gone.
+        self.name = ui.answer.text();
+    }
+}</code></pre>
+<p>หน้าต่างหลักเปิดมันด้วย <code>show_dialog_for</code> ซึ่ง<b>รอ</b>จนปิด แล้วคืนทั้งปุ่มที่กดและ struct ของ NameForm:</p>
+<pre><code>fn ask_name_clicked(&amp;mut self, ui: &amp;MainWindowUi) {
+    // Open NameForm over this window and wait until it closes.
+    let (answer, form) = NameFormUi::show_dialog_for(ui.hwnd, NameForm::default());
+    if let (DialogResult::Ok, Some(form)) = (answer, form) {
+        self.name = form.name;
+        ui.greeting.set_text(&amp;format!(&quot;Hello, {}!&quot;, self.name));
+    }
+}</code></pre>
+<h3>4. ถามก่อนปิด (FormClosing)</h3>
+<p>ใน Properties เลือกแท็บ Events ของฟอร์ม แล้วดับเบิลคลิก <b>FormClosing</b> - ได้ <code>e</code> มาด้วย เรียก <code>e.cancel()</code> แล้วหน้าต่างจะไม่ปิด:</p>
+<pre><code>fn main_window_closing(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;ClosingEventArgs) {
+    let sure = message_box(ui.hwnd, &quot;Close the program?&quot;, &quot;Hello window&quot;, MessageBoxButtons::YesNo, MessageBoxIcon::Question);
+    if sure != DialogResult::Yes {
+        e.cancel(); // the window stays open
+    }
+}</code></pre>
+<h3>5. ปุ่มลัดบนแป้นพิมพ์ (KeyDown + KeyPreview)</h3>
+<p>ตั้ง <b>KeyPreview</b> = True ให้ฟอร์มได้ยินแป้นก่อน control ข้างใน แล้วเขียน KeyDown - ตัวอย่างนี้กด <kbd>F11</kbd> เพื่อเต็มจอ:</p>
+<pre><code>fn main_window_key_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs) {
+    // F11 (key 0x7A): full screen and back. KeyPreview lets the window hear it first.
+    if e.key == 0x7A {
+        let on = !phai_ui::form::is_full_screen(ui.hwnd);
+        phai_ui::form::set_full_screen(ui.hwnd, on);
+    }
+}</code></pre>
+<p class="muted">รหัสแป้น: <code>0x0D</code> Enter · <code>0x1B</code> Esc · <code>0x70</code>–<code>0x7B</code> F1–F12 · <code>0x41</code>–<code>0x5A</code> A–Z · ดู <code>e.ctrl</code>, <code>e.shift</code>, <code>e.alt</code> ว่ากดค้างไว้ไหม</p>
+<h2>Method: สร้างและเปิดหน้าต่าง</h2>
+<p><code>Xxx</code> คือชื่อฟอร์ม เช่น <code>MainWindowUi::run</code>, <code>NameFormUi::show_dialog</code> · <code>events</code> คือ struct ของฟอร์มนั้น เช่น <code>NameForm::default()</code> · <code>owner</code> คือหน้าต่างที่เปิดมัน (<code>ui.hwnd</code>)</p>
+<table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>XxxUi::run(events)</code></td><td>สร้างหน้าต่างแล้วทำงานจนกว่าจะปิด ใช้กับหน้าต่างหลักใน <code>main()</code> เมื่อปิดแล้วโปรแกรมจบ - เหมือน <code>Application.Run(new Form1())</code></td></tr>
+<tr><td><code>XxxUi::show(owner, events)</code></td><td>เปิดหน้าต่างข้าง ๆ หน้าต่าง <code>owner</code> แล้วทำงานต่อทันที ไม่รอ - เหมือน <code>Show()</code></td></tr>
+<tr><td><code>XxxUi::show_dialog(owner, events)</code></td><td>เปิดหน้าต่างทับ <code>owner</code> แล้ว<b>รอ</b>จนปิด ระหว่างนั้นกด <code>owner</code> ไม่ได้ ได้คำตอบเป็น <code>DialogResult</code> ของปุ่มที่กดปิด - เหมือน <code>ShowDialog()</code></td></tr>
+<tr><td><code>XxxUi::show_dialog_for(owner, events)</code></td><td>เหมือน <code>show_dialog</code> แต่คืน struct ของหน้าต่างให้ด้วย เพื่ออ่านสิ่งที่ผู้ใช้กรอก: ได้ <code>(DialogResult, Option&lt;Xxx&gt;)</code></td></tr>
+<tr><td><code>XxxUi::show_mdi_child(parent, events)</code></td><td>เปิดหน้าต่างไว้ข้างในหน้าต่าง <code>parent</code> ที่ตั้ง IsMdiContainer ไว้ - เหมือน <code>MdiParent</code> + <code>Show()</code></td></tr>
+<tr><td><code>XxxUi::create(events)</code></td><td>สร้างและแสดงหน้าต่าง แต่ให้โปรแกรมวนรับข้อความเอง (ใช้น้อย)</td></tr>
+</table>
+<h2>Method: ใช้กับหน้าต่างที่เปิดอยู่</h2>
+<table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>ui.close()</code></td><td>ปิดหน้าต่าง เหมือนกดปุ่ม ✕ - event FormClosing เกิดก่อน จึงยังยกเลิกได้</td></tr>
+<tr><td><code>ui.hide()</code></td><td>ซ่อนหน้าต่าง (ยังทำงานอยู่)</td></tr>
+<tr><td><code>ui.show_window()</code></td><td>แสดงหน้าต่างที่ซ่อนไว้อีกครั้ง</td></tr>
+<tr><td><code>ui.activate()</code></td><td>ดึงหน้าต่างขึ้นมาข้างหน้า ให้รับแป้นพิมพ์</td></tr>
+<tr><td><code>ui.center_to_screen()</code></td><td>ย้ายไปกลางจอ</td></tr>
+<tr><td><code>ui.title()</code></td><td>อ่านข้อความบนแถบชื่อ ได้ <code>String</code></td></tr>
+<tr><td><code>ui.set_title(&quot;…&quot;)</code></td><td>เปลี่ยนข้อความบนแถบชื่อ</td></tr>
+<tr><td><code>ui.hwnd</code></td><td>ตัวหน้าต่างเอง (HWND) ใช้ส่งให้ <code>message_box</code>, <code>show</code>, <code>show_dialog</code> เป็น owner</td></tr>
+<tr><td><code>ui.ชื่อcontrol</code></td><td>control ทุกตัวบนฟอร์ม เรียกตาม Id ที่ตั้งไว้ เช่น <code>ui.greeting.set_text("…")</code></td></tr>
+<tr><td><code>XxxUi::begin_invoke(inv, f)</code></td><td>จากเธรดอื่น: สั่งให้ <code>f</code> ทำงานบนหน้าต่างนี้ทีหลัง ไม่รอ (ได้ <code>inv</code> จาก <code>ui.invoker()</code>) - เหมือน <code>BeginInvoke</code></td></tr>
+<tr><td><code>XxxUi::invoke(inv, f)</code></td><td>เหมือนข้างบน แต่รอจน <code>f</code> ทำเสร็จ - เหมือน <code>Invoke</code></td></tr>
+<tr><td><code>ui.relabel()</code></td><td>เปลี่ยนข้อความทุกตัวเป็นภาษาที่เลือกใหม่ หลัง <code>phai_ui::text::set_thai(…)</code></td></tr>
+</table>
+<h2>เครื่องมือเพิ่มเติมใน <code>phai_ui::form</code></h2>
+<table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>message_box(owner, text, caption, buttons, icon)</code></td><td>กล่องข้อความ ได้ <code>DialogResult</code> ของปุ่มที่กด - เหมือน <code>MessageBox.Show</code> ปุ่ม: <code>Ok</code>, <code>OkCancel</code>, <code>YesNo</code>, <code>YesNoCancel</code> … ไอคอน: <code>Information</code>, <code>Warning</code>, <code>Error</code>, <code>Question</code></td></tr>
+<tr><td><code>close_with(hwnd, DialogResult::Ok)</code></td><td>ปิดหน้าต่างพร้อมตั้งคำตอบเอง (ปุ่มที่ตั้ง DialogResult ไว้ทำให้อัตโนมัติ)</td></tr>
+<tr><td><code>set_full_screen(hwnd, true)</code></td><td>เต็มจอ ไม่มีกรอบและแถบเมนู - <code>false</code> กลับเหมือนเดิม</td></tr>
+<tr><td><code>is_full_screen(hwnd)</code></td><td>ตอนนี้เต็มจออยู่ไหม</td></tr>
+<tr><td><code>set_opacity(hwnd, 80)</code></td><td>ความทึบเป็นเปอร์เซ็นต์ น้อยกว่า 100 จะเห็นสิ่งที่อยู่ข้างหลัง</td></tr>
+<tr><td><code>set_icon(hwnd, bytes)</code></td><td>เปลี่ยนไอคอนหน้าต่างจากไฟล์ .ico</td></tr>
+</table>
+<h2>Properties</h2>
+<p>ตั้งได้ในหน้าต่าง Properties ตอนไม่ได้เลือก control ตัวไหน (คลิกพื้นฟอร์ม) - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>
+<table class="ref"><tr><th>Property</th><th>ค่าเริ่มต้น</th><th>ทำอะไร</th></tr>
+<tr class="group"><td colspan="3">ออกแบบ</td></tr>
+<tr><td><b>ชื่อ</b></td><td><code>MainWindow</code></td><td>ชื่อหน้าต่างในโค้ด: ชื่อ struct และชื่อไฟล์</td></tr>
+<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
+<tr><td><b>หัวเรื่อง</b></td><td><code>MainWindow</code></td><td>ข้อความบนแถบชื่อ - คีย์ภาษาอังกฤษ โปรแกรมแปลให้</td></tr>
+<tr><td><b>ขนาดฟอนต์</b></td><td><span class="muted">-</span></td><td>ขนาดตัวอักษร (พอยต์) ของทุก control ว่างไว้คือ 9 ของ Windows</td></tr>
+<tr><td><b>ธีม</b></td><td><span class="muted">-</span></td><td>ไฟล์ CSS ที่ทุก control ใช้สี</td></tr>
+<tr class="group"><td colspan="3">การจัดวาง</td></tr>
+<tr><td><b>ขนาด</b></td><td><code>480, 320</code></td><td>ขนาดด้านในหน้าต่าง ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>กว้าง</b></td><td><code>480</code></td><td>ขนาดด้านในหน้าต่าง ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>สูง</b></td><td><code>320</code></td><td>ขนาดด้านในหน้าต่าง ที่สเกล 100%</td></tr>
+<tr><td><b>ตำแหน่งเริ่มต้น</b></td><td><code>กลางจอ</code></td><td>หน้าต่างขึ้นที่ไหนตอนเปิด: กลางจอ หรือตามที่ Windows วางให้</td></tr>
+<tr><td><b>สถานะหน้าต่าง</b></td><td><code>ปกติ</code></td><td>เต็มจอ: หน้าต่างเปิดขึ้นมาเต็มจอ</td></tr>
+<tr class="group"><td colspan="3">อื่น ๆ</td></tr>
+<tr><td><b>AcceptButton</b></td><td><span class="muted">-</span></td><td>ปุ่มที่ถูกกดเมื่อกด Enter ไม่ว่าโฟกัสอยู่ที่ไหน</td></tr>
+<tr><td><b>CancelButton</b></td><td><span class="muted">-</span></td><td>ปุ่มที่ถูกกดเมื่อกด Esc</td></tr>
+<tr><td><b>KeyPreview</b></td><td><code>False</code></td><td>KeyDown, KeyUp และ KeyPress ของหน้าต่างได้รับแป้นที่กดใน control ก่อนตัว control</td></tr>
+<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
+<tr><td><b>FormBorderStyle</b></td><td><code>sizable</code></td><td>Sizable: ลากขอบย่อขยายได้, Fixed: ลากไม่ได้, Dialog: กรอบแบบกล่องโต้ตอบ, Tool: แถบชื่อเล็ก, None: ไม่มีกรอบเลย</td></tr>
+<tr class="group"><td colspan="3">การจัดวาง</td></tr>
+<tr><td><b>PhoneLayout</b></td><td><code>stack</code></td><td>บนจอที่แคบกว่าฟอร์ม (มือถือ บนเว็บ): stack เรียง control ลงมาทีละตัว กว้างเต็มจอ ตามลำดับการอ่าน ขนาดพอให้นิ้วกด; zoom ย่อทั้งฟอร์มให้พอดีจอ</td></tr>
+<tr class="group"><td colspan="3">รูปแบบหน้าต่าง</td></tr>
+<tr><td><b>MaximizeBox</b></td><td><code>True</code></td><td>ปุ่มขยายเต็มจอบนแถบชื่อ</td></tr>
+<tr><td><b>MinimizeBox</b></td><td><code>True</code></td><td>ปุ่มย่อหน้าต่างบนแถบชื่อ</td></tr>
+<tr><td><b>ControlBox</b></td><td><code>True</code></td><td>ปุ่มและเมนูบนแถบชื่อ ถ้าปิดจะไม่มีทั้งหมด</td></tr>
+<tr class="group"><td colspan="3">ออกแบบ</td></tr>
+<tr><td><b>UserControl</b></td><td><code>False</code></td><td>ไม่ใช่หน้าต่าง แต่เป็น control ที่ฟอร์มอื่นในโปรเจกต์วางได้ (kind usercontrol)</td></tr>
+<tr class="group"><td colspan="3">รูปแบบหน้าต่าง</td></tr>
+<tr><td><b>IsMdiContainer</b></td><td><code>False</code></td><td>ฟอร์มอื่นเปิดข้างในได้ (show_mdi_child) เรียงซ้อนหรือเรียงต่อกัน</td></tr>
+<tr><td><b>TopMost</b></td><td><code>False</code></td><td>อยู่เหนือหน้าต่างอื่นทุกหน้าต่างเสมอ</td></tr>
+<tr><td><b>ShowInTaskbar</b></td><td><code>True</code></td><td>มีปุ่มบนแถบงาน (taskbar)</td></tr>
+<tr><td><b>Opacity</b></td><td><code>100</code></td><td>ความทึบเป็นเปอร์เซ็นต์ ยิ่งน้อยยิ่งเห็นสิ่งที่อยู่ข้างหลัง</td></tr>
+<tr><td><b>Icon</b></td><td><span class="muted">-</span></td><td>ไฟล์ .ico ในโปรเจกต์ สำหรับแถบชื่อและปุ่มบนแถบงาน</td></tr>
+<tr class="group"><td colspan="3">การจัดวาง</td></tr>
+<tr><td><b>MinimumSize</b></td><td><span class="muted">-</span></td><td>ขนาดภายในที่เล็กที่สุดที่ลากย่อได้ ที่สเกล 100%</td></tr>
+<tr><td><b>MaximumSize</b></td><td><span class="muted">-</span></td><td>ขนาดภายในที่ใหญ่ที่สุดที่ลากขยายได้ ที่สเกล 100%</td></tr>
+<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
+<tr><td><b>BackColor</b></td><td><span class="muted">-</span></td><td>สีพื้นหลังของหน้าต่างนี้ทับธีม control ข้างในวางบนสีนี้</td></tr>
+<tr><td><b>ForeColor</b></td><td><span class="muted">-</span></td><td>สีตัวอักษรของหน้าต่างนี้ทับธีม</td></tr>
+<tr><td><b>BackgroundImage</b></td><td><span class="muted">-</span></td><td>ไฟล์รูปในโปรเจกต์ ใช้เป็นพื้นหลังใต้ control ของหน้าต่าง</td></tr>
+<tr><td><b>BackgroundImageLayout</b></td><td><code>tile</code></td><td>Tile: ปูซ้ำ, None: ขนาดจริงมุมซ้ายบน, Center: อยู่กลาง, Stretch: ยืดเต็มหน้าต่าง, Zoom: ขยายเต็มที่โดยคงสัดส่วน</td></tr>
+<tr class="group"><td colspan="3">การจัดวาง</td></tr>
+<tr><td><b>AutoScroll</b></td><td><code>False</code></td><td>เมื่อหน้าต่างเล็กกว่าที่ออกแบบ จะมีแถบเลื่อนและ control เลื่อนตาม</td></tr>
+<tr><td><b>Padding</b></td><td><code>0</code></td><td>ระยะว่างรอบขอบหน้าต่าง (พิกเซล) สำหรับ control ที่ dock</td></tr>
+<tr class="group"><td colspan="3">พฤติกรรม</td></tr>
+<tr><td><b>AllowDrop</b></td><td><code>False</code></td><td>ลากไฟล์จาก Explorer มาวางบนหน้าต่างได้ - ใช้ event DragDrop</td></tr>
+</table>
+<h2>Events</h2>
+<p>ดับเบิลคลิกชื่อ event ในแท็บ Events ของ Properties แล้ว Phai Studio จะเขียน method ให้ (ชื่อ = ชื่อฟอร์ม + ชื่อ event เช่น <code>main_window_closing</code>) - ชี้เมาส์ที่ชนิดของ <code>e</code> เพื่อดูชื่อเต็ม</p>
+<table class="ref"><tr><th>Event</th><th>ทำอะไร</th><th>method ที่เขียน</th></tr>
+<tr><td><b>Load</b></td><td>ทำงานครั้งเดียวเมื่อสร้างหน้าต่าง ก่อนแสดง</td><td><code>fn loaded(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Shown</b></td><td>หน้าต่างขึ้นบนจอเป็นครั้งแรก</td><td><code>fn main_window_shown(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>FormClosing</b></td><td>หน้าต่างกำลังจะปิด - เรียก e.cancel() เพื่อไม่ให้ปิด</td><td><code title="phai_ui::events::ClosingEventArgs">fn main_window_closing(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;ClosingEventArgs)</code></td></tr>
+<tr><td><b>FormClosed</b></td><td>หน้าต่างปิดแล้ว</td><td><code>fn main_window_closed(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Resize</b></td><td>ขนาดหน้าต่างเปลี่ยน</td><td><code>fn main_window_resize(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Activated</b></td><td>หน้าต่างขึ้นมาอยู่หน้าสุดและรับแป้นพิมพ์</td><td><code>fn main_window_activated(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Deactivate</b></td><td>หน้าต่างอื่นขึ้นมาอยู่หน้า</td><td><code>fn main_window_deactivate(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Click</b></td><td>คลิกที่ตัวหน้าต่าง ไม่ใช่ control ข้างใน</td><td><code>fn main_window_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>DoubleClick</b></td><td>ดับเบิลคลิกที่ตัวหน้าต่าง</td><td><code>fn main_window_double_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>MouseDown</b></td><td>กดปุ่มเมาส์บนตัวหน้าต่าง</td><td><code title="phai_ui::events::MouseEventArgs">fn main_window_mouse_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseUp</b></td><td>ปล่อยปุ่มเมาส์บนตัวหน้าต่าง</td><td><code title="phai_ui::events::MouseEventArgs">fn main_window_mouse_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseMove</b></td><td>เมาส์เคลื่อนบนตัวหน้าต่าง</td><td><code title="phai_ui::events::MouseEventArgs">fn main_window_mouse_move(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>DragDrop</b></td><td>มีไฟล์ถูกลากจาก Explorer มาวางบนหน้าต่าง - e.files</td><td><code title="phai_ui::events::FileDropEventArgs">fn main_window_drag_drop(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;FileDropEventArgs)</code></td></tr>
+<tr><td><b>KeyDown</b></td><td>กดแป้นที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview - ก่อน control ได้รับ; e.set_handled() เพื่อไม่ให้ control ได้รับ</td><td><code title="phai_ui::events::KeyEventArgs">fn main_window_key_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyUp</b></td><td>ปล่อยแป้นที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview</td><td><code title="phai_ui::events::KeyEventArgs">fn main_window_key_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyPress</b></td><td>พิมพ์ตัวอักษรที่ใดก็ได้ในหน้าต่างเมื่อเปิด KeyPreview</td><td><code title="phai_ui::events::KeyPressEventArgs">fn main_window_key_press(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyPressEventArgs)</code></td></tr>
+<tr><td><b>MenuStart</b></td><td>เริ่มใช้แถบเมนู: เปิดเมนูจากแถบ หรือกด Alt</td><td><code>fn main_window_menu_start(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>MenuComplete</b></td><td>เลิกใช้แถบเมนูแล้ว</td><td><code>fn main_window_menu_complete(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>ItemClicked</b></td><td>คลิกปุ่มบนแถบเครื่องมือ - e.index คือลำดับของปุ่มเริ่มจาก 0 (นับเส้นคั่นด้วย)</td><td><code title="phai_ui::events::ItemEventArgs">fn main_window_toolbar_item_clicked(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;ItemEventArgs)</code></td></tr>
+</table>
+<h2>ลองทำเอง</h2>
+<div class="try"><ol>
+<li>เปลี่ยน <code>loaded</code> ให้แถบชื่อแสดงชื่อของเราเอง</li>
+<li>เพิ่มปุ่ม "ออก" ที่เรียก <code>ui.close()</code> - แล้วดูว่ากล่องถามก่อนปิดยังขึ้นไหม</li>
+<li>ใน NameForm ถ้าไม่ได้พิมพ์อะไรเลยแล้วกด OK ให้ขึ้น <code>message_box</code> เตือน (ใช้ event FormClosing ของ NameForm)</li>
+<li>ตั้ง Opacity ของ NoteForm เป็น 85 แล้วดูว่าเห็นอะไรอยู่ข้างหลัง</li>
+</ol></div>
+<p class="muted">โค้ดทั้งหมดในหน้านี้อยู่ในโปรเจกต์ <code>docs/help-src/examples/form</code> ของ Phai Studio - เปิดด้วย Phai Studio แล้วกด <kbd>F5</kbd> ได้เลย</p>
+<div class="pager"><a href="rust-11.html">← 11. เธรด และก้าวต่อไป</a><span></span></div>
+</main>
+</div>
+</body>
+</html>

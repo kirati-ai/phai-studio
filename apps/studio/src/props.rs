@@ -126,6 +126,52 @@ fn event_category(name: &str) -> &'static str {
     }
 }
 
+/// A form's own rows in the Properties pane, from the form alone - the pane's, and the guide's
+/// (`--help-data`), so the guide lists exactly what the pane shows.
+fn form_rows(f: &phai_form::FormFile) -> Vec<Prop> {
+    let p = |category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: None, set: false };
+    let part = |parent: Key, category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: Some(parent), set: false };
+    let sizes: Vec<String> = ["", "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"].iter().map(|s| s.to_string()).collect();
+    [
+        p(t("Design"), Key::FormName, t("Name"), f.form.name.clone(), Ed::Text, t("The window's name in code: a struct, and its files' names.")),
+        p(t("Appearance"), Key::FormTitle, t("Title"), f.form.title.clone(), Ed::Text, t("The words in the title bar - an English key, translated by the program.")),
+        p(t("Appearance"), Key::FormFont, t("Font size"), f.form.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for every control's words; empty is Windows' own 9.")),
+        p(t("Appearance"), Key::FormTheme, t("Theme"), f.form.theme.clone().unwrap_or_default(), Ed::Dialog, t("The CSS file every control takes its colours from.")),
+        p(t("Layout"), Key::FormSize, t("Size"), format!("{}, {}", f.form.size[0], f.form.size[1]), Ed::Text, t("The inside of the window, at 100% scale.")),
+        part(Key::FormSize, t("Layout"), Key::FormWidth, t("Width"), f.form.size[0].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
+        part(Key::FormSize, t("Layout"), Key::FormHeight, t("Height"), f.form.size[1].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
+        p(t("Layout"), Key::FormStart, t("Start position"), if f.form.start.as_deref() == Some("windows") { t("Windows default") } else { t("Center screen") }.to_string(), Ed::Choice(vec![t("Center screen").to_string(), t("Windows default").to_string()], false), t("Where the window first appears: the middle of the screen, or where Windows puts it.")),
+        p(t("Layout"), Key::FormState, t("Window state"), if f.form.maximized == Some(true) { t("Maximized") } else { t("Normal") }.to_string(), Ed::Choice(vec![t("Normal").to_string(), t("Maximized").to_string()], false), t("Maximized: the window opens filling the screen.")),
+    ]
+    .into_iter()
+    .map(|mut q| {
+        q.set = is_set(q.key, &q.value);
+        q
+    })
+    .chain(table::FORM.iter().map(|sp| {
+        let buttons: Vec<String> = f.control.iter().filter(|c| c.kind == Kind::Button).map(|c| c.id.clone()).collect();
+        let v = f.form.prop(sp.name);
+        Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: ed_of(sp, &buttons), help: t(sp.help).into(), parent: None, set: v.is_some() }
+    }))
+    .collect()
+}
+
+/// The guide's view of a form's properties: (category, name, default value, what it does, a part
+/// of the row before it) for each row the Properties pane shows a new form.
+pub fn form_rows_for_help() -> Vec<(&'static str, &'static str, String, String, bool)> {
+    form_rows(&phai_form::FormFile::new("MainWindow")).into_iter().map(|q| (q.category, q.name, q.value, q.help.into_owned(), q.parent.is_some())).collect()
+}
+
+/// The guide's view of a form's events: (category, name, the method's name in the file, what it
+/// means, the argument its method takes) - Load first, as the Properties pane lists them.
+pub fn form_events_for_help() -> Vec<(&'static str, &'static str, &'static str, &'static str, Option<&'static str>)> {
+    let mut v = vec![(t("Behavior"), "Load", "loaded", t("Runs once the window is made, before it shows."), None)];
+    for e in phai_form::events::FORM {
+        v.push((event_category(e.name), e.label, e.name, t(e.help), e.args.param()));
+    }
+    v
+}
+
 /// The editor a table property's kind wants.
 fn ed_of(s: &Spec, buttons: &[String]) -> Ed {
     match s.ty {
@@ -538,28 +584,7 @@ impl Props {
             };
         }
         let Some(c) = sel.and_then(|i| f.control.get(i)) else {
-            return [
-                p(t("Design"), Key::FormName, t("Name"), f.form.name.clone(), Ed::Text, t("The window's name in code: a struct, and its files' names.")),
-                p(t("Appearance"), Key::FormTitle, t("Title"), f.form.title.clone(), Ed::Text, t("The words in the title bar - an English key, translated by the program.")),
-                p(t("Appearance"), Key::FormFont, t("Font size"), f.form.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for every control's words; empty is Windows' own 9.")),
-                p(t("Appearance"), Key::FormTheme, t("Theme"), f.form.theme.clone().unwrap_or_default(), Ed::Dialog, t("The CSS file every control takes its colours from.")),
-                p(t("Layout"), Key::FormSize, t("Size"), format!("{}, {}", f.form.size[0], f.form.size[1]), Ed::Text, t("The inside of the window, at 100% scale.")),
-                part(Key::FormSize, t("Layout"), Key::FormWidth, t("Width"), f.form.size[0].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
-                part(Key::FormSize, t("Layout"), Key::FormHeight, t("Height"), f.form.size[1].to_string(), Ed::Number, t("The inside of the window, at 100% scale.")),
-                p(t("Layout"), Key::FormStart, t("Start position"), if f.form.start.as_deref() == Some("windows") { t("Windows default") } else { t("Center screen") }.to_string(), Ed::Choice(vec![t("Center screen").to_string(), t("Windows default").to_string()], false), t("Where the window first appears: the middle of the screen, or where Windows puts it.")),
-                p(t("Layout"), Key::FormState, t("Window state"), if f.form.maximized == Some(true) { t("Maximized") } else { t("Normal") }.to_string(), Ed::Choice(vec![t("Normal").to_string(), t("Maximized").to_string()], false), t("Maximized: the window opens filling the screen.")),
-            ]
-            .into_iter()
-            .map(|mut q| {
-                q.set = is_set(q.key, &q.value);
-                q
-            })
-            .chain(table::FORM.iter().map(|sp| {
-                let buttons: Vec<String> = f.control.iter().filter(|c| c.kind == Kind::Button).map(|c| c.id.clone()).collect();
-                let v = f.form.prop(sp.name);
-                Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: ed_of(sp, &buttons), help: t(sp.help).into(), parent: None, set: v.is_some() }
-            }))
-            .collect();
+            return form_rows(f);
         };
         // A context menu: its name and its items.
         if c.kind == Kind::ContextMenu {

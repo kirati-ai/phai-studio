@@ -39,6 +39,44 @@ for mod in ['help_pages1', 'help_pages2', 'help_pages3', 'help_pages4', 'help_pa
     if os.path.exists(os.path.join(HERE, mod + '.py')):
         bodies.update(load(mod))
 
+# The Toolbox pages (help_controls.py), after the rest, with the icons and pictures they show.
+sys.path.insert(0, HERE)
+import help_controls
+for f, title, body in help_controls.pages():
+    PAGES.append((f, title, 'Toolbox ทีละตัว'))
+    bodies[f] = body
+
+
+def copy_assets():
+    import shutil
+    icons = os.path.join(OUT, 'icons')
+    os.makedirs(icons, exist_ok=True)
+    for n in os.listdir(os.path.join(HERE, 'data', 'icons')):
+        shutil.copyfile(os.path.join(HERE, 'data', 'icons', n), os.path.join(icons, n))
+    img = os.path.join(OUT, 'img')
+    os.makedirs(img, exist_ok=True)
+    shots = os.path.join(HERE, 'data', 'shots')
+    from PIL import Image
+    for n in os.listdir(shots):
+        im = Image.open(os.path.join(shots, n)).convert('RGB')
+        # PHAI_SHOT takes the window with its invisible frame, drawn black: trimmed off.
+        # An edge column or row that is mostly black goes (the title bar crosses the side ones).
+        w, h = im.size
+        px = im.load()
+        dark = lambda x, y: sum(px[x, y]) < 30
+        col = lambda x: sum(dark(x, y) for y in range(h)) > h * 0.6
+        row = lambda y: sum(dark(x, y) for x in range(w)) > w * 0.6
+        l, r, t, b = 0, w, 0, h
+        while l < r - 1 and col(l): l += 1
+        while r - 1 > l and col(r - 1): r -= 1
+        while t < b - 1 and row(t): t += 1
+        while b - 1 > t and row(b - 1): b -= 1
+        im.crop((l, t, r, b)).save(os.path.join(img, n))
+
+
+copy_assets()
+
+
 def nav(current):
     out = ['<a class="brand" href="index.html">คู่มือ Phai Studio</a>']
     group = None

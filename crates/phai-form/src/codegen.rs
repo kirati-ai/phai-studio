@@ -366,8 +366,6 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        Self::make(None, events)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// Shows this window beside `owner` (another window of the program) and returns at once,");
-    let _ = writeln!(w, "    /// as `Show()` in WinForms. Closing it leaves the program running.");
     let _ = writeln!(w, "    /// Opens this window inside `parent`, an MDI container (`is_mdi_container`), as WinForms'");
     let _ = writeln!(w, "    /// `MdiParent` and `Show()`; it closes with it.");
     let _ = writeln!(w, "    pub fn show_mdi_child<E: {events} + 'static>(parent: HWND, events: E) -> HWND {{");
@@ -375,6 +373,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        Self::make(Some(parent), events)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    let _ = writeln!(w, "    /// Shows this window beside `owner` (another window of the program) and returns at once,");
+    let _ = writeln!(w, "    /// as `Show()` in WinForms. Closing it leaves the program running.");
     let _ = writeln!(w, "    pub fn show<E: {events} + 'static>(owner: HWND, events: E) -> HWND {{");
     let _ = writeln!(w, "        Self::make(Some(owner), events)");
     let _ = writeln!(w, "    }}");
@@ -884,6 +884,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        win::show(self.hwnd, false);");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    let _ = writeln!(w, "    /// Shown again after [`Self::hide`].");
     let _ = writeln!(w, "    pub fn show_window(&self) {{");
     let _ = writeln!(w, "        win::show(self.hwnd, true);");
     let _ = writeln!(w, "    }}");
@@ -895,6 +896,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    let _ = writeln!(w, "    /// Moved to the middle of the screen it is on.");
     let _ = writeln!(w, "    pub fn center_to_screen(&self) {{");
     let _ = writeln!(w, "        win::center_on_screen(self.hwnd);");
     let _ = writeln!(w, "    }}");
@@ -904,6 +906,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        win::text_of(self.hwnd)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    let _ = writeln!(w, "    /// New words in its title bar.");
     let _ = writeln!(w, "    pub fn set_title(&self, s: &str) {{");
     let _ = writeln!(w, "        win::set_text(self.hwnd, s);");
     let _ = writeln!(w, "    }}");

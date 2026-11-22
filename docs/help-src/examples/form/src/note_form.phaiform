@@ -1,0 +1,14 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "NoteForm"
+title = "Note"
+size = [300, 160]
+start = "windows"
+
+[[control]]
+kind = "textarea"
+id = "note"
+bounds = [0, 0, 300, 160]
+dock = "fill"

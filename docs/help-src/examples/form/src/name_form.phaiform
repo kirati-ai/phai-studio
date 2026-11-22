@@ -1,0 +1,42 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "NameForm"
+title = "Your name"
+size = [320, 120]
+start = "center"
+accept_button = "ok"
+border = "fixed_dialog"
+cancel_button = "cancel"
+maximize_box = false
+minimize_box = false
+
+[form.events]
+closed = "closed"
+
+[[control]]
+kind = "label"
+id = "prompt"
+text = "Type your name:"
+bounds = [12, 12, 296, 20]
+
+[[control]]
+kind = "edit"
+id = "answer"
+bounds = [12, 36, 296, 23]
+
+[[control]]
+kind = "button"
+id = "ok"
+text = "OK"
+bounds = [152, 80, 75, 26]
+class = "primary"
+dialog_result = "ok"
+
+[[control]]
+kind = "button"
+id = "cancel"
+text = "Cancel"
+bounds = [233, 80, 75, 26]
+dialog_result = "cancel"

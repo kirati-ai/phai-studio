@@ -93,8 +93,6 @@ impl MainWindowUi {
         Self::make(None, events)
     }
 
-    /// Shows this window beside `owner` (another window of the program) and returns at once,
-    /// as `Show()` in WinForms. Closing it leaves the program running.
     /// Opens this window inside `parent`, an MDI container (`is_mdi_container`), as WinForms'
     /// `MdiParent` and `Show()`; it closes with it.
     pub fn show_mdi_child<E: MainWindowEvents + 'static>(parent: HWND, events: E) -> HWND {
@@ -102,6 +100,8 @@ impl MainWindowUi {
         Self::make(Some(parent), events)
     }
 
+    /// Shows this window beside `owner` (another window of the program) and returns at once,
+    /// as `Show()` in WinForms. Closing it leaves the program running.
     pub fn show<E: MainWindowEvents + 'static>(owner: HWND, events: E) -> HWND {
         Self::make(Some(owner), events)
     }
@@ -284,6 +284,7 @@ impl MainWindowUi {
         win::show(self.hwnd, false);
     }
 
+    /// Shown again after [`Self::hide`].
     pub fn show_window(&self) {
         win::show(self.hwnd, true);
     }
@@ -295,6 +296,7 @@ impl MainWindowUi {
         }
     }
 
+    /// Moved to the middle of the screen it is on.
     pub fn center_to_screen(&self) {
         win::center_on_screen(self.hwnd);
     }
@@ -304,6 +306,7 @@ impl MainWindowUi {
         win::text_of(self.hwnd)
     }
 
+    /// New words in its title bar.
     pub fn set_title(&self, s: &str) {
         win::set_text(self.hwnd, s);
     }
