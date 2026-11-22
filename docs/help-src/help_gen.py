@@ -82,20 +82,75 @@ for f, title, body, group in help_controls.pages():
 
 
 
+# Line icons for the guide's own pages (24-unit boxes, drawn in the text's colour).
+def _svg(d):
+    return f'<svg class="ni" viewBox="0 0 24 24" aria-hidden="true">{d}</svg>'
+
+PAGE_ICONS = {
+    'index.html': _svg('<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>'),
+    'studio.html': _svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01M10 6.5h.01"/>'),
+    'css.html': _svg('<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.9 1.2-1.7-.4-1 .2-2.3 1.5-2.3H17a4 4 0 0 0 4-4c0-5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/>'),
+    'database.html': _svg('<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>'),
+    'code.html': _svg('<path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>'),
+    'winforms.html': _svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 13v7M13 16.5h7"/>'),
+    'inspector.html': _svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
+    'web.html': _svg('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'),
+    'report.html': _svg('<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/>'),
+}
+CHEVRON = _svg('<path d="M9 6l6 6-6 6"/>')
+CLOSE = _svg('<path d="M15 6l-6 6 6 6"/><path d="M20 6l-6 6 6 6"/>')
+
+
+def _icon(f, title):
+    if f in PAGE_ICONS:
+        return PAGE_ICONS[f]
+    if f.startswith('ctl-'):
+        # The Toolbox's own icon for the tool (help_gen copies data/icons to icons/).
+        return f'<img class="ti" src="icons/{f[4:-5]}.png" alt="" width="18" height="18">'
+    if f.startswith('rust-'):
+        return f'<span class="num">{int(f[5:7])}</span>'
+    return _svg('<path d="M6 4h9l3 3v13H6z"/>')
+
+
+def _link(f, title, current):
+    cls = ' class="here" aria-current="page"' if f == current else ''
+    shown = title
+    if f.startswith('rust-'):
+        shown = title.split('. ', 1)[-1]  # the number is the badge
+    return f'<a href="{f}"{cls}>{_icon(f, title)}<span>{html.escape(shown)}</span></a>'
+
+
 def nav(current):
-    out = ['<a class="brand" href="index.html">คู่มือ Phai Studio</a>']
-    group = None
+    """The sidebar: the guide's groups as folding sections (Toolbox's groups folding inside it),
+    a search box, and a button that puts the whole sidebar away. help.js remembers the folds."""
+    out = ['<div class="nav-head"><a class="brand" href="index.html"><img src="icons/studio.png" alt="" width="26" height="26">คู่มือ Phai Studio</a>'
+           f'<button class="nav-close" type="button" title="ปิดเมนู" aria-label="ปิดเมนู">{CLOSE}</button>'
+           '<input class="nav-search" type="search" placeholder="ค้นหาในเมนู…" aria-label="ค้นหาในเมนู"></div>',
+           '<div class="nav-body">']
+    top_open = sub_open = None
     for f, title, g in PAGES:
-        # 'Toolbox/Common controls': the Toolbox heading once, its group under it.
-        if g != group and g:
-            top, _, sub = g.partition('/')
-            if top != (group or '').partition('/')[0]:
-                out.append(f'<h4>{html.escape(top)}</h4>')
+        top, _, sub = (g or '').partition('/')
+        if top != top_open:
+            if sub_open:
+                out.append('</div></details>')
+                sub_open = None
+            if top_open:
+                out.append('</div></details>')
+            top_open = top or None
+            if top:
+                out.append(f'<details class="grp" data-key="{html.escape(top)}" open><summary>{CHEVRON}<span>{html.escape(top)}</span></summary><div class="grp-body">')
+        if sub != (sub_open or ''):
+            if sub_open:
+                out.append('</div></details>')
+            sub_open = sub or None
             if sub:
-                out.append(f'<h5>{html.escape(sub)}</h5>')
-            group = g
-        cls = ' class="here"' if f == current else ''
-        out.append(f'<a href="{f}"{cls}>{html.escape(title)}</a>')
+                out.append(f'<details class="grp sub" data-key="{html.escape(g)}" open><summary>{CHEVRON}<span>{html.escape(sub)}</span></summary><div class="grp-body">')
+        out.append(_link(f, title, current))
+    if sub_open:
+        out.append('</div></details>')
+    if top_open:
+        out.append('</div></details>')
+    out.append('<p class="nav-none" hidden>ไม่พบหน้าที่ตรงกัน</p></div>')
     return '\n'.join(out)
 
 def pager(i):
@@ -118,13 +173,17 @@ for i, (f, title, _) in enumerate(PAGES):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)} - คู่มือ Phai Studio</title>
 <link rel="stylesheet" href="help.css">
+<script>try{{if(JSON.parse(localStorage.getItem('phai-help-hidden'))&&innerWidth>860)document.documentElement.classList.add('nav-hidden')}}catch(e){{}}</script>
+<script src="help.js" defer></script>
 </head>
 <body>
 <div class="layout">
-<nav>
+<nav id="nav">
 {nav(f)}
 </nav>
+<div class="nav-shade"></div>
 <main>
+<button class="nav-open" type="button" title="เปิดเมนู" aria-label="เปิดเมนู"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
 {body.strip()}
 {pager(i)}
 </main>

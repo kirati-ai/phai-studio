@@ -5,86 +5,102 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ป้าย (Label) - คู่มือ Phai Studio</title>
 <link rel="stylesheet" href="help.css">
+<script>try{if(JSON.parse(localStorage.getItem('phai-help-hidden'))&&innerWidth>860)document.documentElement.classList.add('nav-hidden')}catch(e){}</script>
+<script src="help.js" defer></script>
 </head>
 <body>
 <div class="layout">
-<nav>
-<a class="brand" href="index.html">คู่มือ Phai Studio</a>
-<a href="index.html">หน้าแรก</a>
-<h4>Phai Studio</h4>
-<a href="studio.html">ใช้งาน Phai Studio</a>
-<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
-<a href="database.html">ทำงานกับฐานข้อมูล</a>
-<a href="code.html">เขียนโค้ดกับ control</a>
-<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
-<a href="inspector.html">ตัวตรวจสด (F12)</a>
-<a href="web.html">เว็บและมือถือ (PWA)</a>
-<a href="report.html">รายงานพิมพ์</a>
-<h4>Toolbox</h4>
-<a href="ctl-form.html">ฟอร์ม (Form)</a>
-<h5>Common controls</h5>
-<a href="ctl-button.html">ปุ่ม (Button)</a>
-<a href="ctl-checkbox.html">ช่องติ๊ก (CheckBox)</a>
-<a href="ctl-checkedlist.html">กล่องรายการติ๊ก (CheckedListBox)</a>
-<a href="ctl-combo.html">รายการเลือก (ComboBox)</a>
-<a href="ctl-date.html">วันที่ (DateTimePicker)</a>
-<a href="ctl-label.html" class="here">ป้าย (Label)</a>
-<a href="ctl-link.html">ลิงก์ (LinkLabel)</a>
-<a href="ctl-listbox.html">กล่องรายการ (ListBox)</a>
-<a href="ctl-list.html">รายการ (ListView)</a>
-<a href="ctl-masked.html">ช่องกรอกตามแบบ (MaskedTextBox)</a>
-<a href="ctl-calendar.html">ปฏิทินเดือน (MonthCalendar)</a>
-<a href="ctl-notifyicon.html">ไอคอนมุมจอ (NotifyIcon)</a>
-<a href="ctl-number.html">ตัวเลข (NumericUpDown)</a>
-<a href="ctl-picture.html">รูปภาพ (PictureBox)</a>
-<a href="ctl-progress.html">แถบความคืบหน้า (ProgressBar)</a>
-<a href="ctl-radio.html">ตัวเลือก (RadioButton)</a>
-<a href="ctl-richtext.html">กล่องข้อความหลายรูปแบบ (RichTextBox)</a>
-<a href="ctl-edit.html">ช่องข้อความ (TextBox)</a>
-<a href="ctl-textarea.html">ช่องข้อความหลายบรรทัด (TextBox (Multiline))</a>
-<a href="ctl-slider.html">ตัวเลื่อน (TrackBar)</a>
-<a href="ctl-tree.html">มุมมองต้นไม้ (TreeView)</a>
-<h5>Containers</h5>
-<a href="ctl-flow.html">จัดเรียงต่อกัน (FlowLayoutPanel)</a>
-<a href="ctl-group.html">กลุ่ม (GroupBox)</a>
-<a href="ctl-panel.html">แผง (Panel)</a>
-<a href="ctl-split.html">แบ่งสองช่อง (SplitContainer)</a>
-<a href="ctl-tabs.html">แท็บ (TabControl)</a>
-<a href="ctl-table.html">จัดเป็นตาราง (TableLayoutPanel)</a>
-<a href="ctl-usercontrol.html">User control (UserControl)</a>
-<h5>Menus and toolbars</h5>
-<a href="ctl-contextmenu.html">เมนูคลิกขวา (ContextMenuStrip)</a>
-<a href="ctl-menubar.html">แถบเมนู (MenuStrip)</a>
-<a href="ctl-statusbar.html">แถบสถานะ (StatusStrip)</a>
-<a href="ctl-toolbar.html">แถบเครื่องมือ (ToolStrip)</a>
-<h5>Data</h5>
-<a href="ctl-bindingsource.html">แหล่งข้อมูลผูก (BindingSource)</a>
-<a href="ctl-grid.html">ตารางข้อมูล (DataGridView)</a>
-<h5>Components</h5>
-<a href="ctl-errorprovider.html">ตัวบอกข้อผิดพลาด (ErrorProvider)</a>
-<a href="ctl-timer.html">ตัวจับเวลา (Timer)</a>
-<h5>Printing</h5>
-<a href="ctl-printdocument.html">เอกสารสำหรับพิมพ์ (PrintDocument)</a>
-<h5>Dialogs</h5>
-<a href="ctl-colordialog.html">หน้าต่างเลือกสี (ColorDialog)</a>
-<a href="ctl-folderbrowserdialog.html">หน้าต่างเลือกโฟลเดอร์ (FolderBrowserDialog)</a>
-<a href="ctl-fontdialog.html">หน้าต่างเลือกฟอนต์ (FontDialog)</a>
-<a href="ctl-openfiledialog.html">หน้าต่างเปิดไฟล์ (OpenFileDialog)</a>
-<a href="ctl-savefiledialog.html">หน้าต่างบันทึกไฟล์ (SaveFileDialog)</a>
-<h4>Rust Language</h4>
-<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
-<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
-<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
-<a href="rust-04.html">4. Ownership และการยืม</a>
-<a href="rust-05.html">5. struct, enum และ match</a>
-<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
-<a href="rust-07.html">7. Vec, String, HashMap</a>
-<a href="rust-08.html">8. trait และ generic</a>
-<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
-<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
-<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+<nav id="nav">
+<div class="nav-head"><a class="brand" href="index.html"><img src="icons/studio.png" alt="" width="26" height="26">คู่มือ Phai Studio</a><button class="nav-close" type="button" title="ปิดเมนู" aria-label="ปิดเมนู"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/><path d="M20 6l-6 6 6 6"/></svg></button><input class="nav-search" type="search" placeholder="ค้นหาในเมนู…" aria-label="ค้นหาในเมนู"></div>
+<div class="nav-body">
+<a href="index.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg><span>หน้าแรก</span></a>
+<details class="grp" data-key="Phai Studio" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Phai Studio</span></summary><div class="grp-body">
+<a href="studio.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01M10 6.5h.01"/></svg><span>ใช้งาน Phai Studio</span></a>
+<a href="css.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.9 1.2-1.7-.4-1 .2-2.3 1.5-2.3H17a4 4 0 0 0 4-4c0-5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></svg><span>ตกแต่งหน้าตาด้วย CSS</span></a>
+<a href="database.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg><span>ทำงานกับฐานข้อมูล</span></a>
+<a href="code.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg><span>เขียนโค้ดกับ control</span></a>
+<a href="winforms.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 13v7M13 16.5h7"/></svg><span>control และความสามารถเพิ่มเติม</span></a>
+<a href="inspector.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><span>ตัวตรวจสด (F12)</span></a>
+<a href="web.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span>เว็บและมือถือ (PWA)</span></a>
+<a href="report.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/></svg><span>รายงานพิมพ์</span></a>
+</div></details>
+<details class="grp" data-key="Toolbox" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Toolbox</span></summary><div class="grp-body">
+<a href="ctl-form.html"><img class="ti" src="icons/form.png" alt="" width="18" height="18"><span>ฟอร์ม (Form)</span></a>
+<details class="grp sub" data-key="Toolbox/Common controls" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Common controls</span></summary><div class="grp-body">
+<a href="ctl-button.html"><img class="ti" src="icons/button.png" alt="" width="18" height="18"><span>ปุ่ม (Button)</span></a>
+<a href="ctl-checkbox.html"><img class="ti" src="icons/checkbox.png" alt="" width="18" height="18"><span>ช่องติ๊ก (CheckBox)</span></a>
+<a href="ctl-checkedlist.html"><img class="ti" src="icons/checkedlist.png" alt="" width="18" height="18"><span>กล่องรายการติ๊ก (CheckedListBox)</span></a>
+<a href="ctl-combo.html"><img class="ti" src="icons/combo.png" alt="" width="18" height="18"><span>รายการเลือก (ComboBox)</span></a>
+<a href="ctl-date.html"><img class="ti" src="icons/date.png" alt="" width="18" height="18"><span>วันที่ (DateTimePicker)</span></a>
+<a href="ctl-label.html" class="here" aria-current="page"><img class="ti" src="icons/label.png" alt="" width="18" height="18"><span>ป้าย (Label)</span></a>
+<a href="ctl-link.html"><img class="ti" src="icons/link.png" alt="" width="18" height="18"><span>ลิงก์ (LinkLabel)</span></a>
+<a href="ctl-listbox.html"><img class="ti" src="icons/listbox.png" alt="" width="18" height="18"><span>กล่องรายการ (ListBox)</span></a>
+<a href="ctl-list.html"><img class="ti" src="icons/list.png" alt="" width="18" height="18"><span>รายการ (ListView)</span></a>
+<a href="ctl-masked.html"><img class="ti" src="icons/masked.png" alt="" width="18" height="18"><span>ช่องกรอกตามแบบ (MaskedTextBox)</span></a>
+<a href="ctl-calendar.html"><img class="ti" src="icons/calendar.png" alt="" width="18" height="18"><span>ปฏิทินเดือน (MonthCalendar)</span></a>
+<a href="ctl-notifyicon.html"><img class="ti" src="icons/notifyicon.png" alt="" width="18" height="18"><span>ไอคอนมุมจอ (NotifyIcon)</span></a>
+<a href="ctl-number.html"><img class="ti" src="icons/number.png" alt="" width="18" height="18"><span>ตัวเลข (NumericUpDown)</span></a>
+<a href="ctl-picture.html"><img class="ti" src="icons/picture.png" alt="" width="18" height="18"><span>รูปภาพ (PictureBox)</span></a>
+<a href="ctl-progress.html"><img class="ti" src="icons/progress.png" alt="" width="18" height="18"><span>แถบความคืบหน้า (ProgressBar)</span></a>
+<a href="ctl-radio.html"><img class="ti" src="icons/radio.png" alt="" width="18" height="18"><span>ตัวเลือก (RadioButton)</span></a>
+<a href="ctl-richtext.html"><img class="ti" src="icons/richtext.png" alt="" width="18" height="18"><span>กล่องข้อความหลายรูปแบบ (RichTextBox)</span></a>
+<a href="ctl-edit.html"><img class="ti" src="icons/edit.png" alt="" width="18" height="18"><span>ช่องข้อความ (TextBox)</span></a>
+<a href="ctl-textarea.html"><img class="ti" src="icons/textarea.png" alt="" width="18" height="18"><span>ช่องข้อความหลายบรรทัด (TextBox (Multiline))</span></a>
+<a href="ctl-slider.html"><img class="ti" src="icons/slider.png" alt="" width="18" height="18"><span>ตัวเลื่อน (TrackBar)</span></a>
+<a href="ctl-tree.html"><img class="ti" src="icons/tree.png" alt="" width="18" height="18"><span>มุมมองต้นไม้ (TreeView)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Containers" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Containers</span></summary><div class="grp-body">
+<a href="ctl-flow.html"><img class="ti" src="icons/flow.png" alt="" width="18" height="18"><span>จัดเรียงต่อกัน (FlowLayoutPanel)</span></a>
+<a href="ctl-group.html"><img class="ti" src="icons/group.png" alt="" width="18" height="18"><span>กลุ่ม (GroupBox)</span></a>
+<a href="ctl-panel.html"><img class="ti" src="icons/panel.png" alt="" width="18" height="18"><span>แผง (Panel)</span></a>
+<a href="ctl-split.html"><img class="ti" src="icons/split.png" alt="" width="18" height="18"><span>แบ่งสองช่อง (SplitContainer)</span></a>
+<a href="ctl-tabs.html"><img class="ti" src="icons/tabs.png" alt="" width="18" height="18"><span>แท็บ (TabControl)</span></a>
+<a href="ctl-table.html"><img class="ti" src="icons/table.png" alt="" width="18" height="18"><span>จัดเป็นตาราง (TableLayoutPanel)</span></a>
+<a href="ctl-usercontrol.html"><img class="ti" src="icons/usercontrol.png" alt="" width="18" height="18"><span>User control (UserControl)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Menus and toolbars" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Menus and toolbars</span></summary><div class="grp-body">
+<a href="ctl-contextmenu.html"><img class="ti" src="icons/contextmenu.png" alt="" width="18" height="18"><span>เมนูคลิกขวา (ContextMenuStrip)</span></a>
+<a href="ctl-menubar.html"><img class="ti" src="icons/menubar.png" alt="" width="18" height="18"><span>แถบเมนู (MenuStrip)</span></a>
+<a href="ctl-statusbar.html"><img class="ti" src="icons/statusbar.png" alt="" width="18" height="18"><span>แถบสถานะ (StatusStrip)</span></a>
+<a href="ctl-toolbar.html"><img class="ti" src="icons/toolbar.png" alt="" width="18" height="18"><span>แถบเครื่องมือ (ToolStrip)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Data" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Data</span></summary><div class="grp-body">
+<a href="ctl-bindingsource.html"><img class="ti" src="icons/bindingsource.png" alt="" width="18" height="18"><span>แหล่งข้อมูลผูก (BindingSource)</span></a>
+<a href="ctl-grid.html"><img class="ti" src="icons/grid.png" alt="" width="18" height="18"><span>ตารางข้อมูล (DataGridView)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Components" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Components</span></summary><div class="grp-body">
+<a href="ctl-errorprovider.html"><img class="ti" src="icons/errorprovider.png" alt="" width="18" height="18"><span>ตัวบอกข้อผิดพลาด (ErrorProvider)</span></a>
+<a href="ctl-timer.html"><img class="ti" src="icons/timer.png" alt="" width="18" height="18"><span>ตัวจับเวลา (Timer)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Printing" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Printing</span></summary><div class="grp-body">
+<a href="ctl-printdocument.html"><img class="ti" src="icons/printdocument.png" alt="" width="18" height="18"><span>เอกสารสำหรับพิมพ์ (PrintDocument)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Dialogs" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Dialogs</span></summary><div class="grp-body">
+<a href="ctl-colordialog.html"><img class="ti" src="icons/colordialog.png" alt="" width="18" height="18"><span>หน้าต่างเลือกสี (ColorDialog)</span></a>
+<a href="ctl-folderbrowserdialog.html"><img class="ti" src="icons/folderbrowserdialog.png" alt="" width="18" height="18"><span>หน้าต่างเลือกโฟลเดอร์ (FolderBrowserDialog)</span></a>
+<a href="ctl-fontdialog.html"><img class="ti" src="icons/fontdialog.png" alt="" width="18" height="18"><span>หน้าต่างเลือกฟอนต์ (FontDialog)</span></a>
+<a href="ctl-openfiledialog.html"><img class="ti" src="icons/openfiledialog.png" alt="" width="18" height="18"><span>หน้าต่างเปิดไฟล์ (OpenFileDialog)</span></a>
+<a href="ctl-savefiledialog.html"><img class="ti" src="icons/savefiledialog.png" alt="" width="18" height="18"><span>หน้าต่างบันทึกไฟล์ (SaveFileDialog)</span></a>
+</div></details>
+</div></details>
+<details class="grp" data-key="Rust Language" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Rust Language</span></summary><div class="grp-body">
+<a href="rust-01.html"><span class="num">1</span><span>เริ่มต้นกับ Rust</span></a>
+<a href="rust-02.html"><span class="num">2</span><span>ตัวแปร ชนิดข้อมูล ฟังก์ชัน</span></a>
+<a href="rust-03.html"><span class="num">3</span><span>เงื่อนไขและการวนซ้ำ</span></a>
+<a href="rust-04.html"><span class="num">4</span><span>Ownership และการยืม</span></a>
+<a href="rust-05.html"><span class="num">5</span><span>struct, enum และ match</span></a>
+<a href="rust-06.html"><span class="num">6</span><span>จัดการข้อผิดพลาด</span></a>
+<a href="rust-07.html"><span class="num">7</span><span>Vec, String, HashMap</span></a>
+<a href="rust-08.html"><span class="num">8</span><span>trait และ generic</span></a>
+<a href="rust-09.html"><span class="num">9</span><span>โมดูล crate และเทสต์</span></a>
+<a href="rust-10.html"><span class="num">10</span><span>อ่าน error ของคอมไพเลอร์</span></a>
+<a href="rust-11.html"><span class="num">11</span><span>เธรด และก้าวต่อไป</span></a>
+</div></details>
+<p class="nav-none" hidden>ไม่พบหน้าที่ตรงกัน</p></div>
 </nav>
+<div class="nav-shade"></div>
 <main>
+<button class="nav-open" type="button" title="เปิดเมนู" aria-label="เปิดเมนู"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
 <div class="tool-head"><img class="tool-icon" src="icons/label.png" alt="" width="48" height="48"><div><h1>ป้าย (Label)</h1><p class="lead">ในกล่องเครื่องมือ: <b>ป้าย</b> · เทียบกับ WinForms: <code>Label</code></p></div></div>
 <p>ป้ายคือ<b>ข้อความบนหน้าต่าง</b>ที่ผู้ใช้อ่านแต่แก้ไม่ได้ เช่น หัวข้อ คำอธิบายหน้าช่องกรอก ผลลัพธ์ที่โปรแกรมคำนวณได้</p>
 <ul><li>เปลี่ยนข้อความในโค้ดด้วย <code>set_text</code> - ใช้แสดงผลได้ดี</li>

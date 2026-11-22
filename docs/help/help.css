@@ -33,23 +33,83 @@ body {
   line-height: 1.7;
 }
 .layout { display: flex; min-height: 100vh; }
+/* The sidebar: folding groups with icons, a search box, put away with « and back with ☰ (help.js). */
 nav {
-  width: 270px;
+  width: 288px;
   flex: none;
   background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 20px 16px;
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
   font-size: 0.92rem;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
 }
-nav .brand { font-weight: 700; font-size: 1.05rem; margin-bottom: 14px; display: block; color: var(--text); text-decoration: none; }
-nav h4 { margin: 18px 0 4px; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-nav a { display: block; padding: 4px 8px; border-radius: 4px; color: var(--text); text-decoration: none; }
-nav a:hover { background: var(--line); }
-nav a.here { background: var(--accent); color: #fff; }
+.nav-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 16px 12px 10px 16px;
+  position: sticky; top: 0; z-index: 2; background: var(--panel); border-bottom: 1px solid transparent;
+}
+nav .brand { display: flex; align-items: center; gap: 10px; flex: 1; font-weight: 700; font-size: 1.05rem; color: var(--text); text-decoration: none; }
+nav .brand img { border-radius: 7px; }
+.nav-close, .nav-open {
+  display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.nav-close:hover, .nav-open:hover { background: var(--line); color: var(--text); }
+.nav-search {
+  flex-basis: 100%; margin: 4px 0 0; padding: 7px 12px 7px 32px; border: 1px solid var(--line); border-radius: 9px; font: inherit; color: var(--text);
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a9099' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6'/%3E%3Cpath d='M20 20l-4.5-4.5'/%3E%3C/svg%3E") no-repeat 10px center / 15px;
+}
+.nav-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.nav-body { padding: 4px 10px 24px 12px; }
+.nav-none { color: var(--muted); padding: 6px 10px; margin: 0; }
+svg.ni { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+nav a {
+  display: flex; align-items: center; gap: 10px; padding: 5px 10px; margin: 1px 0; border-radius: 8px;
+  color: var(--text); text-decoration: none; line-height: 1.45;
+}
+nav a svg.ni { color: var(--muted); }
+nav a[hidden], details.grp[hidden] { display: none; }
+nav a:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+nav a.here { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+nav a.here svg.ni { color: var(--accent); }
+nav img.ti { width: 18px; height: 18px; flex: none; opacity: .85; }
+nav a.here img.ti { opacity: 1; }
+nav .num {
+  display: grid; place-items: center; width: 20px; height: 20px; flex: none; border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--muted); font-size: .72rem; font-weight: 700;
+}
+nav a.here .num { background: var(--accent); color: #fff; }
+details.grp { margin-top: 8px; }
+details.grp > summary {
+  display: flex; align-items: center; gap: 6px; padding: 6px 6px; border-radius: 8px; cursor: pointer; list-style: none; user-select: none;
+  font-size: .76rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
+}
+details.grp > summary::-webkit-details-marker { display: none; }
+details.grp > summary:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+details.grp > summary svg.ni { width: 14px; height: 14px; transition: transform .18s ease; }
+details.grp[open] > summary svg.ni { transform: rotate(90deg); }
+details.grp.sub { margin: 2px 0 2px 10px; }
+details.grp.sub > summary { text-transform: none; letter-spacing: 0; font-size: .8rem; font-weight: 600; padding: 4px 6px; }
+details.grp.sub > .grp-body { border-left: 1px solid var(--line); margin-left: 12px; padding-left: 6px; }
+.nav-open { position: fixed; top: 12px; left: 12px; z-index: 20; background: var(--panel); border-color: var(--line); box-shadow: 0 2px 8px rgba(0,0,0,.08); display: none; }
+html.nav-ready nav { transition: margin-left .22s ease, transform .22s ease; }
+html.nav-hidden nav { margin-left: -289px; }
+html.nav-hidden .nav-open { display: grid; }
+.nav-shade { display: none; }
+@media (prefers-color-scheme: dark) {
+  nav img.ti { filter: invert(1) brightness(.9); }
+}
+@media (max-width: 860px) {
+  nav { position: fixed; left: 0; top: 0; z-index: 30; transform: translateX(-100%); box-shadow: 0 0 40px rgba(0,0,0,.25); margin-left: 0 !important; }
+  body.nav-drawn nav { transform: none; }
+  body.nav-drawn .nav-shade { display: block; position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.35); }
+  .nav-open { display: grid; }
+  main { padding: 64px 18px 60px !important; }
+}
 main { flex: 1; min-width: 0; padding: 32px 48px 80px; max-width: 920px; }
 h1 { font-size: 1.75rem; line-height: 1.3; margin: 0 0 8px; }
 h2 { font-size: 1.35rem; margin: 40px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
@@ -76,9 +136,6 @@ kbd { font-family: "Segoe UI", sans-serif; font-size: 0.85em; border: 1px solid 
 .pager { display: flex; justify-content: space-between; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); }
 .pager a { text-decoration: none; }
 @media (max-width: 760px) {
-  .layout { display: block; }
-  nav { width: auto; height: auto; position: static; border-right: none; border-bottom: 1px solid var(--line); }
-  main { padding: 20px 16px 60px; }
   table { display: block; overflow-x: auto; }
 }
 
@@ -93,6 +150,5 @@ table.ref tr.group td { background: var(--panel); font-weight: 600; color: var(-
 figure { margin: 16px 0; }
 figure img.shot { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
 figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
-nav h5 { margin: 10px 0 2px 12px; font-size: 0.72rem; font-weight: 600; color: var(--muted); }
 details.common { margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; }
 details.common summary { cursor: pointer; font-weight: 600; }
