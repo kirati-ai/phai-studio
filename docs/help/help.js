@@ -3,7 +3,7 @@
 // a private window): it then just forgets between pages.
 (function () {
   'use strict';
-  var KEY_CLOSED = 'phai-help-closed';   // the groups folded, by their data-key
+  var KEY_FOLDS = 'phai-help-folds';     // {group's data-key: open?} for the groups the reader opened or folded
   var KEY_HIDDEN = 'phai-help-hidden';   // the sidebar put away (wide screens)
   var nav = document.getElementById('nav');
   if (!nav) return;
@@ -17,19 +17,24 @@
 
   // --- folding groups ---------------------------------------------------------------------
   var groups = Array.prototype.slice.call(nav.querySelectorAll('details.grp'));
-  var closed = load(KEY_CLOSED, []);
+  var folds = load(KEY_FOLDS, {});
   var here = nav.querySelector('a.here');
+  var restoring = true;
   groups.forEach(function (d) {
     var holdsHere = here && d.contains(here);
-    // The page's own group is always open; the rest as they were left.
-    d.open = holdsHere || closed.indexOf(d.dataset.key) < 0;
+    // The page's own group is always open; the rest as the reader left them, or as the guide
+    // starts (data-folded: Toolbox and Rust Language folded, Phai Studio open).
+    var key = d.dataset.key;
+    d.open = holdsHere || (key in folds ? folds[key] : !d.dataset.folded);
     d.addEventListener('toggle', function () {
-      if (searching) return;
-      var now = load(KEY_CLOSED, []).filter(function (k) { return k !== d.dataset.key; });
-      if (!d.open) now.push(d.dataset.key);
-      save(KEY_CLOSED, now);
+      if (searching || restoring) return;
+      var now = load(KEY_FOLDS, {});
+      now[key] = d.open;
+      save(KEY_FOLDS, now);
     });
   });
+  // toggle events from setting .open above come after this script: not the reader's doing.
+  setTimeout(function () { restoring = false; }, 0);
   // The current page's link in the middle of the sidebar - the sidebar alone scrolled, up and down
   // only (scrollIntoView also moved a phone's hidden drawer sideways).
   if (here) nav.scrollTop = here.getBoundingClientRect().top - nav.getBoundingClientRect().top - nav.clientHeight / 2;

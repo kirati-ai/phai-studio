@@ -89,6 +89,8 @@ details.grp > summary {
   font-size: .76rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;
 }
 details.grp > summary::-webkit-details-marker { display: none; }
+details.grp > summary:focus { outline: none; }
+details.grp > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 details.grp > summary:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
 details.grp > summary svg.ni { width: 14px; height: 14px; transition: transform .18s ease; }
 details.grp[open] > summary svg.ni { transform: rotate(90deg); }

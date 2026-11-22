@@ -128,6 +128,7 @@ def nav(current):
            '<input class="nav-search" type="search" placeholder="ค้นหาในเมนู…" aria-label="ค้นหาในเมนู"></div>',
            '<div class="nav-body">']
     top_open = sub_open = None
+    current_top = next(((g or '').partition('/')[0] for f, _, g in PAGES if f == current), '')
     for f, title, g in PAGES:
         top, _, sub = (g or '').partition('/')
         if top != top_open:
@@ -138,7 +139,11 @@ def nav(current):
                 out.append('</div></details>')
             top_open = top or None
             if top:
-                out.append(f'<details class="grp" data-key="{html.escape(top)}" open><summary>{CHEVRON}<span>{html.escape(top)}</span></summary><div class="grp-body">')
+                # Opened at first: Phai Studio's own pages; Toolbox and Rust Language folded until opened
+                # (or until a page of theirs is the one shown) - as the owner wants the guide to open.
+                fold = '' if top == 'Phai Studio' or top == current_top else ' data-folded="1"'
+                attr = '' if fold else ' open'
+                out.append(f'<details class="grp" data-key="{html.escape(top)}"{fold}{attr}><summary>{CHEVRON}<span>{html.escape(top)}</span></summary><div class="grp-body">')
         if sub != (sub_open or ''):
             if sub_open:
                 out.append('</div></details>')
