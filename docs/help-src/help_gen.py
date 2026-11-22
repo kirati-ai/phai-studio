@@ -39,17 +39,6 @@ for mod in ['help_pages1', 'help_pages2', 'help_pages3', 'help_pages4', 'help_pa
     if os.path.exists(os.path.join(HERE, mod + '.py')):
         bodies.update(load(mod))
 
-# The Toolbox pages (help_controls.py), with the icons and pictures they show.
-sys.path.insert(0, HERE)
-import help_controls
-# The Toolbox group goes right after Phai Studio's own pages, before Rust.
-at = max(i for i, p in enumerate(PAGES) if p[2] == 'Phai Studio') + 1
-for f, title, body, group in help_controls.pages():
-    PAGES.insert(at, (f, title, group))
-    at += 1
-    bodies[f] = body
-
-
 def copy_assets():
     import shutil
     icons = os.path.join(OUT, 'icons')
@@ -78,6 +67,19 @@ def copy_assets():
 
 
 copy_assets()
+
+
+# The Toolbox pages (help_controls.py), with the icons and pictures they show.
+sys.path.insert(0, HERE)
+import help_controls
+# The Toolbox group goes right after Phai Studio's own pages, before Rust.
+at = max(i for i, p in enumerate(PAGES) if p[2] == 'Phai Studio') + 1
+for f, title, body, group in help_controls.pages():
+    PAGES.insert(at, (f, title, group))
+    at += 1
+    bodies[f] = body
+
+
 
 
 def nav(current):

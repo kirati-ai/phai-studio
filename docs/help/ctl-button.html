@@ -24,6 +24,11 @@
 <a href="ctl-form.html">ฟอร์ม (Form)</a>
 <h5>Common controls</h5>
 <a href="ctl-button.html" class="here">ปุ่ม (Button)</a>
+<a href="ctl-checkbox.html">ช่องติ๊ก (CheckBox)</a>
+<a href="ctl-checkedlist.html">กล่องรายการติ๊ก (CheckedListBox)</a>
+<a href="ctl-combo.html">รายการเลือก (ComboBox)</a>
+<a href="ctl-date.html">วันที่ (DateTimePicker)</a>
+<a href="ctl-label.html">ป้าย (Label)</a>
 <h4>Rust Language</h4>
 <a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
 <a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
@@ -45,7 +50,7 @@
 <li>ตั้ง <b>Class</b> = <code>primary</code> ให้ปุ่มหลักของหน้าต่างเป็นสีเด่น</li>
 <li>ตั้งปุ่มเป็น <b>AcceptButton</b> ของฟอร์ม แล้วกด <kbd>Enter</kbd> ที่ไหนก็กดปุ่มนี้ (และ <b>CancelButton</b> สำหรับ <kbd>Esc</kbd>)</li>
 <li>ปุ่มในกล่องถามตั้ง <b>DialogResult</b> ได้ กดแล้วหน้าต่างปิดพร้อมคำตอบนั้นเอง - ดูหน้า <a href="ctl-form.html">ฟอร์ม</a></li></ul>
-<figure><img class="shot" src="img/ctl-button.png" alt="ปุ่ม ในหน้าต่างตัวอย่าง"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>
+<figure><img class="shot" src="img/ctl-button.png" alt="ปุ่ม ในหน้าต่างตัวอย่าง" width="480"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>
 <p>อยู่ในกล่องเครื่องมือกลุ่ม <b>คอนโทรลทั่วไป</b> (Common controls) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> (ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::Button</code></p>
 <h2>ตัวอย่าง</h2>
 <h3>1. นับจำนวนครั้งที่กด (Click)</h3>
@@ -166,7 +171,7 @@
 <tr><td><b>DragDrop</b></td><td>มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)</td><td><code title="phai_ui::events::FileDropEventArgs">fn button_drag_drop(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;FileDropEventArgs)</code></td></tr>
 </table>
 <h2>ลองทำเอง</h2><div class="try"><ol><li>เพิ่มปุ่ม "-1" ที่ลดจำนวนลง แต่ไม่ให้ต่ำกว่าศูนย์</li><li>ให้ปุ่ม <code>click_me</code> เปลี่ยนข้อความเป็น "พอแล้ว!" และกดไม่ได้เมื่อกดครบ 10 ครั้ง</li><li>ใช้ <code>ui.click_me.set_tooltip("…")</code> ใน <code>loaded</code> ให้มีคำอธิบายเมื่อชี้เมาส์</li></ol></div>
-<div class="pager"><a href="ctl-form.html">← ฟอร์ม (Form)</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+<div class="pager"><a href="ctl-form.html">← ฟอร์ม (Form)</a><a href="ctl-checkbox.html">ช่องติ๊ก (CheckBox) →</a></div>
 </main>
 </div>
 </body>

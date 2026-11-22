@@ -1,0 +1,33 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ComboDemo"
+title = "ComboBox"
+size = [360, 170]
+start = "center"
+
+[[control]]
+kind = "combo"
+id = "fruit"
+bounds = [16, 16, 200, 24]
+items = ["Mango", "Banana", "Durian", "Papaya"]
+on_change = "fruit_changed"
+
+[[control]]
+kind = "edit"
+id = "new_fruit"
+bounds = [16, 56, 200, 24]
+
+[[control]]
+kind = "button"
+id = "add"
+text = "Add to the list"
+bounds = [226, 54, 118, 28]
+on_click = "add_clicked"
+
+[[control]]
+kind = "label"
+id = "chosen"
+text = "Choose a fruit"
+bounds = [16, 100, 328, 24]

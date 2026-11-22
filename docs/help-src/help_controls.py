@@ -229,6 +229,16 @@ def control_events_table(tool, ui):
     return '\n'.join(out)
 
 
+def shot_width(name):
+    """The picture's width as the window is on a screen at 100%: PHAI_SHOT takes it at the
+    screen's own scale (this computer's is 150%), so it shows as large as the real one."""
+    from PIL import Image
+    path = os.path.join(HERE, '..', 'help', 'img', name)
+    if not os.path.exists(path):
+        return 420
+    return round(Image.open(path).width / 1.5)
+
+
 def control_page(tag, data):
     c = control_pages.PAGES[tag]
     tool = next(t for t in data['tools'] if t['tag'] == tag)
@@ -237,7 +247,7 @@ def control_page(tag, data):
     ui = f'{"".join(w.capitalize() for w in tag.split("_"))}DemoUi'
     p = [head(tag, f'{c["title"]} ({c["winforms"]})', c['winforms'], data)]
     p.append(c['intro'])
-    p.append(f'<figure><img class="shot" src="img/ctl-{tag}.png" alt="{e(c["title"])} ในหน้าต่างตัวอย่าง"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>')
+    p.append(f'<figure><img class="shot" src="img/ctl-{tag}.png" alt="{e(c["title"])} ในหน้าต่างตัวอย่าง" width="{shot_width(f"ctl-{tag}.png")}"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>')
     where = (f'<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>{e(group["th"])}</b> ({e(group["en"])}) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> '
              f'(ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::{e(ty)}</code></p>')
     if tool.get('component'):

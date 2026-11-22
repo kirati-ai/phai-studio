@@ -1,0 +1,27 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "CheckedlistDemo"
+title = "CheckedListBox"
+size = [360, 230]
+start = "center"
+
+[[control]]
+kind = "checkedlist"
+id = "toppings"
+bounds = [16, 16, 160, 150]
+
+[[control]]
+kind = "button"
+id = "order"
+text = "Order"
+bounds = [190, 16, 150, 30]
+class = "primary"
+on_click = "order_clicked"
+
+[[control]]
+kind = "label"
+id = "summary"
+text = ""
+bounds = [16, 178, 328, 40]

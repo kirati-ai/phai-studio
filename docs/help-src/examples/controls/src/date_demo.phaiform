@@ -1,0 +1,26 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "DateDemo"
+title = "DateTimePicker"
+size = [360, 130]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "ask"
+text = "Your birthday:"
+bounds = [16, 18, 110, 24]
+
+[[control]]
+kind = "date"
+id = "birthday"
+bounds = [130, 16, 200, 24]
+on_change = "birthday_changed"
+
+[[control]]
+kind = "label"
+id = "shown"
+text = ""
+bounds = [16, 60, 328, 24]

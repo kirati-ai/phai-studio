@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>วันที่ (DateTimePicker) - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<a href="report.html">รายงานพิมพ์</a>
+<h4>Toolbox</h4>
+<a href="ctl-form.html">ฟอร์ม (Form)</a>
+<h5>Common controls</h5>
+<a href="ctl-button.html">ปุ่ม (Button)</a>
+<a href="ctl-checkbox.html">ช่องติ๊ก (CheckBox)</a>
+<a href="ctl-checkedlist.html">กล่องรายการติ๊ก (CheckedListBox)</a>
+<a href="ctl-combo.html">รายการเลือก (ComboBox)</a>
+<a href="ctl-date.html" class="here">วันที่ (DateTimePicker)</a>
+<a href="ctl-label.html">ป้าย (Label)</a>
+<h4>Rust Language</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<div class="tool-head"><img class="tool-icon" src="icons/date.png" alt="" width="48" height="48"><div><h1>วันที่ (DateTimePicker)</h1><p class="lead">ในกล่องเครื่องมือ: <b>วันที่</b> · เทียบกับ WinForms: <code>DateTimePicker</code></p></div></div>
+<p>ช่องสำหรับเลือก<b>วันที่</b> กดลูกศรแล้วมีปฏิทินให้เลือก ผู้ใช้ไม่ต้องพิมพ์วันที่เอง จึงไม่มีรูปแบบผิด</p>
+<ul><li><code>value()</code> ได้ <code>(ปี, เดือน, วัน)</code> เป็นตัวเลขสามตัว</li>
+<li><b>Format</b> และ <b>CustomFormat</b> กำหนดว่าวันที่แสดงหน้าตาแบบไหน</li>
+<li><b>MinDate</b> / <b>MaxDate</b> จำกัดช่วงวันที่ที่เลือกได้ · <b>ShowCheckBox</b> ให้ผู้ใช้เลือกว่า "ไม่ระบุวันที่" ได้</li></ul>
+<figure><img class="shot" src="img/ctl-date.png" alt="วันที่ ในหน้าต่างตัวอย่าง" width="480"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>
+<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>คอนโทรลทั่วไป</b> (Common controls) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> (ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::DateTimePicker</code></p>
+<h2>ตัวอย่าง</h2>
+<h3>1. ตั้งวันที่ตอนเปิดหน้าต่าง</h3>
+<p><code>set_value(ปี, เดือน, วัน)</code>:</p>
+<pre><code>fn loaded(&amp;mut self, ui: &amp;DateDemoUi) {
+    ui.birthday.set_value(2015, 6, 1); // year, month, day
+    self.birthday_changed(ui);
+}</code></pre>
+<h3>2. อ่านวันที่ที่เลือก</h3>
+<p>ทุกครั้งที่เลือกวันใหม่ method <code>…_changed</code> ทำงาน:</p>
+<pre><code>fn birthday_changed(&amp;mut self, ui: &amp;DateDemoUi) {
+    let (year, month, day) = ui.birthday.value();
+    ui.shown.set_text(&amp;format!(&quot;Born on {day}/{month}/{year}&quot;));
+}</code></pre>
+<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>date_demo.phaiform</code> กับ <code>date_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- date</code></p>
+<h2>Method ของ DateTimePicker</h2>
+<table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>value() -&gt; (i32, i32, i32)</code></td><td>วันที่ที่เลือก เป็น <code>(ปี, เดือน, วัน)</code></td></tr>
+<tr><td><code>set_value(year: i32, month: i32, day: i32)</code></td><td>ตั้งวันที่</td></tr>
+<tr><td><code>checked() -&gt; bool</code></td><td>เมื่อเปิด ShowCheckBox: ผู้ใช้ระบุวันที่ไหม (ติ๊กช่องไว้)</td></tr>
+</table>
+<details class="common"><summary>Method ที่ control ทุกตัวมี (ข้อความ เปิด/ปิด แสดง/ซ่อน ตำแหน่ง …)</summary><table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>hwnd() -&gt; HWND</code></td><td>ตัว control เอง (HWND) ใช้กับคำสั่งของ Windows ที่ต้องการหน้าต่าง - เหมือน <code>Handle</code></td></tr>
+<tr><td><code>text() -&gt; String</code></td><td>อ่านข้อความของมัน</td></tr>
+<tr><td><code>set_text(s: &amp;str)</code></td><td>เปลี่ยนข้อความของมัน</td></tr>
+<tr><td><code>enabled() -&gt; bool</code></td><td>ใช้งานได้อยู่ไหม</td></tr>
+<tr><td><code>set_enabled(on: bool)</code></td><td><code>true</code> ใช้งานได้ · <code>false</code> เป็นสีเทา กดไม่ได้</td></tr>
+<tr><td><code>visible() -&gt; bool</code></td><td>มองเห็นอยู่ไหม</td></tr>
+<tr><td><code>set_visible(on: bool)</code></td><td>แสดงหรือซ่อน</td></tr>
+<tr><td><code>show()</code></td><td>แสดง</td></tr>
+<tr><td><code>hide()</code></td><td>ซ่อน</td></tr>
+<tr><td><code>focus()</code></td><td>ให้แป้นพิมพ์มาที่มัน</td></tr>
+<tr><td><code>focused() -&gt; bool</code></td><td>แป้นพิมพ์อยู่ที่มันไหม</td></tr>
+<tr><td><code>bring_to_front()</code></td><td>ยกขึ้นไปอยู่บนสุด เหนือ control ที่ซ้อนกัน</td></tr>
+<tr><td><code>send_to_back()</code></td><td>ส่งไปอยู่ล่างสุด</td></tr>
+<tr><td><code>refresh()</code></td><td>วาดใหม่ทันที</td></tr>
+<tr><td><code>invalidate()</code></td><td>ขอให้วาดใหม่ (Windows วาดให้เมื่อว่าง)</td></tr>
+<tr><td><code>bounds() -&gt; RECT</code></td><td>ตำแหน่งและขนาดบนหน้าต่าง (RECT)</td></tr>
+<tr><td><code>client_size() -&gt; (i32, i32)</code></td><td>ความกว้างและความสูงด้านใน (กว้าง, สูง)</td></tr>
+<tr><td><code>set_bounds(x: i32, y: i32, w: i32, h: i32)</code></td><td>ย้ายและเปลี่ยนขนาด: x, y, กว้าง, สูง</td></tr>
+<tr><td><code>point_to_screen(x: i32, y: i32) -&gt; (i32, i32)</code></td><td>แปลงจุดบน control เป็นจุดบนจอ</td></tr>
+<tr><td><code>point_to_client(x: i32, y: i32) -&gt; (i32, i32)</code></td><td>แปลงจุดบนจอเป็นจุดบน control</td></tr>
+<tr><td><code>find_form() -&gt; HWND</code></td><td>หน้าต่าง (ฟอร์ม) ที่มันอยู่</td></tr>
+<tr><td><code>suspend_layout()</code></td><td>หยุดจัดตำแหน่งชั่วคราว ระหว่างเปลี่ยนหลายอย่างพร้อมกัน</td></tr>
+<tr><td><code>resume_layout()</code></td><td>จัดตำแหน่งต่อ หลัง <code>suspend_layout</code></td></tr>
+<tr><td><code>set_tooltip(text: &amp;str)</code></td><td>ข้อความเล็ก ๆ ที่ขึ้นเมื่อชี้เมาส์ค้างไว้ - เหมือน ToolTip</td></tr>
+<tr><td><code>do_drag_drop(text: &amp;str) -&gt; bool</code></td><td>เริ่มลากข้อความนี้ออกไปวางที่อื่น</td></tr>
+<tr><td><code>set_cursor(name: &amp;str)</code></td><td>รูปเมาส์เมื่อชี้มัน เช่น <code>"hand"</code>, <code>"wait"</code>, <code>"ibeam"</code></td></tr>
+</table></details>
+<h2>Properties</h2>
+<p>ตั้งได้ในหน้าต่าง Properties เมื่อเลือกมันบนฟอร์ม - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>
+<table class="ref"><tr><th>Property</th><th>ค่าเริ่มต้น</th><th>ทำอะไร</th></tr>
+<tr class="group"><td colspan="3">ออกแบบ</td></tr>
+<tr><td><b>รหัส</b></td><td><code>date</code></td><td>ชื่อ control ในโค้ด และ #id ใน CSS</td></tr>
+<tr><td><b>คลาส</b></td><td><span class="muted">-</span></td><td>คลาส CSS จากธีม เช่น primary หลายคลาสคั่นด้วยช่องว่าง</td></tr>
+<tr><td><b>ล็อก</b></td><td><code>False</code></td><td>ล็อกไว้: เมาส์และปุ่มลูกศรจะไม่ย้ายหรือปรับขนาดในหน้าออกแบบ</td></tr>
+<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
+<tr><td><b>ฟอนต์</b></td><td><code>Segoe UI, 9pt</code></td><td>ขนาดและน้ำหนักของตัวอักษร - Segoe UI, 9pt คือของ Windows</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>ขนาดฟอนต์</b></td><td><span class="muted">-</span></td><td>ขนาดตัวอักษร (พอยต์) ของ control นี้ ทับของฟอร์ม</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>ตัวหนา</b></td><td><code>False</code></td><td>แสดงข้อความเป็นตัวหนา</td></tr>
+<tr><td><b>สีพื้น</b></td><td><span class="muted">-</span></td><td>สีพื้นหลัง ทับธีม - เขียนเป็น CSS #id { background }</td></tr>
+<tr><td><b>สีตัวอักษร</b></td><td><span class="muted">-</span></td><td>สีข้อความ ทับธีม - #id { color }</td></tr>
+<tr><td><b>สีขอบ</b></td><td><span class="muted">-</span></td><td>สีขอบ ทับธีม - #id { border-color }</td></tr>
+<tr><td><b>มุมมน</b></td><td><span class="muted">-</span></td><td>ความมนของมุม เป็นพิกเซล - #id { border-radius }</td></tr>
+<tr><td><b>ToolTip</b></td><td><span class="muted">-</span></td><td>ข้อความที่ขึ้นเมื่อวางเมาส์ค้างไว้</td></tr>
+<tr><td><b>Cursor</b></td><td><code>default</code></td><td>รูปตัวชี้เมาส์เมื่ออยู่บนตัวนี้</td></tr>
+<tr><td><b>Border width</b></td><td><span class="muted">-</span></td><td>ความหนาของขอบ (พิกเซล) - #id { border-width }</td></tr>
+<tr><td><b>Animation</b></td><td><span class="muted">-</span></td><td>สีเคลื่อนไหวเอง: blink 1s infinite (กะพริบ), pulse 1.5s infinite (เต้น), fade-in 400ms (ค่อย ๆ ปรากฏ) หรือ @keyframes ในธีม - #id { animation }</td></tr>
+<tr><td><b>FontFamily</b></td><td><span class="muted">-</span></td><td>แบบตัวอักษรของข้อความ เช่น Consolas สำหรับ log ส่วน Segoe UI คือแบบของ Windows เอง</td></tr>
+<tr><td><b>Transition</b></td><td><span class="muted">-</span></td><td>สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน เช่น 150ms, 0.3s ease-out - #id { transition }</td></tr>
+<tr><td><b>Format</b></td><td><code>short</code></td><td>รูปแบบการแสดงวันที่: วันที่แบบสั้นหรือยาวของ Windows, เวลา หรือ CustomFormat</td></tr>
+<tr><td><b>CustomFormat</b></td><td><span class="muted">-</span></td><td>ใช้เมื่อ Format เป็น custom เช่น dd MMM yyyy, HH:mm</td></tr>
+<tr><td><b>ShowCheckBox</b></td><td><code>False</code></td><td>มีช่องติ๊กหน้าวันที่ ถ้าไม่ติ๊กคือไม่ระบุวันที่</td></tr>
+<tr><td><b>ShowUpDown</b></td><td><code>False</code></td><td>ใช้ลูกศรเปลี่ยนค่าแทนปฏิทิน</td></tr>
+<tr class="group"><td colspan="3">พฤติกรรม</td></tr>
+<tr><td><b>ใช้งานได้</b></td><td><code>True</code></td><td>ใช้งานได้ หรือแสดงเป็นสีเทา</td></tr>
+<tr><td><b>มองเห็น</b></td><td><code>True</code></td><td>แสดงเมื่อเปิดหน้าต่างหรือไม่</td></tr>
+<tr><td><b>TabIndex</b></td><td><span class="muted">-</span></td><td>ลำดับที่ปุ่ม Tab เลื่อนผ่าน ถ้าไม่ตั้งใช้ลำดับในฟอร์ม</td></tr>
+<tr><td><b>TabStop</b></td><td><code>True</code></td><td>ปุ่ม Tab หยุดที่ตัวนี้หรือไม่</td></tr>
+<tr><td><b>AllowDrop</b></td><td><code>False</code></td><td>ลากไฟล์จาก Explorer มาวางได้ - ใช้ event DragDrop</td></tr>
+<tr class="group"><td colspan="3">การจัดวาง</td></tr>
+<tr><td><b>ตำแหน่ง</b></td><td><code>12, 12</code></td><td>มุมซ้ายบนนับจากของฟอร์ม ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>X</b></td><td><code>12</code></td><td>ระยะจากซ้ายของฟอร์ม ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>Y</b></td><td><code>12</code></td><td>ระยะจากบนของฟอร์ม ที่สเกล 100%</td></tr>
+<tr><td><b>ขนาด</b></td><td><code>120, 24</code></td><td>ความกว้างและความสูง ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>กว้าง</b></td><td><code>120</code></td><td>ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>สูง</b></td><td><code>24</code></td><td>ที่สเกล 100%</td></tr>
+<tr><td><b>ติดขอบ</b></td><td><code>none</code></td><td>ติดขอบหนึ่งของฟอร์ม หรือเต็มพื้นที่ที่เหลือ</td></tr>
+<tr><td><b>ยึดขอบ</b></td><td><code>left top</code></td><td>ขอบที่รักษาระยะไว้เมื่อหน้าต่างขยาย</td></tr>
+<tr class="group"><td colspan="3">ข้อมูล</td></tr>
+<tr><td><b>DataBindings</b></td><td><span class="muted">-</span></td><td>id ของแหล่งข้อมูลผูกกับคอลัมน์ - people.name: control แสดงคอลัมน์นั้นของแถวปัจจุบัน และสิ่งที่แก้จะเขียนกลับ</td></tr>
+<tr><td><b>Value</b></td><td><span class="muted">-</span></td><td>วันที่ตอนเปิดหน้าต่าง เช่น 2026-11-19 ถ้าไม่ตั้งใช้วันนี้</td></tr>
+<tr><td><b>MinDate</b></td><td><span class="muted">-</span></td><td>วันที่เร็วที่สุดที่รับได้</td></tr>
+<tr><td><b>MaxDate</b></td><td><span class="muted">-</span></td><td>วันที่ช้าที่สุดที่รับได้</td></tr>
+</table>
+<h2>Events</h2>
+<p>ดับเบิลคลิกชื่อ event ในแท็บ Events ของ Properties แล้ว Phai Studio จะเขียน method ให้ (ชื่อในตารางนี้สมมติว่า Id ของมันคือ <code>date</code> และอยู่บนฟอร์ม MainWindow) - ชี้เมาส์ที่ชนิดของ <code>e</code> เพื่อดูชื่อเต็ม</p>
+<table class="ref"><tr><th>Event</th><th>ทำอะไร</th><th>method ที่ Phai Studio เขียนให้</th></tr>
+<tr><td><b>เปลี่ยน</b></td><td>เมธอดที่ทำงานเมื่อเกิดเหตุการณ์นี้ ดับเบิลคลิก control เพื่อเขียน</td><td><code>fn date_changed(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>DoubleClick</b></td><td>ถูกดับเบิลคลิก</td><td><code>fn date_double_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Enter</b></td><td>ได้รับโฟกัส แป้นที่กดต่อไปจะเข้าตัวนี้</td><td><code>fn date_enter(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Leave</b></td><td>โฟกัสย้ายไปที่อื่น</td><td><code>fn date_leave(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>KeyDown</b></td><td>กดแป้นขณะมีโฟกัส - e.key, e.ctrl; เรียก e.set_handled() เพื่อไม่ให้ control ได้รับแป้นนั้น</td><td><code title="phai_ui::events::KeyEventArgs">fn date_key_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyUp</b></td><td>ปล่อยแป้นขณะมีโฟกัส</td><td><code title="phai_ui::events::KeyEventArgs">fn date_key_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyPress</b></td><td>พิมพ์ตัวอักษร - e.ch; เรียก e.set_handled() เพื่อไม่ให้ตัวอักษรเข้าไป</td><td><code title="phai_ui::events::KeyPressEventArgs">fn date_key_press(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyPressEventArgs)</code></td></tr>
+<tr><td><b>MouseEnter</b></td><td>เมาส์เลื่อนเข้ามาบนตัวนี้</td><td><code>fn date_mouse_enter(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>MouseLeave</b></td><td>เมาส์เลื่อนออกจากตัวนี้</td><td><code>fn date_mouse_leave(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>MouseDown</b></td><td>กดปุ่มเมาส์บนตัวนี้ - e.x, e.y, e.button</td><td><code title="phai_ui::events::MouseEventArgs">fn date_mouse_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseUp</b></td><td>ปล่อยปุ่มเมาส์บนตัวนี้</td><td><code title="phai_ui::events::MouseEventArgs">fn date_mouse_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseMove</b></td><td>เมาส์เคลื่อนบนตัวนี้</td><td><code title="phai_ui::events::MouseEventArgs">fn date_mouse_move(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseWheel</b></td><td>หมุนลูกล้อเมาส์บน control - e.delta ทีละ 120 ต่อหนึ่งจังหวะ มากกว่า 0 คือหมุนออกจากตัว</td><td><code title="phai_ui::events::MouseEventArgs">fn date_mouse_wheel(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>Resize</b></td><td>ขนาดเปลี่ยน - หน้าต่างถูกย่อขยายและตัวนี้ยึดขอบหรือ dock ไว้</td><td><code>fn date_resize(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>DragDrop</b></td><td>มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)</td><td><code title="phai_ui::events::FileDropEventArgs">fn date_drag_drop(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;FileDropEventArgs)</code></td></tr>
+</table>
+<h2>ลองทำเอง</h2><div class="try"><ol><li>คำนวณอายุจากวันเกิด (ปีนี้ลบปีเกิด) แล้วแสดงในป้าย</li><li>เพิ่มวันที่ตัวที่สอง "วันกลับ" แล้วเตือนถ้าวันกลับมาก่อนวันไป</li></ol></div>
+<div class="pager"><a href="ctl-combo.html">← รายการเลือก (ComboBox)</a><a href="ctl-label.html">ป้าย (Label) →</a></div>
+</main>
+</div>
+</body>
+</html>

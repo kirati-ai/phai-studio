@@ -1,0 +1,26 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "LabelDemo"
+title = "Label"
+size = [360, 130]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "headline"
+text = "Today's word"
+bounds = [16, 12, 328, 30]
+font_size = 14
+bold = true
+
+[[control]]
+kind = "label"
+id = "word"
+text = "Click me for the next word"
+bounds = [16, 52, 328, 24]
+cursor = "hand"
+
+[control.events]
+click = "word_click"

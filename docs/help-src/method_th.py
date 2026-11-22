@@ -64,3 +64,11 @@ TH = {
     'LinkLabel.link_text': 'ข้อความ (ไม่รวมเครื่องหมายลิงก์)',
     'LinkLabel.set_link_text': 'ข้อความใหม่ ทั้งหมดเป็นลิงก์ - หรือเฉพาะส่วนระหว่าง <code>&lt;a&gt;</code> กับ <code>&lt;/a&gt;</code>',
 }
+
+# More pages, a file a batch: pages_*.py beside this one, each with PAGES and TH.
+import glob as _glob, importlib.util as _util, os as _os
+for _f in sorted(_glob.glob(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'pages_*.py'))):
+    _spec = _util.spec_from_file_location(_os.path.basename(_f)[:-3], _f)
+    _m = _util.module_from_spec(_spec)
+    _spec.loader.exec_module(_m)
+    TH.update(getattr(_m, 'TH', {}))

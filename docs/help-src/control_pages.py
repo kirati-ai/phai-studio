@@ -24,3 +24,11 @@ PAGES = {
                'ใช้ <code>ui.click_me.set_tooltip("…")</code> ใน <code>loaded</code> ให้มีคำอธิบายเมื่อชี้เมาส์'],
     ),
 }
+
+# More pages, a file a batch: pages_*.py beside this one, each with PAGES and TH.
+import glob as _glob, importlib.util as _util, os as _os
+for _f in sorted(_glob.glob(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'pages_*.py'))):
+    _spec = _util.spec_from_file_location(_os.path.basename(_f)[:-3], _f)
+    _m = _util.module_from_spec(_spec)
+    _spec.loader.exec_module(_m)
+    PAGES.update(getattr(_m, 'PAGES', {}))

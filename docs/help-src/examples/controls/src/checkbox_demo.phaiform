@@ -1,0 +1,36 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "CheckboxDemo"
+title = "CheckBox"
+size = [360, 170]
+start = "center"
+
+[[control]]
+kind = "checkbox"
+id = "agree"
+text = "I have read the rules"
+bounds = [16, 16, 320, 24]
+on_click = "agree_clicked"
+
+[[control]]
+kind = "checkbox"
+id = "news"
+text = "Send me news by e-mail"
+bounds = [16, 44, 320, 24]
+checked = true
+
+[[control]]
+kind = "button"
+id = "go"
+text = "Sign up"
+bounds = [16, 82, 150, 30]
+class = "primary"
+on_click = "go_clicked"
+
+[[control]]
+kind = "label"
+id = "answer"
+text = ""
+bounds = [16, 122, 328, 24]
