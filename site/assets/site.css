@@ -278,3 +278,19 @@ h3.part + .muted { margin: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .shot-info.fresh > * { animation: none; } }
 @media (max-width: 860px) { .gallery { grid-template-columns: 1fr; gap: 18px; } .shot-info { min-height: 0; } }
 .slider { overflow: clip; clip-path: inset(0 round var(--radius)); }
+/* Phai Desk: its windows one after another, a line under each; then the guide's example programs. */
+.made-shots { position: relative; display: grid; }
+.made-shots .made-shot { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity .6s ease, visibility 0s .6s; }
+.made-shots .made-shot.on { opacity: 1; visibility: visible; transition: opacity .6s ease; }
+.made-shots .made-shot img { aspect-ratio: 1432 / 980; object-fit: cover; object-position: top left; background: #fff; }
+.made-cap { grid-area: 2 / 1; margin: 12px 0 0; color: var(--muted); font-size: .92rem; min-height: 3em; }
+.made-dots { grid-area: 3 / 1; display: flex; gap: 6px; }
+.made-dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 4px; background: #c9ddd2; cursor: pointer; transition: width .3s, background .3s; }
+.made-dots button.on { width: 22px; background: var(--green); }
+.grid.demos { grid-auto-rows: auto; }
+.card.demo { display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 12px; }
+.card.demo .demo-shot { display: block; aspect-ratio: 840 / 578; margin-bottom: 8px; overflow: hidden; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
+.card.demo .demo-shot img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; transition: transform .4s ease; }
+.card.demo:hover .demo-shot img { transform: scale(1.04); }
+.card.demo b { padding: 0 4px; font-weight: 600; color: var(--ink); }
+.card.demo small { padding: 0 4px; color: var(--muted); font-size: .85rem; }

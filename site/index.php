@@ -107,6 +107,23 @@ $T = $th ? [
     'madeH' => 'สร้างด้วย Phai Studio', 'madeSub' => 'โปรแกรมจริงที่ออกแบบและเขียนด้วย Phai Studio ทั้งตัว',
     'madeName' => 'คอนโซลของ Phai Desk', 'madeP' => 'โปรแกรมรีโมทและดูแลคอมพิวเตอร์ในสำนักงาน ทั้ง 7 หน้าต่าง (รายการเครื่อง ดูจอ ส่งไฟล์ แชท โปรแกรมในเครื่อง log) ออกแบบด้วยการลากวางใน Phai Studio แล้วทำตัวติดตั้งด้วย Publish',
     'madeLink' => 'รู้จัก Phai Desk',
+    'madeShots' => [
+        ['desk-main', 'คอมพิวเตอร์ทุกเครื่องในสำนักงาน: สีเขียวออนไลน์ สีเทาปิดอยู่ สีแดงกำลังขอความช่วยเหลือ คลิกขวาเพื่อรีโมท แชท หรือเปิดไฟล์'],
+        ['phaidesk', 'โปรแกรมในเครื่อง: รายการทุกโปรแกรมที่ลงไว้ ค้นหาได้'],
+        ['desk-files', 'ไฟล์: เปิดดู ดาวน์โหลด อัปโหลด และจัดการไฟล์ของเครื่องที่ดูแล'],
+        ['desk-project', 'โปรเจกต์ Phai Desk ใน Phai Studio: ทุกหน้าต่างออกแบบด้วยการลากวาง'],
+    ],
+    'demosH' => 'โปรแกรมตัวอย่างในคู่มือ', 'demosSub' => '42 โปรแกรมเล็ก ๆ หนึ่งโปรแกรมต่อหนึ่งเครื่องมือ ทุกตัว build ได้จริง พร้อมโค้ดให้ลองแก้ - กดดูวิธีเขียน',
+    'demos' => [
+        ['grid', 'ตารางข้อมูล', 'หาค่าเฉลี่ย เรียงคะแนน'],
+        ['tree', 'ต้นไม้', 'เลือกสัตว์ตามหมวด'],
+        ['tabs', 'แท็บ', 'สลับหน้าด้วยปุ่ม'],
+        ['calendar', 'ปฏิทินเดือน', 'เลือกวันจากปฏิทิน'],
+        ['richtext', 'กล่องข้อความยาว', 'ค้นหาคำ แล้วบันทึก'],
+        ['split', 'แบ่งหน้าต่าง', 'ลากเส้นแบ่งได้'],
+        ['list', 'รายการหลายคอลัมน์', 'คลิกเลือกนักเรียน'],
+        ['progress', 'แถบความคืบหน้า', 'นับถอยหลังด้วย Timer'],
+    ],
     'learn' => [
         ['ti-player-play', 'บทที่ 1–3', 'เริ่มต้น ตัวแปรและชนิดข้อมูล if / loop / match', 'rust-01'],
         ['ti-key', 'บทที่ 4', 'ความเป็นเจ้าของ (ownership) และการยืม หัวใจของ Rust อธิบายด้วยภาพ', 'rust-04'],
@@ -271,6 +288,23 @@ $T = $th ? [
     'madeH' => 'Made with Phai Studio', 'madeSub' => 'A real program designed and written in Phai Studio from start to finish',
     'madeName' => 'The Phai Desk console', 'madeP' => 'Remote support and care for the office\'s computers: all 7 of its windows (the computers, the remote screen, files, chat, this computer\'s software and log) designed by drag and drop in Phai Studio, and its installer made with Publish',
     'madeLink' => 'About Phai Desk',
+    'madeShots' => [
+        ['desk-main', 'Every computer in the office: green online, grey off, red asking for help; right-click to take over the screen, chat or open its files'],
+        ['phaidesk', 'Software on a computer: everything installed, with a search'],
+        ['desk-files', 'Files: browse, download, upload and manage the files of a computer in care'],
+        ['desk-project', 'The Phai Desk project in Phai Studio: every window designed by drag and drop'],
+    ],
+    'demosH' => 'Example programs in the guide', 'demosSub' => '42 small programs, one for each tool, each building as it stands, with its code to change - click to see how it is written',
+    'demos' => [
+        ['grid', 'Data grid', 'An average, and best first'],
+        ['tree', 'Tree view', 'Animals by kind'],
+        ['tabs', 'Tabs', 'Change the page from a button'],
+        ['calendar', 'Month calendar', 'Choose a day'],
+        ['richtext', 'Rich text box', 'Find a word, then save'],
+        ['split', 'Split container', 'A bar you can drag'],
+        ['list', 'List view', 'Click a pupil'],
+        ['progress', 'Progress bar', 'Counting down with a Timer'],
+    ],
     'learn' => [
         ['ti-player-play', 'Lessons 1–3', 'Getting started, variables and types, if / loop / match', 'rust-01'],
         ['ti-key', 'Lesson 4', 'Ownership and borrowing, the heart of Rust, in pictures', 'rust-04'],
@@ -535,10 +569,23 @@ $base = 'https://phai-studio.monrak.net/';
         <h2><?= e($T['madeH']) ?></h2>
         <p class="sub"><?= e($T['madeSub']) ?></p>
         <article class="card made">
-            <a class="made-shot" href="<?= v('shots/phaidesk.jpg') ?>" data-gallery data-caption="<?= e($T['madeName']) ?>"><img src="<?= v('shots/phaidesk.jpg') ?>" alt="<?= e($T['madeName']) ?>" width="1432" height="1046" loading="lazy"></a>
+            <div class="made-shots">
+                <?php foreach ($T['madeShots'] as $i => [$f, $c]): ?>
+                    <a class="made-shot<?= $i ? '' : ' on' ?>" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e($c) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($c) ?>" width="1432" height="980" loading="lazy"></a>
+                <?php endforeach ?>
+                <p class="made-cap"><?= e($T['madeShots'][0][1]) ?></p>
+                <div class="made-dots"><?php foreach ($T['madeShots'] as $i => $_): ?><button type="button" class="<?= $i ? '' : 'on' ?>" aria-label="<?= $i + 1 ?>"></button><?php endforeach ?></div>
+            </div>
             <div><h3><?= e($T['madeName']) ?></h3><p><?= e($T['madeP']) ?></p>
                 <p class="mt"><a class="btn btn-ghost" href="https://phai-desk.monrak.net/" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> <?= e($T['madeLink']) ?></a></p></div>
         </article>
+        <h3 class="part mt"><i class="ti ti-apps"></i> <?= e($T['demosH']) ?></h3>
+        <p class="muted"><?= e($T['demosSub']) ?></p>
+        <div class="grid g4 demos">
+            <?php foreach ($T['demos'] as [$tag, $b, $c]): ?>
+                <a class="card demo" href="<?= $B ?>help/ctl-<?= $tag ?>.html" target="_blank" rel="noopener"><span class="demo-shot"><img src="<?= $B ?>help/img/ctl-<?= $tag ?>.png" alt="<?= e($b) ?>" loading="lazy"></span><b><?= e($b) ?></b><small><?= e($c) ?></small></a>
+            <?php endforeach ?>
+        </div>
     </div>
 </section>
 

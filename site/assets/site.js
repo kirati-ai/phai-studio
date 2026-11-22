@@ -53,6 +53,35 @@
     });
 })();
 
+// Phai Desk's windows: one fades into the next every few seconds (not under the pointer, off screen,
+// or for less motion); the dots choose one.
+(() => {
+    const box = document.querySelector('.made-shots');
+    if (!box) return;
+    const shots = [...box.querySelectorAll('.made-shot')];
+    const dots = [...box.querySelectorAll('.made-dots button')];
+    const cap = box.querySelector('.made-cap');
+    let at = 0, held = false, seen = false, timer = 0;
+    const go = (i) => {
+        at = (i + shots.length) % shots.length;
+        shots.forEach((s, k) => s.classList.toggle('on', k === at));
+        dots.forEach((d, k) => d.classList.toggle('on', k === at));
+        cap.textContent = shots[at].dataset.caption;
+        const next = shots[(at + 1) % shots.length].querySelector('img');
+        if (next) next.loading = 'eager';
+    };
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const start = () => {
+        clearInterval(timer);
+        if (!still.matches && !held && seen && !document.hidden) timer = setInterval(() => go(at + 1), 4500);
+    };
+    dots.forEach((d, k) => d.onclick = () => { go(k); start(); });
+    box.addEventListener('mouseenter', () => { held = true; start(); });
+    box.addEventListener('mouseleave', () => { held = false; start(); });
+    document.addEventListener('visibilitychange', start);
+    new IntersectionObserver((es) => { seen = es[0].isIntersecting; start(); }, { threshold: 0.3 }).observe(box);
+})();
+
 // gallery: a picture opens large; arrows or keys move, Esc or a click outside closes
 (() => {
     const links = [...document.querySelectorAll('[data-gallery]')];
