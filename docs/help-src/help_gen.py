@@ -15,17 +15,17 @@ PAGES = [
     ('inspector.html', 'ตัวตรวจสด (F12)', 'Phai Studio'),
     ('web.html', 'เว็บและมือถือ (PWA)', 'Phai Studio'),
     ('report.html', 'รายงานพิมพ์', 'Phai Studio'),
-    ('rust-01.html', '1. เริ่มต้นกับ Rust', 'เรียน Rust'),
-    ('rust-02.html', '2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน', 'เรียน Rust'),
-    ('rust-03.html', '3. เงื่อนไขและการวนซ้ำ', 'เรียน Rust'),
-    ('rust-04.html', '4. Ownership และการยืม', 'เรียน Rust'),
-    ('rust-05.html', '5. struct, enum และ match', 'เรียน Rust'),
-    ('rust-06.html', '6. จัดการข้อผิดพลาด', 'เรียน Rust'),
-    ('rust-07.html', '7. Vec, String, HashMap', 'เรียน Rust'),
-    ('rust-08.html', '8. trait และ generic', 'เรียน Rust'),
-    ('rust-09.html', '9. โมดูล crate และเทสต์', 'เรียน Rust'),
-    ('rust-10.html', '10. อ่าน error ของคอมไพเลอร์', 'เรียน Rust'),
-    ('rust-11.html', '11. เธรด และก้าวต่อไป', 'เรียน Rust'),
+    ('rust-01.html', '1. เริ่มต้นกับ Rust', 'Rust'),
+    ('rust-02.html', '2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน', 'Rust'),
+    ('rust-03.html', '3. เงื่อนไขและการวนซ้ำ', 'Rust'),
+    ('rust-04.html', '4. Ownership และการยืม', 'Rust'),
+    ('rust-05.html', '5. struct, enum และ match', 'Rust'),
+    ('rust-06.html', '6. จัดการข้อผิดพลาด', 'Rust'),
+    ('rust-07.html', '7. Vec, String, HashMap', 'Rust'),
+    ('rust-08.html', '8. trait และ generic', 'Rust'),
+    ('rust-09.html', '9. โมดูล crate และเทสต์', 'Rust'),
+    ('rust-10.html', '10. อ่าน error ของคอมไพเลอร์', 'Rust'),
+    ('rust-11.html', '11. เธรด และก้าวต่อไป', 'Rust'),
 ]
 
 def load(name):
@@ -39,11 +39,14 @@ for mod in ['help_pages1', 'help_pages2', 'help_pages3', 'help_pages4', 'help_pa
     if os.path.exists(os.path.join(HERE, mod + '.py')):
         bodies.update(load(mod))
 
-# The Toolbox pages (help_controls.py), after the rest, with the icons and pictures they show.
+# The Toolbox pages (help_controls.py), with the icons and pictures they show.
 sys.path.insert(0, HERE)
 import help_controls
+# The Toolbox group goes right after Phai Studio's own pages, before Rust.
+at = max(i for i, p in enumerate(PAGES) if p[2] == 'Phai Studio') + 1
 for f, title, body in help_controls.pages():
-    PAGES.append((f, title, 'Toolbox ทีละตัว'))
+    PAGES.insert(at, (f, title, 'Toolbox'))
+    at += 1
     bodies[f] = body
 
 
