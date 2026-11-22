@@ -1393,7 +1393,9 @@ pub fn list(parent: HWND, id: i32, f: HFONT, columns: &[(&str, i32)]) -> HWND {
     const LVS_SHOWSELALWAYS: u32 = 0x0008;
     const LVS_EX_FULLROWSELECT: isize = 0x20;
     const LVS_EX_DOUBLEBUFFER: isize = 0x10000;
-    let h = child(parent, "SysListView32", "", WINDOW_STYLE(LVS_REPORT | LVS_SHOWSELALWAYS) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
+    // Auto-arranged: in the icons views the items go across in rows, as WinForms' ListView's.
+    const LVS_AUTOARRANGE: u32 = 0x0100;
+    let h = child(parent, "SysListView32", "", WINDOW_STYLE(LVS_REPORT | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE) | wm::WS_TABSTOP, WINDOW_EX_STYLE(0), id, f);
     mark(h, Kind::List);
     unsafe {
         let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(list_frame_proc), 9, 0);
@@ -1456,6 +1458,49 @@ pub fn list_icons(h: HWND, glyphs: &[u16]) {
             let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
         }
     }
+}
+
+/// A list's pictures, as WinForms' LargeImageList and SmallImageList: each a glyph and its colour
+/// (none: the list's text colour), large (32) for the icons view and small (16) for the others.
+/// Rows show [`list_set_image`]'s.
+pub fn list_images(h: HWND, images: &[(u16, Option<Color>)]) {
+    use windows::Win32::UI::Controls as cc;
+    let text = style_of(h, Kind::List, State::default()).icon_color.unwrap_or(window_text_for(h));
+    for (which, size) in [(0usize /* LVSIL_NORMAL */, px(h, 32)), (1 /* LVSIL_SMALL */, px(h, 16))] {
+        unsafe {
+            let list = cc::ImageList_Create(size, size, cc::ILC_COLOR32 | cc::ILC_MASK, images.len() as i32, 0);
+            for (g, c) in images {
+                match crate::icon::glyph_icon(*g, size, c.unwrap_or(text)) {
+                    Some(i) => {
+                        cc::ImageList_ReplaceIcon(list, -1, i);
+                        let _ = wm::DestroyIcon(i);
+                    }
+                    // Its place kept, so the others keep their numbers.
+                    None => {
+                        if let Some(i) = crate::icon::glyph_icon(crate::icon::glyph::DOCUMENT, size, text) {
+                            cc::ImageList_ReplaceIcon(list, -1, i);
+                            let _ = wm::DestroyIcon(i);
+                        }
+                    }
+                }
+            }
+            let old = wm::SendMessageW(h, 0x1003 /* LVM_SETIMAGELIST */, Some(WPARAM(which)), Some(LPARAM(list.0 as isize))).0;
+            if old != 0 {
+                let _ = cc::ImageList_Destroy(Some(cc::HIMAGELIST(old as _)));
+            }
+        }
+    }
+}
+
+/// `MONITOR #12855f, MONITOR #8a9a90, FOLDER`: glyph names, each with a colour or none.
+pub fn parse_images(text: &str) -> Vec<(u16, Option<Color>)> {
+    text.split(',')
+        .filter_map(|part| {
+            let mut words = part.split_whitespace();
+            let g = crate::icon::glyph::by_name(words.next()?)?;
+            Some((g, words.next().and_then(crate::theme::parse_color)))
+        })
+        .collect()
 }
 
 /// The icon a list's row shows: an index of [`list_icons`]'s, or -2 for none.

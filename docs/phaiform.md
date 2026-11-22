@@ -149,6 +149,21 @@ dialog_result = "ok"         # คลิกแล้วปิดหน้าต�
 
 รายการเต็มต่อชนิด control: `docs/winforms-parity.md`
 
+รายการแบบไอคอน (ListView + ImageList) เช่นหน้ารายการเครื่องของ PhaiDesk:
+
+```toml
+[[control]]
+kind = "list"
+id = "computers"
+dock = "fill"                                   # fill ได้ที่ที่ขอบอื่นเหลือ ไม่ว่าจะอยู่ก่อนหรือหลัง statusbar
+view = "large_icons"
+icons = "MONITOR #12855f, MONITOR #9aa59f"      # รูปของแถว: ชื่อ glyph + สี (LargeImageList, SmallImageList)
+icon_spacing = [120, 76]                        # ที่ว่างต่อรายการ ให้ชื่อยาวใต้ไอคอนแสดงครบ
+```
+
+ในโค้ด: `ui.computers.items_add_with_icon(&["ACC-PC01
+somchai"], 1)`, `set_item_icon(row, n)`, `set_icons("...")`
+
 ## หน้าตาตามสถานะ และ transition (แท็บ Style 🖌)
 
 ```toml

@@ -902,6 +902,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("The item chosen when the window opens, from 0; -1 none.", "รายการที่เลือกไว้ตอนเปิดหน้าต่าง นับจาก 0 ใส่ -1 คือไม่เลือก"),
     ("How many items the open list shows before it scrolls.", "จำนวนรายการที่แสดงตอนเปิดรายการ ก่อนจะต้องเลื่อน"),
     ("Rows with columns, or the items alone.", "แสดงเป็นแถวพร้อมคอลัมน์ หรือแสดงแต่รายการ"),
+    ("The pictures its rows show (LargeImageList, SmallImageList): glyph names, each with a colour - MONITOR #12855f, MONITOR #8a9a90. A row's is chosen in code by its place: items_add_with_icon.", "รูปที่แต่ละแถวแสดง (LargeImageList, SmallImageList): ชื่อไอคอนพร้อมสี เช่น MONITOR #12855f, MONITOR #8a9a90 แถวไหนใช้รูปไหน เลือกในโค้ดตามลำดับ: items_add_with_icon"),
+    ("The room each item takes in the icons views, wide enough for a long name under its icon - 120, 76.", "ที่ว่างของแต่ละรายการเมื่อแสดงเป็นไอคอน กว้างพอให้ชื่อยาว ๆ ใต้ไอคอนแสดงครบ เช่น 120, 76"),
     ("Lines between rows and columns.", "เส้นคั่นระหว่างแถวและคอลัมน์"),
     ("A click chooses the whole row.", "คลิกแล้วเลือกทั้งแถว"),
     ("Several rows can be chosen at once.", "เลือกได้หลายแถวพร้อมกัน"),

@@ -765,6 +765,20 @@ impl ListView {
         win::list_add(self.0, cells);
         self.items_count().saturating_sub(1)
     }
+    /// Adds a row showing picture `icon` of its `icons` (ImageIndex); its place.
+    pub fn items_add_with_icon(self, cells: &[&str], icon: usize) -> usize {
+        let at = self.items_add(cells);
+        self.set_item_icon(at, icon);
+        at
+    }
+    /// The picture row `at` shows: a place in the list's `icons`.
+    pub fn set_item_icon(self, at: usize, icon: usize) {
+        win::list_set_image(self.0, at, icon as i32);
+    }
+    /// The list's pictures, as the `icons` property writes them (`MONITOR #12855f, FOLDER`).
+    pub fn set_icons(self, icons: &str) {
+        crate::props::icons(self.0, icons);
+    }
     pub fn items_remove_at(self, at: usize) {
         send(self.0, cc::LVM_DELETEITEM, at, 0);
     }

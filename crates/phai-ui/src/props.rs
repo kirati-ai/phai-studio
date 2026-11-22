@@ -297,6 +297,23 @@ pub fn view(h: HWND, v: &str) {
     send(h, 0x108E /* LVM_SETVIEW */, n, 0);
 }
 
+/// Icons: the pictures a list's rows show, as WinForms' LargeImageList and SmallImageList - glyph
+/// names, each with a colour or none (`MONITOR #12855f, MONITOR #8a9a90`); a row's is chosen by
+/// its place (`ListView::items_add_with_icon`).
+pub fn icons(h: HWND, v: &str) {
+    win::list_images(h, &win::parse_images(v));
+}
+
+/// The room each item takes in the icons views, `"w, h"` at 96 DPI - wide enough for a long name
+/// under its icon (LVM_SETICONSPACING).
+pub fn icon_spacing(h: HWND, v: &str) {
+    let mut n = v.split(',').filter_map(|x| x.trim().parse::<i32>().ok());
+    if let (Some(w), Some(hh)) = (n.next(), n.next()) {
+        let (w, hh) = (win::px(h, w), win::px(h, hh));
+        send(h, 0x1035 /* LVM_SETICONSPACING */, 0, ((hh as isize) << 16) | (w as isize & 0xFFFF));
+    }
+}
+
 /// GridLines: lines between rows and columns.
 pub fn grid_lines(h: HWND, on: bool) {
     list_ex(h, 0x1, on);
@@ -601,6 +618,8 @@ pub fn apply(h: HWND, name: &str, value: &str) {
         "selected_index" => selected_index(h, n),
         "max_drop_down_items" => max_drop_down_items(h, n),
         "view" => view(h, value),
+        "icons" => icons(h, value),
+        "icon_spacing" => icon_spacing(h, value),
         "grid_lines" => grid_lines(h, yes),
         "full_row_select" => full_row_select(h, yes),
         "multi_select" => multi_select(h, yes),

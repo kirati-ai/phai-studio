@@ -76,8 +76,10 @@ pub fn arrange(design: (i32, i32), size: (i32, i32), padding: i32, items: &[Item
     let (dw, dh) = (size.0 - design.0, size.1 - design.1);
     // What docking has left, in the current size.
     let mut free = Rect::new(padding, padding, (size.0 - 2 * padding).max(0), (size.1 - 2 * padding).max(0));
-    items
-        .iter()
+    // Fill takes what the edges leave, wherever it is in the list - a grid docked to fill and
+    // then a status bar docked to the bottom keeps its status bar.
+    let edges = items.iter().map(|it| if it.dock == Dock::Fill { Item { dock: Dock::None, ..*it } } else { *it });
+    let mut places: Vec<Rect> = edges
         .map(|it| {
             let b = it.bounds;
             match it.dock {
@@ -105,11 +107,7 @@ pub fn arrange(design: (i32, i32), size: (i32, i32), padding: i32, items: &[Item
                     free.w -= w;
                     Rect::new(free.x + free.w, free.y, w, free.h)
                 }
-                Dock::Fill => {
-                    let r = free;
-                    free = Rect::new(free.x, free.y, 0, 0);
-                    r
-                }
+                Dock::Fill => unreachable!("fill is placed after the edges"),
                 Dock::None => {
                     let a = it.anchor;
                     let (x, w) = axis(b.x, b.w, dw, a.left, a.right);
@@ -118,7 +116,14 @@ pub fn arrange(design: (i32, i32), size: (i32, i32), padding: i32, items: &[Item
                 }
             }
         })
-        .collect()
+        .collect();
+    for (i, it) in items.iter().enumerate() {
+        if it.dock == Dock::Fill {
+            places[i] = free;
+            free = Rect::new(free.x, free.y, 0, 0);
+        }
+    }
+    places
 }
 
 /// One direction of anchoring: the container grew by `grow`.
@@ -299,6 +304,15 @@ mod tests {
         assert_eq!(r[2], Rect::new(0, 30, 150, 648));
         assert_eq!(r[3], Rect::new(800, 30, 200, 648));
         assert_eq!(r[4], Rect::new(150, 30, 650, 648));
+    }
+
+    #[test]
+    fn fill_takes_what_the_edges_leave_wherever_it_is_listed() {
+        // As PhaiDesk's window: the list docked to fill, then the status bar to the bottom.
+        let items = [item(0, 0, 0, 0, Dock::Fill, Anchor::default()), item(0, 0, 0, 26, Dock::Bottom, Anchor::default())];
+        let r = arrange((944, 581), (944, 581), 0, &items);
+        assert_eq!(r[0], Rect::new(0, 0, 944, 555));
+        assert_eq!(r[1], Rect::new(0, 555, 944, 26));
     }
 
     #[test]
