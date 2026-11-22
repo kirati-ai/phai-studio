@@ -85,7 +85,7 @@ PAGES = {
 <li>มันบอกฟอร์มว่ามีอะไรเปลี่ยนด้วย <code>ui.notify_parent()</code> - ฟอร์มได้ยินทาง <code>…_changed</code></li>
 <li>ฟอร์มอ่าน control ข้างในมันด้วย <code>CounterBoxUi::with(ui.ชื่อ, |c| …)</code></li></ul>''',
         examples=[
-            ('1. สร้าง user control', '<p><code>counter_box.phaiform</code> มีปุ่ม -, ป้ายตัวเลข, ปุ่ม + (สังเกต <code>user_control = true</code>) และโค้ดของมัน:</p>', ['file:counter_box.phaiform', 'counter_box.rs:uc']),
+            ('1. สร้าง user control', '<p><code>counter_box.phf</code> มีปุ่ม -, ป้ายตัวเลข, ปุ่ม + (สังเกต <code>user_control = true</code>) และโค้ดของมัน:</p>', ['file:counter_box.phf', 'counter_box.rs:uc']),
             ('2. วางสองตัวบนหน้าต่าง แล้วรวมค่า', '<p>ทั้งสองตัวใช้ <code>count_changed</code> - อ่านตัวเลขจากแต่ละตัวด้วย <code>CounterBoxUi::with</code>:</p>', ['read']),
         ],
         tries=['ไม่ให้ CounterBox ติดลบ (ปิดปุ่ม - เมื่อเป็น 0)',

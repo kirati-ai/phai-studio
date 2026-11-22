@@ -112,7 +112,7 @@
 <p>อยู่ในกล่องเครื่องมือกลุ่ม <b>ตัวบรรจุ</b> (Containers) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> (ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::UserControl</code></p>
 <h2>ตัวอย่าง</h2>
 <h3>1. สร้าง user control</h3>
-<p><code>counter_box.phaiform</code> มีปุ่ม -, ป้ายตัวเลข, ปุ่ม + (สังเกต <code>user_control = true</code>) และโค้ดของมัน:</p>
+<p><code>counter_box.phf</code> มีปุ่ม -, ป้ายตัวเลข, ปุ่ม + (สังเกต <code>user_control = true</code>) และโค้ดของมัน:</p>
 <pre><code># Phai Studio form - docs/phaiform.md
 format = 1
 
@@ -168,7 +168,7 @@ impl CounterBoxEvents for CounterBox {
     let people = read(ui.adults) + read(ui.children);
     ui.total.set_text(&amp;format!(&quot;{people} people&quot;));
 }</code></pre>
-<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>usercontrol_demo.phaiform</code> กับ <code>usercontrol_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- usercontrol</code></p>
+<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>usercontrol_demo.phf</code> กับ <code>usercontrol_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- usercontrol</code></p>
 <details class="common"><summary>Method ที่ control ทุกตัวมี (ข้อความ เปิด/ปิด แสดง/ซ่อน ตำแหน่ง …)</summary><table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
 <tr><td><code>hwnd() -&gt; HWND</code></td><td>ตัว control เอง (HWND) ใช้กับคำสั่งของ Windows ที่ต้องการหน้าต่าง - เหมือน <code>Handle</code></td></tr>
 <tr><td><code>text() -&gt; String</code></td><td>อ่านข้อความของมัน</td></tr>

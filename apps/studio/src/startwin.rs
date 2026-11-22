@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn recent_searched_with_the_pinned_first() {
-        let all: Vec<PathBuf> = ["C:/a/shop/main.phaiform", "C:/b/bank/main.rs", "C:/c/shop2/x.rs"].iter().map(PathBuf::from).collect();
+        let all: Vec<PathBuf> = ["C:/a/shop/main.phf", "C:/b/bank/main.rs", "C:/c/shop2/x.rs"].iter().map(PathBuf::from).collect();
         let pinned = vec![PathBuf::from("C:/c/shop2/x.rs"), PathBuf::from("C:/gone.rs")];
         assert_eq!(arrange(&all, &pinned, ""), vec![all[2].clone(), all[0].clone(), all[1].clone()]);
         assert_eq!(arrange(&all, &pinned, "shop main"), vec![all[0].clone()]);

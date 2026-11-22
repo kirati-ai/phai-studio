@@ -65,7 +65,7 @@ BODY['studio.html'] = r'''
 }</code></pre></li>
   <li>กด <kbd>F5</kbd> เพื่อ build และรัน พิมพ์ชื่อแล้วกดปุ่ม</li>
 </ol>
-<div class="note">ทุกอย่างที่ออกแบบบนฟอร์มเก็บไว้ในไฟล์ <code>.phaiform</code> แล้ว Phai Studio แปลงเป็นโค้ด Rust ให้ตอน build โค้ดที่คุณเขียนเองอยู่ในไฟล์ <code>.rs</code> ของคุณ ไม่โดนเขียนทับ</div>
+<div class="note">ทุกอย่างที่ออกแบบบนฟอร์มเก็บไว้ในไฟล์ <code>.phf</code> แล้ว Phai Studio แปลงเป็นโค้ด Rust ให้ตอน build โค้ดที่คุณเขียนเองอยู่ในไฟล์ <code>.rs</code> ของคุณ ไม่โดนเขียนทับ</div>
 
 <h2>ออกแบบฟอร์ม</h2>
 <ul>

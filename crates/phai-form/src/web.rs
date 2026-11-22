@@ -1,4 +1,4 @@
-//! A form for the web: `src/web/<form>_ui.rs` from the `.phaiform` - the same `<Form>Ui` struct
+//! A form for the web: `src/web/<form>_ui.rs` from the `.phf` - the same `<Form>Ui` struct
 //! and `<Form>Events` trait as on Windows, made of `phai-web`'s controls - and the page around the
 //! program: `index.html`, the theme as the browser's CSS, and what makes it an app a phone
 //! installs (a manifest, a service worker that keeps it working offline, its icons).
@@ -275,7 +275,7 @@ pub fn generate(f: &FormFile) -> String {
     let handlers = f.handlers();
     let mut o = String::new();
     let w = &mut o;
-    let _ = writeln!(w, "// Made by Phai Studio from {file}.phaiform for the web - do not change this file; change the form.");
+    let _ = writeln!(w, "// Made by Phai Studio from {file}.phf for the web - do not change this file; change the form.");
     let _ = writeln!(w, "// The same {ui} and {events} as {file}_ui.rs, on a web page.");
     let _ = writeln!(w);
     let _ = writeln!(w, "#![allow(dead_code, unused_imports, unused_variables, unused_mut, clippy::all)]");

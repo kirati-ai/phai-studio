@@ -1,5 +1,5 @@
 //! Build > Build for Web: the project as a web page that installs as an app on Android and iOS
-//! (a PWA). Every form's `src/web/<form>_ui.rs` written from its `.phaiform`, the project told to
+//! (a PWA). Every form's `src/web/<form>_ui.rs` written from its `.phf`, the project told to
 //! take `phai-web` for `phai-ui` when it builds for `wasm32` (its own code stays as it is), cargo
 //! and wasm-bindgen run, and `web/` given the page, the theme, a manifest, a service worker and
 //! icons. Run in Browser serves `web/` on this computer and opens it.
@@ -122,13 +122,13 @@ pub fn web_main_rs(text: &str) -> String {
     out
 }
 
-/// The project's forms: each `.phaiform` under `src`.
+/// The project's forms: each `.phf` under `src`.
 fn forms(src: &Path) -> Vec<(PathBuf, FormFile)> {
     let mut out = Vec::new();
     let Ok(rd) = std::fs::read_dir(src) else { return out };
     for e in rd.flatten() {
         let p = e.path();
-        if p.extension().is_some_and(|x| x == "phaiform") {
+        if phai_form::is_form(&p) {
             if let Some(f) = std::fs::read_to_string(&p).ok().and_then(|t| FormFile::parse(&t).ok()) {
                 out.push((p, f));
             }

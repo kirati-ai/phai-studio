@@ -1,4 +1,4 @@
-//! A program made from a Phai Studio form. `main_window.phaiform` is the design,
+//! A program made from a Phai Studio form. `main_window.phf` is the design,
 //! `main_window_ui.rs` what Phai Studio wrote from it, `main_window.rs` the code that is ours.
 
 #![windows_subsystem = "windows"]

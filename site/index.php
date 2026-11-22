@@ -114,7 +114,7 @@ $T = $th ? [
         ['desk-design-files', 'ออกแบบหน้าต่าง "ไฟล์"', 'แถบเครื่องมือ ช่องที่อยู่ และรายการไฟล์'],
         ['desk-files', 'ไฟล์ ตอนทำงานจริง', 'เปิดดูไฟล์ของเครื่องที่ดูแลอยู่'],
         ['desk-code', 'โค้ดของหน้าต่าง "ไฟล์"', 'โค้ด Rust ของหน้าต่างนี้ เปิดในตัวแก้โค้ดของ Phai Studio'],
-        ['desk-project', 'หน้าต่างแชท ในตัวออกแบบ', 'ทั้ง 7 หน้าต่างของ Phai Desk เป็นไฟล์ .phaiform ในโปรเจกต์เดียว'],
+        ['desk-project', 'หน้าต่างแชท ในตัวออกแบบ', 'ทั้ง 7 หน้าต่างของ Phai Desk เป็นไฟล์ฟอร์มในโปรเจกต์เดียว'],
     ],
     'deskMore' => [
         'desk-main' => ['ไอคอนเขียว = ออนไลน์ เทา = ปิดอยู่ แดง = ขอความช่วยเหลือ', 'ใต้ไอคอนบอกชื่อเครื่องและคนที่ใช้อยู่', 'คลิกขวาเพื่อรีโมทดูจอ แชท หรือเปิดไฟล์'],
@@ -316,7 +316,7 @@ $T = $th ? [
         ['desk-design-files', 'Designing "Files"', 'A toolbar, an address box and the list of files'],
         ['desk-files', 'Files, running', 'The files of the computer in care'],
         ['desk-code', 'The code of "Files"', 'This window\'s Rust, open in Phai Studio\'s code editor'],
-        ['desk-project', 'The chat window in the designer', 'All 7 of Phai Desk\'s windows are .phaiform files in one project'],
+        ['desk-project', 'The chat window in the designer', 'All 7 of Phai Desk\'s windows are form files in one project'],
     ],
     'deskMore' => [
         'desk-main' => ['Green = online, grey = off, red = asking for help', 'Under each icon: the computer\'s name and who is using it', 'Right-click to see its screen, chat or open its files'],

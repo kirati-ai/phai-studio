@@ -2,10 +2,10 @@
 //! Win32 Rust that is small, needs no runtime and shows Thai right.
 //!
 //! The window: a toolbox on the left, the form on its canvas in the middle, the chosen control's
-//! properties on the right. Saving writes the `.phaiform`, the `<name>_ui.rs` generated from it,
+//! properties on the right. Saving writes the `.phf`, the `<name>_ui.rs` generated from it,
 //! and - once - the programmer's `<name>.rs`.
 //!
-//! `phai-studio [form.phaiform] [--dark] [--thai]`; `PHAI_SHOT=out.png` photographs it and ends.
+//! `phai-studio [form.phf] [--dark] [--thai]`; `PHAI_SHOT=out.png` photographs it and ends.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -707,7 +707,7 @@ static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// Find in Files' search: `what` in every text file under `root` - Cargo's `target` and hidden
 /// folders left out - as places (line, UTF-16 column, as the language server counts), at most `max`.
 fn find_in_tree(root: &Path, what: &str, case: bool, max: usize) -> Vec<phai_editor::lsp::Location> {
-    const KINDS: [&str; 9] = ["rs", "toml", "css", "phaiform", "md", "txt", "json", "sql", "html"];
+    const KINDS: [&str; 10] = ["rs", "toml", "css", "phf", "phaiform", "md", "txt", "json", "sql", "html"];
     let mut found = Vec::new();
     let mut dirs = vec![root.to_path_buf()];
     while let Some(d) = dirs.pop() {
@@ -841,7 +841,7 @@ fn pictures_of(project: &Path) -> Vec<String> {
         for p in rd.flatten().map(|e| e.path()) {
             if p.is_dir() {
                 stack.push(p);
-            } else if p.extension().is_some_and(|e| e == "phaiform") {
+            } else if phai_form::is_form(&p) {
                 if let Ok(f) = std::fs::read_to_string(&p).map_err(|_| ()).and_then(|t| FormFile::parse(&t).map_err(|_| ())) {
                     for c in f.control.iter().filter_map(|c| c.image.clone()) {
                         if !std::path::Path::new(&c).is_absolute() && project.join(&c).exists() && !out.contains(&c) {
@@ -3573,7 +3573,7 @@ impl Studio {
             Some(search::Target::Options(page)) => self.options(page),
             Some(search::Target::File(p)) => {
                 self.remember_place();
-                if p.extension().is_some_and(|e| e == "phaiform") {
+                if phai_form::is_form(&p) {
                     self.open_path(&p);
                 } else {
                     self.open_code(&p);
@@ -3597,7 +3597,7 @@ impl Studio {
                     if !name.starts_with('.') && name != "target" && name != "node_modules" {
                         stack.push(p);
                     }
-                } else if p.extension().is_some_and(|e| ["rs", "phaiform", "toml", "css", "md"].contains(&e.to_string_lossy().as_ref())) {
+                } else if phai_form::is_form(&p) || p.extension().is_some_and(|e| ["rs", "toml", "css", "md"].contains(&e.to_string_lossy().as_ref())) {
                     files.push(p);
                 }
             }
@@ -3610,7 +3610,7 @@ impl Studio {
         let Some((root, files)) = self.solution_files() else { return };
         let Some(it) = gotoall::run(self.hwnd, files, root, query) else { return };
         self.remember_place();
-        if it.path.extension().is_some_and(|e| e == "phaiform") {
+        if phai_form::is_form(&it.path) {
             self.open_path(&it.path);
             return;
         }
@@ -3776,7 +3776,7 @@ impl Studio {
         remember_setting("start_window", if again { "1" } else { "0" });
         match choice {
             startwin::Choice::Recent(p) => {
-                if p.extension().is_some_and(|e| e == "phaiform") {
+                if phai_form::is_form(&p) {
                     self.open_path(&p);
                 } else {
                     self.open_code(&p);
@@ -4976,6 +4976,9 @@ impl Studio {
     }
 
     pub fn open_path(&mut self, path: &Path) {
+        // A form by its older name (.phaiform): its project's forms renamed .phf first, if wanted.
+        let renamed = self.offer_new_form_names(path);
+        let path = renamed.as_deref().unwrap_or(path);
         let name = path.display().to_string();
         // A form the designer cannot read, as Visual Studio's designer error page: its text
         // opened where the error is, the error in the Error List - fixed and saved, it opens again.
@@ -5091,7 +5094,7 @@ impl Studio {
         }
         let path = match (&self.doc.path, choose) {
             (Some(p), false) => p.clone(),
-            _ => match file_dialog(self.hwnd, true, "Phai form (*.phaiform)", "*.phaiform", &format!("{}.phaiform", snake(&self.doc.form.form.name))) {
+            _ => match file_dialog(self.hwnd, true, "Phai form (*.phf)", "*.phf", &format!("{}.phf", snake(&self.doc.form.form.name))) {
                 Some(p) => p,
                 None => return false,
             },
@@ -5186,7 +5189,7 @@ impl Studio {
         let src = dir.join("src");
         let stem = if user_control { "UserControl" } else { "Form" };
         let mut n = if user_control { 1 } else { 2 };
-        while src.join(format!("{}.phaiform", snake(&format!("{stem}{n}")))).exists() {
+        while phai_form::form_path(&src, &snake(&format!("{stem}{n}"))).exists() {
             n += 1;
         }
         let default = format!("{stem}{n}");
@@ -5196,7 +5199,7 @@ impl Studio {
             return;
         }
         let file = snake(&name);
-        let path = src.join(format!("{file}.phaiform"));
+        let path = phai_form::form_path(&src, &file);
         if path.exists() || src.join(format!("{file}.rs")).exists() || src.join(format!("{file}_ui.rs")).exists() {
             win::message(Some(self.hwnd), &tf("The project already has {0}", &[&file]), caption, wm::MB_ICONINFORMATION);
             return;
@@ -5378,6 +5381,57 @@ impl Studio {
         self.rebuild_menu();
     }
 
+    /// Opening a form still called `.phaiform` (the name before 0.2.6): asks, once a session for
+    /// each project, whether to rename its forms `.phf` - with `git mv` where git knows them. The
+    /// path to open now, when `path` was renamed. `PHAI_RENAME_FORMS=yes|no` answers for tests.
+    fn offer_new_form_names(&mut self, path: &Path) -> Option<PathBuf> {
+        static ASKED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+        if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case(phai_form::OLD_FORM_EXT)) {
+            return None;
+        }
+        let root = cargo::project_of(path)?;
+        let forms = project::old_forms(&root);
+        if forms.is_empty() {
+            return None;
+        }
+        {
+            let mut asked = ASKED.lock().unwrap_or_else(|e| e.into_inner());
+            if asked.contains(&root) {
+                return None;
+            }
+            asked.push(root.clone());
+        }
+        let yes = match std::env::var("PHAI_RENAME_FORMS").as_deref() {
+            Ok("yes") => true,
+            Ok(_) => false,
+            Err(_) if std::env::var_os("PHAI_SHOT").is_some() => false,
+            Err(_) => {
+                let names: Vec<String> = forms.iter().take(8).filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect();
+                let more = if forms.len() > 8 { "
+..." } else { "" };
+                let ask = format!("{}
+
+{}{more}", tf("Form files are now called .phf (shorter than .phaiform). Rename this project's {0} forms? Git keeps their history; the older name still opens.", &[&forms.len()]), names.join("
+"));
+                win::message(Some(self.hwnd), &ask, "Phai Studio", wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES
+            }
+        };
+        if !yes {
+            return None;
+        }
+        let (done, failed) = project::rename_forms(&forms);
+        if let Some(e) = failed {
+            win::message(Some(self.hwnd), &format!("{}
+
+{e}", t("Not every form could be renamed")), "Phai Studio", wm::MB_ICONWARNING);
+        }
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(done.first().map(|(_, n)| n.as_path()));
+        }
+        controls::status_text(self.status, 0, &tf("Renamed {0} forms to .phf", &[&done.len()]));
+        done.into_iter().find(|(o, _)| o == path).map(|(_, n)| n)
+    }
+
     /// Opens a project, as File > Open > Project does: its main form (or its first), else its
     /// `main.rs`, else its `Cargo.toml` - and its files in Project. A folder inside a project
     /// opens that project.
@@ -5388,9 +5442,9 @@ impl Studio {
             return;
         };
         remember_project(&root);
-        let mut forms: Vec<PathBuf> = [root.join("src"), root.clone()].iter().flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == "phaiform")).collect();
+        let mut forms: Vec<PathBuf> = [root.join("src"), root.clone()].iter().flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path())).filter(|p| phai_form::is_form(p)).collect();
         forms.sort();
-        let main_form = forms.iter().find(|p| p.file_name().is_some_and(|n| n == "main_window.phaiform")).or(forms.first()).cloned();
+        let main_form = forms.iter().find(|p| p.file_name().and_then(|n| n.to_str()).and_then(phai_form::form_stem) == Some("main_window")).or(forms.first()).cloned();
         if let Some(f) = main_form {
             self.open_path(&f);
         } else if root.join("src").join("main.rs").is_file() {
@@ -7756,7 +7810,7 @@ impl Studio {
         match id {
             ID_NEW => self.open_in_tab(FormFile::new("MainWindow"), None),
             ID_OPEN => {
-                if let Some(p) = file_dialog(self.hwnd, false, "Phai form (*.phaiform)", "*.phaiform", "") {
+                if let Some(p) = file_dialog(self.hwnd, false, "Phai form (*.phf)", "*.phf;*.phaiform", "") {
                     self.open_path(&p);
                 }
             }
@@ -9245,7 +9299,7 @@ fn report_crashes() {
     }
 }
 
-/// `--selftest-multi out.phaiform`: chooses several controls with a band, lines them up, makes
+/// `--selftest-multi out.phf`: chooses several controls with a band, lines them up, makes
 /// a copy and saves - checked by what lands in the file.
 fn selftest_multi(out: &Path) {
     let Some(s) = studio() else { return };
@@ -9543,7 +9597,7 @@ fn main() {
             }
         }
         for p in &forms {
-            if p.ends_with(".phaiform") {
+            if phai_form::is_form(Path::new(p)) {
                 s.open_path(Path::new(p));
             } else {
                 s.open_code(Path::new(p));
@@ -9806,7 +9860,7 @@ fn main() {
         if s.nothing {
             s.show_nothing();
         }
-        // `--selftest out.phaiform`: draws, moves and sizes a control with the mouse messages a
+        // `--selftest out.phf`: draws, moves and sizes a control with the mouse messages a
         // `--one-row`: the Layout bar dragged up beside the Standard bar - checked by picture.
         if args.iter().any(|a| a == "--one-row") {
             use windows::Win32::UI::Controls as cc;
@@ -10139,10 +10193,10 @@ fn main() {
         }
         // person's hand would send, then saves - the designer checked end to end.
         if let Some(i) = args.iter().position(|a| a == "--selftest") {
-            selftest(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("selftest.phaiform")));
+            selftest(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("selftest.phf")));
         }
         if let Some(i) = args.iter().position(|a| a == "--selftest-multi") {
-            selftest_multi(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("multi.phaiform")));
+            selftest_multi(Path::new(args.get(i + 1).map(String::as_str).unwrap_or("multi.phf")));
         }
         // `--codetest`: types into the open code file as a keyboard would - Thai, a new line, a
         // backspace - then saves it.
@@ -10289,13 +10343,13 @@ fn main() {
     }
 }
 
-/// A new form in the project at `dir`: `src/<name>.phaiform`, its generated `_ui.rs` and the
+/// A new form in the project at `dir`: `src/<name>.phf`, its generated `_ui.rs` and the
 /// programmer's file, and main.rs told of it. The form's path, and whether main.rs was changed.
-/// The user control `name` in `folder` (`address_box.phaiform` for AddressBox), when that form is
+/// The user control `name` in `folder` (`address_box.phf` for AddressBox), when that form is
 /// one.
 fn user_control_form(folder: &Path, name: &str) -> Option<FormFile> {
     use phai_form::HasProps;
-    let text = std::fs::read_to_string(folder.join(format!("{}.phaiform", snake(name)))).ok()?;
+    let text = std::fs::read_to_string(phai_form::form_path(folder, &snake(name))).ok()?;
     FormFile::parse(&text).ok().filter(|f| f.form.flag("user_control", false))
 }
 
@@ -10307,7 +10361,7 @@ fn user_controls_beside(path: Option<&Path>, own: &str) -> Vec<(String, [i32; 2]
     let mut out: Vec<(String, [i32; 2])> = rd
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "phaiform"))
+        .filter(|p| phai_form::is_form(p))
         .filter_map(|p| std::fs::read_to_string(p).ok())
         .filter_map(|t| FormFile::parse(&t).ok())
         .filter(|f| phai_form::HasProps::flag(&f.form, "user_control", false) && f.form.name != own)
@@ -10345,7 +10399,7 @@ fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
 fn write_new(dir: &Path, name: &str, user_control: bool) -> std::io::Result<(PathBuf, bool)> {
     let src = dir.join("src");
     let file = snake(name);
-    let path = src.join(format!("{file}.phaiform"));
+    let path = src.join(format!("{file}.{}", phai_form::FORM_EXT));
     let mut f = FormFile::new(name);
     f.form.title = name.to_string();
     f.form.size = if user_control { [300, 150] } else { [400, 300] };
@@ -10586,7 +10640,7 @@ fn main()"), "{out}");
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
         let (path, declared) = write_new_form(&dir, &form_type_name("Settings Window")).unwrap();
-        assert!(declared && path.ends_with("settings_window.phaiform"));
+        assert!(declared && path.ends_with("settings_window.phf"));
         let user = dir.join("src").join("main_window.rs");
         let text = std::fs::read_to_string(&user).unwrap();
         let text = text.replacen("fn ok_clicked(&mut self, ui: &MainWindowUi) {", "fn ok_clicked(&mut self, ui: &MainWindowUi) {
@@ -10631,7 +10685,7 @@ fn main()"), "{out}");
         let dir = std::env::temp_dir().join(format!("phai-props-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let v = |s: &str| phai_form::toml::Value::String(s.into());
         let b = phai_form::toml::Value::Boolean;
@@ -10704,7 +10758,7 @@ fn main()"), "{out}");
         let dir = std::env::temp_dir().join(format!("phai-events-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut name = Control::new(Kind::Edit, "name", [11, 40, 200, 23]);
         for e in ["enter", "key_down", "key_press"] {
@@ -10814,7 +10868,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-methods-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut go = Control::new(Kind::Button, "go", [220, 40, 75, 23]);
         go.text = Some("Go".into());
@@ -10932,7 +10986,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-more-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let v = |s: &str| phai_form::toml::Value::String(s.into());
         let b = phai_form::toml::Value::Boolean;
@@ -11074,7 +11128,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-style-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut go = Control::new(Kind::Button, "go", [11, 40, 100, 28]);
         go.text = Some("Go".into());
@@ -11180,7 +11234,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-inspect-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut go = Control::new(Kind::Button, "go", [11, 40, 100, 28]);
         go.text = Some("Go".into());
@@ -11188,7 +11242,7 @@ impl MainWindowEvents for MainWindow {
         let src = format!("{}\n# kept: a comment of the programmer's\n", f.to_toml());
         std::fs::write(&form_path, &src).unwrap();
         let generated = codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()));
-        assert!(generated.contains("phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/src/main_window.phaiform\")))"));
+        assert!(generated.contains("phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/src/main_window.phf\")))"));
         std::fs::write(dir.join("src").join("main_window_ui.rs"), generated).unwrap();
         crate::project::add_thai(&dir.join("src"), &[("Go", "ไป")]).unwrap();
         let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
@@ -11202,7 +11256,7 @@ impl MainWindowEvents for MainWindow {
         phai_ui::win::show(ui.hwnd, true);
         // The layout places the controls after this; the button where the mouse will point.
         phai_ui::win::move_to(ui.go.hwnd(), 20, 60, 100, 28);
-        let insp = inspect::open(ui.hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main_window.phaiform")));
+        let insp = inspect::open(ui.hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main_window.phf")));
         let mut r = windows::Win32::Foundation::RECT::default();
         unsafe {
             let _ = windows::Win32::UI::WindowsAndMessaging::GetWindowRect(ui.go.hwnd(), &mut r);
@@ -11253,7 +11307,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-extra-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         f.form.size = [520, 400];
         let mut panel = Control::new(Kind::Panel, "holder", [11, 40, 240, 120]);
@@ -11342,7 +11396,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-comp-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let s = |v: &str| Some(phai_form::toml::Value::String(v.into()));
         let mut open = Control::new(Kind::OpenFile, "open_file", [0, 0, 0, 0]);
@@ -11436,7 +11490,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-print-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut doc = Control::new(Kind::PrintDocument, "report", [0, 0, 0, 0]);
         doc.set_prop("document_name", Some(phai_form::toml::Value::String("Price list".into())));
@@ -11542,7 +11596,7 @@ impl MainWindowEvents for MainWindow {
         let db = dir.join("shop.db");
         let conn = phai_data::Connection { kind: phai_data::Kind::Sqlite, host: db.to_string_lossy().to_string(), ..Default::default() };
         conn.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, vip INTEGER NOT NULL DEFAULT 0, born TEXT, visits INTEGER); INSERT INTO customers (name, vip, born, visits) VALUES ('Somchai', 1, '1990-05-01', 3), ('Malee', 0, '1985-12-24', 7);").unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut people = Control::new(Kind::BindingSource, "people", [0, 0, 0, 0]);
         people.bind = Some(phai_form::Bind { database: "main".into(), table: "customers".into(), columns: ["id", "name", "vip", "born", "visits"].map(String::from).to_vec(), keys: vec!["id".into()] });
@@ -11663,7 +11717,7 @@ impl AddressBoxEvents for AddressBox {
 }
 "##).unwrap();
 
-        let form_path = src.join("main_window.phaiform");
+        let form_path = src.join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut home = Control::new(Kind::UserControl, "home", [11, 40, 0, 0]);
         fill_user_control(&mut home, first_user_control(Some(&form_path), &f.form.name).as_ref(), false);
@@ -11770,7 +11824,7 @@ impl MainWindowEvents for MainWindow {
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
         let src = dir.join("src");
-        let form_path = src.join("main_window.phaiform");
+        let form_path = src.join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         f.form.title = "Shop".into();
         let mut label = Control::new(Kind::Label, "name_label", [11, 44, 80, 23]);
@@ -11925,7 +11979,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-split-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         f.form.size = [520, 360];
         let mut split = Control::new(Kind::Split, "panes", [11, 40, 400, 200]);
@@ -11986,7 +12040,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-mdi-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         f.form.set_prop("is_mdi_container", Some(phai_form::toml::Value::Boolean(true)));
         f.form.events.insert("shown".into(), "begin".into());
@@ -12050,7 +12104,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-drag-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let mut from = Control::new(Kind::ListBox, "from_list", [11, 40, 120, 100]);
         from.items = vec!["Mango".into()];
@@ -12113,7 +12167,7 @@ impl MainWindowEvents for MainWindow {
         let dir = std::env::temp_dir().join(format!("phai-menus-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::project::create(&dir).unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         f.menu = phai_form::bars::menus_from_text("&View\n  word_wrap | Word wrap | checked | check_on_click\n  Zoom\n    zoom_in | Zoom in | Ctrl+= | SEARCH\n    zoom_max | Most | disabled\n  bold | Bold | FONT | check_on_click\n").unwrap();
         f.toolbar = phai_form::bars::toolbar_from_text("bold | Bold | FONT | toggle\n").unwrap();
@@ -12237,7 +12291,7 @@ impl MainWindowEvents for MainWindow {
         let conn = phai_data::Connection { kind: phai_data::Kind::Sqlite, host: db.to_string_lossy().to_string(), ..Default::default() };
         conn.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT); INSERT INTO customers (name, phone) VALUES ('Somchai', '081'), ('Monrak Net', '02');").unwrap();
         let cols = conn.columns("main", "customers").unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let (controls, need) = bound_controls(&f, "main", "customers", &cols);
         f.control.extend(controls);
@@ -12298,7 +12352,7 @@ impl MainWindowEvents for MainWindow {
         let conn = phai_data::Connection { kind: phai_data::Kind::Sqlite, host: db.to_string_lossy().to_string(), ..Default::default() };
         conn.query(None, "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, phone TEXT); INSERT INTO customers (name, phone) VALUES ('Somchai', '081-234-5678'), ('Monrak Net', '02-111-2222');").unwrap();
         let cols = conn.columns("main", "customers").unwrap();
-        let form_path = dir.join("src").join("main_window.phaiform");
+        let form_path = dir.join("src").join("main_window.phf");
         let mut f = FormFile::parse(&std::fs::read_to_string(&form_path).unwrap()).unwrap();
         let (controls, need) = bound_controls(&f, "main", "customers", &cols);
         f.control.extend(controls);

@@ -28,7 +28,7 @@ def snippet(example, file, name):
 
 
 def form_file(example, file):
-    """A whole .phaiform of an example, as the reader would see it in Phai Studio's code view."""
+    """A whole .phf of an example, as the reader would see it in Phai Studio's code view."""
     text = open(os.path.join(HERE, 'examples', example, 'src', file), encoding='utf-8').read().strip()
     return '<pre><code>' + e(text) + '</code></pre>'
 
@@ -123,7 +123,7 @@ def form_page(data):
 
     p.append('''<h2>ฟอร์มหนึ่งมี 3 ไฟล์</h2>
 <table class="ref"><tr><th>ไฟล์</th><th>คืออะไร</th><th>แก้เองไหม</th></tr>
-<tr><td><code>main_window.phaiform</code></td><td>หน้าตาของฟอร์ม: ขนาด ชื่อ control ทุกตัวและตำแหน่ง - ตัวออกแบบแก้ไฟล์นี้ให้เวลาลากวาง</td><td>ลากวางในตัวออกแบบ (หรือแก้มือก็ได้)</td></tr>
+<tr><td><code>main_window.phf</code></td><td>หน้าตาของฟอร์ม: ขนาด ชื่อ control ทุกตัวและตำแหน่ง - ตัวออกแบบแก้ไฟล์นี้ให้เวลาลากวาง</td><td>ลากวางในตัวออกแบบ (หรือแก้มือก็ได้)</td></tr>
 <tr><td><code>main_window_ui.rs</code></td><td>โค้ดที่ Phai Studio <b>เขียนให้</b>ทุกครั้งที่บันทึก: สร้างหน้าต่าง สร้าง control ต่อ event</td><td><b>ห้ามแก้</b> - บันทึกครั้งหน้าจะถูกเขียนทับ</td></tr>
 <tr><td><code>main_window.rs</code></td><td><b>โค้ดของเรา</b>: ฟอร์มจำอะไรไว้ และเมื่อเกิด event แต่ละอย่างให้ทำอะไร</td><td>ใช่ - ไฟล์ของเรา</td></tr>
 </table>
@@ -146,7 +146,7 @@ def form_page(data):
 
     p.append('<h3>3. เปิดกล่องถาม แล้วอ่านคำตอบ (ShowDialog)</h3>')
     p.append('<p>ฟอร์ม <code>NameForm</code> มีช่องพิมพ์ <code>answer</code> ปุ่ม <code>ok</code> (DialogResult = Ok) และ <code>cancel</code> (DialogResult = Cancel) ฟอร์มตั้ง AcceptButton = ok และ CancelButton = cancel ไว้ จึงกด <kbd>Enter</kbd> / <kbd>Esc</kbd> ได้ด้วย:</p>')
-    p.append(form_file('form', 'name_form.phaiform'))
+    p.append(form_file('form', 'name_form.phf'))
     p.append('<p>ตอนหน้าต่างปิด (event FormClosed) เก็บสิ่งที่พิมพ์ไว้ใน struct:</p>')
     p.append(snippet('form', 'name_form.rs', 'nameform'))
     p.append('<p>หน้าต่างหลักเปิดมันด้วย <code>show_dialog_for</code> ซึ่ง<b>รอ</b>จนปิด แล้วคืนทั้งปุ่มที่กดและ struct ของ NameForm:</p>')
@@ -261,10 +261,10 @@ def control_page(tag, data):
                 p.append(f'<h3>{e(heading)}</h3>')
             p.append(text)
             for n in names:
-                # 'form': the demo's whole .phaiform, for what is set in the designer rather than code.
-                # 'file:x.phaiform' a whole file; 'x.rs:marker' another file's marked part.
+                # 'form': the demo's whole .phf, for what is set in the designer rather than code.
+                # 'file:x.phf' a whole file; 'x.rs:marker' another file's marked part.
                 if n == 'form':
-                    p.append(form_file('controls', f'{tag}_demo.phaiform'))
+                    p.append(form_file('controls', f'{tag}_demo.phf'))
                 elif n.startswith('file:'):
                     p.append(form_file('controls', n[5:]))
                 elif ':' in n:
@@ -272,7 +272,7 @@ def control_page(tag, data):
                     p.append(snippet('controls', f, m))
                 else:
                     p.append(snippet('controls', f'{tag}_demo.rs', n))
-        p.append(f'<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>{tag}_demo.phaiform</code> กับ <code>{tag}_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- {tag}</code></p>')
+        p.append(f'<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>{tag}_demo.phf</code> กับ <code>{tag}_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- {tag}</code></p>')
 
     if c.get('methods'):
         p.append(f'<h2>Method</h2>')

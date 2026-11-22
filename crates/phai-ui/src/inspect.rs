@@ -7,7 +7,7 @@
 //! - Change its **words, Enabled, Visible** and any property `phai_ui::props` knows.
 //!
 //! Every change shows at once in the program, which keeps running. **Save to form** writes them
-//! into the window's `.phaiform`, the HomeSite way: only that control's lines change, and the
+//! into the window's `.phf`, the HomeSite way: only that control's lines change, and the
 //! rest of the file stays as it was, comments and all. The program's code is never touched.
 //! Phai Studio, with the form open, loads it again.
 
@@ -48,7 +48,7 @@ const TIMER_SHOT: usize = 0x1F13;
 
 // --- the form file -------------------------------------------------------------------------------
 
-/// Where a control's look in its normal state goes in a `.phaiform`: the property, and what its
+/// Where a control's look in its normal state goes in a `.phf`: the property, and what its
 /// value is (`t` words, `n` a whole number, `b` true or false). `None`: a control of `kind` (the
 /// form's name for it) has no such property, and the look is kept for a state only.
 pub fn form_key(kind: &str, look: &str) -> Option<(&'static str, char)> {
@@ -267,7 +267,7 @@ thread_local! {
 }
 
 /// F12 (or Ctrl+Shift+I) in window `top` opens the Live Inspector, which saves into `form` - the
-/// window's `.phaiform`. The generated code calls it in a debug build.
+/// window's `.phf`. The generated code calls it in a debug build.
 pub fn attach(top: HWND, form: &Path) {
     FORMS.with(|f| f.borrow_mut().insert(top.0 as isize, form.to_path_buf()));
     if KEY_HOOK.with(Cell::get).is_none() {

@@ -117,7 +117,7 @@
     let n = std::fs::read_dir(&amp;folder).map(|d| d.count()).unwrap_or(0);
     ui.chosen.set_text(&amp;format!(&quot;{} - {n} things in it&quot;, folder.display()));
 }</code></pre>
-<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>folderbrowserdialog_demo.phaiform</code> กับ <code>folderbrowserdialog_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- folderbrowserdialog</code></p>
+<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>folderbrowserdialog_demo.phf</code> กับ <code>folderbrowserdialog_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- folderbrowserdialog</code></p>
 <h2>Method ของ FolderBrowserDialog</h2>
 <table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
 <tr><td><code>show_dialog(&amp;self) -&gt; Option&lt;PathBuf&gt;</code></td><td>เปิดหน้าต่าง ได้โฟลเดอร์ที่เลือก - <code>None</code> เมื่อกด Cancel</td></tr>

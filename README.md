@@ -52,7 +52,7 @@ cargo run --release -p phai-studio
 ```
 
 File > New project... picks an empty folder and makes a project that builds as it is. Or open the
-sample: `cargo run -p phai-studio -- apps/sample/src/main_window.phaiform`.
+sample: `cargo run -p phai-studio -- apps/sample/src/main_window.phf`.
 
 ## Installing Phai Studio / ติดตั้ง Phai Studio
 
@@ -91,7 +91,7 @@ compiler errors, and threads. The pages are built from `docs/help-src/` with
 | | |
 |---|---|
 | `crates/phai-ui` | the Win32 controls, CSS themes, dock/anchor layout, Thai/English, window photos |
-| `crates/phai-form` | the `.phaiform` file, code generation, building a form live |
+| `crates/phai-form` | the `.phf` file, code generation, building a form live |
 | `crates/phai-editor` | the code editor: piece table, editing model, syntax colours, the Win32 control |
 | `crates/phai-design` | the Phai family's spacing, and ready-made windows (File > New from template) |
 | `apps/studio` | Phai Studio |

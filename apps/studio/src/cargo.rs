@@ -715,7 +715,7 @@ mod tests {
 
     #[test]
     fn the_project_is_the_nearest_folder_with_a_cargo_toml() {
-        let form = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../sample/src/main_window.phaiform"));
+        let form = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../sample/src/main_window.phf"));
         let p = project_of(form).unwrap();
         assert!(p.join("Cargo.toml").is_file());
         assert!(p.ends_with("sample"), "{}", p.display());

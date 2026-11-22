@@ -1,4 +1,7 @@
-# `.phaiform`: รูปแบบไฟล์ฟอร์ม และโค้ดที่สร้าง
+# `.phf`: รูปแบบไฟล์ฟอร์ม และโค้ดที่สร้าง
+
+> นามสกุลไฟล์ฟอร์มคือ **`.phf`** (Phai Form) ตั้งแต่ 0.2.6 — เดิมชื่อ `.phaiform` ซึ่ง Studio ยังเปิดได้ และเมื่อเปิดโปรเจกต์เก่า
+> จะถามว่าจะเปลี่ยนชื่อฟอร์มทั้งโปรเจกต์เป็น `.phf` ไหม (ใช้ `git mv` ถ้าไฟล์อยู่ใน git ประวัติไม่หาย แล้วเขียน `_ui.rs` ใหม่ให้)
 
 ขั้น 0 ของ `PLAN.md` · 2026-11-16 · รุ่นรูปแบบ `format = 1`
 
@@ -20,7 +23,7 @@ my_app/
   src/
     main.rs                ผู้ใช้ (สร้างให้ครั้งเดียว)
     text.rs                ตารางคำแปลไทย ผู้ใช้เติมเอง + เทสต์จับคำที่ยังไม่แปล
-    main_window.phaiform   designer เขียน
+    main_window.phf   designer เขียน
     main_window_ui.rs      designer เขียนทุกครั้งที่บันทึก — ห้ามแก้
     main_window.rs         ผู้ใช้: event handler (สร้างโครงให้ครั้งแรก)
 ```
@@ -217,7 +220,7 @@ window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* lab
 - **ลุคทีละสถานะ** (ปกติ hover pressed focus disabled checked selected): พิมพ์แล้ว control ในโปรแกรมเปลี่ยนทันที และแสดงสถานะนั้นให้ดู
   แต่ละค่าบอกที่มา (`own :hover`, `button.primary:hover · phai:light`)
 - **ข้อความ, Enabled, Visible** และ property ใน `phai_ui::props::NAMES` (เช่น `tooltip`, `read_only`)
-- **เก็บลงฟอร์ม** เขียนเฉพาะบรรทัดของ control นั้นใน `.phaiform` (คอมเมนต์และบรรทัดอื่นคงเดิม): ลุคสถานะปกติ → `back_color`
+- **เก็บลงฟอร์ม** เขียนเฉพาะบรรทัดของ control นั้นใน `.phf` (คอมเมนต์และบรรทัดอื่นคงเดิม): ลุคสถานะปกติ → `back_color`
   `fore_color` `border_color` `radius` `bold` `border_width` `gradient` `shadow` `accent_color` `icon_color`; สถานะอื่น → `states = { }`
 - **ย้อนทั้งหมด** คืนลุค ข้อความ Enabled/Visible ตอนเปิดตัวตรวจ
 - Phai Studio ที่เปิดฟอร์มนั้นอยู่ โหลดฟอร์มใหม่เมื่อสลับกลับมา (Undo ได้) และเขียน `_ui.rs` ใหม่ให้รอบต่อไป
@@ -302,7 +305,7 @@ Excel ที่หัวคอลัมน์ ค่าเริ่มต้น 
 
 ## User control — control ของโปรเจกต์เอง
 
-Project > เพิ่ม User Control สร้าง `address_box.phaiform` ที่มี `user_control = true` ออกแบบเหมือนฟอร์มทั่วไป
+Project > เพิ่ม User Control สร้าง `address_box.phf` ที่มี `user_control = true` ออกแบบเหมือนฟอร์มทั่วไป
 แล้ววางบนฟอร์มอื่นจากกล่องเครื่องมือ:
 
 ```toml
@@ -324,7 +327,7 @@ AddressBoxUi::with(ui.home, |a| a.street.set_text("12 Sukhumvit"));
 `main_window_ui.rs` — designer เขียนทั้งไฟล์ทุกครั้ง:
 
 ```rust
-// สร้างโดย Phai Studio จาก main_window.phaiform — อย่าแก้ไฟล์นี้ แก้ในฟอร์มแทน
+// สร้างโดย Phai Studio จาก main_window.phf — อย่าแก้ไฟล์นี้ แก้ในฟอร์มแทน
 use phai_ui::{t, win, controls, layout::*};
 use windows::Win32::Foundation::HWND;
 

@@ -2,7 +2,7 @@
 
 รายการจากเอกสาร WinForms ของ Microsoft (System.Windows.Forms) เฉพาะที่คนใช้จริง
 สถานะ: ✅ มีแล้ว · 🟡 มีบางส่วน · ⬜ ยังไม่มี · — ไม่ทำ (เหตุผลในวงเล็บ)
-ชื่อในไฟล์ `.phaiform` อยู่ในวงเล็บ `code`; ตารางของ property อยู่ที่ `crates/phai-form/src/props.rs`
+ชื่อในไฟล์ `.phf` อยู่ในวงเล็บ `code`; ตารางของ property อยู่ที่ `crates/phai-form/src/props.rs`
 
 ## ทุก control (Control)
 

@@ -1,4 +1,4 @@
-// Made by Phai Studio from edit_demo.phaiform - do not change this file; change the form.
+// Made by Phai Studio from edit_demo.phf - do not change this file; change the form.
 // Everything here is written again on every save.
 
 #![allow(dead_code, unused_imports, unused_variables, clippy::all)]
@@ -142,7 +142,7 @@ impl EditDemoUi {
             }
             // F12 in a debug build: the Live Inspector, which saves into the form.
             #[cfg(debug_assertions)]
-            phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/edit_demo.phaiform")));
+            phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/edit_demo.phf")));
             hwnd
         }
     }

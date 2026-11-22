@@ -125,7 +125,7 @@
     self.size = if self.size &gt;= 110 { 40 } else { self.size + 20 };
     ui.board.invalidate(); // draw it again - board_paint runs
 }</code></pre>
-<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>panel_demo.phaiform</code> กับ <code>panel_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- panel</code></p>
+<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>panel_demo.phf</code> กับ <code>panel_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- panel</code></p>
 <details class="common"><summary>Method ที่ control ทุกตัวมี (ข้อความ เปิด/ปิด แสดง/ซ่อน ตำแหน่ง …)</summary><table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
 <tr><td><code>hwnd() -&gt; HWND</code></td><td>ตัว control เอง (HWND) ใช้กับคำสั่งของ Windows ที่ต้องการหน้าต่าง - เหมือน <code>Handle</code></td></tr>
 <tr><td><code>text() -&gt; String</code></td><td>อ่านข้อความของมัน</td></tr>

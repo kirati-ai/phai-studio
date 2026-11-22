@@ -1,4 +1,4 @@
-//! Phai forms in a web browser. The same `.phaiform` and the same program code as on Windows,
+//! Phai forms in a web browser. The same `.phf` and the same program code as on Windows,
 //! compiled to WebAssembly: Phai Studio writes `src/web/<form>_ui.rs` from the form, a project
 //! names this crate `phai-ui` when it builds for `wasm32` (Cargo's `package = "phai-web"`), and
 //! the program's `phai_ui::ctl::TextBox`, `phai_ui::text::tf`... are these, working on the page.

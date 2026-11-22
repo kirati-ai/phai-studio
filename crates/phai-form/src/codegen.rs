@@ -268,7 +268,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let mut o = String::new();
     let w = &mut o;
 
-    let _ = writeln!(w, "// Made by Phai Studio from {file}.phaiform - do not change this file; change the form.");
+    let from = opts.form_file.as_deref().and_then(|p| p.rsplit('/').next()).map(str::to_string).unwrap_or_else(|| format!("{file}.{}", crate::FORM_EXT));
+    let _ = writeln!(w, "// Made by Phai Studio from {from} - do not change this file; change the form.");
     let _ = writeln!(w, "// Everything here is written again on every save.");
     let _ = writeln!(w);
     let _ = writeln!(w, "#![allow(dead_code, unused_imports, unused_variables, clippy::all)]");
@@ -1513,7 +1514,7 @@ pub fn user_stub(f: &FormFile) -> String {
     let mut o = String::new();
     let w = &mut o;
     let _ = writeln!(w, "//! {name}: what its controls do. Phai Studio made this file once; it is yours.");
-    let _ = writeln!(w, "//! The window itself is in {file}_ui.rs, which Phai Studio writes from {file}.phaiform.");
+    let _ = writeln!(w, "//! The window itself is in {file}_ui.rs, which Phai Studio writes from {file}.phf.");
     let _ = writeln!(w);
     let _ = writeln!(w, "use crate::{file}_ui::{{{name}Events, {name}Ui}};");
     let _ = writeln!(w);
@@ -1566,11 +1567,11 @@ pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: O
 mod tests {
     use super::*;
 
-    const FORM: &str = include_str!("../../../apps/sample/src/main_window.phaiform");
+    const FORM: &str = include_str!("../../../apps/sample/src/main_window.phf");
     const GENERATED: &str = include_str!("../../../apps/sample/src/main_window_ui.rs");
 
     pub fn sample_options() -> Options {
-        Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phaiform".into()) }
+        Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phf".into()) }
     }
 
     /// The sample program builds from `main_window_ui.rs`, so the generator's output compiles; and

@@ -1,5 +1,5 @@
 //! MainWindow: what its controls do. Phai Studio made this file once; it is ours.
-//! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phaiform.
+//! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phf.
 //! Its controls are objects, as WinForms': `ui.name.text()`, `ui.customers.items_add(...)`.
 
 use crate::main_window_ui::{MainWindowEvents, MainWindowUi};

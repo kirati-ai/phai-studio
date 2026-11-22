@@ -1367,8 +1367,10 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
         _ => return None,
     };
     let disabled = !unsafe { windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h) }.as_bool();
-    // As it looks now: a label's `animation` and `transition` run too (its timer redraws it).
-    let s = style_animated(h, kind, State { disabled, ..Default::default() });
+    // As it looks now: a label's `animation` and `transition` run too (its timer redraws it). Only
+    // a label's: an edit draws its own frame with `style_animated` in its own states, and two
+    // callers asking one control for different states would restart its transition forever.
+    let s = if kind == Kind::Label { style_animated(h, kind, State { disabled, ..Default::default() }) } else { style_of(h, kind, State { disabled, ..Default::default() }) };
     // A read-only or disabled edit comes as STATIC; it is still an edit.
     // A label stands on the window, unless it was given a background of its own.
     let own_bg = with_css(h, |c| c.own.background).flatten();

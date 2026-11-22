@@ -1,5 +1,5 @@
 //! The WinForms properties a control is given after it is made - ReadOnly, MaxLength,
-//! PlaceholderText, GridLines and the rest - one function each, named as the `.phaiform` names
+//! PlaceholderText, GridLines and the rest - one function each, named as the `.phf` names
 //! them. The generated code calls them by name; the designer calls [`apply`] with the same words,
 //! so the canvas shows what the program will.
 
@@ -591,7 +591,7 @@ pub fn size_mode(h: HWND, mode: &str) {
     crate::picture::set_size_mode(h, mode);
 }
 
-/// The properties [`apply`] knows, by their `.phaiform` names, with what their values are: `b` true
+/// The properties [`apply`] knows, by their `.phf` names, with what their values are: `b` true
 /// or false, `n` a whole number, `t` words - how the Live Inspector writes them into a form.
 pub const NAMES: &[(&str, char)] = &[
     ("tab_stop", 'b'), ("tooltip", 't'), ("cursor", 't'), ("text_align", 't'), ("border", 't'), ("read_only", 'b'),
@@ -605,7 +605,7 @@ pub const NAMES: &[(&str, char)] = &[
     ("orientation", 't'), ("label_edit", 'b'), ("allow_drop", 'b'),
 ];
 
-/// One property by its `.phaiform` name and its value as words - `true`, `40`, `left` - as the
+/// One property by its `.phf` name and its value as words - `true`, `40`, `left` - as the
 /// designer has them. A name this does not know does nothing.
 pub fn apply(h: HWND, name: &str, value: &str) {
     let yes = value == "true";

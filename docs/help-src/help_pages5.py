@@ -8,7 +8,7 @@ BODY['code.html'] = r'''
 <p>control แต่ละตัวเป็น object แบบ WinForms มีสามอย่าง</p>
 <table>
   <tr><th>อย่าง</th><th>คืออะไร</th><th>ตั้งที่ไหน</th></tr>
-  <tr><td>Properties</td><td>ลักษณะ: ข้อความ สี ตำแหน่ง ใช้งานได้ไหม มองเห็นไหม</td><td>หน้าต่าง Properties (⚙) เก็บในไฟล์ <code>.phaiform</code></td></tr>
+  <tr><td>Properties</td><td>ลักษณะ: ข้อความ สี ตำแหน่ง ใช้งานได้ไหม มองเห็นไหม</td><td>หน้าต่าง Properties (⚙) เก็บในไฟล์ <code>.phf</code></td></tr>
   <tr><td>Methods</td><td>สั่งให้ทำ: <code>ui.name.set_text("...")</code>, <code>ui.ok.focus()</code></td><td>ในโค้ด</td></tr>
   <tr><td>Events</td><td>บอกเมื่อเกิดขึ้น: คลิก พิมพ์ กดปุ่ม เลือกแถว</td><td>แท็บ Events (⚡) ดับเบิลคลิกชื่อเหตุการณ์ได้เมธอดว่างพร้อมพารามิเตอร์</td></tr>
 </table>

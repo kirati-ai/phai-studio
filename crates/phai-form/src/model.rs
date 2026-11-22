@@ -1,4 +1,4 @@
-//! What a `.phaiform` holds, read and written as TOML (see `docs/phaiform.md`). Every mistake is
+//! What a form file (`.phf`) holds, read and written as TOML (see `docs/phaiform.md`). Every mistake is
 //! an error with its line - a field nobody knows, a wrong value, two controls with one id -
 //! because a form that half-loads is a form whose missing half someone loses on the next save.
 
@@ -1369,7 +1369,7 @@ on_tick = \"clock_ticked\"
 
     use super::*;
 
-    pub const EXAMPLE: &str = include_str!("../../../apps/sample/src/main_window.phaiform");
+    pub const EXAMPLE: &str = include_str!("../../../apps/sample/src/main_window.phf");
 
     #[test]
     fn the_example_form_reads_and_writes_back_the_same() {

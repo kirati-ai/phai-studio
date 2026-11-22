@@ -24,7 +24,7 @@ pub enum DialogResult {
 }
 
 impl DialogResult {
-    /// The `.phaiform`'s word for it: `ok`, `cancel`...
+    /// The `.phf`'s word for it: `ok`, `cancel`...
     pub fn from_name(s: &str) -> DialogResult {
         match s {
             "ok" => DialogResult::Ok,

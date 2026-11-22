@@ -27,7 +27,7 @@ impl Language {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".rs") {
             Language::Rust
-        } else if lower.ends_with(".toml") || lower.ends_with(".phaiform") {
+        } else if lower.ends_with(".toml") || lower.ends_with(".phf") || lower.ends_with(".phaiform") {
             Language::Toml
         } else if lower.ends_with(".css") {
             Language::Css

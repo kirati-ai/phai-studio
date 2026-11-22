@@ -1,4 +1,4 @@
-// Made by Phai Studio from counter_box.phaiform - do not change this file; change the form.
+// Made by Phai Studio from counter_box.phf - do not change this file; change the form.
 // Everything here is written again on every save.
 
 #![allow(dead_code, unused_imports, unused_variables, clippy::all)]
@@ -181,7 +181,7 @@ impl CounterBoxUi {
             }
             // F12 in a debug build: the Live Inspector, which saves into the form.
             #[cfg(debug_assertions)]
-            phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/counter_box.phaiform")));
+            phai_ui::inspect::attach(hwnd, std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/counter_box.phf")));
             hwnd
         }
     }

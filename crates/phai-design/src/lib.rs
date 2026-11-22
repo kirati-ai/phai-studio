@@ -39,7 +39,7 @@ pub mod metrics {
 }
 
 pub mod templates {
-    //! Forms ready made. Each is a [`FormFile`] - the same thing a `.phaiform` holds - so a
+    //! Forms ready made. Each is a [`FormFile`] - the same thing a `.phf` holds - so a
     //! template is edited in Phai Studio like any form once it is made.
 
     use super::metrics::*;

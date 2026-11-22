@@ -1,4 +1,4 @@
-// Written by docs/help-src/build_examples.py from the *_demo.phaiform files: `cargo run -- <kind>`
+// Written by docs/help-src/build_examples.py from the *_demo.phf files: `cargo run -- <kind>`
 // opens that Toolbox page's demo window.
 #![windows_subsystem = "windows"]
 

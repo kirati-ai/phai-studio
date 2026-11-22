@@ -123,6 +123,51 @@ pub fn add_thai(src: &Path, pairs: &[(&str, &str)]) -> std::io::Result<()> {
 }
 
 /// A folder name as a Cargo package name: lowercase letters, digits, `-` and `_`.
+/// The project's forms still called by the older name, `.phaiform`: in `src` and in the project's
+/// own folder.
+pub fn old_forms(root: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = [root.join("src"), root.to_path_buf()]
+        .iter()
+        .flat_map(|d| std::fs::read_dir(d).into_iter().flatten().flatten().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case(phai_form::OLD_FORM_EXT)))
+        .collect();
+    out.sort();
+    out
+}
+
+/// Each of `forms` renamed to `.phf`: with `git mv` when git knows the file, so its history goes
+/// with it, else a plain rename (never over a `.phf` already there); its `_ui.rs` written again,
+/// as it names the form's file. What was renamed, old and new, until the first that could not be.
+pub fn rename_forms(forms: &[PathBuf]) -> (Vec<(PathBuf, PathBuf)>, Option<String>) {
+    let mut done = vec![];
+    for old in forms {
+        let new = old.with_extension(phai_form::FORM_EXT);
+        if new.exists() {
+            return (done, Some(format!("{} already exists", new.display())));
+        }
+        let dir = old.parent().unwrap_or(Path::new("."));
+        let name = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let tracked = crate::gitpane::git(dir, &["ls-files", "--error-unmatch", &name(old)]).0;
+        let moved = if tracked {
+            let (ok, said) = crate::gitpane::git(dir, &["mv", &name(old), &name(&new)]);
+            if ok { Ok(()) } else { Err(said.trim().to_string()) }
+        } else {
+            std::fs::rename(old, &new).map_err(|e| e.to_string())
+        };
+        if let Err(e) = moved {
+            return (done, Some(format!("{}: {e}", old.display())));
+        }
+        if let Some(f) = std::fs::read_to_string(&new).ok().and_then(|t| FormFile::parse(&t).ok()) {
+            let ui = new.with_file_name(format!("{}_ui.rs", crate::snake(&f.form.name)));
+            if ui.exists() {
+                let _ = std::fs::write(&ui, codegen::generate(&f, &crate::theme_options(&new, f.form.theme.as_deref())));
+            }
+        }
+        done.push((old.clone(), new));
+    }
+    (done, None)
+}
+
 pub fn package_name(folder: &str) -> String {
     let mut s: String = folder.chars().map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' }).collect();
     s = s.trim_matches('_').to_string();
@@ -288,7 +333,7 @@ fn res_of_ico(ico: &[u8]) -> Result<Vec<u8>, String> {
 }
 "#;
 
-const MAIN_RS: &str = r#"//! Made with Phai Studio. `main_window.phaiform` is the window's design, `main_window_ui.rs`
+const MAIN_RS: &str = r#"//! Made with Phai Studio. `main_window.phf` is the window's design, `main_window_ui.rs`
 //! what Phai Studio writes from it, and `main_window.rs` what its controls do.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -332,7 +377,7 @@ mod tests {
 "#;
 
 const MAIN_WINDOW_RS: &str = r#"//! MainWindow: what its controls do. Phai Studio made this file once; it is yours.
-//! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phaiform.
+//! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phf.
 
 use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
 use phai_ui::text::tf;
@@ -389,8 +434,8 @@ pub fn create_with(dir: &Path, phone: bool) -> std::io::Result<PathBuf> {
     let src = dir.join("src");
     std::fs::create_dir_all(&src)?;
     let f = if phone { phone_form() } else { first_form() };
-    let form_path = src.join("main_window.phaiform");
-    let opts = codegen::Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phaiform".into()) };
+    let form_path = src.join("main_window.phf");
+    let opts = codegen::Options { theme_include: Some("../theme.css".into()), theme_watch: Some("theme.css".into()), form_file: Some("src/main_window.phf".into()) };
     let files: [(PathBuf, String); 9] = [
         (dir.join("Cargo.toml"), cargo_toml(&name)),
         (dir.join("build.rs"), BUILD_RS.to_string()),
@@ -489,6 +534,28 @@ pub fn mend_libraries(project: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A project made before 0.2.6: its form called `.phaiform` is found, renamed `.phf` (a plain
+    /// rename outside git), and its `_ui.rs` written again to name the new file.
+    #[test]
+    fn an_older_project_s_forms_become_phf() {
+        let dir = std::env::temp_dir().join(format!("phai-phf-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let form = create(&dir).unwrap();
+        assert!(form.ends_with("main_window.phf"));
+        let old = form.with_extension("phaiform");
+        std::fs::rename(&form, &old).unwrap();
+        assert_eq!(old_forms(&dir), vec![old.clone()]);
+        let (done, failed) = rename_forms(&old_forms(&dir));
+        assert!(failed.is_none(), "{failed:?}");
+        assert_eq!(done, vec![(old.clone(), form.clone())]);
+        assert!(form.is_file() && !old.exists());
+        assert!(old_forms(&dir).is_empty());
+        let ui = std::fs::read_to_string(dir.join("src").join("main_window_ui.rs")).unwrap();
+        assert!(ui.starts_with("// Made by Phai Studio from main_window.phf"), "{}", ui.lines().next().unwrap_or(""));
+        assert!(ui.contains("/src/main_window.phf"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_phone_app_s_form_is_whole_and_phone_sized() {
