@@ -11,6 +11,26 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 /// The window's pixels, RGBA top row first, with its size.
 pub fn capture(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
     const PW_RENDERFULLCONTENT: u32 = 2;
+    // PW_RENDERFULLCONTENT takes what the screen shows, rounded corners and all - but for some
+    // windows (a ListView in Details, seen in the guide's demos) it hands back the frame with a
+    // black inside. Then the window is asked to draw itself instead (flag 0).
+    let full = capture_with(hwnd, PW_RENDERFULLCONTENT)?;
+    if mostly_black(&full.0) {
+        if let Some(own) = capture_with(hwnd, 0).filter(|c| !mostly_black(&c.0)) {
+            return Some(own);
+        }
+    }
+    Some(full)
+}
+
+/// More than nine pixels in ten pure black: a picture PrintWindow could not take.
+fn mostly_black(px: &[u8]) -> bool {
+    let all = px.len() / 4;
+    let black = px.as_chunks::<4>().0.iter().filter(|p| p[0] == 0 && p[1] == 0 && p[2] == 0).count();
+    all > 0 && black * 10 > all * 9
+}
+
+fn capture_with(hwnd: HWND, flags: u32) -> Option<(Vec<u8>, u32, u32)> {
     unsafe {
         let mut r = RECT::default();
         wm::GetWindowRect(hwnd, &mut r).ok()?;
@@ -22,7 +42,7 @@ pub fn capture(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
         let dc = Gdi::CreateCompatibleDC(Some(screen));
         let bmp = Gdi::CreateCompatibleBitmap(screen, w, h);
         let old = Gdi::SelectObject(dc, bmp.into());
-        let ok = PrintWindow(hwnd, dc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+        let ok = PrintWindow(hwnd, dc, PRINT_WINDOW_FLAGS(flags)).as_bool();
         let mut info = Gdi::BITMAPINFO {
             bmiHeader: Gdi::BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32,

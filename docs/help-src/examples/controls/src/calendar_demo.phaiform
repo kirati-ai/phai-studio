@@ -1,0 +1,20 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "CalendarDemo"
+title = "MonthCalendar"
+size = [300, 260]
+start = "center"
+
+[[control]]
+kind = "calendar"
+id = "month"
+bounds = [16, 16, 230, 180]
+on_change = "month_changed"
+
+[[control]]
+kind = "label"
+id = "chosen"
+text = ""
+bounds = [16, 210, 268, 24]

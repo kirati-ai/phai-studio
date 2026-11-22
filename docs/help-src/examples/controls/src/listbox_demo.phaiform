@@ -1,0 +1,40 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ListboxDemo"
+title = "ListBox"
+size = [360, 220]
+start = "center"
+
+[[control]]
+kind = "listbox"
+id = "tasks"
+bounds = [16, 16, 200, 150]
+items = ["Feed the cat", "Homework", "Tidy my room"]
+on_select = "tasks_chosen"
+
+[[control]]
+kind = "edit"
+id = "new_task"
+bounds = [226, 16, 118, 24]
+
+[[control]]
+kind = "button"
+id = "add"
+text = "Add"
+bounds = [226, 48, 118, 28]
+on_click = "add_clicked"
+
+[[control]]
+kind = "button"
+id = "done"
+text = "Done"
+bounds = [226, 84, 118, 28]
+on_click = "done_clicked"
+
+[[control]]
+kind = "label"
+id = "status"
+text = ""
+bounds = [16, 176, 328, 24]

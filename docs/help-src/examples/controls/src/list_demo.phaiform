@@ -1,0 +1,23 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ListDemo"
+title = "ListView"
+size = [420, 230]
+start = "center"
+
+[[control]]
+kind = "list"
+id = "pupils"
+bounds = [16, 16, 388, 160]
+columns = [["Name", 180], ["Class", 90], ["Score", 90]]
+on_select = "pupils_chosen"
+column_align = "left, left, right"
+icons = "CONTACT #12855f"
+
+[[control]]
+kind = "label"
+id = "shown"
+text = "Click a pupil"
+bounds = [16, 186, 388, 24]

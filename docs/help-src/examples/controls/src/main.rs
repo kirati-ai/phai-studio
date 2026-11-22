@@ -4,6 +4,8 @@
 
 mod button_demo;
 mod button_demo_ui;
+mod calendar_demo;
+mod calendar_demo_ui;
 mod checkbox_demo;
 mod checkbox_demo_ui;
 mod checkedlist_demo;
@@ -14,15 +16,28 @@ mod date_demo;
 mod date_demo_ui;
 mod label_demo;
 mod label_demo_ui;
+mod link_demo;
+mod link_demo_ui;
+mod list_demo;
+mod list_demo_ui;
+mod listbox_demo;
+mod listbox_demo_ui;
+mod masked_demo;
+mod masked_demo_ui;
 
 fn main() {
     match std::env::args().nth(1).as_deref().unwrap_or("") {
         "button" => button_demo_ui::ButtonDemoUi::run(button_demo::ButtonDemo::default()),
+        "calendar" => calendar_demo_ui::CalendarDemoUi::run(calendar_demo::CalendarDemo::default()),
         "checkbox" => checkbox_demo_ui::CheckboxDemoUi::run(checkbox_demo::CheckboxDemo::default()),
         "checkedlist" => checkedlist_demo_ui::CheckedlistDemoUi::run(checkedlist_demo::CheckedlistDemo::default()),
         "combo" => combo_demo_ui::ComboDemoUi::run(combo_demo::ComboDemo::default()),
         "date" => date_demo_ui::DateDemoUi::run(date_demo::DateDemo::default()),
         "label" => label_demo_ui::LabelDemoUi::run(label_demo::LabelDemo::default()),
+        "link" => link_demo_ui::LinkDemoUi::run(link_demo::LinkDemo::default()),
+        "list" => list_demo_ui::ListDemoUi::run(list_demo::ListDemo::default()),
+        "listbox" => listbox_demo_ui::ListboxDemoUi::run(listbox_demo::ListboxDemo::default()),
+        "masked" => masked_demo_ui::MaskedDemoUi::run(masked_demo::MaskedDemo::default()),
         other => eprintln!("no demo called {other:?}"),
     }
 }

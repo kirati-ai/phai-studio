@@ -1,0 +1,21 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "LinkDemo"
+title = "LinkLabel"
+size = [360, 110]
+start = "center"
+
+[[control]]
+kind = "link"
+id = "site"
+text = "Read more on <a>the Phai Studio website</a>"
+bounds = [16, 16, 328, 24]
+on_click = "site_clicked"
+
+[[control]]
+kind = "label"
+id = "note"
+text = ""
+bounds = [16, 52, 328, 24]

@@ -1,0 +1,35 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MaskedDemo"
+title = "MaskedTextBox"
+size = [360, 140]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "ask"
+text = "Phone number:"
+bounds = [16, 18, 110, 24]
+
+[[control]]
+kind = "masked"
+id = "phone"
+bounds = [130, 16, 200, 24]
+on_change = "phone_changed"
+mask = "000-000-0000"
+
+[[control]]
+kind = "button"
+id = "save"
+text = "Save"
+bounds = [130, 52, 120, 30]
+class = "primary"
+on_click = "save_clicked"
+
+[[control]]
+kind = "label"
+id = "result"
+text = ""
+bounds = [16, 96, 328, 24]
