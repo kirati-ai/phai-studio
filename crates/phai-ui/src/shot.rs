@@ -12,15 +12,60 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 pub fn capture(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
     const PW_RENDERFULLCONTENT: u32 = 2;
     // PW_RENDERFULLCONTENT takes what the screen shows, rounded corners and all - but for some
-    // windows (a ListView in Details, seen in the guide's demos) it hands back the frame with a
-    // black inside. Then the window is asked to draw itself instead (flag 0).
+    // windows (a ListView in Details, a window with a context menu, seen in the guide's demos) it
+    // hands back the frame with a black inside. Then the window is copied off the screen, brought
+    // to the front first; and if even that fails, it is asked to draw itself (flag 0, which draws
+    // an old-style frame).
     let full = capture_with(hwnd, PW_RENDERFULLCONTENT)?;
     if mostly_black(&full) {
+        if let Some(seen) = from_screen(hwnd).filter(|c| !mostly_black(c)) {
+            return Some(seen);
+        }
         if let Some(own) = capture_with(hwnd, 0).filter(|c| !mostly_black(c)) {
             return Some(own);
         }
     }
     Some(full)
+}
+
+/// The window as the screen shows it: its visible bounds (without the invisible resize border
+/// GetWindowRect counts) copied from the screen, the window brought to the front first.
+fn from_screen(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    unsafe {
+        let _ = wm::SetForegroundWindow(hwnd);
+        let _ = Gdi::RedrawWindow(Some(hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_UPDATENOW | Gdi::RDW_ALLCHILDREN);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let mut r = RECT::default();
+        DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut RECT as *mut _, std::mem::size_of::<RECT>() as u32).ok()?;
+        let (w, h) = (r.right - r.left, r.bottom - r.top);
+        if w <= 0 || h <= 0 {
+            return None;
+        }
+        let screen = Gdi::GetDC(None);
+        let dc = Gdi::CreateCompatibleDC(Some(screen));
+        let bmp = Gdi::CreateCompatibleBitmap(screen, w, h);
+        let old = Gdi::SelectObject(dc, bmp.into());
+        let ok = Gdi::BitBlt(dc, 0, 0, w, h, Some(screen), r.left, r.top, Gdi::SRCCOPY).is_ok();
+        Gdi::SelectObject(dc, old);
+        let mut info = Gdi::BITMAPINFO {
+            bmiHeader: Gdi::BITMAPINFOHEADER { biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32, biWidth: w, biHeight: -h, biPlanes: 1, biBitCount: 32, biCompression: Gdi::BI_RGB.0, ..Default::default() },
+            ..Default::default()
+        };
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        let lines = Gdi::GetDIBits(dc, bmp, 0, h as u32, Some(px.as_mut_ptr() as *mut _), &mut info, Gdi::DIB_RGB_COLORS);
+        let _ = Gdi::DeleteObject(bmp.into());
+        let _ = Gdi::DeleteDC(dc);
+        Gdi::ReleaseDC(None, screen);
+        if !ok || lines == 0 {
+            return None;
+        }
+        for p in px.as_chunks_mut::<4>().0 {
+            p.swap(0, 2);
+            p[3] = 255;
+        }
+        Some((px, w as u32, h as u32))
+    }
 }
 
 /// More than nine pixels in ten of its inside pure black (the title bar left out, which the

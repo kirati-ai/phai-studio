@@ -1,0 +1,64 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "GroupDemo"
+title = "GroupBox"
+size = [400, 210]
+start = "center"
+
+[[control]]
+kind = "group"
+id = "delivery"
+text = "Delivery"
+bounds = [16, 12, 180, 100]
+
+[[control]]
+kind = "radio"
+id = "pick_up"
+text = "I pick it up"
+bounds = [28, 36, 156, 24]
+checked = true
+group = 1
+
+[[control]]
+kind = "radio"
+id = "send"
+text = "Send it to me"
+bounds = [28, 66, 156, 24]
+group = 1
+
+[[control]]
+kind = "group"
+id = "payment"
+text = "Payment"
+bounds = [204, 12, 180, 100]
+
+[[control]]
+kind = "radio"
+id = "cash"
+text = "Cash"
+bounds = [216, 36, 156, 24]
+checked = true
+group = 2
+
+[[control]]
+kind = "radio"
+id = "transfer"
+text = "Bank transfer"
+bounds = [216, 66, 156, 24]
+group = 2
+
+[[control]]
+kind = "button"
+id = "order"
+text = "Order"
+bounds = [16, 124, 120, 30]
+class = "primary"
+on_click = "order_clicked"
+
+[[control]]
+kind = "label"
+id = "summary"
+text = ""
+bounds = [16, 166, 368, 24]

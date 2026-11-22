@@ -1,0 +1,40 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "UsercontrolDemo"
+title = "UserControl"
+size = [360, 160]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "adults_label"
+text = "Adults:"
+bounds = [16, 22, 80, 24]
+
+[[control]]
+kind = "usercontrol"
+id = "adults"
+bounds = [100, 14, 200, 40]
+on_change = "count_changed"
+control_type = "CounterBox"
+
+[[control]]
+kind = "label"
+id = "children_label"
+text = "Children:"
+bounds = [16, 66, 80, 24]
+
+[[control]]
+kind = "usercontrol"
+id = "children"
+bounds = [100, 58, 200, 40]
+on_change = "count_changed"
+control_type = "CounterBox"
+
+[[control]]
+kind = "label"
+id = "total"
+text = ""
+bounds = [16, 110, 328, 24]

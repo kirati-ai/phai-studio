@@ -1,0 +1,33 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "SplitDemo"
+title = "SplitContainer"
+size = [420, 220]
+start = "center"
+
+[[control]]
+kind = "split"
+id = "halves"
+bounds = [0, 0, 420, 176]
+dock = "fill"
+on_change = "halves_changed"
+splitter_distance = 150
+
+[[control]]
+kind = "listbox"
+id = "names"
+bounds = [8, 8, 134, 160]
+items = ["Somchai", "Malee", "Narin"]
+
+[[control]]
+kind = "label"
+id = "width"
+text = ""
+bounds = [166, 8, 240, 24]
+
+[[control]]
+kind = "statusbar"
+id = "status"
+dock = "bottom"

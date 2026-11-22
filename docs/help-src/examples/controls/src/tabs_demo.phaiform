@@ -1,0 +1,48 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "TabsDemo"
+title = "TabControl"
+size = [360, 220]
+start = "center"
+
+[[control]]
+kind = "tabs"
+id = "pages"
+bounds = [16, 12, 328, 34]
+tabs = ["Profile", "Settings"]
+on_change = "pages_changed"
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name:"
+bounds = [24, 62, 80, 24]
+page = 0
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [104, 60, 220, 24]
+page = 0
+
+[[control]]
+kind = "checkbox"
+id = "dark"
+text = "Dark colours"
+bounds = [24, 62, 200, 24]
+page = 1
+
+[[control]]
+kind = "button"
+id = "to_settings"
+text = "Go to Settings"
+bounds = [16, 166, 140, 30]
+on_click = "to_settings_clicked"
+
+[[control]]
+kind = "label"
+id = "which"
+text = ""
+bounds = [170, 170, 174, 24]

@@ -1,0 +1,25 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ContextmenuDemo"
+title = "ContextMenu"
+size = [360, 200]
+start = "center"
+
+[[control]]
+kind = "label"
+id = "hint"
+text = "Right-click the box below."
+bounds = [16, 12, 328, 24]
+
+[[control]]
+kind = "textarea"
+id = "note"
+bounds = [16, 40, 328, 110]
+context_menu = "note_menu"
+
+[[control]]
+kind = "contextmenu"
+id = "note_menu"
+items = ["upper_clicked | Make it upper case", "lower_clicked | Make it lower case", "-", "clear_clicked | Clear"]

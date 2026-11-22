@@ -1,0 +1,21 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "StatusbarDemo"
+title = "StatusBar"
+size = [400, 170]
+start = "center"
+
+[[control]]
+kind = "textarea"
+id = "text"
+bounds = [0, 0, 400, 140]
+dock = "fill"
+on_change = "text_changed"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+dock = "bottom"
+parts = [140]

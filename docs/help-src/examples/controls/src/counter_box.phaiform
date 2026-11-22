@@ -1,0 +1,29 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "CounterBox"
+title = "CounterBox"
+size = [200, 40]
+user_control = true
+
+[[control]]
+kind = "button"
+id = "minus"
+text = "-"
+bounds = [0, 4, 40, 30]
+on_click = "minus_clicked"
+
+[[control]]
+kind = "label"
+id = "value"
+text = "0"
+bounds = [48, 8, 100, 24]
+text_align = "center"
+
+[[control]]
+kind = "button"
+id = "plus"
+text = "+"
+bounds = [156, 4, 40, 30]
+on_click = "plus_clicked"

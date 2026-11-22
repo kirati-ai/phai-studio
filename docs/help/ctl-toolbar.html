@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>แถบเครื่องมือ (ToolStrip) - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<a href="report.html">รายงานพิมพ์</a>
+<h4>Toolbox</h4>
+<a href="ctl-form.html">ฟอร์ม (Form)</a>
+<h5>Common controls</h5>
+<a href="ctl-button.html">ปุ่ม (Button)</a>
+<a href="ctl-checkbox.html">ช่องติ๊ก (CheckBox)</a>
+<a href="ctl-checkedlist.html">กล่องรายการติ๊ก (CheckedListBox)</a>
+<a href="ctl-combo.html">รายการเลือก (ComboBox)</a>
+<a href="ctl-date.html">วันที่ (DateTimePicker)</a>
+<a href="ctl-label.html">ป้าย (Label)</a>
+<a href="ctl-link.html">ลิงก์ (LinkLabel)</a>
+<a href="ctl-listbox.html">กล่องรายการ (ListBox)</a>
+<a href="ctl-list.html">รายการ (ListView)</a>
+<a href="ctl-masked.html">ช่องกรอกตามแบบ (MaskedTextBox)</a>
+<a href="ctl-calendar.html">ปฏิทินเดือน (MonthCalendar)</a>
+<a href="ctl-notifyicon.html">ไอคอนมุมจอ (NotifyIcon)</a>
+<a href="ctl-number.html">ตัวเลข (NumericUpDown)</a>
+<a href="ctl-picture.html">รูปภาพ (PictureBox)</a>
+<a href="ctl-progress.html">แถบความคืบหน้า (ProgressBar)</a>
+<a href="ctl-radio.html">ตัวเลือก (RadioButton)</a>
+<a href="ctl-richtext.html">กล่องข้อความหลายรูปแบบ (RichTextBox)</a>
+<a href="ctl-edit.html">ช่องข้อความ (TextBox)</a>
+<a href="ctl-textarea.html">ช่องข้อความหลายบรรทัด (TextBox (Multiline))</a>
+<a href="ctl-slider.html">ตัวเลื่อน (TrackBar)</a>
+<a href="ctl-tree.html">มุมมองต้นไม้ (TreeView)</a>
+<h5>Containers</h5>
+<a href="ctl-flow.html">จัดเรียงต่อกัน (FlowLayoutPanel)</a>
+<a href="ctl-group.html">กลุ่ม (GroupBox)</a>
+<a href="ctl-panel.html">แผง (Panel)</a>
+<a href="ctl-split.html">แบ่งสองช่อง (SplitContainer)</a>
+<a href="ctl-tabs.html">แท็บ (TabControl)</a>
+<a href="ctl-table.html">จัดเป็นตาราง (TableLayoutPanel)</a>
+<a href="ctl-usercontrol.html">User control (UserControl)</a>
+<h5>Menus and toolbars</h5>
+<a href="ctl-contextmenu.html">เมนูคลิกขวา (ContextMenuStrip)</a>
+<a href="ctl-menubar.html">แถบเมนู (MenuStrip)</a>
+<a href="ctl-statusbar.html">แถบสถานะ (StatusStrip)</a>
+<a href="ctl-toolbar.html" class="here">แถบเครื่องมือ (ToolStrip)</a>
+<h4>Rust Language</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<div class="tool-head"><img class="tool-icon" src="icons/toolbar.png" alt="" width="48" height="48"><div><h1>แถบเครื่องมือ (ToolStrip)</h1><p class="lead">ในกล่องเครื่องมือ: <b>แถบเครื่องมือ</b> · เทียบกับ WinForms: <code>ToolStrip</code></p></div></div>
+<p><b>แถบปุ่มรูปภาพ</b>ใต้เมนู สำหรับคำสั่งที่ใช้บ่อย กดได้ในคลิกเดียว เช่น ใหม่ เปิด บันทึก</p>
+<ul><li>แต่ละปุ่มตั้ง <b>(Name)</b> = ชื่อ method · <b>Text</b> = ข้อความที่ขึ้นเมื่อชี้เมาส์ · <b>Image</b> = ชื่อรูป เช่น <code>NEW</code>, <code>OPEN</code>, <code>SAVE</code>, <code>SEARCH</code>, <code>REFRESH</code></li>
+<li>ถ้าปุ่มบนแถบเครื่องมือมี (Name) เดียวกับรายการในเมนู สองอย่างนี้ใช้ method เดียวกันและติ๊กพร้อมกัน</li>
+<li>ปุ่มที่ "กดค้าง" ได้ ให้โปรแกรมสลับติ๊กเองด้วย <code>set_item_checked</code></li></ul>
+<figure><img class="shot" src="img/ctl-toolbar.png" alt="แถบเครื่องมือ ในหน้าต่างตัวอย่าง" width="480"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>
+<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>เมนูและแถบเครื่องมือ</b> (Menus and toolbars) - ลากมาวางบนฟอร์มแล้วมันจะไปอยู่บนสุดของหน้าต่าง คลิกที่มันในตัวออกแบบเพื่อพิมพ์ชื่อรายการ และตั้ง Properties ของแต่ละรายการ · มันเป็นส่วนหนึ่งของฟอร์ม ไม่ใช่ control รายการแต่ละอันทำงานด้วย method ที่มีชื่อเดียวกับ <b>(Name)</b> ของมัน</p>
+<h2>ตัวอย่าง</h2>
+<h3>1. ปุ่มในไฟล์ฟอร์ม</h3>
+
+<pre><code># Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = &quot;ToolbarDemo&quot;
+title = &quot;Toolbar&quot;
+size = [360, 170]
+start = &quot;center&quot;
+
+[[toolbar]]
+id = &quot;new_note&quot;
+label = &quot;New&quot;
+glyph = &quot;NEW&quot;
+
+[[toolbar]]
+id = &quot;save_note&quot;
+label = &quot;Save&quot;
+glyph = &quot;SAVE&quot;
+
+[[toolbar]]
+separator = true
+
+[[toolbar]]
+id = &quot;bold&quot;
+label = &quot;Bold&quot;
+glyph = &quot;FONT&quot;
+
+[[control]]
+kind = &quot;textarea&quot;
+id = &quot;note&quot;
+bounds = [0, 0, 360, 140]
+dock = &quot;fill&quot;
+
+[[control]]
+kind = &quot;statusbar&quot;
+id = &quot;status&quot;
+dock = &quot;bottom&quot;</code></pre>
+<h3>2. method ของแต่ละปุ่ม</h3>
+
+<pre><code>fn new_note(&amp;mut self, ui: &amp;ToolbarDemoUi) {
+    ui.note.set_text(&quot;&quot;);
+    ui.status.set_part_text(0, &quot;A new note&quot;);
+}
+
+fn save_note(&amp;mut self, ui: &amp;ToolbarDemoUi) {
+    let path = std::env::temp_dir().join(&quot;note.txt&quot;);
+    let done = std::fs::write(&amp;path, ui.note.text()).is_ok();
+    ui.status.set_part_text(0, if done { &quot;Saved&quot; } else { &quot;Could not save&quot; });
+}</code></pre>
+<h3>3. ปุ่มที่กดค้าง</h3>
+
+<pre><code>fn bold(&amp;mut self, ui: &amp;ToolbarDemoUi) {
+    // A toolbar button that stays down: the program turns its tick over itself.
+    let on = !ui.item_checked(&quot;bold&quot;);
+    ui.set_item_checked(&quot;bold&quot;, on);
+    ui.status.set_part_text(0, if on { &quot;Bold on&quot; } else { &quot;Bold off&quot; });
+}</code></pre>
+<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>toolbar_demo.phaiform</code> กับ <code>toolbar_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- toolbar</code></p>
+<h2>Method</h2>
+<table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>ui.item_checked(&quot;id&quot;)</code></td><td>รายการนี้ติ๊กอยู่ไหม (เมนู หรือปุ่มบนแถบเครื่องมือที่ id เดียวกัน)</td></tr>
+<tr><td><code>ui.set_item_checked(&quot;id&quot;, true)</code></td><td>ติ๊ก หรือเอาติ๊กออก</td></tr>
+<tr><td><code>ui.set_item_enabled(&quot;id&quot;, false)</code></td><td><code>false</code> เป็นสีเทา กดไม่ได้ · <code>true</code> กดได้</td></tr>
+</table>
+<h2>Properties</h2>
+<table class="ref"><tr><th>Property ของปุ่ม</th><th>ทำอะไร</th></tr>
+<tr><td><b>(Name)</b></td><td>ชื่อของปุ่ม และชื่อ method ที่ทำงานเมื่อกด</td></tr>
+<tr><td><b>Text</b></td><td>ข้อความที่ขึ้นเมื่อชี้เมาส์</td></tr>
+<tr><td><b>Image</b></td><td>ชื่อรูปจากชุดไอคอนของ Windows เช่น <code>SAVE</code></td></tr>
+<tr><td><b>Checked</b></td><td>กดค้างไว้ตั้งแต่เปิดหน้าต่าง</td></tr>
+<tr><td><b>Enabled</b></td><td>กดได้ หรือเป็นสีเทา</td></tr>
+<tr><td><b>Separator</b></td><td>เป็นเส้นคั่นแทนปุ่ม</td></tr></table>
+<h2>Events</h2>
+<table class="ref"><tr><th>Event</th><th>ทำอะไร</th></tr>
+<tr><td><b>Click</b></td><td>กดปุ่ม - method ชื่อเดียวกับ (Name) ของมัน</td></tr>
+<tr><td><b>CheckedChanged</b></td><td>ปุ่มถูกกดค้างหรือปล่อย</td></tr>
+<tr><td><b>ItemClicked</b></td><td>ของแถบทั้งแถบ (อยู่ใน Events ของฟอร์ม): ปุ่มไหนก็ตามถูกกด</td></tr></table>
+<h2>ลองทำเอง</h2><div class="try"><ol><li>เพิ่มปุ่ม "เปิด" (รูป <code>OPEN</code>) ที่อ่าน note.txt กลับมา</li><li>ทำเมนู File ที่มีรายการ New และ Save ชื่อเดียวกับปุ่ม แล้วดูว่าใช้ method เดียวกัน</li></ol></div>
+<div class="pager"><a href="ctl-statusbar.html">← แถบสถานะ (StatusStrip)</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+</main>
+</div>
+</body>
+</html>

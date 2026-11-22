@@ -1,0 +1,37 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ToolbarDemo"
+title = "Toolbar"
+size = [360, 170]
+start = "center"
+
+[[toolbar]]
+id = "new_note"
+label = "New"
+glyph = "NEW"
+
+[[toolbar]]
+id = "save_note"
+label = "Save"
+glyph = "SAVE"
+
+[[toolbar]]
+separator = true
+
+[[toolbar]]
+id = "bold"
+label = "Bold"
+glyph = "FONT"
+
+[[control]]
+kind = "textarea"
+id = "note"
+bounds = [0, 0, 360, 140]
+dock = "fill"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+dock = "bottom"

@@ -1,0 +1,24 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "PanelDemo"
+title = "Panel"
+size = [360, 200]
+start = "center"
+
+[[control]]
+kind = "panel"
+id = "board"
+bounds = [16, 16, 328, 130]
+border = "fixed"
+
+[control.events]
+paint = "board_paint"
+
+[[control]]
+kind = "button"
+id = "bigger"
+text = "Bigger"
+bounds = [16, 156, 120, 30]
+on_click = "bigger_clicked"

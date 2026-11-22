@@ -243,17 +243,17 @@ def control_page(tag, data):
     c = control_pages.PAGES[tag]
     tool = next(t for t in data['tools'] if t['tag'] == tag)
     group = next(g for g in data['groups'] if g['index'] == tool['group'])
-    ty = tool['type']
+    ty = tool.get('type')  # none for the menu bar and the toolbar: part of the form, not a control
     ui = f'{"".join(w.capitalize() for w in tag.split("_"))}DemoUi'
     p = [head(tag, f'{c["title"]} ({c["winforms"]})', c['winforms'], data)]
     p.append(c['intro'])
     p.append(f'<figure><img class="shot" src="img/ctl-{tag}.png" alt="{e(c["title"])} ในหน้าต่างตัวอย่าง" width="{shot_width(f"ctl-{tag}.png")}"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>')
-    where = (f'<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>{e(group["th"])}</b> ({e(group["en"])}) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> '
+    where = '' if not ty else (f'<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>{e(group["th"])}</b> ({e(group["en"])}) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> '
              f'(ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::{e(ty)}</code></p>')
     if tool.get('component'):
         where = (f'<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>{e(group["th"])}</b> ({e(group["en"])}) - ลากมาวางแล้วมันจะไปอยู่ในแถบด้านล่างของตัวออกแบบ '
                  f'(ไม่ได้อยู่บนหน้าต่าง) · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::{e(ty)}</code></p>')
-    p.append(where)
+    p.append(c.get('where') or where)
     if c['examples']:
         p.append('<h2>ตัวอย่าง</h2>')
         for heading, text, names in c['examples']:
@@ -261,10 +261,23 @@ def control_page(tag, data):
                 p.append(f'<h3>{e(heading)}</h3>')
             p.append(text)
             for n in names:
-                p.append(snippet('controls', f'{tag}_demo.rs', n))
+                # 'form': the demo's whole .phaiform, for what is set in the designer rather than code.
+                # 'file:x.phaiform' a whole file; 'x.rs:marker' another file's marked part.
+                if n == 'form':
+                    p.append(form_file('controls', f'{tag}_demo.phaiform'))
+                elif n.startswith('file:'):
+                    p.append(form_file('controls', n[5:]))
+                elif ':' in n:
+                    f, m = n.split(':', 1)
+                    p.append(snippet('controls', f, m))
+                else:
+                    p.append(snippet('controls', f'{tag}_demo.rs', n))
         p.append(f'<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>{tag}_demo.phaiform</code> กับ <code>{tag}_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- {tag}</code></p>')
 
-    own = method_rows(methods.own(ty), ty)
+    if c.get('methods'):
+        p.append(f'<h2>Method</h2>')
+        p.append(methods_table(c['methods']))
+    own = method_rows(methods.own(ty), ty) if ty else []
     if own:
         p.append(f'<h2>Method ของ {e(c["winforms"])}</h2>')
         p.append(methods_table(own))
@@ -272,14 +285,21 @@ def control_page(tag, data):
         p.append('<h2>Method ของช่องข้อความ</h2>')
         p.append('<p>ช่องข้อความทุกแบบ (TextBox, TextBox หลายบรรทัด, RichTextBox) มี method ชุดนี้ด้วย</p>')
         p.append(methods_table(method_rows(methods.text_edit(), 'TextEdit')))
-    if not tool.get('component'):
+    if ty and not tool.get('component'):
         common = methods_table(method_rows(methods.common(), 'common'))
         p.append(f'<details class="common"><summary>Method ที่ control ทุกตัวมี (ข้อความ เปิด/ปิด แสดง/ซ่อน ตำแหน่ง …)</summary>{common}</details>')
 
-    p.append('<h2>Properties</h2>')
-    p.append('<p>ตั้งได้ในหน้าต่าง Properties เมื่อเลือกมันบนฟอร์ม - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>')
-    p.append(props_table(tool['properties']))
-    if tool['events']:
+    if c.get('props_html'):
+        p.append('<h2>Properties</h2>')
+        p.append(c['props_html'])
+    if tool.get('properties'):
+        p.append('<h2>Properties</h2>')
+        p.append('<p>ตั้งได้ในหน้าต่าง Properties เมื่อเลือกมันบนฟอร์ม - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>')
+        p.append(props_table(tool['properties']))
+    if c.get('events_html'):
+        p.append('<h2>Events</h2>')
+        p.append(c['events_html'])
+    if tool.get('events'):
         p.append('<h2>Events</h2>')
         p.append('<p>ดับเบิลคลิกชื่อ event ในแท็บ Events ของ Properties แล้ว Phai Studio จะเขียน method ให้ (ชื่อในตารางนี้สมมติว่า Id ของมันคือ <code>' + tag + '</code> และอยู่บนฟอร์ม MainWindow) - ชี้เมาส์ที่ชนิดของ <code>e</code> เพื่อดูชื่อเต็ม</p>')
         p.append(control_events_table(tool, 'MainWindowUi'))

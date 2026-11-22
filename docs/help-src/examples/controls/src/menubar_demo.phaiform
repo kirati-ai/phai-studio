@@ -1,0 +1,45 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MenubarDemo"
+title = "Menu bar"
+size = [360, 170]
+start = "center"
+
+[[menu]]
+label = "&File"
+
+[[menu.items]]
+id = "new_note"
+label = "New"
+key = "Ctrl+N"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "exit"
+label = "Exit"
+
+[[menu]]
+label = "&View"
+
+[[menu.items]]
+id = "big_text"
+label = "Big text"
+check_on_click = true
+
+[[menu]]
+label = "&Help"
+
+[[menu.items]]
+id = "about"
+label = "About"
+key = "F1"
+
+[[control]]
+kind = "textarea"
+id = "note"
+bounds = [0, 0, 360, 170]
+dock = "fill"

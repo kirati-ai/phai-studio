@@ -1,0 +1,43 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "TableDemo"
+title = "TablePanel"
+size = [360, 170]
+start = "center"
+
+[[control]]
+kind = "table"
+id = "form_table"
+bounds = [16, 16, 328, 96]
+cols = 2
+
+[[control]]
+kind = "label"
+id = "first_label"
+text = "First name:"
+bounds = [20, 20, 150, 24]
+
+[[control]]
+kind = "edit"
+id = "first"
+bounds = [180, 20, 150, 24]
+
+[[control]]
+kind = "label"
+id = "last_label"
+text = "Last name:"
+bounds = [20, 52, 150, 24]
+
+[[control]]
+kind = "edit"
+id = "last"
+bounds = [180, 52, 150, 24]
+
+[[control]]
+kind = "button"
+id = "join"
+text = "Put together"
+bounds = [16, 122, 140, 30]
+on_click = "join_clicked"

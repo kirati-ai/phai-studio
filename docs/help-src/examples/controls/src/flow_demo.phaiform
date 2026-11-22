@@ -1,0 +1,44 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "FlowDemo"
+title = "FlowPanel"
+size = [400, 170]
+start = "center"
+
+[[control]]
+kind = "flow"
+id = "tags"
+bounds = [16, 16, 368, 80]
+
+[[control]]
+kind = "checkbox"
+id = "red"
+text = "Red"
+bounds = [24, 24, 90, 24]
+
+[[control]]
+kind = "checkbox"
+id = "green"
+text = "Green"
+bounds = [120, 24, 90, 24]
+
+[[control]]
+kind = "checkbox"
+id = "blue"
+text = "Blue"
+bounds = [216, 24, 90, 24]
+
+[[control]]
+kind = "checkbox"
+id = "yellow"
+text = "Yellow"
+bounds = [24, 54, 90, 24]
+
+[[control]]
+kind = "button"
+id = "hide_green"
+text = "Hide green"
+bounds = [16, 108, 140, 30]
+on_click = "hide_green_clicked"
