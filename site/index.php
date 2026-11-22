@@ -169,6 +169,12 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.3', '22 พ.ย. 2569', [
+            'คู่มือทีละเครื่องมือ: ทุกตัวใน Toolbox และฟอร์ม (43 หน้า) มีไอคอน คำอธิบายภาษาไทย ตัวอย่างโค้ดที่ build ได้จริง และ Method, Properties, Events',
+            'กด F1 ในตัวออกแบบ เปิดหน้าคู่มือของ control ที่เลือกอยู่ทันที',
+            'คู่มือหน้าตาใหม่: เมนูข้างมีไอคอน พับกลุ่มได้ ค้นหาได้ และปิดเมนูได้',
+            'หน้าต่าง Properties ของ component (dialog, ErrorProvider ฯลฯ) แสดงเฉพาะค่าของมันเอง',
+        ]],
         ['0.2.2', '22 พ.ย. 2569', [
             'พิสูจน์กับโปรแกรมจริง: คอนโซลของ Phai Desk ทั้งโปรแกรม (7 หน้าจอ) ทำด้วย Phai Studio แบบลากวาง',
             'วาดเองบนฟอร์มด้วย event Paint (ภาพ ข้อความ เส้น ภาพโปร่งใส) และ event ล้อเมาส์ (MouseWheel)',
@@ -294,6 +300,12 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.3', '22 Nov 2026', [
+            'A guide page for every Toolbox tool and the form (43 pages): its icon, what it is, examples that build, and its methods, properties and events',
+            'F1 in the designer opens the guide page of the chosen control',
+            'A new look for the guide: a sidebar with icons, folding groups, search, and a button to put it away',
+            'The Properties pane shows a component (a dialog, an ErrorProvider…) only its own settings',
+        ]],
         ['0.2.2', '22 Nov 2026', [
             'Proved on a real program: the whole Phai Desk console (7 windows) made with Phai Studio by drag and drop',
             'Draw on a form with the Paint event (pictures, text, lines, see-through images) and the MouseWheel event',

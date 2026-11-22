@@ -63,14 +63,21 @@ fn main() {
         }
     }
     let _ = std::fs::read(root.join("LICENSE")).map(|l| files.push(("LICENSE.txt".into(), l)));
-    // The Thai guide, opened by Help > Phai Studio Guide (F1) from help\ beside the program.
-    if let Ok(dir) = std::fs::read_dir(root.join("docs").join("help")) {
-        for e in dir.flatten() {
-            if let (Some(name), Ok(data)) = (e.file_name().to_str().map(str::to_string), std::fs::read(e.path())) {
-                files.push((format!("help/{name}"), data));
+    // The Thai guide, opened by Help > Phai Studio Guide (F1) from help\ beside the program - its
+    // folders too (the Toolbox pages' icons/ and img/).
+    fn add_dir(dir: &std::path::Path, under: &str, files: &mut Vec<(String, Vec<u8>)>) {
+        let Ok(read) = std::fs::read_dir(dir) else { return };
+        for e in read.flatten() {
+            let Some(name) = e.file_name().to_str().map(str::to_string) else { continue };
+            let path = e.path();
+            if path.is_dir() {
+                add_dir(&path, &format!("{under}/{name}"), files);
+            } else if let Ok(data) = std::fs::read(&path) {
+                files.push((format!("{under}/{name}"), data));
             }
         }
     }
+    add_dir(&root.join("docs").join("help"), "help", &mut files);
     let m = phai_pack::Manifest { name: "Phai Studio".into(), version: version.clone(), publisher: "Monrak Net".into(), exe: "phai-studio.exe".into(), desktop: true, all_users: false, files: vec![] };
     let out_dir = root.join("dist");
     std::fs::create_dir_all(&out_dir).expect("dist folder");
