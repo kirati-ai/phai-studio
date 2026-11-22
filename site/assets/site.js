@@ -1,39 +1,50 @@
 // phai-studio.monrak.net: the page's motion, after monrak.net and desktopserver.monrak.net, without libraries.
 // The slider and its gallery, every card's hover, cards fading in, and the strip that says how far down you are.
 
-// slider: moves only when asked (arrows, thumbnails, a swipe); thumbnails and caption follow.
-// It never moves by itself or scrolls the page: only the thumbnail strip scrolls, to show the chosen one.
+// slider: moves on by itself every few seconds, and by the arrows or a swipe; the caption follows.
+// It waits while the pointer or focus is on it, while it is off screen or the tab hidden, and never
+// moves by itself for a reader who asked for less motion. It never scrolls the page.
 (() => {
     const box = document.querySelector('.slider');
     if (!box) return;
     const track = box.querySelector('.slides');
-    const thumbs = [...document.querySelectorAll('.thumbs button')];
+    const slides = [...track.querySelectorAll('.slide')];
     const cap = document.getElementById('shot-caption');
-    const n = thumbs.length;
-    const strip = document.querySelector('.thumbs');
+    const n = slides.length;
+    const EVERY = 5000;
     let at = 0;
+    const warm = (i) => { const img = slides[(i + n) % n].querySelector('img'); if (img) img.loading = 'eager'; };
     const go = (i) => {
         at = (i + n) % n;
+        warm(at); warm(at + 1);
         track.style.transform = 'translateX(' + (-100 * at) + '%)';
-        thumbs.forEach((t, k) => t.classList.toggle('on', k === at));
-        const t = thumbs[at];
+        const s = slides[at];
         cap.innerHTML = '';
         const b = document.createElement('b');
-        b.textContent = t.dataset.captionH;
-        cap.append(b, ' — ' + t.dataset.captionP);
+        b.textContent = s.dataset.h;
+        cap.append(b, ' — ' + s.dataset.p);
         if (window.thaiWrap) window.thaiWrap(cap);
-        const l = t.offsetLeft - strip.offsetLeft, r = l + t.offsetWidth;
-        if (l < strip.scrollLeft) strip.scrollTo({ left: l - 8, behavior: 'smooth' });
-        else if (r > strip.scrollLeft + strip.clientWidth) strip.scrollTo({ left: r - strip.clientWidth + 8, behavior: 'smooth' });
     };
-    box.querySelector('.sl-prev').onclick = () => go(at - 1);
-    box.querySelector('.sl-next').onclick = () => go(at + 1);
-    thumbs.forEach((t, k) => t.onclick = () => go(k));
+    warm(1);
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let held = false, seen = false, timer = 0;
+    const start = () => {
+        clearInterval(timer);
+        if (!still.matches && !held && seen && !document.hidden) timer = setInterval(() => go(at + 1), EVERY);
+    };
+    box.querySelector('.sl-prev').onclick = () => { go(at - 1); start(); };
+    box.querySelector('.sl-next').onclick = () => { go(at + 1); start(); };
+    box.addEventListener('mouseenter', () => { held = true; start(); });
+    box.addEventListener('mouseleave', () => { held = false; start(); });
+    box.addEventListener('focusin', () => { held = true; start(); });
+    box.addEventListener('focusout', () => { held = false; start(); });
+    document.addEventListener('visibilitychange', start);
+    new IntersectionObserver((es) => { seen = es[0].isIntersecting; start(); }, { threshold: 0.3 }).observe(box);
     let x0 = null;
     box.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
     box.addEventListener('touchend', (e) => {
         const dx = e.changedTouches[0].clientX - x0;
-        if (Math.abs(dx) > 40) go(at + (dx < 0 ? 1 : -1));
+        if (Math.abs(dx) > 40) { go(at + (dx < 0 ? 1 : -1)); start(); }
     });
 })();
 

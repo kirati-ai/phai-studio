@@ -463,7 +463,7 @@ $base = 'https://phai-studio.monrak.net/';
             <div class="slider">
                 <div class="slides">
                     <?php foreach ($T['shots'] as $i => [$f, $h, $p]): ?>
-                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e("$h — $p") ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
+                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e("$h — $p") ?>" data-h="<?= e($h) ?>" data-p="<?= e($p) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
                     <?php endforeach ?>
                 </div>
                 <button type="button" class="nav-btn sl-prev" aria-label="<?= e($T['prev']) ?>"><i class="ti ti-chevron-left"></i></button>
@@ -471,11 +471,6 @@ $base = 'https://phai-studio.monrak.net/';
                 <span class="zoom"><i class="ti ti-photo"></i> <?= e($T['zoom']) ?></span>
             </div>
             <p class="caption" id="shot-caption"><b><?= e($T['shots'][0][1]) ?></b> — <?= e($T['shots'][0][2]) ?></p>
-            <div class="thumbs">
-                <?php foreach ($T['shots'] as $i => [$f, $h, $p]): ?>
-                    <button type="button" class="<?= $i ? '' : 'on' ?>" data-caption-h="<?= e($h) ?>" data-caption-p="<?= e($p) ?>" aria-label="<?= e($h) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="" width="120" height="81" loading="lazy"></button>
-                <?php endforeach ?>
-            </div>
         </div>
     </div>
 </section>

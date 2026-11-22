@@ -165,11 +165,6 @@ main, .foot { position: relative; z-index: 2; }
 .zoom { position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgb(15 31 25 / .7); color: #fff; font-size: .82rem; pointer-events: none; }
 .caption { margin: 0; text-align: center; color: var(--muted); font-size: .95rem; }
 .caption b { color: var(--ink); }
-.thumbs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
-.thumbs button { flex: 0 0 auto; width: 120px; padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; cursor: pointer; opacity: .6; transition: opacity .2s, border-color .2s, transform .2s; }
-.thumbs button img { display: block; width: 100%; height: auto; aspect-ratio: 1432 / 969; object-fit: cover; object-position: top left; border-radius: 6px; }
-.thumbs button:hover { opacity: 1; transform: translateY(-2px); }
-.thumbs button.on { opacity: 1; border-color: var(--green); }
 @media (hover: none) { .slider .nav-btn { opacity: 1; } }
 
 .lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 56px 64px 16px; background: rgb(8 20 15 / .94); }
@@ -256,3 +251,6 @@ h3.part + .muted { margin: 0 0 16px; }
 #learn .card.lesson.tool .icon img { width: 24px; height: 24px; }
 #learn .card.lesson.tool b { margin: 0 0 1px; font-family: var(--sans, inherit); font-weight: 600; font-size: 1rem; line-height: 1.35; letter-spacing: 0; text-transform: none; color: var(--text); }
 #learn .card.lesson p { font-size: .86rem; line-height: 1.5; }
+/* A tool's own icon (a picture, not a font glyph) turns white on the green, as the glyphs do. */
+#learn .card.lesson.tool .icon img { transition: filter .3s; }
+#learn .card.lesson.tool:hover .icon img, #learn .card.lesson.tool:focus-visible .icon img { filter: brightness(0) invert(1); }
