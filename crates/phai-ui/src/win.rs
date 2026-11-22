@@ -3259,6 +3259,29 @@ pub unsafe fn take_state<T>(hwnd: HWND) -> Option<Box<T>> {
 /// With `PHAI_SHOT=out.png` in the environment, the window is photographed after it has drawn
 /// (`PHAI_SHOT_DELAY` milliseconds, 800 by default) and the program ends - so any program made
 /// with phai-ui, generated ones included, can be checked by its picture.
+/// A shown top-level window of this program whose title has `words`.
+#[cfg(feature = "shot")]
+fn window_titled(words: &str) -> Option<HWND> {
+    struct Find<'a>(&'a str, Option<HWND>);
+    unsafe extern "system" fn each(h: HWND, l: LPARAM) -> windows::core::BOOL {
+        let find = unsafe { &mut *(l.0 as *mut Find) };
+        let mut pid = 0u32;
+        unsafe {
+            wm::GetWindowThreadProcessId(h, Some(&mut pid));
+        }
+        if pid == std::process::id() && unsafe { wm::IsWindowVisible(h) }.as_bool() && text_of(h).contains(find.0) {
+            find.1 = Some(h);
+            return false.into();
+        }
+        true.into()
+    }
+    let mut find = Find(words, None);
+    unsafe {
+        let _ = wm::EnumWindows(Some(each), LPARAM(&mut find as *mut Find as isize));
+    }
+    find.1
+}
+
 pub fn run_loop(dialog: Option<HWND>) {
     #[cfg(feature = "shot")]
     if let (Some(h), Ok(path)) = (dialog, std::env::var("PHAI_SHOT")) {
@@ -3277,6 +3300,8 @@ pub fn run_loop(dialog: Option<HWND>) {
                 let h = if !front.is_invalid() && pid == std::process::id() { front } else { HWND(h as *mut _) };
                 // A modal window over it, shown without taking the focus: that is what is on screen.
                 let h = unsafe { wm::GetWindow(h, wm::GW_ENABLEDPOPUP) }.ok().filter(|p| !p.is_invalid() && p.0 != h.0).unwrap_or(h);
+                // PHAI_SHOT_TITLE: another window of the program - the one whose title has these words.
+                let h = std::env::var("PHAI_SHOT_TITLE").ok().and_then(|words| window_titled(&words)).unwrap_or(h);
                 if let Err(e) = crate::shot::save(h, std::path::Path::new(&path)) {
                     eprintln!("{e}");
                 }
