@@ -57,6 +57,7 @@ mod switcher;
 mod dbgwin;
 mod vsextra;
 mod update;
+mod about;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -8299,7 +8300,7 @@ impl Studio {
             ID_HELP_RUST => self.open_help("rust-01.html"),
             ID_HELP_ERRORS => self.open_help("rust-10.html"),
             ID_ABOUT => {
-                if about(self.hwnd) {
+                if about::show(self.hwnd) {
                     self.check_for_updates();
                 }
             }
@@ -8920,66 +8921,6 @@ fn help_page(page: &str) -> Option<PathBuf> {
 /// A file or web address, opened by whatever Windows opens it with.
 /// Phai Studio's website: downloads, the guide, what is new.
 const SITE: &str = "https://phai-studio.monrak.net";
-
-/// Help > About: Phai Studio's icon, version, what it is, who makes it, and links to its website
-/// and its source code that open in the browser. True when "Check for updates" was pressed.
-fn about(owner: HWND) -> bool {
-    use windows::Win32::UI::Controls as cc;
-    unsafe extern "system" fn on_link(h: HWND, msg: cc::TASKDIALOG_NOTIFICATIONS, _: WPARAM, l: LPARAM, _: isize) -> windows::core::HRESULT {
-        // `PHAI_ASK_SHOT=<file.png>`: photographed for the guide once drawn, then closed.
-        if msg == cc::TDN_TIMER {
-            if let Some(to) = std::env::var_os("PHAI_ASK_SHOT") {
-                let _ = phai_ui::shot::save(h, Path::new(&to));
-                unsafe {
-                    wm::SendMessageW(h, cc::TDM_CLICK_BUTTON.0 as u32, Some(WPARAM(1)), None);
-                }
-            }
-        }
-        if msg == cc::TDN_HYPERLINK_CLICKED {
-            let url = unsafe { PCWSTR(l.0 as *const u16).to_string() }.unwrap_or_default();
-            // Only this box's own addresses.
-            if url.starts_with("https://") {
-                open_with_windows(&url);
-            }
-        }
-        windows::core::HRESULT(0)
-    }
-    let site_name = SITE.trim_start_matches("https://");
-    let title = wide(t("About Phai Studio"));
-    let head = wide(&format!("Phai Studio {}", env!("CARGO_PKG_VERSION")));
-    let body = wide(&tf(
-        "A free RAD studio for Windows programs in Rust: draw the forms, style them with CSS, write what happens in Rust.\n\n<a href=\"{0}\">{1}</a> - downloads, the guide, what's new\n<a href=\"{2}\">Source code on GitHub</a>",
-        &[&SITE, &site_name, &env!("CARGO_PKG_REPOSITORY")],
-    ));
-    let foot = wide(t("Made by Kirati Kittikhun - Monrak Net\nFree to use, also for programs you sell; its libraries are MIT"));
-    let check = wide(t("Check for updates"));
-    let buttons = [cc::TASKDIALOG_BUTTON { nButtonID: ID_CHECK_UPDATES, pszButtonText: PCWSTR(check.as_ptr()) }];
-    let config = cc::TASKDIALOGCONFIG {
-        cbSize: std::mem::size_of::<cc::TASKDIALOGCONFIG>() as u32,
-        hwndParent: owner,
-        hInstance: win::instance(),
-        dwFlags: cc::TDF_ENABLE_HYPERLINKS | cc::TDF_POSITION_RELATIVE_TO_WINDOW | cc::TDF_ALLOW_DIALOG_CANCELLATION | if std::env::var_os("PHAI_ASK_SHOT").is_some() { cc::TDF_CALLBACK_TIMER } else { cc::TASKDIALOG_FLAGS(0) },
-        dwCommonButtons: cc::TDCBF_OK_BUTTON,
-        pszWindowTitle: PCWSTR(title.as_ptr()),
-        // Icon 1 of phai-studio.exe: the bamboo.
-        Anonymous1: cc::TASKDIALOGCONFIG_0 { pszMainIcon: PCWSTR(std::ptr::without_provenance::<u16>(1)) },
-        pszMainInstruction: PCWSTR(head.as_ptr()),
-        pszContent: PCWSTR(body.as_ptr()),
-        Anonymous2: cc::TASKDIALOGCONFIG_1 { pszFooterIcon: PCWSTR::null() },
-        pszFooter: PCWSTR(foot.as_ptr()),
-        pfCallback: Some(on_link),
-        cButtons: buttons.len() as u32,
-        pButtons: buttons.as_ptr(),
-        nDefaultButton: 1,
-        cxWidth: 270,
-        ..Default::default()
-    };
-    let mut pressed = 0;
-    if unsafe { cc::TaskDialogIndirect(&config, Some(&mut pressed), None, None) }.is_err() {
-        win::message(Some(owner), &format!("Phai Studio {}\n\n{SITE}", env!("CARGO_PKG_VERSION")), t("About Phai Studio"), wm::MB_ICONINFORMATION);
-    }
-    pressed == ID_CHECK_UPDATES
-}
 
 pub fn open_with_windows(what: &str) {
     let w = wide(what);
