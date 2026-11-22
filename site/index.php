@@ -169,6 +169,12 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.2', '22 พ.ย. 2569', [
+            'พิสูจน์กับโปรแกรมจริง: คอนโซลของ Phai Desk ทั้งโปรแกรม (7 หน้าจอ) ทำด้วย Phai Studio แบบลากวาง',
+            'วาดเองบนฟอร์มด้วย event Paint (ภาพ ข้อความ เส้น ภาพโปร่งใส) และ event ล้อเมาส์ (MouseWheel)',
+            'รายการแบบไอคอนใหญ่/เล็ก จัดคอลัมน์ชิดขวา MessageBox และ dialog ที่อ่านค่าที่กรอกกลับได้ หน้าต่างเต็มจอไม่มีกรอบ',
+            'ไอคอนของโปรแกรม: ตั้งใน Project > Properties แล้วไฟล์ exe หน้าต่าง และตัวติดตั้งจาก Publish ได้ไอคอนนั้น',
+        ]],
         ['0.2.1', '22 พ.ย. 2569', [
             'ตารางข้อมูล: ตัวกรองแบบ Excel ที่หัวคอลัมน์ ส่งออกเป็น Excel และ PDF และตารางหลัก-ตารางย่อย (master-detail)',
             'ภาพเคลื่อนไหวด้วย CSS (animation และ @keyframes)',
@@ -288,6 +294,12 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.2', '22 Nov 2026', [
+            'Proved on a real program: the whole Phai Desk console (7 windows) made with Phai Studio by drag and drop',
+            'Draw on a form with the Paint event (pictures, text, lines, see-through images) and the MouseWheel event',
+            'Lists with large and small icons, right-aligned columns, MessageBox, dialogs that hand back what was typed, and frameless full-screen windows',
+            'A program\'s own icon: set it in Project > Properties and the exe, its windows and the setup from Publish all carry it',
+        ]],
         ['0.2.1', '22 Nov 2026', [
             'Data grid: Excel-style filters on the headings, export to Excel and PDF, and master-detail grids',
             'CSS animation (animation and @keyframes)',
