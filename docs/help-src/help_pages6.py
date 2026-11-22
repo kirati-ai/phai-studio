@@ -15,6 +15,7 @@ BODY['index.html'] = r'''
   <a class="card" href="database.html"><b>ทำงานกับฐานข้อมูล</b><span>MySQL, PostgreSQL, SQLite ดูตาราง รัน SQL และสร้างโค้ดให้</span></a>
   <a class="card" href="code.html"><b>เขียนโค้ดกับ control</b><span>Properties, Methods, Events ชนิดของ control ในโค้ด และงานบน thread อื่นด้วย invoke</span></a>
   <a class="card" href="winforms.html"><b>control และความสามารถเพิ่มเติม</b><span>การพิมพ์ ผูกข้อมูล user control เมนู MDI และอื่น ๆ</span></a>
+  <a class="card" href="publish.html"><b>ทำตัวติดตั้ง (Publish)</b><span>ทำ setup.exe ไฟล์เดียวให้คนอื่นติดตั้งโปรแกรมของคุณ</span></a>
   <a class="card" href="web.html"><b>เว็บและมือถือ (PWA)</b><span>โปรแกรมเดิมรันในเบราว์เซอร์ ลองบนมือถือด้วย QR code ติดตั้งเป็นแอปได้</span></a>
   <a class="card" href="report.html"><b>รายงานพิมพ์</b><span>ออกแบบรายงานด้วยแถบ กลุ่ม ผลรวม ดูตัวอย่าง พิมพ์ และบันทึก PDF</span></a>
 </div>
@@ -152,7 +153,7 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td>Start Without Debugging</td><td><kbd>Ctrl+F5</kbd></td><td>build แล้วรันเฉย ๆ</td></tr>
   <tr><td>Build</td><td><kbd>Ctrl+B</kbd></td><td>build อย่างเดียว ข้อผิดพลาดขึ้นในแท็บ Errors</td></tr>
   <tr><td>Debug / Release</td><td>เมนู Build</td><td>Release ช้ากว่าตอน build แต่โปรแกรมเร็วกว่า ใช้ตอนแจกจริง</td></tr>
-  <tr><td>Publish</td><td>เมนู Build</td><td>สร้างตัวติดตั้ง <code>setup.exe</code> ของโปรแกรมคุณ พร้อมเพิ่มไฟล์อื่นเข้าไปได้</td></tr>
+  <tr><td>Publish</td><td>เมนู Build</td><td>สร้างตัวติดตั้ง <code>setup.exe</code> ของโปรแกรมคุณ พร้อมเพิ่มไฟล์อื่นเข้าไปได้ - ทีละขั้นที่หน้า <a href="publish.html">ทำตัวติดตั้ง</a></td></tr>
   <tr><td>Manage Crates</td><td>เมนู Project</td><td>ค้นหาและเพิ่มไลบรารีจาก crates.io</td></tr>
 </table>
 <p>ถ้า build ไม่ผ่าน ดับเบิลคลิกบรรทัดในแท็บ Errors เพื่อไปยังจุดที่ผิด หรือกด <kbd>F8</kbd> ไล่ไปทีละข้อ ไม่เข้าใจข้อความ? ดู <a href="rust-10.html">บทที่ 10</a></p>
@@ -1709,4 +1710,66 @@ fn main() {
   <li><a href="https://doc.rust-lang.org/std/">เอกสารไลบรารีมาตรฐาน</a></li>
 </ul>
 <p>ขอให้สนุกกับการเขียน Rust ครับ</p>
+'''
+
+BODY['publish.html'] = r'''
+<h1>ทำตัวติดตั้ง (Publish)</h1>
+<p class="lead">เขียนโปรแกรมเสร็จแล้วอยากให้เพื่อน ครู หรือลูกค้าใช้ ใช้คำสั่ง <b>Publish</b> ได้เลย Phai Studio จะ build โปรแกรมแบบ Release แล้วทำ <code>setup.exe</code> ไฟล์เดียวให้ คนที่ได้ไปแค่ดับเบิลคลิกก็ติดตั้งได้ มีทางลัดใน Start menu และถอนการติดตั้งได้จาก Settings เหมือนโปรแกรมทั่วไป</p>
+
+<h2>ก่อนเริ่ม</h2>
+<ul>
+  <li>โปรแกรมต้อง build ผ่านก่อน ลองกด <kbd>F5</kbd> ให้รันได้ไม่มี error</li>
+  <li>อยากให้โปรแกรมมีไอคอนของตัวเอง: เมนู <b>Project &gt; Properties</b> ช่อง "ไอคอนของไฟล์โปรแกรม" ใส่ไฟล์ <code>.ico</code> ที่อยู่ในโปรเจกต์ ไอคอนนี้จะขึ้นที่ไฟล์โปรแกรม ทางลัด และตัวติดตั้งด้วย</li>
+</ul>
+
+<h2>ขั้นตอน</h2>
+<ol>
+  <li>เปิดฟอร์มของโปรเจกต์ แล้วเลือกเมนู <b>Build &gt; Publish <i>ชื่อโปรเจกต์</i>...</b> (หน้าจอภาษาไทย: <b>สร้างโปรแกรม &gt; เผยแพร่...</b>)</li>
+  <li>กรอกหน้าต่างที่ขึ้นมา (ดูตารางข้างล่าง) แล้วกด <b>OK</b></li>
+  <li>Phai Studio build แบบ Release ซึ่งช้ากว่าปกติ ครั้งแรกอาจใช้เวลาหลายนาที ดูความคืบหน้าได้ที่แท็บ Output</li>
+  <li>เสร็จแล้วแท็บ Output บอกชื่อไฟล์และขนาด และเปิดโฟลเดอร์ <code>publish</code> ของโปรเจกต์ให้</li>
+</ol>
+<figure><img class="shot" src="img/publish-dialog.png" alt="หน้าต่าง Publish" width="640"><figcaption>หน้าต่าง Publish ของโปรเจกต์ตัวอย่าง score_book</figcaption></figure>
+<table>
+  <tr><th>ช่อง</th><th>ใส่อะไร</th></tr>
+  <tr><td>Product name</td><td>ชื่อโปรแกรมที่ผู้ใช้เห็น ใช้เป็นชื่อใน Start menu ใน Settings &gt; Apps ชื่อโฟลเดอร์ที่ติดตั้ง และชื่อไฟล์ตัวติดตั้ง</td></tr>
+  <tr><td>Version</td><td>รุ่นของโปรแกรม เริ่มจาก <code>version</code> ใน <code>Cargo.toml</code> แจกใหม่ทุกครั้งควรเพิ่มเลข เช่น 0.1.0 → 0.1.1 ให้รู้ว่าเป็นรุ่นไหน</td></tr>
+  <tr><td>Publisher</td><td>ชื่อผู้ทำ เช่น ชื่อตัวเอง โรงเรียน หรือบริษัท ขึ้นในหน้าติดตั้งและใน Settings &gt; Apps</td></tr>
+  <tr><td>Offer a desktop shortcut</td><td>ติ๊ก = หน้าติดตั้งเสนอทางลัดบนเดสก์ท็อปไว้ให้ (ผู้ใช้เอาออกได้ตอนติดตั้ง)</td></tr>
+  <tr><td>Also include</td><td>ไฟล์หรือโฟลเดอร์ในโปรเจกต์ที่ต้องไปกับโปรแกรม คั่นด้วยจุลภาค เช่น <code>pictures, data/config.txt</code> ค่าเริ่มต้นคือรูปที่ฟอร์มใช้</td></tr>
+  <tr><td>Install for everyone</td><td>ไม่ติ๊ก (ค่าเริ่มต้น) = ติดตั้งให้ผู้ใช้คนนั้นคนเดียว ไม่ต้องใช้สิทธิ์ผู้ดูแลเครื่อง ติ๊ก = ติดตั้งลง Program Files ให้ทุกคนในเครื่อง ตอนติดตั้งจะขอสิทธิ์ผู้ดูแล</td></tr>
+</table>
+<p>คำตอบทั้งหมดถูกจำไว้ในไฟล์ <code>phai-publish.txt</code> ข้างโปรเจกต์ ครั้งหน้าเปิด Publish แล้วกด OK ได้เลย</p>
+
+<h2>ได้อะไรมา</h2>
+<p>ในโฟลเดอร์ <code>publish</code> ของโปรเจกต์มีสองอย่าง:</p>
+<table>
+  <tr><th>ไฟล์</th><th>ใช้อย่างไร</th></tr>
+  <tr><td><code>Score-Book-0.1.0-setup.exe</code></td><td>ตัวติดตั้งไฟล์เดียว ส่งให้คนอื่นทางไลน์ อีเมล แฟลชไดรฟ์ หรือวางบนเว็บ</td></tr>
+  <tr><td><code>Score-Book-0.1.0-portable\</code></td><td>โฟลเดอร์โปรแกรมพร้อมไฟล์ที่ใส่เพิ่ม คัดลอกไปที่ไหนก็เปิดได้เลยโดยไม่ต้องติดตั้ง</td></tr>
+</table>
+
+<h2>ตัวติดตั้งทำอะไรบนเครื่องผู้ใช้</h2>
+<figure><img class="shot" src="img/publish-setup.png" alt="หน้าติดตั้ง Score Book" width="520"><figcaption>หน้าแรกของตัวติดตั้งที่ Publish ทำให้</figcaption></figure>
+<ul>
+  <li>ถามที่ติดตั้ง ค่าเริ่มต้นคือ <code>%LOCALAPPDATA%\Programs\ชื่อโปรแกรม</code> (ถ้าเลือก Install for everyone จะเป็น <code>Program Files</code>)</li>
+  <li>ทำทางลัดใน Start menu และบนเดสก์ท็อป (ผู้ใช้ติ๊กออกได้)</li>
+  <li>ลงชื่อโปรแกรมใน <b>Settings &gt; Apps</b> พร้อมตัวถอนการติดตั้ง (<code>uninstall.exe</code> ในโฟลเดอร์ที่ติดตั้ง) ถอนแล้วไฟล์ ทางลัด และรายชื่อใน Apps หายไปหมด</li>
+</ul>
+<p>ติดตั้งแบบไม่ถามอะไรเลย (เช่น ลงให้หลายเครื่องด้วยสคริปต์) ใช้สวิตช์เหล่านี้ได้:</p>
+<table>
+  <tr><th>สวิตช์</th><th>ทำอะไร</th></tr>
+  <tr><td><code>/S</code></td><td>ติดตั้งเงียบ ๆ ไม่ขึ้นหน้าต่าง</td></tr>
+  <tr><td><code>/D=โฟลเดอร์</code></td><td>ติดตั้งลงโฟลเดอร์นี้</td></tr>
+  <tr><td><code>/NOSHORTCUTS</code></td><td>ไม่ทำทางลัด</td></tr>
+</table>
+<pre><code>Score-Book-0.1.0-setup.exe /S /D=D:\Apps\Score Book</code></pre>
+
+<h2>ก่อนแจกจริง ควรรู้</h2>
+<ul>
+  <li><b>หน้าจอเตือนของ Windows:</b> ตัวติดตั้งยังไม่ได้เซ็นโค้ด (code signing) ครั้งแรกที่เปิด Windows อาจขึ้น "Windows protected your PC" บอกผู้ใช้ให้กด <b>More info</b> แล้ว <b>Run anyway</b></li>
+  <li><b>Visual C++ runtime:</b> โปรแกรมที่ build ด้วย Rust บน Windows ใช้ไฟล์ <code>VCRUNTIME140.dll</code> ของ Microsoft ซึ่งเครื่องส่วนใหญ่มีอยู่แล้ว ถ้าเครื่องไหนเปิดโปรแกรมแล้วขึ้นว่าหา <code>VCRUNTIME140.dll</code> ไม่เจอ ให้ติดตั้ง <b>Microsoft Visual C++ Redistributable (x64)</b> จากเว็บของ Microsoft (ฟรี) ก่อน</li>
+  <li><b>ลองบนเครื่องอื่นก่อน:</b> ติดตั้งบนเครื่องที่ไม่เคยลง Phai Studio หรือ Rust เพื่อดูว่าไม่ขาดไฟล์อะไร โดยเฉพาะไฟล์ที่ต้องใส่ใน Also include</li>
+</ul>
+<div class="note">อยากให้โปรแกรมเปิดในเบราว์เซอร์หรือบนมือถือแทน ดู <a href="web.html">เว็บและมือถือ (PWA)</a> ซึ่งมีคำสั่ง <b>Publish Web App</b> แยกต่างหาก</div>
 '''

@@ -15,6 +15,7 @@ PAGES = [
     ('inspector.html', 'ตัวตรวจสด (F12)', 'Phai Studio'),
     ('web.html', 'เว็บและมือถือ (PWA)', 'Phai Studio'),
     ('report.html', 'รายงานพิมพ์', 'Phai Studio'),
+    ('publish.html', 'ทำตัวติดตั้ง (Publish)', 'Phai Studio'),
     ('rust-01.html', '1. เริ่มต้นกับ Rust', 'Rust Language'),
     ('rust-02.html', '2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน', 'Rust Language'),
     ('rust-03.html', '3. เงื่อนไขและการวนซ้ำ', 'Rust Language'),
@@ -96,6 +97,7 @@ PAGE_ICONS = {
     'inspector.html': _svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
     'web.html': _svg('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'),
     'report.html': _svg('<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/>'),
+    'publish.html': _svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>'),
 }
 CHEVRON = _svg('<path d="M9 6l6 6-6 6"/>')
 CLOSE = _svg('<path d="M15 6l-6 6 6 6"/><path d="M20 6l-6 6 6 6"/>')

@@ -355,10 +355,17 @@ pub fn ask_fields(owner: Option<HWND>, title: &str, fields: &[Field]) -> Option<
             Field::Text(l, _) | Field::Password(l, _) => Some(win::measure(hwnd, font, l).0),
             Field::Check(..) => None,
         }).max().unwrap_or(0);
-        let label_w = (widest + win::px(hwnd, 12)).clamp(win::px(hwnd, 110), win::px(hwnd, 300));
+        let label_w = (widest + win::px(hwnd, 12)).clamp(win::px(hwnd, 110), win::px(hwnd, 420));
+        // A tick box's words run in the boxes' column: that column as wide as the longest of them
+        // (its box and gap included), so none is cut off.
+        let widest_check = fields.iter().filter_map(|f| match f {
+            Field::Check(l, _) => Some(win::measure(hwnd, font, l).0 + win::px(hwnd, 28)),
+            _ => None,
+        }).max().unwrap_or(0);
         win::set_state(hwnd, Box::new(Fields { boxes, ok, cancel, answer: None, done: false, font, label_w }));
         let rows = fields.len() as i32;
-        let (w, h) = (win::px(hwnd, 290) + label_w, win::px(hwnd, 11 * 2 + rows * 31 + 23 + 50));
+        let column = win::px(hwnd, 290).max(widest_check + win::px(hwnd, 30));
+        let (w, h) = (column + label_w, win::px(hwnd, 11 * 2 + rows * 31 + 23 + 50));
         let mut r = Default::default();
         match owner {
             Some(o) => {
