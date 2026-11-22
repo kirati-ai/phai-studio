@@ -1500,6 +1500,17 @@ fn update_scroll(h: HWND) {
 
 /// Scrolls so the caret is in view, and moves the caret there.
 fn place_caret(h: HWND) {
+    caret_shown(h, true);
+}
+
+/// The caret put where it is on the screen after the view scrolled (the wheel, the scroll bar,
+/// the scroll bar map): the view stays where it was scrolled to, the caret out of sight if it is.
+fn caret_in_place(h: HWND) {
+    caret_shown(h, false);
+}
+
+/// The caret put on the screen - and, when `follow`, the view scrolled to show it.
+fn caret_shown(h: HWND, follow: bool) {
     let Some(v) = view(h) else { return };
     let (line, _) = v.model.buf.position(v.model.caret);
     // The caret in a folded block opens it, as Visual Studio does.
@@ -1511,7 +1522,8 @@ fn place_caret(h: HWND) {
     let col = v.model.buf.position(v.model.caret).1;
     let row = v.row_of_pos(line, col);
     let page = v.visible_lines(h);
-    if row < v.top {
+    if !follow {
+    } else if row < v.top {
         v.top = row;
     } else if row >= v.top + page {
         v.top = row + 1 - page;
@@ -1523,7 +1535,7 @@ fn place_caret(h: HWND) {
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         let gutter = v.gutter();
-        if v.wrap_cols > 0 {
+        if v.wrap_cols > 0 || !follow {
             // Wrapped: nothing to scroll sideways.
         } else if x < gutter {
             v.left = (v.left - (gutter - x) - v.char_w * 8).max(0);
@@ -2529,6 +2541,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     let row = (y.max(0) as usize * rows) / (r.bottom.max(1) as usize);
                     v.top = row.saturating_sub(page / 2).min(rows.saturating_sub(page));
                     update_scroll(h);
+                    caret_in_place(h);
                     unsafe {
                         let _ = Gdi::InvalidateRect(Some(h), None, false);
                     }
@@ -2662,7 +2675,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let lines = -(delta / 40);
             v.top = (v.top as i64 + lines as i64).clamp(0, v.row_count().saturating_sub(1) as i64) as usize;
             update_scroll(h);
-            place_caret(h);
+            caret_in_place(h);
             unsafe {
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
             }
@@ -2690,7 +2703,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 v.left = pos;
             }
             update_scroll(h);
-            place_caret(h);
+            caret_in_place(h);
             unsafe {
                 let _ = Gdi::InvalidateRect(Some(h), None, false);
             }

@@ -94,7 +94,7 @@ pub fn arrange(all: &[PathBuf], pinned: &[PathBuf], query: &str) -> Vec<PathBuf>
 pub fn run(owner: HWND, paths: Vec<PathBuf>, show_again: bool) -> (Choice, bool) {
     win::init();
     let class = win::register("PhaiStartWindow", Some(proc_), None);
-    let caption = win::wide("Phai Studio");
+    let caption = win::wide(crate::STUDIO_TITLE);
     unsafe {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(caption.as_ptr()), wm::WS_POPUP | wm::WS_CAPTION | wm::WS_SYSMENU | wm::WS_CLIPCHILDREN, 0, 0, 100, 100, Some(owner), None, Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);

@@ -4226,7 +4226,7 @@ impl Studio {
             return;
         };
         let class = win::register("PhaiCodeWindow", Some(code_window_proc), None);
-        let title = win::wide(&format!("{} - Phai Studio", path.file_name().unwrap_or_default().to_string_lossy()));
+        let title = win::wide(&format!("{} - {STUDIO_TITLE}", path.file_name().unwrap_or_default().to_string_lossy()));
         unsafe {
             let mut r = RECT::default();
             let _ = wm::GetWindowRect(self.hwnd, &mut r);
@@ -4806,11 +4806,12 @@ impl Studio {
     // --- saying things --------------------------------------------------------------------------
 
     fn say_title(&self) {
+        let studio = STUDIO_TITLE;
         if self.nothing {
-            return win::set_text(self.hwnd, "Phai Studio");
+            return win::set_text(self.hwnd, studio);
         }
         let name = self.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| t("Untitled").to_string());
-        win::set_text(self.hwnd, &format!("{}{name} - Phai Studio", if self.doc.dirty { "• " } else { "" }));
+        win::set_text(self.hwnd, &format!("{}{name} - {studio}", if self.doc.dirty { "• " } else { "" }));
     }
 
     pub fn say_selection(&self) {
@@ -5122,12 +5123,16 @@ impl Studio {
             return;
         }
         let (controls, need) = bound_controls(&self.doc.form, database, table, cols);
+        let (first, count) = (self.doc.form.control.len(), controls.len());
         self.edit(|f| {
             f.control.extend(controls);
             if f.form.size[1] < need {
                 f.form.size[1] = need;
             }
         });
+        // On the canvas now, chosen, as a dragged table is in Visual Studio.
+        self.rebuild();
+        self.select_many(&(first..first + count).collect::<Vec<_>>());
         if let Err(e) = bind_project_files(&dir, conn) {
             win::message(Some(self.hwnd), &e.to_string(), t("Add to Form"), wm::MB_ICONWARNING);
         }
@@ -9164,6 +9169,9 @@ fn selftest(out: &Path) {
     s.save(false);
 }
 
+/// The windows' title, its version in it - so a screenshot says which Studio it was.
+pub const STUDIO_TITLE: &str = concat!("Phai Studio ", env!("CARGO_PKG_VERSION"));
+
 fn main() {
     #[cfg(debug_assertions)]
     report_crashes();
@@ -9191,7 +9199,7 @@ fn main() {
     // Phai Studio's own icon (phai-studio.ico, embedded by build.rs): </> grown from bamboo.
     let icon = phai_ui::icon::app_icon(32).or_else(|| phai_ui::icon::glyph_icon(glyph::APPS, 32, theme::Color::rgb(0x12, 0x85, 0x5f)));
     let class = win::register("PhaiStudio", Some(proc_), icon);
-    let title = wide("Phai Studio");
+    let title = wide(STUDIO_TITLE);
     unsafe {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, None, Some(build_menu()), Some(win::instance()), None).unwrap_or_default();
         phai_ui::icon::set_app_icon(hwnd);
@@ -9426,6 +9434,11 @@ fn main() {
                 [] => {}
                 _ => s.select_many(&many),
             }
+        }
+        // `--grid-columns` (a grid chosen with --select): its Grid Columns - PHAI_COLUMNS_SHOT takes
+        // a picture of it.
+        if args.iter().any(|a| a == "--grid-columns") {
+            s.edit_grid_columns();
         }
         // `--theme-editor`: the Theme Editor opened; with PHAI_THEME_SHOT a picture of it taken and
         // the program ended (PHAI_THEME_PAGE: 1 the Controls tab; PHAI_THEME_SET: `--name=#hex`

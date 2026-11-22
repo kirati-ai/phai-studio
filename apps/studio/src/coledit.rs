@@ -141,7 +141,7 @@ pub fn edit(owner: HWND, cols: Vec<Col>, fields: Option<Fields>) -> Option<Vec<C
         }
         win::set_state(hwnd, Box::new(Dialog { cols, bound, fields, known, list, rows, caption, field, width, visible, align, read_only, editor, items, sort, allow_sort, allow_size, format, summary, rules, group, buttons, loading: false, ok: false, done: false }));
         fill_list(hwnd, 0);
-        let (w, h) = (win::px(hwnd, 820), win::px(hwnd, 560));
+        let (w, h) = (win::px(hwnd, 940), win::px(hwnd, 560));
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, w, h, wm::SWP_NOZORDER | wm::SWP_NOMOVE);
         win::center_on(hwnd, owner);
         layout(hwnd);
@@ -149,6 +149,15 @@ pub fn edit(owner: HWND, cols: Vec<Col>, fields: Option<Fields>) -> Option<Vec<C
         win::enable(owner, false);
         win::show_top(hwnd);
         let mut msg = wm::MSG::default();
+        // PHAI_COLUMNS_SHOT: a picture of the dialog, for checking its layout, and the end.
+        if let Ok(out) = std::env::var("PHAI_COLUMNS_SHOT") {
+            while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                let _ = wm::TranslateMessage(&msg);
+                wm::DispatchMessageW(&msg);
+            }
+            let _ = phai_ui::shot::save(hwnd, std::path::Path::new(&out));
+            std::process::exit(0);
+        }
         while state(hwnd).is_some_and(|d| !d.done) {
             if !wm::GetMessageW(&mut msg, None, 0, 0).as_bool() {
                 wm::PostQuitMessage(msg.wParam.0 as i32);
@@ -394,20 +403,20 @@ fn layout(h: HWND) {
     let (m, row, gap) = (px(12), px(24), px(6));
     let button = |id: i32| d.buttons.iter().find(|(i, _)| *i == id).map(|(_, b)| *b).unwrap_or_default();
     let by = r.bottom - m - row;
-    let list_w = (r.right - 2 * m) * 45 / 100;
-    // The columns, and the buttons that change them under the list.
-    let bh = row * 2 + gap;
-    win::move_to(d.list, m, m, list_w, by - gap * 3 - bh - m);
-    let ly = by - gap * 2 - bh;
-    let bw = (list_w - gap * 2) / 3;
-    for (k, id) in [ID_ADD, ID_REMOVE, ID_RETRIEVE].iter().enumerate() {
-        win::move_to(button(*id), m + k as i32 * (bw + gap), ly, bw, row);
+    // The columns as wide as their two headings, the buttons that change them in a column
+    // beside the list (as Visual Studio's collection editors), the chosen column's properties
+    // after them.
+    let bw = px(150);
+    let list_w = px(300).min((r.right - 2 * m - bw - gap - px(16)) / 2).max(px(120));
+    win::move_to(d.list, m, m, list_w, by - gap - m * 2);
+    let bx = m + list_w + gap;
+    let mut y = m;
+    for id in [ID_ADD, ID_REMOVE, ID_UP, ID_DOWN] {
+        win::move_to(button(id), bx, y, bw, row);
+        y += row + gap;
     }
-    for (k, id) in [ID_UP, ID_DOWN].iter().enumerate() {
-        win::move_to(button(*id), m + k as i32 * (bw + gap), ly + row + gap, bw, row);
-    }
-    // The chosen column's properties beside them.
-    let x = m + list_w + px(16);
+    win::move_to(button(ID_RETRIEVE), bx, y + gap * 2, bw, row);
+    let x = bx + bw + px(16);
     let label_w = px(130);
     let box_w = r.right - m - x - label_w - gap;
     let mut y = m;
