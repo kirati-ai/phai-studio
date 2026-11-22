@@ -65,17 +65,19 @@ const fn ev(name: &'static str, label: &'static str, args: Args, kinds: &'static
     EventSpec { name, label, args, kinds, source, help }
 }
 
-const FOCUSABLE: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar];
+/// Those that hear keys: the focusable, and a panel or picture the program draws itself, which
+/// takes the focus when clicked once it hears a key (a game board, a remote screen).
+const KEYED: &[Kind] = &[Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Date, Kind::Number, Kind::Slider, Kind::Tabs, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::Panel, Kind::Picture];
 const CLICKABLE: &[Kind] = &[Kind::Label, Kind::Picture, Kind::Group, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::List, Kind::Grid, Kind::Tree, Kind::Progress, Kind::Statusbar, Kind::Flow, Kind::Table, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Calendar];
 
 pub const CONTROL: &[EventSpec] = &[
     ev("click", "Click", Args::None, CLICKABLE, Source::Hook(phai_ui_codes::CLICK), "Clicked with the left button."),
     ev("double_click", "DoubleClick", Args::None, &[], Source::Hook(phai_ui_codes::DOUBLE_CLICK), "Clicked twice, quickly."),
-    ev("enter", "Enter", Args::None, FOCUSABLE, Source::Hook(phai_ui_codes::ENTER), "It takes the focus: the next keys are for it."),
-    ev("leave", "Leave", Args::None, FOCUSABLE, Source::Hook(phai_ui_codes::LEAVE), "The focus goes elsewhere."),
-    ev("key_down", "KeyDown", Args::Key, FOCUSABLE, Source::Hook(phai_ui_codes::KEY_DOWN), "A key pressed while it has the focus - e.key, e.ctrl; e.set_handled() keeps it from the control."),
-    ev("key_up", "KeyUp", Args::Key, FOCUSABLE, Source::Hook(phai_ui_codes::KEY_UP), "A key let go while it has the focus."),
-    ev("key_press", "KeyPress", Args::KeyPress, FOCUSABLE, Source::Hook(phai_ui_codes::KEY_PRESS), "A letter typed - e.ch; e.set_handled() keeps it out."),
+    ev("enter", "Enter", Args::None, KEYED, Source::Hook(phai_ui_codes::ENTER), "It takes the focus: the next keys are for it."),
+    ev("leave", "Leave", Args::None, KEYED, Source::Hook(phai_ui_codes::LEAVE), "The focus goes elsewhere."),
+    ev("key_down", "KeyDown", Args::Key, KEYED, Source::Hook(phai_ui_codes::KEY_DOWN), "A key pressed while it has the focus - e.key, e.ctrl; e.set_handled() keeps it from the control."),
+    ev("key_up", "KeyUp", Args::Key, KEYED, Source::Hook(phai_ui_codes::KEY_UP), "A key let go while it has the focus."),
+    ev("key_press", "KeyPress", Args::KeyPress, KEYED, Source::Hook(phai_ui_codes::KEY_PRESS), "A letter typed - e.ch; e.set_handled() keeps it out."),
     ev("mouse_enter", "MouseEnter", Args::None, &[], Source::Hook(phai_ui_codes::MOUSE_ENTER), "The mouse comes over it."),
     ev("mouse_leave", "MouseLeave", Args::None, &[], Source::Hook(phai_ui_codes::MOUSE_LEAVE), "The mouse goes off it."),
     ev("mouse_down", "MouseDown", Args::Mouse, &[], Source::Hook(phai_ui_codes::MOUSE_DOWN), "A mouse button pressed over it - e.x, e.y, e.button."),

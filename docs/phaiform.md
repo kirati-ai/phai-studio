@@ -194,7 +194,7 @@ states = { hover = "background: #0b5d43", pressed = "color: #ffcc00" }   # = CSS
 
 `animation` ของ CSS: `ชื่อ เวลา [รอก่อนเริ่ม] [easing] [จำนวนรอบ | infinite] [alternate]` — สำเร็จรูป `blink`
 `pulse` `fade-in` หรือ `@keyframes ชื่อ { from { } 50% { } to { } }` ใน theme.css (ขยับได้เฉพาะสีและ `border-width`
-เพราะ control ของ Windows หมุนหรือโปร่งใสไม่ได้) ใช้กับปุ่ม ช่องติ๊ก radio ช่องกรอก slider progress
+เพราะ control ของ Windows หมุนหรือโปร่งใสไม่ได้) ใช้กับปุ่ม ช่องติ๊ก radio ช่องกรอก slider progress label แท็บ (ทีละแท็บ) และ list (ทีละแถว เช่นแถวที่เลือกค่อย ๆ เปลี่ยนสี)
 
 เงาและไล่สี (แบบ style ของ ImageStyler) ใช้ได้ทั้งใน theme.css, แท็บ Style และ Theme Editor:
 
@@ -203,7 +203,7 @@ button.glass { background: linear-gradient(to bottom, #34c08f, #0e5c41); box-sha
 window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* label, group โปร่งใสให้เห็นพื้น */
 ```
 
-สถานะ: `hover` `pressed` `focus` `disabled` `checked` — ลำดับชั้น: ธีม → `theme.css` → class → ค่าของ control
+สถานะ: `hover` `pressed` `focus` `disabled` `checked` `selected` (แท็บที่เลือก, แถวที่เลือกของ list) — ลำดับชั้น: ธีม → `theme.css` → class → ค่าของ control
 (Properties) → ค่าตามสถานะของ control; codegen ส่ง `#id:state { }` ทั้งหมดให้ `phai_ui::theme::set_state_rules`
 แท็บ Style แสดงค่าจริงของแต่ละ property ในสถานะที่เลือก (ตั้งเองเป็นตัวหนา) พร้อมที่มา เช่น
 "มาจาก button.primary:hover ในธีม บรรทัด 40", แสดง control บนฟอร์มในสถานะนั้น, และปุ่ม "ส่งไปที่ธีม" ย้ายทุกค่าเป็น
@@ -214,7 +214,7 @@ window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* lab
 โปรแกรมที่ build แบบ debug: กด **F12** (หรือ Ctrl+Shift+I) ในหน้าต่าง → ตัวตรวจเปิดข้างหน้าต่าง (`phai_ui::inspect`)
 
 - **ชี้เลือก** แล้วคลิก control ในหน้าต่าง (กรอบสีฟ้าบอกว่าตัวไหน, Esc เลิก) หรือเลือกจากรายการ
-- **ลุคทีละสถานะ** (ปกติ hover pressed focus disabled checked): พิมพ์แล้ว control ในโปรแกรมเปลี่ยนทันที และแสดงสถานะนั้นให้ดู
+- **ลุคทีละสถานะ** (ปกติ hover pressed focus disabled checked selected): พิมพ์แล้ว control ในโปรแกรมเปลี่ยนทันที และแสดงสถานะนั้นให้ดู
   แต่ละค่าบอกที่มา (`own :hover`, `button.primary:hover · phai:light`)
 - **ข้อความ, Enabled, Visible** และ property ใน `phai_ui::props::NAMES` (เช่น `tooltip`, `read_only`)
 - **เก็บลงฟอร์ม** เขียนเฉพาะบรรทัดของ control นั้นใน `.phaiform` (คอมเมนต์และบรรทัดอื่นคงเดิม): ลุคสถานะปกติ → `back_color`

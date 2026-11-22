@@ -25,7 +25,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse as km;
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
 /// The states a look can be changed for; the first is the control as it is.
-pub const STATES: [&str; 6] = ["", "hover", "pressed", "focus", "disabled", "checked"];
+pub const STATES: [&str; 7] = ["", "hover", "pressed", "focus", "disabled", "checked", "selected"];
 
 /// The look's properties, as CSS names them.
 pub const LOOKS: [&str; 10] = ["background", "background-image", "box-shadow", "color", "border-color", "border-width", "border-radius", "font-weight", "accent-color", "icon-color"];
@@ -546,7 +546,7 @@ fn hex(c: theme::Color) -> String {
 }
 
 fn state_of(name: &str) -> State {
-    State { hover: name == "hover", pressed: name == "pressed", focus: name == "focus", disabled: name == "disabled", checked: name == "checked", ..Default::default() }
+    State { hover: name == "hover", pressed: name == "pressed", focus: name == "focus", disabled: name == "disabled", checked: name == "checked", selected: name == "selected" }
 }
 
 impl Inspector {

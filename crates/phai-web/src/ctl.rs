@@ -142,7 +142,14 @@ pub trait Control: Copy {
         }
     }
     fn refresh(self) {}
-    fn invalidate(self) {}
+    /// Drawn again, when its Paint is the program's (`crate::paint`).
+    fn invalidate(self) {
+        crate::paint::invalidate(self.hwnd());
+    }
+    /// The size inside it, pixels - ClientSize.
+    fn client_size(self) -> (i32, i32) {
+        el(self.hwnd()).map(|e| (e.client_width(), e.client_height())).unwrap_or((0, 0))
+    }
     fn suspend_layout(self) {}
     fn resume_layout(self) {}
 }
@@ -220,7 +227,12 @@ macro_rules! control {
                 Control::send_to_back(self)
             }
             pub fn refresh(self) {}
-            pub fn invalidate(self) {}
+            pub fn invalidate(self) {
+                Control::invalidate(self)
+            }
+            pub fn client_size(self) -> (i32, i32) {
+                Control::client_size(self)
+            }
             pub fn suspend_layout(self) {}
             pub fn resume_layout(self) {}
         }

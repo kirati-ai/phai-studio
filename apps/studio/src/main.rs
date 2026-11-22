@@ -11084,11 +11084,27 @@ impl MainWindowEvents for MainWindow {
         go.set_prop("gradient", Some(phai_form::toml::Value::String("linear-gradient(to bottom, #ffffff, #dde3ea)".into())));
         go.set_prop("shadow", Some(phai_form::toml::Value::String("0 2px 6px rgba(0, 0, 0, 0.25)".into())));
         f.control.push(go);
+        // Tabs and a list move by parts: each tab, each row on its own. A label blinks.
+        let mut pages = Control::new(Kind::Tabs, "pages", [11, 80, 300, 30]);
+        pages.tabs = vec!["One".into(), "Two".into()];
+        pages.back_color = Some("#ffffff".into());
+        pages.states.insert("hover".into(), "background: #000000".into());
+        pages.set_prop("transition", Some(phai_form::toml::Value::String("300ms linear".into())));
+        let mut rows = Control::new(Kind::List, "rows", [11, 120, 300, 80]);
+        rows.columns = vec![("Name".into(), 120)];
+        rows.back_color = Some("#ffffff".into());
+        rows.states.insert("selected".into(), "background: #000000".into());
+        rows.set_prop("transition", Some(phai_form::toml::Value::String("300ms linear".into())));
+        let mut note = Control::new(Kind::Label, "note", [11, 210, 200, 20]);
+        note.text = Some("Go".into());
+        note.fore_color = Some("#000000".into());
+        note.set_prop("animation", Some(phai_form::toml::Value::String("blink 1s infinite".into())));
+        f.control.extend([pages, rows, note]);
         assert!(f.check().is_empty(), "{:?}", f.check());
         assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
         std::fs::write(&form_path, f.to_toml()).unwrap();
         std::fs::write(dir.join("src").join("main_window_ui.rs"), codegen::generate(&f, &theme_options(&form_path, f.form.theme.as_deref()))).unwrap();
-        crate::project::add_thai(&dir.join("src"), &[("Go", "ไป")]).unwrap();
+        crate::project::add_thai(&dir.join("src"), &[("Go", "ไป"), ("One", "หนึ่ง"), ("Two", "สอง"), ("Name", "ชื่อ")]).unwrap();
         let user = dir.join("src").join("main_window.rs");
         let code = r##"use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
 use phai_ui::theme::{Color, State};
@@ -11117,7 +11133,29 @@ impl MainWindowEvents for MainWindow {
         let normal = win::style_of(h, Kind::Button, State::default());
         if normal.gradient.as_ref().is_some_and(|g| g.stops.len() == 2) && normal.shadow.flatten().is_some_and(|s| s.blur == 6) { bits |= 64 }
         if win::style_of(h, Kind::Button, hover).gradient.is_none() { bits |= 128 }
-        std::process::exit(if bits == 255 { 42 } else { 1000 + bits });
+        // The mouse over the first tab: it moves to black, the second stays white.
+        let t = ui.pages.hwnd();
+        let _ = (win::style_animated_part(t, 1, Kind::Tabs, State::default()), win::style_animated_part(t, 2, Kind::Tabs, State::default()));
+        let _ = win::style_animated_part(t, 1, Kind::Tabs, hover);
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let first = bg(win::style_animated_part(t, 1, Kind::Tabs, hover));
+        if first.r > 40 && first.r < 215 && bg(win::style_animated_part(t, 2, Kind::Tabs, State::default())) == Color::rgb(255, 255, 255) { bits |= 256 }
+        // A row chosen: the same, row by row.
+        let l = ui.rows.hwnd();
+        let chosen = State { selected: true, ..Default::default() };
+        let _ = (win::style_animated_part(l, 1, Kind::List, State::default()), win::style_animated_part(l, 2, Kind::List, State::default()));
+        let _ = win::style_animated_part(l, 1, Kind::List, chosen);
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let row = bg(win::style_animated_part(l, 1, Kind::List, chosen));
+        if row.r > 40 && row.r < 215 && bg(win::style_animated_part(l, 2, Kind::List, State::default())) == Color::rgb(255, 255, 255) { bits |= 512 }
+        // The label's words fade and come back: half a second in, nearly the background.
+        let n = ui.note.hwnd();
+        let word = |s: phai_ui::theme::Style| s.color.unwrap_or(Color::rgb(1, 2, 3));
+        let start = word(win::style_animated(n, Kind::Label, State::default()));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let half = word(win::style_animated(n, Kind::Label, State::default()));
+        if start == Color::rgb(0, 0, 0) && half.r > 150 { bits |= 1024 }
+        std::process::exit(if bits == 2047 { 42 } else { 1000 + bits });
     }
 }
 "##;
@@ -11763,12 +11801,18 @@ impl MainWindowEvents for MainWindow {
         let mut places = Control::new(Kind::Tree, "places", [11, 260, 458, 60]);
         places.items = vec!["Shops".into(), "  Bangkok".into(), "  Chiang Mai".into()];
         places.on_select = Some("place_chosen".into());
-        f.control.extend([label, name, vip, size, qty, add, list, orders_menu, places]);
+        // A panel the program draws, turns with the wheel and moves with the arrows - Paint,
+        // MouseWheel and KeyDown on both.
+        let mut board = Control::new(Kind::Panel, "board", [11, 326, 458, 60]);
+        board.events.insert("paint".into(), "board_paint".into());
+        board.events.insert("mouse_wheel".into(), "board_wheel".into());
+        board.events.insert("key_down".into(), "board_key".into());
+        f.control.extend([label, name, vip, size, qty, add, list, orders_menu, places, board]);
         // A menu bar - a menu within a menu, a tick a click turns over, a greyed item, shortcut
         // keys - and a toolbar whose button stays down with the menu's tick.
         f.menu = phai_form::bars::menus_from_text("&File\n  new_order | &New order | Ctrl+N | NEW\n  -\n  Export\n    export_csv | As CSV | disabled\n&View\n  members_only | &Members only | check_on_click\n").unwrap();
         f.toolbar = phai_form::bars::toolbar_from_text("new_order | New | NEW\nmembers_only | Members | SEARCH | toggle").unwrap();
-        f.form.size = [480, 360];
+        f.form.size = [480, 430];
         for c in f.control.iter_mut().filter(|c| c.kind != Kind::Statusbar) {
             if let Some(b) = c.bounds.as_mut() {
                 b[1] += 34;
@@ -11825,6 +11869,31 @@ impl MainWindowEvents for MainWindow {
 
     fn place_chosen(&mut self, ui: &MainWindowUi) {
         ui.status.set_part_text(0, &words("Place: {0}", &[&ui.places.selected_text().unwrap_or_default()]));
+    }
+
+    fn board_paint(&mut self, ui: &MainWindowUi, e: &phai_ui::paint::PaintEventArgs) {
+        let (w, _) = ui.board.client_size();
+        e.clear("#203040");
+        e.fill_rect(4, 4, 20, 20, "#12855f");
+        e.draw_line(0, e.height - 1, w, e.height - 1, "white");
+        e.draw_text(&self.orders.to_string(), 30, 4, "white");
+        e.draw_text_centered(&words("{0} orders", &[&self.orders]), "white");
+        let dot = [0u8, 0, 255, 255];
+        e.draw_pixels(&dot, (1, 1), e.fit(1, 1));
+        e.draw_pixels_alpha(&dot, (1, 1), (0, 0, 2, 2));
+    }
+
+    fn board_wheel(&mut self, ui: &MainWindowUi, e: &phai_ui::events::MouseEventArgs) {
+        self.orders = self.orders.saturating_add_signed((e.delta / 120) as isize);
+        ui.board.invalidate();
+    }
+
+    fn board_key(&mut self, ui: &MainWindowUi, e: &phai_ui::events::KeyEventArgs) {
+        if e.key == 0x26 {
+            self.orders += 1;
+            e.set_handled();
+        }
+        ui.board.invalidate();
     }
 }
 "##).unwrap();

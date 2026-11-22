@@ -245,12 +245,18 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 let dc = Gdi::BeginPaint(h, &mut ps);
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
-                let base = win::style_of(h, Kind::Tabs, State::default());
+                // As they look now: the strip's `animation`, and each tab moving to its new
+                // state (chosen, under the mouse) over the theme's `transition`.
+                let base = win::style_animated(h, Kind::Tabs, State::default());
                 win::fill(dc, &r, base.background_or(win::window_background_for(h)));
                 let rule = RECT { top: r.bottom - 1, ..r };
                 win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
                 for (i, (a, b)) in tab_edges(h, t).into_iter().enumerate() {
-                    let st = win::style_of(h, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
+                    let st = win::style_animated_part(h, i + 1, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
+                    // A tab of a colour of its own (`tabs:hover { background }`) on the strip's.
+                    if let Some(bg) = st.background.filter(|b| Some(*b) != base.background) {
+                        win::fill(dc, &RECT { left: a, right: b, top: r.top, bottom: r.bottom - 1 }, bg);
+                    }
                     let close_w = if t.closable { px(h, 20) } else { 0 };
                     let mut tr = RECT { left: a, right: b - close_w, top: r.top, bottom: r.bottom - px(h, 3) };
                     let mark = t.marks.get(i).copied().unwrap_or(0);

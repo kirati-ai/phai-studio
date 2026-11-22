@@ -1437,13 +1437,25 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "        }}");
     }
     // The form's own keys, when it has the focus itself.
-    for (k, m, maker) in [("key_down", "wm::WM_KEYDOWN", "key_of(w)"), ("key_up", "wm::WM_KEYUP", "key_of(w)"), ("key_press", "wm::WM_CHAR", "key_press_of(w)")] {
+    // Alt with a key comes as WM_SYSKEYDOWN: the method hears it too, and Windows then does what
+    // it does (Alt+F4, the menu) unless the method marked it handled.
+    for (k, m, sys) in [("key_down", "wm::WM_KEYDOWN", "wm::WM_SYSKEYDOWN"), ("key_up", "wm::WM_KEYUP", "wm::WM_SYSKEYUP")] {
         if let Some(h) = form_ev(k) {
-            let _ = writeln!(w, "        {m} => {{");
-            let _ = writeln!(w, "            host.events.{h}(&host.ui, &phai_ui::events::{maker});");
-            let _ = writeln!(w, "            LRESULT(0)");
+            let _ = writeln!(w, "        {m} | {sys} => {{");
+            let _ = writeln!(w, "            let e = phai_ui::events::key_of(w);");
+            let _ = writeln!(w, "            host.events.{h}(&host.ui, &e);");
+            let _ = writeln!(w, "            if msg == {sys} && !e.handled() {{ win::def(hwnd, msg, w, l) }} else {{ LRESULT(0) }}");
             let _ = writeln!(w, "        }}");
         }
+    }
+    if let Some(h) = form_ev("key_press") {
+        let _ = writeln!(w, "        wm::WM_CHAR => {{");
+        let _ = writeln!(w, "            // An emoji comes in two halves: heard once, whole, with the second.");
+        let _ = writeln!(w, "            if let Some(e) = phai_ui::events::key_press(w) {{");
+        let _ = writeln!(w, "                host.events.{h}(&host.ui, &e);");
+        let _ = writeln!(w, "            }}");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
     }
     let _ = writeln!(w, "        phai_ui::invoke::WM_INVOKE => {{");
     let _ = writeln!(w, "            // Work handed over from another thread (begin_invoke, invoke).");

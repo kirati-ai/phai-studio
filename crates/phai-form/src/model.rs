@@ -833,7 +833,7 @@ pub fn anchor_text(a: Anchors) -> Option<String> {
 }
 
 /// The states a control's own look can be given for, as CSS pseudo-classes.
-pub const STATES: [&str; 5] = ["hover", "pressed", "focus", "disabled", "checked"];
+pub const STATES: [&str; 6] = ["hover", "pressed", "focus", "disabled", "checked", "selected"];
 
 pub const DOCKS: [&str; 6] = ["none", "top", "bottom", "left", "right", "fill"];
 

@@ -4682,6 +4682,41 @@
         },
         {
           "arg": null,
+          "category": "โฟกัส",
+          "help": "ได้รับโฟกัส แป้นที่กดต่อไปจะเข้าตัวนี้",
+          "key": "enter",
+          "name": "Enter"
+        },
+        {
+          "arg": null,
+          "category": "โฟกัส",
+          "help": "โฟกัสย้ายไปที่อื่น",
+          "key": "leave",
+          "name": "Leave"
+        },
+        {
+          "arg": "phai_ui::events::KeyEventArgs",
+          "category": "แป้นพิมพ์",
+          "help": "กดแป้นขณะมีโฟกัส - e.key, e.ctrl; เรียก e.set_handled() เพื่อไม่ให้ control ได้รับแป้นนั้น",
+          "key": "key_down",
+          "name": "KeyDown"
+        },
+        {
+          "arg": "phai_ui::events::KeyEventArgs",
+          "category": "แป้นพิมพ์",
+          "help": "ปล่อยแป้นขณะมีโฟกัส",
+          "key": "key_up",
+          "name": "KeyUp"
+        },
+        {
+          "arg": "phai_ui::events::KeyPressEventArgs",
+          "category": "แป้นพิมพ์",
+          "help": "พิมพ์ตัวอักษร - e.ch; เรียก e.set_handled() เพื่อไม่ให้ตัวอักษรเข้าไป",
+          "key": "key_press",
+          "name": "KeyPress"
+        },
+        {
+          "arg": null,
           "category": "เมาส์",
           "help": "เมาส์เลื่อนเข้ามาบนตัวนี้",
           "key": "mouse_enter",
@@ -7980,6 +8015,41 @@
           "help": "ถูกดับเบิลคลิก",
           "key": "double_click",
           "name": "DoubleClick"
+        },
+        {
+          "arg": null,
+          "category": "โฟกัส",
+          "help": "ได้รับโฟกัส แป้นที่กดต่อไปจะเข้าตัวนี้",
+          "key": "enter",
+          "name": "Enter"
+        },
+        {
+          "arg": null,
+          "category": "โฟกัส",
+          "help": "โฟกัสย้ายไปที่อื่น",
+          "key": "leave",
+          "name": "Leave"
+        },
+        {
+          "arg": "phai_ui::events::KeyEventArgs",
+          "category": "แป้นพิมพ์",
+          "help": "กดแป้นขณะมีโฟกัส - e.key, e.ctrl; เรียก e.set_handled() เพื่อไม่ให้ control ได้รับแป้นนั้น",
+          "key": "key_down",
+          "name": "KeyDown"
+        },
+        {
+          "arg": "phai_ui::events::KeyEventArgs",
+          "category": "แป้นพิมพ์",
+          "help": "ปล่อยแป้นขณะมีโฟกัส",
+          "key": "key_up",
+          "name": "KeyUp"
+        },
+        {
+          "arg": "phai_ui::events::KeyPressEventArgs",
+          "category": "แป้นพิมพ์",
+          "help": "พิมพ์ตัวอักษร - e.ch; เรียก e.set_handled() เพื่อไม่ให้ตัวอักษรเข้าไป",
+          "key": "key_press",
+          "name": "KeyPress"
         },
         {
           "arg": null,

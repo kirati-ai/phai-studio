@@ -217,6 +217,15 @@ struct Hook {
     preview: bool,
     inside: bool,
     last_down: (u32, i32, i32),
+    /// A panel or picture made to take the focus, as it hears keys.
+    focusable: bool,
+}
+
+/// A panel or picture: windows of Phai's own that Windows never gives the focus by itself.
+fn drawn_by_program(h: HWND) -> bool {
+    let mut buf = [0u16; 32];
+    let n = unsafe { wm::GetClassNameW(h, &mut buf) } as usize;
+    matches!(String::from_utf16_lossy(&buf[..n]).as_str(), "PhaiPanel" | "PhaiPanelOutlined" | "PhaiPicture")
 }
 
 static HOOKS: Mutex<Option<HashMap<isize, Hook>>> = Mutex::new(None);
@@ -243,7 +252,7 @@ pub fn hook(h: HWND, form: HWND, id: i32, mask: u32, preview: bool) {
     {
         let mut m = HOOKS.lock().unwrap_or_else(|e| e.into_inner());
         let map = m.get_or_insert_with(HashMap::new);
-        let k = map.entry(h.0 as isize).or_insert(Hook { form: form.0 as isize, id, mask: 0, preview: false, inside: false, last_down: (0, 0, 0) });
+        let k = map.entry(h.0 as isize).or_insert(Hook { form: form.0 as isize, id, mask: 0, preview: false, inside: false, last_down: (0, 0, 0), focusable: false });
         k.mask |= mask;
         k.preview |= preview;
     }
@@ -252,6 +261,14 @@ pub fn hook(h: HWND, form: HWND, id: i32, mask: u32, preview: bool) {
         unsafe {
             let s = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32;
             wm::SetWindowLongW(h, wm::GWL_STYLE, (s | 0x0100) as i32);
+        }
+    }
+    // A panel or picture that hears keys takes the focus: clicked, or by Tab.
+    if mask & (KEYS | bit(ENTER) | bit(LEAVE)) != 0 && drawn_by_program(h) {
+        update(h, |k| k.focusable = true);
+        unsafe {
+            let s = wm::GetWindowLongW(h, wm::GWL_STYLE) as u32;
+            wm::SetWindowLongW(h, wm::GWL_STYLE, (s | wm::WS_TABSTOP.0) as i32);
         }
     }
     // Files can be dropped on a control that hears its DragDrop.
@@ -322,6 +339,12 @@ unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usiz
             send(MOUSE_WHEEL, &MouseEventArgs { x: p.x, y: p.y, button: MouseButton::None, ctrl, shift, delta: ((w.0 >> 16) & 0xFFFF) as i16 as i32 });
             return LRESULT(0);
         }
+        // Arrows and letters for it, not for moving between controls; Tab still moves on.
+        wm::WM_GETDLGCODE if k.focusable => return LRESULT((wm::DLGC_WANTARROWS | wm::DLGC_WANTCHARS) as isize),
+        wm::WM_LBUTTONDOWN | wm::WM_RBUTTONDOWN | wm::WM_MBUTTONDOWN if k.focusable && unsafe { km::GetFocus() } != h => {
+            let _ = unsafe { km::SetFocus(Some(h)) };
+            return unsafe { proc_(h, msg, w, l, 0, 0) };
+        }
         wm::WM_SETFOCUS => send(ENTER, &()),
         wm::WM_KILLFOCUS => send(LEAVE, &()),
         wm::WM_KEYDOWN | wm::WM_SYSKEYDOWN | wm::WM_KEYUP | wm::WM_SYSKEYUP => {
@@ -333,10 +356,22 @@ unsafe extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _: usiz
             }
         }
         wm::WM_CHAR => {
-            let a = KeyPressEventArgs { ch: char::from_u32(w.0 as u32).unwrap_or('\0'), ..Default::default() };
+            // A letter beyond the first 65536 (an emoji) comes in two halves: the first kept until
+            // the second, then the letter raised once and both halves typed - or neither.
+            let unit = w.0 as u16;
+            if is_high(unit) {
+                HIGH.with(|c| c.set(unit));
+                return LRESULT(0);
+            }
+            let high = HIGH.with(|c| c.replace(0));
+            let Some(ch) = letter(high, unit) else { return unsafe { DefSubclassProc(h, msg, w, l) } };
+            let a = KeyPressEventArgs { ch, ..Default::default() };
             send(KEY_PRESS, &a);
             if a.handled() {
                 return LRESULT(0);
+            }
+            if high != 0 {
+                unsafe { DefSubclassProc(h, msg, WPARAM(high as usize), l) };
             }
         }
         wm::WM_MOUSEMOVE => {
@@ -426,6 +461,51 @@ pub fn key_of(w: WPARAM) -> KeyEventArgs {
     KeyEventArgs { key: w.0 as u16, ctrl, shift, alt, ..Default::default() }
 }
 
+/// The letter of a form's own `WM_CHAR` - `'\0'` for the first half of an emoji, which
+/// [`key_press`] skips.
 pub fn key_press_of(w: WPARAM) -> KeyPressEventArgs {
-    KeyPressEventArgs { ch: char::from_u32(w.0 as u32).unwrap_or('\0'), ..Default::default() }
+    KeyPressEventArgs { ch: key_press(w).map(|a| a.ch).unwrap_or('\0'), ..Default::default() }
+}
+
+/// The letter of a form's own `WM_CHAR`, or nothing for the first half of a letter beyond the
+/// first 65536 (an emoji), which comes whole with the second.
+pub fn key_press(w: WPARAM) -> Option<KeyPressEventArgs> {
+    let unit = w.0 as u16;
+    if is_high(unit) {
+        HIGH.with(|c| c.set(unit));
+        return None;
+    }
+    let ch = letter(HIGH.with(|c| c.replace(0)), unit)?;
+    Some(KeyPressEventArgs { ch, ..Default::default() })
+}
+
+thread_local! {
+    /// The first half of an emoji typed, until its second.
+    static HIGH: Cell<u16> = const { Cell::new(0) };
+}
+
+fn is_high(unit: u16) -> bool {
+    (0xD800..0xDC00).contains(&unit)
+}
+
+/// The letter of UTF-16 `unit`, after `high` (0 when there was none).
+fn letter(high: u16, unit: u16) -> Option<char> {
+    if high != 0 && (0xDC00..0xE000).contains(&unit) {
+        return char::decode_utf16([high, unit]).next()?.ok();
+    }
+    char::from_u32(unit as u32).filter(|_| !(0xDC00..0xE000).contains(&unit))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_emoji_typed_in_two_halves_is_one_letter() {
+        assert!(key_press(WPARAM(0xD83D)).is_none());
+        assert_eq!(key_press(WPARAM(0xDE00)).map(|a| a.ch), Some('\u{1F600}'));
+        assert_eq!(key_press(WPARAM('ก' as usize)).map(|a| a.ch), Some('ก'));
+        // A second half alone is no letter.
+        assert!(key_press(WPARAM(0xDE00)).is_none());
+    }
 }

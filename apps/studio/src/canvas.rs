@@ -7,7 +7,7 @@
 //! the model when the button comes up - one undo step per drag.
 
 use phai_form::live;
-use phai_form::{Control, Kind};
+use phai_form::{Control, HasProps, Kind};
 use phai_ui::layout::{scale, unscale};
 use phai_ui::theme::{self, Color, State};
 use phai_ui::win;
@@ -283,14 +283,22 @@ impl Canvas {
         // grid, guessed from its columns - shown here only, the program starts empty.
         if crate::setting_pub("design_samples").as_deref() != Some("0") {
             for (c, h) in f.control.iter().zip(&built.controls) {
-                if c.columns.is_empty() || c.bind.is_some() {
+                // A list of icons has no columns: a name under each of its pictures in turn.
+                let icon_view = c.kind == Kind::List && matches!(c.word("view"), Some("large_icons" | "small_icons" | "list"));
+                if (c.columns.is_empty() && !icon_view) || c.bind.is_some() {
                     continue;
                 }
-                let names: Vec<String> = c.columns.iter().map(|(n, _)| n.clone()).collect();
-                for row in phai_form::sample::rows(&names) {
+                let names: Vec<String> = if c.columns.is_empty() { vec!["Name".into()] } else { c.columns.iter().map(|(n, _)| n.clone()).collect() };
+                let icons = c.word("icons").map_or(0, |v| v.split(',').filter(|x| !x.trim().is_empty()).count());
+                for (r, row) in phai_form::sample::rows(&names).into_iter().enumerate() {
                     let cells: Vec<&str> = row.iter().map(String::as_str).collect();
                     match c.kind {
-                        Kind::List => win::list_add(*h, &cells),
+                        Kind::List => {
+                            win::list_add(*h, &cells);
+                            if icons > 0 {
+                                win::list_set_image(*h, r, (r % icons) as i32);
+                            }
+                        }
                         Kind::Grid => phai_ui::grid::grid_add(*h, &cells),
                         _ => {}
                     }
@@ -1169,13 +1177,31 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
     unsafe {
         Gdi::SelectObject(dc, icons.into());
     }
-    for (k, g) in [0xE8BBu16, 0xE922, 0xE921].iter().enumerate() {
+    // The buttons the running window has (`phai_ui::form::frame`): none without ControlBox,
+    // close alone on a tool window or with both MaximizeBox and MinimizeBox off, and one of the
+    // two turned off drawn grey, as Windows draws it.
+    let border = f.form.word("border").unwrap_or("sizable");
+    let (max, min) = (f.form.flag("maximize_box", true), f.form.flag("minimize_box", true));
+    let mut glyphs: Vec<(u16, bool)> = vec![];
+    if border != "none" && f.form.flag("control_box", true) {
+        glyphs.push((0xE8BB, true));
+        if (max || min) && !border.ends_with("tool") {
+            glyphs.push((0xE922, max));
+            glyphs.push((0xE921, min));
+        }
+    }
+    let grey = text.mix(title_bg, 0.6);
+    for (k, &(g, on)) in glyphs.iter().enumerate() {
         let right = ox + width - 46 * k as i32;
         let mut gr = RECT { left: p(right - 46), top: p(top), right: p(right), bottom: p(top + TITLE) };
-        let mut one = [*g];
+        let mut one = [g];
         unsafe {
+            Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(if on { text } else { grey }.colorref()));
             Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
         }
+    }
+    unsafe {
+        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
     }
     unsafe {
         Gdi::SelectObject(dc, font.into());

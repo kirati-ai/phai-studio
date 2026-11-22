@@ -435,13 +435,21 @@ struct Anim {
     start: std::time::Instant,
 }
 
-static ANIMS: Mutex<Option<HashMap<isize, Anim>>> = Mutex::new(None);
+/// Keyed by the control and the part of it: 0 the whole control, 1 and on a tab or a row of it.
+static ANIMS: Mutex<Option<HashMap<(isize, usize), Anim>>> = Mutex::new(None);
 const ANIM_TIMER: usize = 0x7A11;
 
 /// [`style_of`] for the control's look as drawn now: with a CSS `transition`, a change of state
 /// moves its colours over the transition's time instead of at once.
 pub fn style_animated(h: HWND, kind: Kind, state: State) -> Style {
-    let shown = style_transitioned(h, kind, state);
+    style_animated_part(h, 0, kind, state)
+}
+
+/// [`style_animated`] for one part of a control drawn by parts - a tab of a tab strip, a row of a
+/// list (`part` from 1): each part's change of state moves on its own; an `animation` runs for
+/// the whole control at once.
+pub fn style_animated_part(h: HWND, part: usize, kind: Kind, state: State) -> Style {
+    let shown = style_transitioned(h, part, kind, state);
     animate(h, shown)
 }
 
@@ -480,11 +488,11 @@ fn animate(h: HWND, style: Style) -> Style {
     theme::frames_at(&frames, t)
 }
 
-fn style_transitioned(h: HWND, kind: Kind, state: State) -> Style {
+fn style_transitioned(h: HWND, part: usize, kind: Kind, state: State) -> Style {
     let target = style_of(h, kind, state);
     let mut map = ANIMS.lock().unwrap_or_else(|e| e.into_inner());
     let m = map.get_or_insert_with(HashMap::new);
-    let key = h.0 as isize;
+    let key = (h.0 as isize, part);
     let Some((ms, easing)) = target.transition.filter(|(ms, _)| *ms > 0) else {
         m.remove(&key);
         return target;
@@ -510,10 +518,12 @@ fn style_transitioned(h: HWND, kind: Kind, state: State) -> Style {
 }
 
 extern "system" fn anim_tick(h: HWND, _: u32, _: usize, _: u32) {
-    let running = ANIMS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&(h.0 as isize)).map(|a| {
-        let ms = a.to.transition.map(|t| t.0).unwrap_or(0);
-        (a.start.elapsed().as_millis() as i32) < ms + 15
-    })).unwrap_or(false);
+    let running = ANIMS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|m| {
+        m.iter().filter(|((k, _), _)| *k == h.0 as isize).any(|(_, a)| {
+            let ms = a.to.transition.map(|t| t.0).unwrap_or(0);
+            (a.start.elapsed().as_millis() as i32) < ms + 15
+        })
+    });
     unsafe {
         // An animation keeps it going; `animate` sets it again on each frame it draws.
         if !running {
@@ -1357,7 +1367,8 @@ pub fn ctl_color(msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
         _ => return None,
     };
     let disabled = !unsafe { windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(h) }.as_bool();
-    let s = style_of(h, kind, State { disabled, ..Default::default() });
+    // As it looks now: a label's `animation` and `transition` run too (its timer redraws it).
+    let s = style_animated(h, kind, State { disabled, ..Default::default() });
     // A read-only or disabled edit comes as STATIC; it is still an edit.
     // A label stands on the window, unless it was given a background of its own.
     let own_bg = with_css(h, |c| c.own.background).flatten();
@@ -1555,18 +1566,32 @@ pub fn list_custom_draw(l: LPARAM) -> LRESULT {
         let h = cd.nmcd.hdr.hwndFrom;
         let selected = |cd: &mut cc::NMLVCUSTOMDRAW| {
             let state = wm::SendMessageW(h, cc::LVM_GETITEMSTATE, Some(WPARAM(cd.nmcd.dwItemSpec)), Some(LPARAM(cc::LVIS_SELECTED.0 as isize)));
-            if state.0 as u32 & cc::LVIS_SELECTED.0 != 0 {
-                let s = style_of(h, Kind::List, State { selected: true, ..Default::default() });
+            let sel = state.0 as u32 & cc::LVIS_SELECTED.0 != 0;
+            // Each row as it looks now: chosen or let go, over the theme's `transition`.
+            let s = style_animated_part(h, cd.nmcd.dwItemSpec + 1, Kind::List, State { selected: sel, ..Default::default() });
+            if sel {
                 cd.nmcd.uItemState = cc::NMCUSTOMDRAW_DRAW_STATE_FLAGS(cd.nmcd.uItemState.0 & !(cc::CDIS_SELECTED.0 | cc::CDIS_FOCUS.0));
                 cd.clrTextBk = cr(s.background_or(Color::rgb(231, 243, 239)));
                 cd.clrText = cr(s.color_or(window_text_for(h)));
-                true
-            } else {
-                false
+            } else if s.background.is_some() || s.color.is_some() {
+                cd.clrTextBk = cr(s.background_or(window_background_for(h)));
+                cd.clrText = cr(s.color_or(window_text_for(h)));
             }
+            sel
         };
         match cd.nmcd.dwDrawStage {
-            cc::CDDS_PREPAINT => LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize),
+            cc::CDDS_PREPAINT => {
+                // The list's own `animation`: its background now, under and between the rows.
+                let s = style_animated(h, Kind::List, State::default());
+                if s.animation.is_some() {
+                    let bg = s.background_or(window_background_for(h)).colorref() as isize;
+                    if wm::SendMessageW(h, cc::LVM_GETBKCOLOR, None, None).0 != bg {
+                        wm::SendMessageW(h, cc::LVM_SETBKCOLOR, None, Some(LPARAM(bg)));
+                        wm::SendMessageW(h, cc::LVM_SETTEXTBKCOLOR, None, Some(LPARAM(bg)));
+                    }
+                }
+                LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize)
+            }
             cc::CDDS_ITEMPREPAINT => {
                 selected(cd);
                 // A grid with check-box columns: each cell asked about.

@@ -54,6 +54,11 @@ KeyUp KeyPress MouseDown MouseUp MouseMove MouseEnter MouseLeave CheckedChanged 
 มีด้วย (2026-11-21): เมนูคลิกขวา (`phai_ui::menu::context_menu`, บนมือถือกดค้าง 550ms, Opening ก่อนเปิด) และ
 tree (`phai_ui::tree`, `TreeView` เมธอดเดียวกับ Windows, `Node`, ลูกศรเปิดปิด คีย์บอร์ด, `change` = AfterSelect)
 
+มีด้วย (2026-11-22): **Paint** ของ panel / picture (`phai_ui::paint::PaintEventArgs` ชุดเดียวกับ Windows: clear, fill_rect,
+draw_line, draw_text, draw_text_centered, draw_pixels, draw_pixels_alpha, fit — วาดลง `<canvas>` ที่เต็ม control คมตาม
+ความละเอียดจอมือถือ วาดใหม่เมื่อหน้าเปลี่ยนขนาดและเมื่อ `ui.x.invalidate()`), **MouseWheel** (`e.delta` 120 ต่อหนึ่งจังหวะ
+เหมือน Windows, หน้าไม่เลื่อนตาม), `client_size()`; panel / picture ที่มี KeyDown/KeyPress รับโฟกัสได้ (`tabindex`)
+
 **ตารางที่ผูกฐานข้อมูล (`bind`) บนเว็บ (2026-11-21):** เบราว์เซอร์ต่อฐานข้อมูลตรงไม่ได้ จึงมี **เซิร์ฟเวอร์ข้อมูล**
 - สร้างสำหรับเว็บแล้ว Studio เขียนโฟลเดอร์ `data-server/` (package แยก ใช้ phai-data อย่างเดียว + `src/data_sources.rs`
   ของโปรเจกต์) ให้บริการเฉพาะตารางและคอลัมน์ที่ฟอร์มผูก ชื่อ `ฟอร์ม/grid` เช่น `main_window/customers` ไม่รับ SQL

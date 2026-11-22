@@ -53,6 +53,18 @@ pub fn handle_of(e: &HtmlElement) -> Option<HWND> {
     ELEMENTS.with(|l| l.borrow().iter().position(|x| x.as_ref() == Some(e)).map(|i| HWND(i as u32)))
 }
 
+/// `e` in the place of `h`'s element, on the page and in the list: `h` names it now.
+pub fn replace(h: HWND, e: HtmlElement) {
+    if let Some(old) = el(h) {
+        let _ = old.replace_with_with_node_1(&e);
+    }
+    ELEMENTS.with(|l| {
+        if let Some(slot) = l.borrow_mut().get_mut(h.0 as usize) {
+            *slot = Some(e);
+        }
+    });
+}
+
 /// `h` and what is in it gone from the page and the list.
 pub fn forget(h: HWND) {
     if let Some(e) = el(h) {

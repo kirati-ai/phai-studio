@@ -143,7 +143,7 @@ pub fn stacked_rects(f: &FormFile, width: i32, height: i32, top: i32) -> Vec<Opt
     const GAP: i32 = 10;
     let mut order: Vec<(i64, usize)> = Vec::new();
     for (i, c) in f.control.iter().enumerate() {
-        let gone = c.visible == Some(false) || c.kind.is_component() || c.page.is_some_and(|p| p != 0) || matches!(c.kind, Kind::Panel | Kind::Flow | Kind::Table | Kind::Split);
+        let gone = c.visible == Some(false) || c.kind.is_component() || c.page.is_some_and(|p| p != 0) || (matches!(c.kind, Kind::Panel | Kind::Flow | Kind::Table | Kind::Split) && !c.events.contains_key("paint"));
         if gone {
             continue;
         }
@@ -208,6 +208,8 @@ fn hook_event(name: &str) -> Option<&'static str> {
         "mouse_down" => "mousedown",
         "mouse_up" => "mouseup",
         "mouse_move" => "mousemove",
+        "mouse_wheel" => "wheel",
+        "paint" => "paint",
         "checked_changed" => "change",
         "text_changed" => "input",
         _ => return None,
@@ -595,6 +597,12 @@ pub fn generate(f: &FormFile) -> String {
                 }
                 Args::KeyPress => {
                     let _ = writeln!(w, "        form::on_key_press(ui.{}.hwnd(), call_with(&me, |e: &mut E, ui: &{ui}, a: &phai_ui::events::KeyPressEventArgs| e.{h}(ui, a)));", c.id);
+                }
+                Args::Mouse if e == "mouse_wheel" => {
+                    let _ = writeln!(w, "        form::on_wheel(ui.{}.hwnd(), call_with(&me, |e: &mut E, ui: &{ui}, a: &phai_ui::events::MouseEventArgs| e.{h}(ui, a)));", c.id);
+                }
+                Args::Paint => {
+                    let _ = writeln!(w, "        phai_ui::paint::on_paint(ui.{}.hwnd(), call_with(&me, |e: &mut E, ui: &{ui}, a: &phai_ui::paint::PaintEventArgs| e.{h}(ui, a)));", c.id);
                 }
                 Args::Mouse => {
                     let _ = writeln!(w, "        form::on_mouse(ui.{}.hwnd(), {}, call_with(&me, |e: &mut E, ui: &{ui}, a: &phai_ui::events::MouseEventArgs| e.{h}(ui, a)));", c.id, lit(browser));

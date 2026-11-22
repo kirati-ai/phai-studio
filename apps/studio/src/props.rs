@@ -791,7 +791,7 @@ impl Props {
         let mut v = vec![row(t("State"), Key::StyleState, t("State"), states[st].to_string(), Ed::Choice(states.iter().map(|x| x.to_string()).collect(), false), t("The state to see and change; the form shows the control in it.").into(), st != 0)];
         let Some(h) = s.canvas.as_ref().and_then(|cv| cv.control_window(i)) else { return v };
         let Some(kind) = win::kind_of(h) else { return v };
-        let state = State { hover: states[st] == "hover", pressed: states[st] == "pressed", focus: states[st] == "focus", disabled: states[st] == "disabled", checked: states[st] == "checked", selected: false };
+        let state = State { hover: states[st] == "hover", pressed: states[st] == "pressed", focus: states[st] == "focus", disabled: states[st] == "disabled", checked: states[st] == "checked", selected: states[st] == "selected" };
         let look = win::style_of(h, kind, state);
         let origins = win::explain_of(h, kind, state);
         let own_css = c.own_css().unwrap_or_default();
@@ -1017,7 +1017,7 @@ impl Props {
         }
         if let Some(h) = want {
             let st = style_states()[self.style_state.min(5)];
-            win::set_preview_state(h, Some(State { hover: st == "hover", pressed: st == "pressed", focus: st == "focus", disabled: st == "disabled", checked: st == "checked", selected: false }));
+            win::set_preview_state(h, Some(State { hover: st == "hover", pressed: st == "pressed", focus: st == "focus", disabled: st == "disabled", checked: st == "checked", selected: st == "selected" }));
             self.previewing = Some(h);
         }
     }

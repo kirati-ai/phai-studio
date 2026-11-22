@@ -195,6 +195,11 @@
 <table class="ref"><tr><th>Event</th><th>ทำอะไร</th><th>method ที่ Phai Studio เขียนให้</th></tr>
 <tr><td><b>Click</b></td><td>ถูกคลิกด้วยปุ่มซ้าย</td><td><code>fn panel_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
 <tr><td><b>DoubleClick</b></td><td>ถูกดับเบิลคลิก</td><td><code>fn panel_double_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Enter</b></td><td>ได้รับโฟกัส แป้นที่กดต่อไปจะเข้าตัวนี้</td><td><code>fn panel_enter(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Leave</b></td><td>โฟกัสย้ายไปที่อื่น</td><td><code>fn panel_leave(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>KeyDown</b></td><td>กดแป้นขณะมีโฟกัส - e.key, e.ctrl; เรียก e.set_handled() เพื่อไม่ให้ control ได้รับแป้นนั้น</td><td><code title="phai_ui::events::KeyEventArgs">fn panel_key_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyUp</b></td><td>ปล่อยแป้นขณะมีโฟกัส</td><td><code title="phai_ui::events::KeyEventArgs">fn panel_key_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyPress</b></td><td>พิมพ์ตัวอักษร - e.ch; เรียก e.set_handled() เพื่อไม่ให้ตัวอักษรเข้าไป</td><td><code title="phai_ui::events::KeyPressEventArgs">fn panel_key_press(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyPressEventArgs)</code></td></tr>
 <tr><td><b>MouseEnter</b></td><td>เมาส์เลื่อนเข้ามาบนตัวนี้</td><td><code>fn panel_mouse_enter(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
 <tr><td><b>MouseLeave</b></td><td>เมาส์เลื่อนออกจากตัวนี้</td><td><code>fn panel_mouse_leave(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
 <tr><td><b>MouseDown</b></td><td>กดปุ่มเมาส์บนตัวนี้ - e.x, e.y, e.button</td><td><code title="phai_ui::events::MouseEventArgs">fn panel_mouse_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>

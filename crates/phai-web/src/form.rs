@@ -487,6 +487,7 @@ pub fn on_link(h: HWND, mut f: impl FnMut() + 'static) {
 /// `f` with each key on control `h` - `keydown` / `keyup` as KeyDown / KeyUp.
 pub fn on_key(h: HWND, event: &str, mut f: impl FnMut(&KeyEventArgs) + 'static) {
     let Some(e) = el(h) else { return };
+    focusable(&e);
     let c = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |k: web_sys::KeyboardEvent| {
         let a = KeyEventArgs { key: crate::events::virtual_key(&k.key()), ctrl: k.ctrl_key(), shift: k.shift_key(), alt: k.alt_key(), ..Default::default() };
         f(&a);
@@ -501,6 +502,7 @@ pub fn on_key(h: HWND, event: &str, mut f: impl FnMut(&KeyEventArgs) + 'static) 
 /// `f` with each letter typed on control `h` - KeyPress.
 pub fn on_key_press(h: HWND, mut f: impl FnMut(&KeyPressEventArgs) + 'static) {
     let Some(e) = el(h) else { return };
+    focusable(&e);
     let c = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |k: web_sys::KeyboardEvent| {
         let key = k.key();
         let mut chars = key.chars();
@@ -535,6 +537,39 @@ pub fn on_mouse(h: HWND, event: &str, mut f: impl FnMut(&MouseEventArgs) + 'stat
     c.forget();
 }
 
+/// A box that hears keys takes the focus - clicked, or by Tab - as on Windows; a box, a button or
+/// a link has it already.
+fn focusable(e: &web_sys::HtmlElement) {
+    let own = matches!(e.tag_name().to_ascii_lowercase().as_str(), "input" | "textarea" | "select" | "button" | "a");
+    if !own && !e.has_attribute("tabindex") {
+        let _ = e.set_attribute("tabindex", "0");
+    }
+}
+
+/// `f` with each turn of the mouse wheel over control `h` - MouseWheel: 120 a notch, more than 0
+/// away from the person, as on Windows; the page does not scroll for it.
+pub fn on_wheel(h: HWND, mut f: impl FnMut(&MouseEventArgs) + 'static) {
+    let Some(e) = el(h) else { return };
+    let c = Closure::<dyn FnMut(web_sys::WheelEvent)>::new(move |m: web_sys::WheelEvent| {
+        m.prevent_default();
+        f(&MouseEventArgs { x: m.offset_x(), y: m.offset_y(), button: MouseButton::None, ctrl: m.ctrl_key(), shift: m.shift_key(), delta: wheel_delta(m.delta_y(), m.delta_mode()) });
+    });
+    let _ = e.add_event_listener_with_callback("wheel", c.as_ref().unchecked_ref());
+    c.forget();
+}
+
+/// A browser's wheel turn (`deltaY`, down more than 0, in pixels or lines) as Windows' delta.
+pub fn wheel_delta(dy: f64, mode: u32) -> i32 {
+    // A line is a third of a notch on Windows; pixels about 100 a notch.
+    let notches = if mode == 0 { dy / 100.0 } else { dy / 3.0 };
+    let d = -(notches * 120.0).round() as i32;
+    if d == 0 && dy != 0.0 {
+        if dy > 0.0 { -1 } else { 1 }
+    } else {
+        d
+    }
+}
+
 /// `f` once the page has drawn the window - Shown.
 pub fn after_shown(f: impl FnOnce() + 'static) {
     let c = Closure::once_into_js(f);
@@ -552,6 +587,13 @@ mod tests {
 
     fn p(x: i32, y: i32, w: i32, h: i32, anchor: &'static str, dock: &'static str) -> Place {
         Place { x, y, w, h, anchor, dock, within: (480, 320) }
+    }
+
+    #[test]
+    fn a_wheel_notch_is_windows_120() {
+        assert_eq!(wheel_delta(100.0, 0), -120);
+        assert_eq!(wheel_delta(-3.0, 1), 120);
+        assert_eq!(wheel_delta(4.0, 0), -5);
     }
 
     #[test]

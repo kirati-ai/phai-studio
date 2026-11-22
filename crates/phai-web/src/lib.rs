@@ -13,6 +13,7 @@ pub mod data;
 pub mod events;
 pub mod form;
 pub mod menu;
+pub mod paint;
 #[path = "../../phai-ui/src/text.rs"]
 pub mod text;
 pub mod tree;

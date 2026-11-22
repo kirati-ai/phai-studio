@@ -273,9 +273,10 @@ extern "system" fn proc_<E: MainWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
             }
             win::def(hwnd, msg, w, l)
         }
-        wm::WM_KEYDOWN => {
-            host.events.main_window_key_down(&host.ui, &phai_ui::events::key_of(w));
-            LRESULT(0)
+        wm::WM_KEYDOWN | wm::WM_SYSKEYDOWN => {
+            let e = phai_ui::events::key_of(w);
+            host.events.main_window_key_down(&host.ui, &e);
+            if msg == wm::WM_SYSKEYDOWN && !e.handled() { win::def(hwnd, msg, w, l) } else { LRESULT(0) }
         }
         phai_ui::invoke::WM_INVOKE => {
             // Work handed over from another thread (begin_invoke, invoke).
