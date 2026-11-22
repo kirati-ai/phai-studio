@@ -401,7 +401,7 @@ $base = 'https://phai-studio.monrak.net/';
             <p class="lead"><?= e($T['lead']) ?></p>
             <div class="actions">
                 <a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a>
-                <a class="btn btn-ghost" href="<?= $B ?>help/"><i class="ti ti-book"></i> <?= e($T['btnGuide']) ?></a>
+                <a class="btn btn-ghost" href="<?= $B ?>help/" target="_blank" rel="noopener"><i class="ti ti-book"></i> <?= e($T['btnGuide']) ?></a>
                 <a class="btn btn-ghost" href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> GitHub</a>
             </div>
             <div class="stats">
@@ -447,10 +447,10 @@ $base = 'https://phai-studio.monrak.net/';
         <p class="sub"><?= e($T['learnSub']) ?></p>
         <div class="grid g3">
             <?php foreach ($T['learn'] as [$icon, $b, $s]): ?>
-                <a class="card lesson" href="<?= $B ?>help/"><div class="icon"><i class="ti <?= $icon ?>"></i></div><b><?= e($b) ?></b><p><?= e($s) ?></p></a>
+                <a class="card lesson" href="<?= $B ?>help/" target="_blank" rel="noopener"><div class="icon"><i class="ti <?= $icon ?>"></i></div><b><?= e($b) ?></b><p><?= e($s) ?></p></a>
             <?php endforeach ?>
         </div>
-        <p class="mt"><a class="btn btn-primary" href="<?= $B ?>help/"><i class="ti ti-book"></i> <?= e($T['learnBtn']) ?></a></p>
+        <p class="mt"><a class="btn btn-primary" href="<?= $B ?>help/" target="_blank" rel="noopener"><i class="ti ti-book"></i> <?= e($T['learnBtn']) ?></a></p>
     </div>
 </section>
 
