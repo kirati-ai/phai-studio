@@ -69,7 +69,7 @@ impl PaintEventArgs {
         let mut measure = RECT { left: margin, top: 0, right: (self.width - margin).max(margin + 1), bottom: self.height };
         let mut w: Vec<u16> = text.encode_utf16().collect();
         unsafe {
-            Gdi::DrawTextW(self.dc, &mut w, &mut measure, flags | Gdi::DT_CALCRECT);
+            crate::win::draw_text_w(self.dc, &mut w, &mut measure, flags | Gdi::DT_CALCRECT);
         }
         let h = measure.bottom - measure.top;
         let top = ((self.height - h) / 2).max(0);
@@ -85,7 +85,7 @@ impl PaintEventArgs {
             Gdi::SetBkMode(self.dc, Gdi::TRANSPARENT);
             Gdi::SetTextColor(self.dc, cr(colour(css)));
             let mut w: Vec<u16> = text.encode_utf16().collect();
-            Gdi::DrawTextW(self.dc, &mut w, r, flags);
+            crate::win::draw_text_w(self.dc, &mut w, r, flags);
         }
     }
 

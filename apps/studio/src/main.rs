@@ -8116,6 +8116,18 @@ impl Studio {
                 self.rebuild_menu();
             }
             ID_START_WINDOW => self.start_window(),
+            ID_OPEN_LATER => {
+                let files: Vec<PathBuf> = std::mem::take(&mut *OPEN_LATER.lock().unwrap_or_else(|e| e.into_inner()));
+                for p in files {
+                    if phai_form::is_form(&p) {
+                        self.open_path(&p);
+                    } else if p.is_dir() {
+                        self.open_project(&p);
+                    } else {
+                        self.open_code(&p);
+                    }
+                }
+            }
             ID_RUN_TESTS => self.start_job(cargo::Job::Test, false),
             ID_GIT_HISTORY => match self.doc.path.clone().and_then(|p| Some((gitpane::repository_of(&p)?, std::path::absolute(&p).ok()?))) {
                 Some((repo, file)) => githistory::open(self.hwnd, &repo, &file),
@@ -8803,9 +8815,58 @@ fn form_seen(path: &Path) {
     }
 }
 
+/// `WM_COPYDATA`'s mark for a file another Phai Studio hands this one to open ("PHF1").
+const OPEN_FILE_DATA: usize = 0x5048_4631;
+/// Files handed over by another Phai Studio, opened once the message that brought them is done.
+static OPEN_LATER: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+const ID_OPEN_LATER: i32 = 2900;
+
+/// Started with files only (a double-click in Explorer) while a Phai Studio window is open: each
+/// file sent to it to open, it brought to the front, and true - this one has nothing more to do.
+/// A test, a `--` switch, or `PHAI_NEW_WINDOW=1` starts a Phai Studio of its own.
+fn hand_to_running_studio(args: &[String]) -> bool {
+    let files: Vec<&String> = args.iter().skip(1).collect();
+    if files.is_empty() || files.iter().any(|a| a.starts_with("--")) || std::env::var_os("PHAI_SHOT").is_some() || std::env::var_os("PHAI_NEW_WINDOW").is_some() {
+        return false;
+    }
+    let Ok(running) = (unsafe { wm::FindWindowW(windows::core::w!("PhaiStudio"), PCWSTR::null()) }) else { return false };
+    if running.is_invalid() {
+        return false;
+    }
+    for f in files {
+        // Its whole path: the other Phai Studio's folder is not this one's.
+        let path = std::fs::canonicalize(f).map(|p| p.to_string_lossy().trim_start_matches(r"\\?\").to_string()).unwrap_or_else(|_| f.clone());
+        let words: Vec<u16> = path.encode_utf16().collect();
+        let data = windows::Win32::System::DataExchange::COPYDATASTRUCT { dwData: OPEN_FILE_DATA, cbData: (words.len() * 2) as u32, lpData: words.as_ptr() as *mut _ };
+        unsafe {
+            wm::SendMessageW(running, wm::WM_COPYDATA, None, Some(LPARAM(&data as *const _ as isize)));
+        }
+    }
+    unsafe {
+        if wm::IsIconic(running).as_bool() {
+            let _ = wm::ShowWindow(running, wm::SW_RESTORE);
+        }
+        let _ = wm::SetForegroundWindow(running);
+    }
+    true
+}
+
 extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     let Some(s) = studio().filter(|s| s.hwnd == hwnd) else { return win::def(hwnd, msg, w, l) };
     match msg {
+        // A file another Phai Studio was started with (a double-click in Explorer): opened here.
+        wm::WM_COPYDATA => {
+            let d = unsafe { &*(l.0 as *const windows::Win32::System::DataExchange::COPYDATASTRUCT) };
+            if d.dwData != OPEN_FILE_DATA || d.lpData.is_null() {
+                return LRESULT(0);
+            }
+            let words = unsafe { std::slice::from_raw_parts(d.lpData as *const u16, d.cbData as usize / 2) };
+            let path = PathBuf::from(String::from_utf16_lossy(words));
+            // Opened after the message: the sender waits on it, and opening may ask something.
+            OPEN_LATER.lock().unwrap_or_else(|e| e.into_inner()).push(path);
+            let _ = unsafe { wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_OPEN_LATER as usize), LPARAM(0)) };
+            LRESULT(1)
+        }
         // Back from the running program: its Live Inspector may have saved into the form.
         wm::WM_ACTIVATEAPP if w.0 != 0 => {
             s.check_form_on_disk();
@@ -9372,6 +9433,11 @@ fn main() {
         theme::set(Theme::dark());
     }
     win::init();
+    // Files double-clicked in Explorer while Phai Studio is open: opened in that window, as
+    // Visual Studio does, not in a second Phai Studio.
+    if hand_to_running_studio(&args) {
+        return;
+    }
     // `--help-data <folder>`: the icons and tables the guide's control pages are made from.
     if let Some(p) = args.iter().position(|a| a == "--help-data").and_then(|i| args.get(i + 1)) {
         if let Err(e) = helpdata::export(Path::new(p)) {

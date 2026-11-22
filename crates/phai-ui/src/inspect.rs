@@ -487,7 +487,7 @@ extern "system" fn frame_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
             Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
             Gdi::SetTextColor(dc, COLORREF(0x00FF_FFFF));
             let mut text_r = RECT { left: tr.left + win::px(h, 5), ..tr };
-            Gdi::DrawTextW(dc, &mut wtag[..n], &mut text_r, Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX);
+            crate::win::draw_text_w(dc, &mut wtag[..n], &mut text_r, Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(f.into());
             let _ = Gdi::EndPaint(h, &ps);

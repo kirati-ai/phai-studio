@@ -360,7 +360,7 @@ pub fn glyph_pixels(glyph: u16, size: i32, colour: Color) -> Option<Vec<u8>> {
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(0x00FF_FFFF));
         let mut text = [glyph];
-        Gdi::DrawTextW(dc, &mut text, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+        crate::win::draw_text_w(dc, &mut text, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
         let _ = Gdi::GdiFlush();
         let n = (size * size * 4) as usize;
         let src = std::slice::from_raw_parts(bits as *const u8, n);

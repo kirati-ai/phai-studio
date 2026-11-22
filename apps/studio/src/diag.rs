@@ -106,11 +106,11 @@ fn graph(dc: Gdi::HDC, h: HWND, r: RECT, (title, now): (&str, &str), values: &[f
         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
         let mut tr = RECT { bottom: r.top + row, ..r };
         let mut w: Vec<u16> = title.encode_utf16().collect();
-        Gdi::DrawTextW(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER);
+        phai_ui::win::draw_text_w(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER);
         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
         let mut w: Vec<u16> = now.encode_utf16().collect();
         if !w.is_empty() {
-            Gdi::DrawTextW(dc, &mut w, &mut tr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER);
+            phai_ui::win::draw_text_w(dc, &mut w, &mut tr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER);
         }
     }
     let box_ = RECT { top: r.top + row + win::px(h, 2), ..r };
@@ -175,7 +175,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let mut sr = RECT { left: m, top: r.bottom - m - win::px(h, 20), right: r.right - m, bottom: r.bottom - m };
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(win::window_text().colorref()));
                 let mut w: Vec<u16> = state.encode_utf16().collect();
-                Gdi::DrawTextW(dc, &mut w, &mut sr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER);
+                phai_ui::win::draw_text_w(dc, &mut w, &mut sr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER);
             }
             let _ = Gdi::BitBlt(screen, 0, 0, r.right, r.bottom, Some(dc), 0, 0, Gdi::SRCCOPY);
             Gdi::SelectObject(dc, old_font);

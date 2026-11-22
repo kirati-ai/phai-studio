@@ -138,9 +138,9 @@ impl PrintPageEventArgs {
         let mut m = RECT { left: area.x, top: area.y, right: area.right(), bottom: area.y };
         let mut r = RECT { left: area.x, top: area.y, right: area.right(), bottom: area.bottom() };
         unsafe {
-            Gdi::DrawTextW(self.dc, &mut w[..n], &mut m, flags | Gdi::DT_CALCRECT);
+            crate::win::draw_text_w(self.dc, &mut w[..n], &mut m, flags | Gdi::DT_CALCRECT);
             Gdi::SetTextColor(self.dc, self.color.get());
-            Gdi::DrawTextW(self.dc, &mut w[..n], &mut r, flags);
+            crate::win::draw_text_w(self.dc, &mut w[..n], &mut r, flags);
         }
         m.bottom - m.top
     }
@@ -152,7 +152,7 @@ impl PrintPageEventArgs {
         let wrap = if width > 0 { Gdi::DT_WORDBREAK } else { Gdi::DT_SINGLELINE };
         let mut r = RECT { left: 0, top: 0, right: width.max(1), bottom: 0 };
         unsafe {
-            Gdi::DrawTextW(self.dc, &mut w[..n], &mut r, Gdi::DT_CALCRECT | Gdi::DT_NOPREFIX | Gdi::DT_EXPANDTABS | wrap);
+            crate::win::draw_text_w(self.dc, &mut w[..n], &mut r, Gdi::DT_CALCRECT | Gdi::DT_NOPREFIX | Gdi::DT_EXPANDTABS | wrap);
         }
         (r.right - r.left, r.bottom - r.top)
     }
@@ -825,7 +825,7 @@ fn paint_preview(hwnd: HWND, dc: HDC) {
             let mut words = wide(&tf("Page {0} of {1}", &[&(p.at + 1), &p.pages.len()]));
             let n = words.len().saturating_sub(1);
             let mut tr = RECT { left: win::px(hwnd, 10 + 96 + 6 + 36 + 6 + 36 + 14), top: 0, right: r.right - win::px(hwnd, 110), bottom: strip };
-            Gdi::DrawTextW(dc, &mut words[..n], &mut tr, Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX);
+            crate::win::draw_text_w(dc, &mut words[..n], &mut tr, Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX);
             Gdi::SelectObject(dc, old);
         }
         // The sheet as big as the window lets it be, its shape kept.

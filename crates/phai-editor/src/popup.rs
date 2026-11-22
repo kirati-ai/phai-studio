@@ -134,7 +134,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let mut words: Vec<u16> = row.encode_utf16().collect();
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(win::window_text().colorref()));
                 if !words.is_empty() {
-                    Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+                    phai_ui::win::draw_text_w(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
                 }
                 // A completion's detail, muted, at the right.
                 if let Some(c) = p.items.get(i) {
@@ -142,7 +142,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         let mut d: Vec<u16> = c.detail.chars().take(40).collect::<String>().encode_utf16().collect();
                         let mut dr = RECT { right: r.right - pad, ..line };
                         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
-                        Gdi::DrawTextW(dc, &mut d, &mut dr, Gdi::DT_RIGHT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+                        phai_ui::win::draw_text_w(dc, &mut d, &mut dr, Gdi::DT_RIGHT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
                     }
                 }
             }

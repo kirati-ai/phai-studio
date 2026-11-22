@@ -605,7 +605,7 @@ fn gallery_paint(h: HWND) {
             Gdi::SetTextColor(dc, COLORREF(get("--text").colorref()));
             let mut tr = RECT { left: inner.left + px(6), top: inner.top + px(28), right: inner.right - px(2), bottom: inner.bottom };
             let mut w: Vec<u16> = t(p.name).encode_utf16().collect();
-            Gdi::DrawTextW(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_END_ELLIPSIS);
+            phai_ui::win::draw_text_w(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_END_ELLIPSIS);
         }
         Gdi::SelectObject(dc, old);
         let _ = Gdi::EndPaint(h, &ps);

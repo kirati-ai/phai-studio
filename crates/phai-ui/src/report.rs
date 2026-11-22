@@ -747,7 +747,7 @@ pub fn draw(dc: HDC, draws: &[Draw]) {
                     // A little room inside, as a report's text boxes have.
                     r.left += 2;
                     r.right -= 2;
-                    Gdi::DrawTextW(dc, &mut w[..n], &mut r, a | Gdi::DT_WORDBREAK | Gdi::DT_NOPREFIX | Gdi::DT_NOCLIP);
+                    crate::win::draw_text_w(dc, &mut w[..n], &mut r, a | Gdi::DT_WORDBREAK | Gdi::DT_NOPREFIX | Gdi::DT_NOCLIP);
                     Gdi::SelectObject(dc, old);
                     let _ = Gdi::DeleteObject(f.into());
                 }

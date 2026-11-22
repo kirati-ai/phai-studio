@@ -1885,7 +1885,7 @@ fn paint(h: HWND, v: &mut View) {
             // Line numbers off: nothing to draw (DrawTextW must not be given no text).
             if !n.is_empty() {
                 let mut nn = n.clone();
-                Gdi::DrawTextW(dc, &mut nn, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
+                phai_ui::win::draw_text_w(dc, &mut nn, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
             }
             // A breakpoint: a red dot in the margin; the debugger's place: a yellow arrow.
             let d = v.line_h - win::px(h, 6);
@@ -2010,7 +2010,7 @@ fn paint(h: HWND, v: &mut View) {
                     Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
                     let mut n = wide_of(&(l + 1).to_string());
                     let mut nr = RECT { left: 0, top: y + win::px(h, 2), right: gutter - v.char_w * 3, bottom: y + v.line_h };
-                    Gdi::DrawTextW(dc, &mut n, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
+                    phai_ui::win::draw_text_w(dc, &mut n, &mut nr, Gdi::DT_RIGHT | Gdi::DT_SINGLELINE);
                 }
             }
             if !heads.is_empty() {

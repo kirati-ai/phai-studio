@@ -309,17 +309,17 @@ fn cards_paint(h: HWND) {
             Gdi::SetTextColor(dc, COLORREF(Color::rgb(255, 255, 255).colorref()));
             let mut br = b;
             let mut w: Vec<u16> = letters.encode_utf16().collect();
-            Gdi::DrawTextW(dc, &mut w, &mut br, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            phai_ui::win::draw_text_w(dc, &mut w, &mut br, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             // Its name, and what it is.
             Gdi::SetTextColor(dc, COLORREF(text.colorref()));
             let mut tr = RECT { left: b.right + px(10), top: inner.top + px(10), right: inner.right - px(6), bottom: inner.top + px(32) };
             let mut w: Vec<u16> = card_title(k).encode_utf16().collect();
-            Gdi::DrawTextW(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS);
+            phai_ui::win::draw_text_w(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS);
             Gdi::SelectObject(dc, font.into());
             Gdi::SetTextColor(dc, COLORREF(muted.colorref()));
             let mut wr = RECT { left: b.right + px(10), top: inner.top + px(32), right: inner.right - px(6), bottom: inner.bottom - px(4) };
             let mut w: Vec<u16> = card_words(k).encode_utf16().collect();
-            Gdi::DrawTextW(dc, &mut w, &mut wr, Gdi::DT_LEFT | Gdi::DT_WORDBREAK | Gdi::DT_END_ELLIPSIS);
+            phai_ui::win::draw_text_w(dc, &mut w, &mut wr, Gdi::DT_LEFT | Gdi::DT_WORDBREAK | Gdi::DT_END_ELLIPSIS);
             Gdi::SelectObject(dc, old);
         }
         let _ = Gdi::EndPaint(h, &ps);

@@ -584,7 +584,7 @@ pub fn custom_draw(l: LPARAM) -> Option<LRESULT> {
         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(fg.colorref()));
         let mut w = win::wide(&text);
         w.pop();
-        Gdi::DrawTextW(dc, &mut w, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
+        crate::win::draw_text_w(dc, &mut w, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
         Gdi::SelectObject(dc, old);
     }
     Some(LRESULT(cc::CDRF_SKIPDEFAULT as isize))
@@ -666,7 +666,7 @@ fn paint_footer(h: HWND) {
                 Align::Center => Gdi::DT_CENTER,
                 Align::Right => Gdi::DT_RIGHT,
             };
-            Gdi::DrawTextW(dc, &mut w, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
+            crate::win::draw_text_w(dc, &mut w, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
         }
         let _ = Gdi::SelectClipRgn(dc, None);
         let _ = Gdi::DeleteObject(rgn.into());
@@ -763,7 +763,7 @@ fn header_custom_draw(h: HWND, l: LPARAM) -> Option<LRESULT> {
     unsafe {
         Gdi::SetBkMode(cd.hdc, Gdi::TRANSPARENT);
         Gdi::SetTextColor(cd.hdc, windows::Win32::Foundation::COLORREF(fore.colorref()));
-        Gdi::DrawTextW(cd.hdc, &mut text, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
+        crate::win::draw_text_w(cd.hdc, &mut text, &mut tr, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS | Gdi::DT_NOPREFIX);
     }
     if let Some((c, up)) = sorted.filter(|(c, _)| *c == i) {
         let _ = c;

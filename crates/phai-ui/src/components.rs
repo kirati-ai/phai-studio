@@ -349,7 +349,7 @@ extern "system" fn mark_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
             Gdi::SetTextColor(dc, COLORREF(0x00FF_FFFF));
             let mut bang = wide("!");
-            Gdi::DrawTextW(dc, &mut bang[..1], &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            crate::win::draw_text_w(dc, &mut bang[..1], &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(f.into());
             let _ = Gdi::EndPaint(h, &ps);

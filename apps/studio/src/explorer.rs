@@ -409,7 +409,7 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                     }
                     Gdi::SetTextColor(dc, COLORREF(if on { accent } else { muted }.colorref()));
                     let mut text: Vec<u16> = tab_name(k).encode_utf16().collect();
-                    Gdi::DrawTextW(dc, &mut text, &mut tr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                    phai_ui::win::draw_text_w(dc, &mut text, &mut tr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
                 }
                 Gdi::SelectObject(dc, old);
             }

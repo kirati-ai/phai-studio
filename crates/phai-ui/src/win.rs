@@ -142,7 +142,7 @@ pub fn measure(hwnd: HWND, font: HFONT, text: &str) -> (i32, i32) {
         let w: Vec<u16> = text.encode_utf16().collect();
         let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
         let mut buf = w.clone();
-        Gdi::DrawTextW(dc, &mut buf, &mut r, Gdi::DT_CALCRECT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+        draw_text_w(dc, &mut buf, &mut r, Gdi::DT_CALCRECT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
         Gdi::SelectObject(dc, old);
         Gdi::ReleaseDC(Some(hwnd), dc);
         (r.right - r.left, r.bottom - r.top)
@@ -802,7 +802,7 @@ pub fn draw_text_styled(dc: HDC, h: HWND, text: &str, r: &mut RECT, colour: Colo
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         Gdi::SetTextColor(dc, cr(colour));
         let mut w: Vec<u16> = text.encode_utf16().collect();
-        Gdi::DrawTextW(dc, &mut w, r, flags);
+        draw_text_w(dc, &mut w, r, flags);
         Gdi::SelectObject(dc, old);
     }
 }
@@ -819,7 +819,7 @@ pub fn draw_text(dc: HDC, h: HWND, text: &str, r: &mut RECT, colour: Color, flag
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         Gdi::SetTextColor(dc, cr(colour));
         let mut w: Vec<u16> = text.encode_utf16().collect();
-        Gdi::DrawTextW(dc, &mut w, r, flags);
+        draw_text_w(dc, &mut w, r, flags);
         Gdi::SelectObject(dc, old);
     }
 }
@@ -1341,7 +1341,7 @@ unsafe extern "system" fn tall_combo_proc(h: HWND, msg: u32, w: WPARAM, l: LPARA
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(fg.colorref()));
             let mut words: Vec<u16> = text_of(h).encode_utf16().collect();
             let mut tr = RECT { left: inner.left + 2, ..inner };
-            Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+            draw_text_w(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
             Gdi::SelectObject(dc, old);
             Gdi::ReleaseDC(Some(h), dc);
         }
@@ -3188,6 +3188,18 @@ pub fn move_to(h: impl Into<HWND>, x: i32, y: i32, w: i32, height: i32) {
     }
 }
 
+/// Windows' `DrawTextW`, safe for no words. An empty `Vec`'s buffer has no real address, and
+/// DrawText with `DT_END_ELLIPSIS` reads it even for none - an access violation inside a window's
+/// painting that ends the program. No words: a slice of none at a real address instead.
+///
+/// # Safety
+/// As `DrawTextW`: `dc` a device context to draw on.
+pub unsafe fn draw_text_w(dc: HDC, text: &mut [u16], r: &mut RECT, format: Gdi::DRAW_TEXT_FORMAT) -> i32 {
+    let mut none = [0u16; 1];
+    let text = if text.is_empty() { &mut none[..0] } else { text };
+    unsafe { Gdi::DrawTextW(dc, text, r, format) }
+}
+
 pub fn text_of(h: impl Into<HWND>) -> String {
     let h: HWND = h.into();
     unsafe {
@@ -3451,7 +3463,7 @@ fn themed_menu(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> Option<LRESULT> {
             if st & ODS_NOACCEL.0 != 0 {
                 flags |= Gdi::DT_HIDEPREFIX;
             }
-            Gdi::DrawTextW(it.um.hdc, &mut buf[..mii.cch as usize], &mut r, flags);
+            draw_text_w(it.um.hdc, &mut buf[..mii.cch as usize], &mut r, flags);
             Some(LRESULT(1))
         },
         // After Windows paints the frame it leaves a light line under the bar; cover it.

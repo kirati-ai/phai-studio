@@ -591,7 +591,7 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
                     }
                     let mut one = [glyphs[k]];
                     let mut gr = *b;
-                    Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                    crate::win::draw_text_w(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
                 }
                 Gdi::SelectObject(dc, old);
                 let _ = Gdi::DeleteObject(icons.into());

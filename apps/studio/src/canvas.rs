@@ -132,14 +132,14 @@ fn paint_chips(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, width: i32) {
         let mut gr = RECT { left: rr.left + p(6), top: rr.top, right: rr.left + p(26), bottom: rr.bottom };
         let mut one = [g];
         unsafe {
-            Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            phai_ui::win::draw_text_w(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             Gdi::SelectObject(dc, font.into());
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text.colorref()));
         }
         let mut tr = RECT { left: rr.left + p(30), top: rr.top, right: rr.right - p(4), bottom: rr.bottom };
         let mut words: Vec<u16> = name.encode_utf16().collect();
         unsafe {
-            Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+            phai_ui::win::draw_text_w(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
         }
     }
     unsafe {
@@ -1165,7 +1165,7 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
     let mut words: Vec<u16> = f.form.title.encode_utf16().collect();
     if !words.is_empty() {
         unsafe {
-            Gdi::DrawTextW(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+            phai_ui::win::draw_text_w(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
         }
     }
     // Caption glyphs from the icon font: minimise, maximise, close.
@@ -1197,7 +1197,7 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
         let mut one = [g];
         unsafe {
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(if on { text } else { grey }.colorref()));
-            Gdi::DrawTextW(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            phai_ui::win::draw_text_w(dc, &mut one, &mut gr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
         }
     }
     unsafe {
@@ -1218,7 +1218,7 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
             let mut mr = RECT { left: p(x), top: bar.top, right: p(x + lw), bottom: bar.bottom };
             let mut words: Vec<u16> = m.label.encode_utf16().collect();
             unsafe {
-                Gdi::DrawTextW(dc, &mut words, &mut mr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+                phai_ui::win::draw_text_w(dc, &mut words, &mut mr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             }
             x += lw;
         }
@@ -1626,7 +1626,7 @@ extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             let mut w16: Vec<u16> = text.encode_utf16().collect();
             Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(0x00FF_FFFF));
-            Gdi::DrawTextW(dc, &mut w16, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
+            phai_ui::win::draw_text_w(dc, &mut w16, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(font.into());
             let _ = Gdi::EndPaint(h, &ps);

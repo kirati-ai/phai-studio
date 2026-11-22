@@ -1453,7 +1453,7 @@ fn draw(dc: Gdi::HDC, text: &str, r: &mut RECT, colour: Color, align: Gdi::DRAW_
     unsafe {
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(colour.colorref()));
-        Gdi::DrawTextW(dc, &mut w, r, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+        phai_ui::win::draw_text_w(dc, &mut w, r, align | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
     }
 }
 

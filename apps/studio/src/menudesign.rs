@@ -299,7 +299,7 @@ fn paint(h: HWND) {
         let mut rr = r;
         unsafe {
             Gdi::SetTextColor(mem, COLORREF(colour.colorref()));
-            Gdi::DrawTextW(mem, &mut w, &mut rr, flags | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS);
+            phai_ui::win::draw_text_w(mem, &mut w, &mut rr, flags | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_END_ELLIPSIS);
         }
     };
     let glyph = |g: u16, x: i32, r: RECT, colour: Color| {

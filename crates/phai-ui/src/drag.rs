@@ -34,7 +34,7 @@ extern "system" fn ghost_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
             let mut t = wide(&GHOST_TEXT.with(|g| g.borrow().clone()));
             let n = t.len().saturating_sub(1);
             let mut tr = RECT { left: r.left + win::px(h, 8), ..r };
-            Gdi::DrawTextW(dc, &mut t[..n], &mut tr, Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
+            crate::win::draw_text_w(dc, &mut t[..n], &mut tr, Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(f.into());
             let _ = Gdi::EndPaint(h, &ps);
