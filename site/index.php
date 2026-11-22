@@ -231,6 +231,10 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.6', '22 พ.ย. 2569', [
+            'ไฟล์ฟอร์มใช้นามสกุลสั้นลงเป็น .phf (เดิม .phaiform) ไฟล์เก่ายังเปิดได้ และ Studio ถามว่าจะเปลี่ยนชื่อให้ทั้งโปรเจกต์ไหม (git เก็บประวัติไว้ให้)',
+            'ไฟล์ .phf มีไอคอนของตัวเองใน Explorer และดับเบิลคลิกแล้วเปิดใน Phai Studio ทันที',
+        ]],
         ['0.2.5', '22 พ.ย. 2569', [
             'วาดเองด้วย event Paint และล้อเมาส์ (MouseWheel) ใช้ได้บนเว็บและมือถือ (PWA) ด้วยคำสั่งชุดเดียวกับบน Windows',
             'panel และ picture รับคีย์บอร์ดเองได้ (KeyDown, KeyPress): คลิกหรือกด Tab เข้าไปแล้วรับปุ่มลูกศรได้เลย',
@@ -433,6 +437,10 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.6', '22 Nov 2026', [
+            'Form files have a shorter name, .phf (they were .phaiform): older ones still open, and Studio offers to rename a whole project\'s forms (git keeps their history)',
+            '.phf files have their own icon in Explorer and open in Phai Studio on a double-click',
+        ]],
         ['0.2.5', '22 Nov 2026', [
             'Drawing with the Paint event and the mouse wheel (MouseWheel) work on the web and on phones (PWA) too, with the same calls as on Windows',
             'A panel or picture takes the keyboard itself (KeyDown, KeyPress): click it or Tab to it and the arrow keys are its own',
