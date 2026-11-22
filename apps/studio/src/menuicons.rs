@@ -171,6 +171,7 @@ pub fn icon_of(id: i32) -> Option<(u16, Color)> {
         ID_HELP_STUDIO => (0xE897, BLUE), // Help
         ID_HELP_RUST => (0xE736, AMBER), // ReadingMode: a book
         ID_HELP_ERRORS => (0xE783, RED),
+        ID_CHECK_UPDATES => (glyph::DOWNLOAD, GREEN),
         ID_ABOUT => (0xE946, BLUE), // Info
         _ => return None,
     })

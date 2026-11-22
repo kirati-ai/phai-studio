@@ -56,6 +56,7 @@ mod newproj;
 mod switcher;
 mod dbgwin;
 mod vsextra;
+mod update;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -203,6 +204,11 @@ const ID_HELP_STUDIO: i32 = 287;
 const ID_HELP_RUST: i32 = 288;
 const ID_HELP_ERRORS: i32 = 289;
 const ID_ABOUT: i32 = 290;
+/// Help > Check for Updates, and the newest release downloaded (from its thread).
+const ID_CHECK_UPDATES: i32 = 2901;
+const ID_UPDATE_READY: i32 = 2902;
+/// The setup downloaded, or why not - handed from the download's thread to the window.
+static UPDATE_DOWNLOADED: std::sync::Mutex<Option<Result<PathBuf, String>>> = std::sync::Mutex::new(None);
 /// Theme > the project's style sheets, one item each; Theme > Edit the one in use.
 const ID_THEME_FILE: i32 = 760;
 const THEME_FILES_MAX: usize = 20;
@@ -1552,6 +1558,7 @@ fn build_menu() -> HMENU {
         add(help, ID_HELP_RUST, t("Learn Rust"), "");
         add(help, ID_HELP_ERRORS, t("Reading Compiler Errors"), "");
         sep(help);
+        add(help, ID_CHECK_UPDATES, t("Check for Updates..."), "");
         add(help, ID_ABOUT, t("About Phai Studio"), "");
         sub(t("&Help"), help);
         // A coloured picture beside every command.
@@ -5936,6 +5943,62 @@ impl Studio {
         self.fill_breakpoints();
     }
 
+    /// Help > Check for Updates: GitHub asked for the newest Phai Studio; when it is newer, offered,
+    /// and downloaded in the background - [`Studio::update_downloaded`] goes on from there.
+    fn check_for_updates(&mut self) {
+        let ours = env!("CARGO_PKG_VERSION");
+        self.say_status(t("Asking GitHub for the newest Phai Studio..."));
+        let newest = update::newest();
+        self.say_status("");
+        let r = match newest {
+            Ok(r) => r,
+            Err(e) => {
+                win::message(Some(self.hwnd), &e, t("Check for Updates"), wm::MB_ICONWARNING);
+                return;
+            }
+        };
+        if !update::is_newer(&r.version, ours) {
+            win::message(Some(self.hwnd), &tf("You have the newest Phai Studio ({0}).", &[&ours]), t("Check for Updates"), wm::MB_ICONINFORMATION);
+            return;
+        }
+        let ask = tf("Phai Studio {0} is out - you have {1}.\n\nDownload and install it now? Phai Studio closes for the setup; what is not saved is asked about first.\n\nWhat is new: {2}", &[&r.version, &ours, &SITE]);
+        if win::message(Some(self.hwnd), &ask, t("Check for Updates"), wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
+            return;
+        }
+        self.say_status(&tf("Downloading Phai Studio {0}...", &[&r.version]));
+        let hwnd = self.hwnd.0 as isize;
+        std::thread::spawn(move || {
+            *UPDATE_DOWNLOADED.lock().unwrap_or_else(|e| e.into_inner()) = Some(update::download(&r));
+            let _ = unsafe { wm::PostMessageW(Some(HWND(hwnd as *mut _)), wm::WM_COMMAND, WPARAM(ID_UPDATE_READY as usize), LPARAM(0)) };
+        });
+    }
+
+    /// The newest setup downloaded: started, and Phai Studio closed so it can be replaced.
+    fn update_downloaded(&mut self) {
+        let Some(got) = UPDATE_DOWNLOADED.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+        self.say_status("");
+        let setup = match got {
+            Ok(p) => p,
+            Err(e) => {
+                win::message(Some(self.hwnd), &e, t("Check for Updates"), wm::MB_ICONWARNING);
+                return;
+            }
+        };
+        // Unsaved work asked about first; Cancel there leaves the setup for later.
+        if !self.may_quit() {
+            self.say_status(&tf("The setup is ready: {0}", &[&setup.display()]));
+            return;
+        }
+        if let Err(e) = std::process::Command::new(&setup).spawn() {
+            win::message(Some(self.hwnd), &e.to_string(), t("Check for Updates"), wm::MB_ICONWARNING);
+            return;
+        }
+        // Closed, so the setup can write over it.
+        unsafe {
+            let _ = wm::DestroyWindow(self.hwnd);
+        }
+    }
+
     /// Publish: asks what the product is called and by whom, builds it as Release, then makes
     /// a setup program and a portable folder of it in the project's `publish` folder.
     fn publish(&mut self) {
@@ -8236,9 +8299,12 @@ impl Studio {
             ID_HELP_RUST => self.open_help("rust-01.html"),
             ID_HELP_ERRORS => self.open_help("rust-10.html"),
             ID_ABOUT => {
-                let words = tf("Phai Studio {0}\n\nA free, open-source studio for Windows programs in Rust.\nMIT License - Monrak Net\n\n{1}", &[&env!("CARGO_PKG_VERSION"), &env!("CARGO_PKG_REPOSITORY")]);
-                win::message(Some(self.hwnd), &words, t("About Phai Studio"), wm::MB_ICONINFORMATION);
+                if about(self.hwnd) {
+                    self.check_for_updates();
+                }
             }
+            ID_CHECK_UPDATES => self.check_for_updates(),
+            ID_UPDATE_READY => self.update_downloaded(),
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
@@ -8852,6 +8918,69 @@ fn help_page(page: &str) -> Option<PathBuf> {
 }
 
 /// A file or web address, opened by whatever Windows opens it with.
+/// Phai Studio's website: downloads, the guide, what is new.
+const SITE: &str = "https://phai-studio.monrak.net";
+
+/// Help > About: Phai Studio's icon, version, what it is, who makes it, and links to its website
+/// and its source code that open in the browser. True when "Check for updates" was pressed.
+fn about(owner: HWND) -> bool {
+    use windows::Win32::UI::Controls as cc;
+    unsafe extern "system" fn on_link(h: HWND, msg: cc::TASKDIALOG_NOTIFICATIONS, _: WPARAM, l: LPARAM, _: isize) -> windows::core::HRESULT {
+        // `PHAI_ASK_SHOT=<file.png>`: photographed for the guide once drawn, then closed.
+        if msg == cc::TDN_TIMER {
+            if let Some(to) = std::env::var_os("PHAI_ASK_SHOT") {
+                let _ = phai_ui::shot::save(h, Path::new(&to));
+                unsafe {
+                    wm::SendMessageW(h, cc::TDM_CLICK_BUTTON.0 as u32, Some(WPARAM(1)), None);
+                }
+            }
+        }
+        if msg == cc::TDN_HYPERLINK_CLICKED {
+            let url = unsafe { PCWSTR(l.0 as *const u16).to_string() }.unwrap_or_default();
+            // Only this box's own addresses.
+            if url.starts_with("https://") {
+                open_with_windows(&url);
+            }
+        }
+        windows::core::HRESULT(0)
+    }
+    let site_name = SITE.trim_start_matches("https://");
+    let title = wide(t("About Phai Studio"));
+    let head = wide(&format!("Phai Studio {}", env!("CARGO_PKG_VERSION")));
+    let body = wide(&tf(
+        "A free, open-source RAD studio for Windows programs in Rust: draw the forms, style them with CSS, write what happens in Rust.\n\n<a href=\"{0}\">{1}</a> - downloads, the guide, what's new\n<a href=\"{2}\">Source code on GitHub</a>",
+        &[&SITE, &site_name, &env!("CARGO_PKG_REPOSITORY")],
+    ));
+    let foot = wide(t("Made by Kirati Kittikhun - Monrak Net\nMIT License - free to use, change and hand on"));
+    let check = wide(t("Check for updates"));
+    let buttons = [cc::TASKDIALOG_BUTTON { nButtonID: ID_CHECK_UPDATES, pszButtonText: PCWSTR(check.as_ptr()) }];
+    let config = cc::TASKDIALOGCONFIG {
+        cbSize: std::mem::size_of::<cc::TASKDIALOGCONFIG>() as u32,
+        hwndParent: owner,
+        hInstance: win::instance(),
+        dwFlags: cc::TDF_ENABLE_HYPERLINKS | cc::TDF_POSITION_RELATIVE_TO_WINDOW | cc::TDF_ALLOW_DIALOG_CANCELLATION | if std::env::var_os("PHAI_ASK_SHOT").is_some() { cc::TDF_CALLBACK_TIMER } else { cc::TASKDIALOG_FLAGS(0) },
+        dwCommonButtons: cc::TDCBF_OK_BUTTON,
+        pszWindowTitle: PCWSTR(title.as_ptr()),
+        // Icon 1 of phai-studio.exe: the bamboo.
+        Anonymous1: cc::TASKDIALOGCONFIG_0 { pszMainIcon: PCWSTR(std::ptr::without_provenance::<u16>(1)) },
+        pszMainInstruction: PCWSTR(head.as_ptr()),
+        pszContent: PCWSTR(body.as_ptr()),
+        Anonymous2: cc::TASKDIALOGCONFIG_1 { pszFooterIcon: PCWSTR::null() },
+        pszFooter: PCWSTR(foot.as_ptr()),
+        pfCallback: Some(on_link),
+        cButtons: buttons.len() as u32,
+        pButtons: buttons.as_ptr(),
+        nDefaultButton: 1,
+        cxWidth: 270,
+        ..Default::default()
+    };
+    let mut pressed = 0;
+    if unsafe { cc::TaskDialogIndirect(&config, Some(&mut pressed), None, None) }.is_err() {
+        win::message(Some(owner), &format!("Phai Studio {}\n\n{SITE}", env!("CARGO_PKG_VERSION")), t("About Phai Studio"), wm::MB_ICONINFORMATION);
+    }
+    pressed == ID_CHECK_UPDATES
+}
+
 pub fn open_with_windows(what: &str) {
     let w = wide(what);
     unsafe {

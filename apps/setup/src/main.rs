@@ -367,7 +367,12 @@ struct Wizard {
     cancel: HWND,
     installed: bool,
     done: bool,
+    /// The program's own icon, large beside the title (the setup carries it as its icon 1).
+    icon: Option<wm::HICON>,
 }
+
+/// The size the program's icon is drawn on the page, in design pixels.
+const ICON: i32 = 48;
 
 fn layout(h: HWND) {
     let Some(s) = (unsafe { win::state::<Wizard>(h) }) else { return };
@@ -377,16 +382,18 @@ fn layout(h: HWND) {
     }
     let px = |v| win::px(h, v);
     let (m, row) = (px(16), px(24));
-    let w = r.right - 2 * m;
-    win::move_to(s.title, m, m, w, px(32));
-    win::move_to(s.from, m, m + px(36), w, row);
+    // Everything in a column beside the icon.
+    let x = if s.icon.is_some() { m + px(ICON + 16) } else { m };
+    let w = r.right - x - m;
+    win::move_to(s.title, x, m, w, px(32));
+    win::move_to(s.from, x, m + px(36), w, row);
     // No publisher: the rest moves up into its line.
-    let y = m + if s.m.publisher.is_empty() { px(52) } else { px(80) };
-    win::move_to(s.label, m, y, w, row);
-    win::move_to(s.dir, m, y + px(26), w, row);
-    win::move_to(s.start, m, y + px(66), w, row);
-    win::move_to(s.desk, m, y + px(94), w, row);
-    win::move_to(s.run, m, y + px(66), w, row);
+    let y = m + if s.m.publisher.is_empty() { px(60) } else { px(80) };
+    win::move_to(s.label, x, y, w, row);
+    win::move_to(s.dir, x, y + px(26), w, row);
+    win::move_to(s.start, x, y + px(66), w, row);
+    win::move_to(s.desk, x, y + px(94), w, row);
+    win::move_to(s.run, x, y + px(66), w, row);
     let (bw, bh) = (px(90), px(28));
     win::move_to(s.cancel, r.right - m - bw, r.bottom - m - bh, bw, bh);
     win::move_to(s.ok, r.right - m - bw * 2 - px(8), r.bottom - m - bh, bw, bh);
@@ -397,6 +404,19 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
         wm::WM_SIZE => {
             layout(h);
+            LRESULT(0)
+        }
+        wm::WM_PAINT => {
+            use windows::Win32::Graphics::Gdi;
+            let mut ps = Gdi::PAINTSTRUCT::default();
+            unsafe {
+                let dc = Gdi::BeginPaint(h, &mut ps);
+                if let Some(icon) = s.icon {
+                    let (m, size) = (win::px(h, 16), win::px(h, ICON));
+                    let _ = wm::DrawIconEx(dc, m, m, icon, size, size, 0, None, wm::DI_NORMAL);
+                }
+                let _ = Gdi::EndPaint(h, &ps);
+            }
             LRESULT(0)
         }
         wm::WM_COMMAND => {
@@ -461,8 +481,8 @@ fn wizard(me: Vec<u8>, m: Manifest, files: Vec<(String, Vec<u8>)>, dir: PathBuf)
         win::show(run, false);
         let ok = win::button(h, tr("Install"), ID_OK, font, true);
         let cancel = win::button(h, tr("Cancel"), ID_CANCEL, font, false);
-        win::set_state(h, Box::new(Wizard { me, m, files, title, from, label, dir: dir_box, start, desk, run, ok, cancel, installed: false, done: false }));
-        let mut r = windows::Win32::Foundation::RECT { left: 0, top: 0, right: win::px(h, 520), bottom: win::px(h, 300) };
+        win::set_state(h, Box::new(Wizard { me, m, files, title, from, label, dir: dir_box, start, desk, run, ok, cancel, installed: false, done: false, icon: phai_ui::icon::app_icon(win::px(h, ICON)) }));
+        let mut r = windows::Win32::Foundation::RECT { left: 0, top: 0, right: win::px(h, 584), bottom: win::px(h, 300) };
         let _ = wm::AdjustWindowRect(&mut r, wm::WS_OVERLAPPED | wm::WS_CAPTION | wm::WS_SYSMENU, false);
         let (w, hh) = (r.right - r.left, r.bottom - r.top);
         let (sw, sh) = (wm::GetSystemMetrics(wm::SM_CXSCREEN), wm::GetSystemMetrics(wm::SM_CYSCREEN));
