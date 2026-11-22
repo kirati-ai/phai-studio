@@ -875,6 +875,76 @@ fn peek_text(path: &Path, line: usize, text: &str) -> String {
     out
 }
 
+/// The setup program `stub` with `ico` as its icon (group 1, as its build gave it Phai Studio's):
+/// written to a file of its own, changed there with Windows' UpdateResource, read back. None when
+/// Windows would not - the setup then keeps Phai Studio's icon.
+fn stub_with_icon(stub: &[u8], ico: &[u8]) -> Result<Vec<u8>, String> {
+    use windows::Win32::System::LibraryLoader::{BeginUpdateResourceW, EndUpdateResourceW, UpdateResourceW};
+    let u16_at = |i: usize| ico.get(i..i + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
+    let u32_at = |i: usize| ico.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    if u16_at(0) != Some(0) || u16_at(2) != Some(1) {
+        return Err("not an .ico file".into());
+    }
+    let count = u16_at(4).ok_or("not an .ico file")? as usize;
+    let path = std::env::temp_dir().join(format!("phai-setup-{}.exe", std::process::id()));
+    std::fs::write(&path, stub).map_err(|e| e.to_string())?;
+    let name = |n: u16| PCWSTR(n as usize as *const u16);
+    // The language rc gives a resource with none said: English (United States).
+    const LANG: u16 = 0x0409;
+    // How many pictures the setup program has now.
+    let old_icons = unsafe {
+        use windows::Win32::Foundation::FreeLibrary;
+        use windows::Win32::System::LibraryLoader::{FindResourceW, LoadLibraryExW, LOAD_LIBRARY_AS_DATAFILE, LOAD_LIBRARY_AS_IMAGE_RESOURCE};
+        let wpath = wide(&path.to_string_lossy());
+        match LoadLibraryExW(PCWSTR(wpath.as_ptr()), None, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE) {
+            Ok(m) => {
+                let n = (1..=64u16).take_while(|k| !FindResourceW(Some(m), name(*k), name(3)).is_invalid()).count() as u16;
+                let _ = FreeLibrary(m);
+                n
+            }
+            Err(_) => 0,
+        }
+    };
+    let done = unsafe {
+        let wpath = wide(&path.to_string_lossy());
+        let h = BeginUpdateResourceW(PCWSTR(wpath.as_ptr()), false).map_err(|e| format!("BeginUpdateResource: {e}"))?;
+        // Phai Studio's pictures out first, so none is left over beside the new ones - only those
+        // there are: deleting one that is not leaves UpdateResource unable to add it after.
+        for k in 1..=old_icons {
+            let _ = UpdateResourceW(h, name(3), name(k), LANG, None, 0);
+        }
+        let _ = UpdateResourceW(h, name(14), name(1), LANG, None, 0);
+        let mut group = vec![0u8, 0, 1, 0];
+        group.extend_from_slice(&(count as u16).to_le_bytes());
+        let mut ok = true;
+        for k in 0..count {
+            let e = 6 + k * 16;
+            let (size, offset) = (u32_at(e + 8).unwrap_or(0) as usize, u32_at(e + 12).unwrap_or(0) as usize);
+            let Some(image) = ico.get(offset..offset + size) else {
+                let _ = EndUpdateResourceW(h, true);
+                return Err("a picture past the .ico's end".into());
+            };
+            if let Err(e) = UpdateResourceW(h, name(3), name(k as u16 + 1), LANG, Some(image.as_ptr() as *const _), image.len() as u32) {
+                eprintln!("icon {}: {e}", k + 1);
+                ok = false;
+            }
+            group.extend_from_slice(&ico[e..e + 8]);
+            group.extend_from_slice(&(size as u32).to_le_bytes());
+            group.extend_from_slice(&(k as u16 + 1).to_le_bytes());
+        }
+        ok &= UpdateResourceW(h, name(14), name(1), LANG, Some(group.as_ptr() as *const _), group.len() as u32).is_ok();
+        let ended = EndUpdateResourceW(h, !ok);
+        if !ok {
+            Err("UpdateResource refused a picture".to_string())
+        } else {
+            ended.map_err(|e| format!("EndUpdateResource: {e}"))
+        }
+    };
+    let out = done.and_then(|_| std::fs::read(&path).map_err(|e| e.to_string()));
+    let _ = std::fs::remove_file(&path);
+    out
+}
+
 /// `--publishtest`: Publish without asking, then end.
 static PUBLISH_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// `--debugtest`: 0 off, then how many stops so far plus one.
@@ -5825,6 +5895,20 @@ impl Studio {
         let stub_path = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("phai-setup.exe")));
         let Some(stub) = stub_path.as_ref().and_then(|p| std::fs::read(p).ok()) else {
             return fail(self, t("phai-setup.exe is not beside Phai Studio, so no setup program can be made.").to_string());
+        };
+        // The setup shows the program's own icon, when the project has one (Project > Properties).
+        let icon = std::fs::read_to_string(dir.join("Cargo.toml")).ok().and_then(|t| cargo::table_field(&t, cargo::PHAI_TABLE, "icon"));
+        let stub = match icon.and_then(|i| std::fs::read(dir.join(i)).ok()) {
+            Some(ico) => match stub_with_icon(&stub, &ico) {
+                Ok(s) => s,
+                Err(e) => {
+                    if PUBLISH_TEST.load(Ordering::Relaxed) {
+                        println!("the setup keeps Phai Studio's icon: {e}");
+                    }
+                    stub
+                }
+            },
+            None => stub,
         };
         let Ok(bytes) = std::fs::read(exe) else { return fail(self, format!("{} cannot be read", exe.display())) };
         let exe_name = exe.file_name().unwrap_or_default().to_string_lossy().to_string();
