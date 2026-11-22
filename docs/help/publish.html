@@ -127,6 +127,7 @@
   <tr><td>Offer a desktop shortcut</td><td>ติ๊ก = หน้าติดตั้งเสนอทางลัดบนเดสก์ท็อปไว้ให้ (ผู้ใช้เอาออกได้ตอนติดตั้ง)</td></tr>
   <tr><td>Also include</td><td>ไฟล์หรือโฟลเดอร์ในโปรเจกต์ที่ต้องไปกับโปรแกรม คั่นด้วยจุลภาค เช่น <code>pictures, data/config.txt</code> ค่าเริ่มต้นคือรูปที่ฟอร์มใช้</td></tr>
   <tr><td>Install for everyone</td><td>ไม่ติ๊ก (ค่าเริ่มต้น) = ติดตั้งให้ผู้ใช้คนนั้นคนเดียว ไม่ต้องใช้สิทธิ์ผู้ดูแลเครื่อง ติ๊ก = ติดตั้งลง Program Files ให้ทุกคนในเครื่อง ตอนติดตั้งจะขอสิทธิ์ผู้ดูแล</td></tr>
+  <tr><td>Files it opens on a double-click</td><td>ไฟล์ที่โปรแกรมเปิดได้ เขียนนามสกุลตามด้วยชื่อที่ให้ Explorer แสดง คั่นด้วยจุลภาค เช่น <code>.score Score sheet, .exam</code> (ไม่ใส่ชื่อ = "ไฟล์ <i>ชื่อโปรแกรม</i>") เว้นว่างได้ ดูหัวข้อ <a href="#filetypes">ไฟล์ของโปรแกรมเอง</a></td></tr>
 </table>
 <p>คำตอบทั้งหมดถูกจำไว้ในไฟล์ <code>phai-publish.txt</code> ข้างโปรเจกต์ ครั้งหน้าเปิด Publish แล้วกด OK ได้เลย</p>
 
@@ -153,6 +154,30 @@
   <tr><td><code>/NOSHORTCUTS</code></td><td>ไม่ทำทางลัด</td></tr>
 </table>
 <pre><code>Score-Book-0.1.0-setup.exe /S /D=D:\Apps\Score Book</code></pre>
+
+<h2 id="filetypes">ไฟล์ของโปรแกรมเอง (ดับเบิลคลิกแล้วเปิด)</h2>
+<p>โปรแกรมที่บันทึกงานเป็นไฟล์ของตัวเอง เช่น ใบคะแนน <code>.score</code> ใส่นามสกุลในช่อง <b>Files it opens on a double-click</b> แล้วตัวติดตั้งจะทำให้:</p>
+<ul>
+  <li>ไฟล์นามสกุลนั้นมีไอคอนของตัวเองใน Explorer: ถ้าในโปรเจกต์มีไฟล์ <code>score.ico</code> (ชื่อเดียวกับนามสกุล) จะใช้รูปนั้นและใส่ไปกับโปรแกรมให้เอง ถ้าไม่มีจะใช้ไอคอนของโปรแกรม</li>
+  <li>ดับเบิลคลิกไฟล์แล้วเปิดโปรแกรม โดยส่งที่อยู่ของไฟล์มาให้</li>
+  <li>ถ้าเครื่องนั้นมีโปรแกรมอื่นเปิดนามสกุลนี้อยู่แล้ว ตัวติดตั้งจะไม่แย่ง แต่ใส่โปรแกรมเราไว้ในเมนู <b>Open with</b> ให้</li>
+  <li>ถอนการติดตั้งแล้ว ทุกอย่างที่เพิ่มไว้หายไปด้วย ของโปรแกรมอื่นไม่ถูกแตะ</li>
+</ul>
+<p>นามสกุลที่ Windows ใช้เอง (<code>.exe</code> <code>.dll</code> <code>.bat</code> <code>.lnk</code> ...) ใส่ไม่ได้ Phai Studio จะบอกและให้แก้ใหม่</p>
+<p>โปรแกรมรู้ว่าถูกเปิดด้วยไฟล์อะไรจาก <code>std::env::args()</code> ตัวที่สอง เช่น อ่านไฟล์ตอนฟอร์มขึ้น (event <b>Shown</b>):</p>
+<pre><code>use phai_ui::form::{message_box, MessageBoxButtons, MessageBoxIcon};
+
+fn main_window_shown(&amp;mut self, ui: &amp;MainWindowUi) {
+    // ดับเบิลคลิก ใบคะแนน.score → args = ["score_book.exe", "D:\\งาน\\ใบคะแนน.score"]
+    if let Some(path) = std::env::args().nth(1) {
+        match std::fs::read_to_string(&amp;path) {
+            Ok(text) =&gt; ui.notes.set_text(&amp;text),
+            Err(e) =&gt; {
+                message_box(ui.hwnd, &amp;format!("เปิด {path} ไม่ได้: {e}"), "Score Book", MessageBoxButtons::Ok, MessageBoxIcon::Error);
+            }
+        }
+    }
+}</code></pre>
 
 <h2>ก่อนแจกจริง ควรรู้</h2>
 <ul>

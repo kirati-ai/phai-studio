@@ -383,6 +383,24 @@ pub fn ask_fields(owner: Option<HWND>, title: &str, fields: &[Field]) -> Option<
         win::show_top(hwnd);
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(first));
         let mut msg = wm::MSG::default();
+        // `PHAI_ASK_SHOT=<file.png>`: the window photographed for the guide, then cancelled.
+        if let Some(to) = std::env::var_os("PHAI_ASK_SHOT") {
+            for _ in 0..30 {
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&msg);
+                    wm::DispatchMessageW(&msg);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            if let Err(e) = crate::shot::save(hwnd, std::path::Path::new(&to)) {
+                eprintln!("PHAI_ASK_SHOT: {e}");
+            }
+            if let Some(o) = owner {
+                win::enable(o, true);
+            }
+            let _ = wm::DestroyWindow(hwnd);
+            return None;
+        }
         loop {
             if win::state::<Fields>(hwnd).is_none_or(|s| s.done) {
                 break;

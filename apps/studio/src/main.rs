@@ -653,6 +653,8 @@ pub struct Studio {
     found_words: &'static str,
     /// Publish: the project's other files and folders to go with the program.
     publish_include: Vec<String>,
+    /// The kinds of file the program published opens: extension, what Explorer calls it.
+    publish_types: Vec<(String, String)>,
     /// Publish: what to pack once the Release build is done.
     publish_after_build: Option<phai_pack::Manifest>,
     /// The table Results shows, when it shows one (Show Table Data): its rows can be changed.
@@ -829,6 +831,30 @@ extern "system" fn code_window_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> 
         }
         _ => win::def(h, msg, w, l),
     }
+}
+
+/// The kinds of file a published program opens, as Publish's box has them: `.order Shop order,
+/// .quote` - each an extension, then what Explorer calls it (`<product> file` when left out).
+/// Extensions Windows runs or opens itself are refused: a program must not take them over.
+fn publish_file_types(spec: &str, product: &str) -> Result<Vec<(String, String)>, String> {
+    const WINDOWS_OWN: [&str; 16] = ["exe", "dll", "com", "bat", "cmd", "lnk", "msi", "ps1", "vbs", "js", "scr", "url", "reg", "sys", "cpl", "pif"];
+    let mut out: Vec<(String, String)> = Vec::new();
+    for item in spec.split(',').map(str::trim).filter(|i| !i.is_empty()) {
+        let (ext, said) = item.split_once(char::is_whitespace).map(|(e, d)| (e, d.trim())).unwrap_or((item, ""));
+        let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+        if ext.is_empty() || ext.len() > 16 || !ext.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+            return Err(tf("{0} is not an extension - write it like .order", &[&item]));
+        }
+        if WINDOWS_OWN.contains(&ext.as_str()) {
+            return Err(tf(".{0} belongs to Windows - a program cannot take it over", &[&ext]));
+        }
+        if out.iter().any(|(e, _)| *e == ext) {
+            continue;
+        }
+        let description = if said.is_empty() { tf("{0} file", &[&product]) } else { said.replace('|', " ") };
+        out.push((ext, description));
+    }
+    Ok(out)
 }
 
 /// The pictures a project's forms show, by their paths in it - what Publish takes along unless
@@ -5929,21 +5955,56 @@ impl Studio {
         let all_users = get("all_users").is_some_and(|d| d == "1");
         // What else goes with the program: said before, or the pictures its forms show.
         let include = get("include").unwrap_or_else(|| pictures_of(&dir).join(", "));
+        let file_types = get("file_types").unwrap_or_default();
         let answers = if std::env::var_os("PHAI_PUBLISH_TEST").is_some() {
-            vec![name, version, publisher, (desktop as u8).to_string(), include, (all_users as u8).to_string()]
+            vec![name, version, publisher, (desktop as u8).to_string(), include, (all_users as u8).to_string(), file_types]
         } else {
-            let fields = [
-                phai_ui::dialogs::Field::Text(t("Product name"), &name),
-                phai_ui::dialogs::Field::Text(t("Version"), &version),
-                phai_ui::dialogs::Field::Text(t("Publisher"), &publisher),
-                phai_ui::dialogs::Field::Check(t("Offer a desktop shortcut"), desktop),
-                phai_ui::dialogs::Field::Text(t("Also include - files or folders of the project, comma between:"), &include),
-                phai_ui::dialogs::Field::Check(t("Install for everyone on the computer (asks for an administrator)"), all_users),
-            ];
-            let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Publish {0}", &[&package]), &fields) else { return };
-            a
+            // Asked again, with what was typed, while the file types cannot be.
+            let mut vals = vec![name, version, publisher, (desktop as u8).to_string(), include, (all_users as u8).to_string(), file_types];
+            loop {
+                let fields = [
+                    phai_ui::dialogs::Field::Text(t("Product name"), &vals[0]),
+                    phai_ui::dialogs::Field::Text(t("Version"), &vals[1]),
+                    phai_ui::dialogs::Field::Text(t("Publisher"), &vals[2]),
+                    phai_ui::dialogs::Field::Check(t("Offer a desktop shortcut"), vals[3] == "1"),
+                    phai_ui::dialogs::Field::Text(t("Also include - files or folders of the project, comma between:"), &vals[4]),
+                    phai_ui::dialogs::Field::Check(t("Install for everyone on the computer (asks for an administrator)"), vals[5] == "1"),
+                    phai_ui::dialogs::Field::Text(t("Files it opens on a double-click - like .order Shop order, comma between:"), &vals[6]),
+                ];
+                let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &tf("Publish {0}", &[&package]), &fields) else { return };
+                match publish_file_types(&a[6], a[0].trim()) {
+                    Ok(_) => break a,
+                    Err(e) => {
+                        win::message(Some(self.hwnd), &e, t("Publish"), wm::MB_ICONWARNING);
+                        vals = a;
+                    }
+                }
+            }
         };
-        let _ = std::fs::write(dir.join("phai-publish.txt"), format!("name={}\npublisher={}\ndesktop={}\ninclude={}\nall_users={}\n", answers[0].trim(), answers[2].trim(), answers[3], answers[4].trim(), answers[5]));
+        let types = match publish_file_types(&answers[6], answers[0].trim()) {
+            Ok(t) => t,
+            Err(e) => {
+                if PUBLISH_TEST.load(Ordering::Relaxed) {
+                    println!("publish failed: {e}");
+                    std::process::exit(2);
+                }
+                return;
+            }
+        };
+        let _ = std::fs::write(dir.join("phai-publish.txt"), format!("name={}\npublisher={}\ndesktop={}\ninclude={}\nall_users={}\nfile_types={}\n", answers[0].trim(), answers[2].trim(), answers[3], answers[4].trim(), answers[5], answers[6].trim()));
+        self.publish_types = types;
+        let types = match publish_file_types(&answers[6], answers[0].trim()) {
+            Ok(t) => t,
+            Err(e) => {
+                if PUBLISH_TEST.load(Ordering::Relaxed) {
+                    println!("publish failed: {e}");
+                    std::process::exit(2);
+                }
+                return;
+            }
+        };
+        let _ = std::fs::write(dir.join("phai-publish.txt"), format!("name={}\npublisher={}\ndesktop={}\ninclude={}\nall_users={}\nfile_types={}\n", answers[0].trim(), answers[2].trim(), answers[3], answers[4].trim(), answers[5], answers[6].trim()));
+        self.publish_types = types;
         self.publish_include = answers[4].split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
         self.publish_after_build = Some(phai_pack::Manifest { name: answers[0].trim().to_string(), version: answers[1].trim().to_string(), publisher: answers[2].trim().to_string(), desktop: answers[3] == "1", all_users: answers[5] == "1", ..Default::default() });
         let was = self.release;
@@ -5992,6 +6053,21 @@ impl Studio {
         let portable = out.join(format!("{base}-portable"));
         // The program, then what else was asked for - by their paths in the project.
         let mut files = vec![(exe_name.clone(), bytes.clone())];
+        // The kinds of file it opens: each with `<ext>.ico` of the project when there is one, else
+        // the program's own icon.
+        let kind = m.safe_name().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>();
+        let kind = if kind.is_empty() { "Program".to_string() } else { kind };
+        for (ext, description) in &self.publish_types {
+            let ico = format!("{ext}.ico");
+            let icon = match std::fs::read(dir.join(&ico)) {
+                Ok(data) => {
+                    files.push((ico.clone(), data));
+                    ico
+                }
+                Err(_) => exe_name.clone(),
+            };
+            m.file_types.push(phai_pack::FileType { ext: ext.clone(), prog_id: format!("{kind}.{ext}"), description: description.clone(), icon });
+        }
         for inc in &self.publish_include {
             let from = dir.join(inc);
             let mut stack = vec![from.clone()];
@@ -6031,6 +6107,9 @@ impl Studio {
         self.say_status(&said);
         if PUBLISH_TEST.load(Ordering::Relaxed) {
             println!("files: {}", files.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", "));
+            for t in &m.file_types {
+                println!("file type: .{} {} \"{}\" {}", t.ext, t.prog_id, t.description, t.icon);
+            }
             println!("published {}", setup_path.display());
             std::process::exit(0);
         }
@@ -9558,6 +9637,7 @@ fn main() {
             table_view: None,
             publish_after_build: None,
             publish_include: vec![],
+            publish_types: vec![],
             found_words: "{0} references in {1} files",
             test_results: vec![],
             outline: None,
@@ -9645,7 +9725,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -10344,6 +10424,12 @@ fn main() {
             }
             std::process::exit(0);
         }
+        // `--publish-shot FILE`: Publish's questions photographed for the guide, then the end.
+        if let Some(to) = args.iter().position(|a| a == "--publish-shot").and_then(|i| args.get(i + 1)) {
+            std::env::set_var("PHAI_ASK_SHOT", to);
+            s.command(ID_PUBLISH);
+            std::process::exit(0);
+        }
         // `--publishtest`: Build > Publish without the questions; prints where the setup went.
         if args.iter().any(|a| a == "--publishtest") {
             PUBLISH_TEST.store(true, Ordering::Relaxed);
@@ -10654,6 +10740,16 @@ mod {file}_ui;
 #[cfg(test)]
 mod add_form_tests {
     use super::*;
+
+    #[test]
+    fn publish_reads_the_kinds_of_file_a_program_opens() {
+        let got = publish_file_types(" .order Shop order, quote ,.ORDER again, , .inv-2", "Shop").unwrap();
+        assert_eq!(got, vec![("order".into(), "Shop order".into()), ("quote".into(), "Shop file".into()), ("inv-2".into(), "Shop file".into())]);
+        assert_eq!(publish_file_types("", "Shop").unwrap(), vec![]);
+        assert!(publish_file_types(".exe", "Shop").is_err(), "Windows' own");
+        assert!(publish_file_types(".or/der", "Shop").is_err());
+        assert!(publish_file_types(". Shop", "Shop").is_err());
+    }
 
     #[test]
     fn the_first_method_is_found() {
