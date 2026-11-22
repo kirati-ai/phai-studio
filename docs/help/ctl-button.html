@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ปุ่ม (Button) - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+</head>
+<body>
+<div class="layout">
+<nav>
+<a class="brand" href="index.html">คู่มือ Phai Studio</a>
+<a href="index.html">หน้าแรก</a>
+<h4>Phai Studio</h4>
+<a href="studio.html">ใช้งาน Phai Studio</a>
+<a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>
+<a href="database.html">ทำงานกับฐานข้อมูล</a>
+<a href="code.html">เขียนโค้ดกับ control</a>
+<a href="winforms.html">control และความสามารถเพิ่มเติม</a>
+<a href="inspector.html">ตัวตรวจสด (F12)</a>
+<a href="web.html">เว็บและมือถือ (PWA)</a>
+<a href="report.html">รายงานพิมพ์</a>
+<h4>Toolbox</h4>
+<a href="ctl-form.html">ฟอร์ม (Form)</a>
+<h5>Common controls</h5>
+<a href="ctl-button.html" class="here">ปุ่ม (Button)</a>
+<h4>Rust Language</h4>
+<a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
+<a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
+<a href="rust-03.html">3. เงื่อนไขและการวนซ้ำ</a>
+<a href="rust-04.html">4. Ownership และการยืม</a>
+<a href="rust-05.html">5. struct, enum และ match</a>
+<a href="rust-06.html">6. จัดการข้อผิดพลาด</a>
+<a href="rust-07.html">7. Vec, String, HashMap</a>
+<a href="rust-08.html">8. trait และ generic</a>
+<a href="rust-09.html">9. โมดูล crate และเทสต์</a>
+<a href="rust-10.html">10. อ่าน error ของคอมไพเลอร์</a>
+<a href="rust-11.html">11. เธรด และก้าวต่อไป</a>
+</nav>
+<main>
+<div class="tool-head"><img class="tool-icon" src="icons/button.png" alt="" width="48" height="48"><div><h1>ปุ่ม (Button)</h1><p class="lead">ในกล่องเครื่องมือ: <b>ปุ่ม</b> · เทียบกับ WinForms: <code>Button</code></p></div></div>
+<p>ปุ่มคือสิ่งที่ผู้ใช้<b>กด</b>เพื่อสั่งให้โปรแกรมทำอะไรสักอย่าง เช่น บันทึก ค้นหา ปิดหน้าต่าง
+ข้อความบนปุ่มควรบอกว่ากดแล้วจะเกิดอะไร เช่น "บันทึก" ดีกว่า "ตกลง"</p>
+<ul><li>ดับเบิลคลิกปุ่มในตัวออกแบบ Phai Studio จะเขียน method สำหรับตอนกดให้ (event <b>Click</b>)</li>
+<li>ตั้ง <b>Class</b> = <code>primary</code> ให้ปุ่มหลักของหน้าต่างเป็นสีเด่น</li>
+<li>ตั้งปุ่มเป็น <b>AcceptButton</b> ของฟอร์ม แล้วกด <kbd>Enter</kbd> ที่ไหนก็กดปุ่มนี้ (และ <b>CancelButton</b> สำหรับ <kbd>Esc</kbd>)</li>
+<li>ปุ่มในกล่องถามตั้ง <b>DialogResult</b> ได้ กดแล้วหน้าต่างปิดพร้อมคำตอบนั้นเอง - ดูหน้า <a href="ctl-form.html">ฟอร์ม</a></li></ul>
+<figure><img class="shot" src="img/ctl-button.png" alt="ปุ่ม ในหน้าต่างตัวอย่าง"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>
+<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>คอนโทรลทั่วไป</b> (Common controls) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> (ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::Button</code></p>
+<h2>ตัวอย่าง</h2>
+<h3>1. นับจำนวนครั้งที่กด (Click)</h3>
+<p>ดับเบิลคลิกปุ่ม <code>click_me</code> แล้วเขียน: บวกหนึ่ง แล้วเปลี่ยนข้อความของป้าย - ค่าที่ต้องจำไว้ระหว่างการกดแต่ละครั้งเก็บใน struct (<code>self.clicks</code>)</p>
+<pre><code>fn click_me_clicked(&amp;mut self, ui: &amp;ButtonDemoUi) {
+    self.clicks += 1;
+    ui.count_label.set_text(&amp;format!(&quot;Clicked {} times&quot;, self.clicks));
+    ui.reset.set_enabled(true);
+}</code></pre>
+<h3>2. ปุ่มที่กดได้เฉพาะตอนที่มีความหมาย (Enabled)</h3>
+<p>ตอนเปิดหน้าต่างยังไม่มีอะไรให้เริ่มใหม่ จึงปิดปุ่ม <code>reset</code> ไว้ก่อน (สีเทา):</p>
+<pre><code>fn loaded(&amp;mut self, ui: &amp;ButtonDemoUi) {
+    // Nothing to start again yet: greyed out.
+    ui.reset.set_enabled(false);
+}</code></pre>
+<p>กดแล้วกลับไปเริ่มต้น ปิดตัวเองอีกครั้ง และส่งแป้นพิมพ์กลับไปที่ปุ่มแรก:</p>
+<pre><code>fn reset_clicked(&amp;mut self, ui: &amp;ButtonDemoUi) {
+    self.clicks = 0;
+    ui.count_label.set_text(&quot;Not clicked yet&quot;);
+    ui.reset.set_enabled(false);
+    ui.click_me.focus(); // back to the first button, so Enter clicks it again
+}</code></pre>
+<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>button_demo.phaiform</code> กับ <code>button_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- button</code></p>
+<h2>Method ของ Button</h2>
+<table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>perform_click()</code></td><td>กดปุ่มด้วยโค้ด เหมือนเอาเมาส์กด - method Click ของมันทำงาน</td></tr>
+</table>
+<details class="common"><summary>Method ที่ control ทุกตัวมี (ข้อความ เปิด/ปิด แสดง/ซ่อน ตำแหน่ง …)</summary><table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>hwnd() -&gt; HWND</code></td><td>ตัว control เอง (HWND) ใช้กับคำสั่งของ Windows ที่ต้องการหน้าต่าง - เหมือน <code>Handle</code></td></tr>
+<tr><td><code>text() -&gt; String</code></td><td>อ่านข้อความของมัน</td></tr>
+<tr><td><code>set_text(s: &amp;str)</code></td><td>เปลี่ยนข้อความของมัน</td></tr>
+<tr><td><code>enabled() -&gt; bool</code></td><td>ใช้งานได้อยู่ไหม</td></tr>
+<tr><td><code>set_enabled(on: bool)</code></td><td><code>true</code> ใช้งานได้ · <code>false</code> เป็นสีเทา กดไม่ได้</td></tr>
+<tr><td><code>visible() -&gt; bool</code></td><td>มองเห็นอยู่ไหม</td></tr>
+<tr><td><code>set_visible(on: bool)</code></td><td>แสดงหรือซ่อน</td></tr>
+<tr><td><code>show()</code></td><td>แสดง</td></tr>
+<tr><td><code>hide()</code></td><td>ซ่อน</td></tr>
+<tr><td><code>focus()</code></td><td>ให้แป้นพิมพ์มาที่มัน</td></tr>
+<tr><td><code>focused() -&gt; bool</code></td><td>แป้นพิมพ์อยู่ที่มันไหม</td></tr>
+<tr><td><code>bring_to_front()</code></td><td>ยกขึ้นไปอยู่บนสุด เหนือ control ที่ซ้อนกัน</td></tr>
+<tr><td><code>send_to_back()</code></td><td>ส่งไปอยู่ล่างสุด</td></tr>
+<tr><td><code>refresh()</code></td><td>วาดใหม่ทันที</td></tr>
+<tr><td><code>invalidate()</code></td><td>ขอให้วาดใหม่ (Windows วาดให้เมื่อว่าง)</td></tr>
+<tr><td><code>bounds() -&gt; RECT</code></td><td>ตำแหน่งและขนาดบนหน้าต่าง (RECT)</td></tr>
+<tr><td><code>client_size() -&gt; (i32, i32)</code></td><td>ความกว้างและความสูงด้านใน (กว้าง, สูง)</td></tr>
+<tr><td><code>set_bounds(x: i32, y: i32, w: i32, h: i32)</code></td><td>ย้ายและเปลี่ยนขนาด: x, y, กว้าง, สูง</td></tr>
+<tr><td><code>point_to_screen(x: i32, y: i32) -&gt; (i32, i32)</code></td><td>แปลงจุดบน control เป็นจุดบนจอ</td></tr>
+<tr><td><code>point_to_client(x: i32, y: i32) -&gt; (i32, i32)</code></td><td>แปลงจุดบนจอเป็นจุดบน control</td></tr>
+<tr><td><code>find_form() -&gt; HWND</code></td><td>หน้าต่าง (ฟอร์ม) ที่มันอยู่</td></tr>
+<tr><td><code>suspend_layout()</code></td><td>หยุดจัดตำแหน่งชั่วคราว ระหว่างเปลี่ยนหลายอย่างพร้อมกัน</td></tr>
+<tr><td><code>resume_layout()</code></td><td>จัดตำแหน่งต่อ หลัง <code>suspend_layout</code></td></tr>
+<tr><td><code>set_tooltip(text: &amp;str)</code></td><td>ข้อความเล็ก ๆ ที่ขึ้นเมื่อชี้เมาส์ค้างไว้ - เหมือน ToolTip</td></tr>
+<tr><td><code>do_drag_drop(text: &amp;str) -&gt; bool</code></td><td>เริ่มลากข้อความนี้ออกไปวางที่อื่น</td></tr>
+<tr><td><code>set_cursor(name: &amp;str)</code></td><td>รูปเมาส์เมื่อชี้มัน เช่น <code>"hand"</code>, <code>"wait"</code>, <code>"ibeam"</code></td></tr>
+</table></details>
+<h2>Properties</h2>
+<p>ตั้งได้ในหน้าต่าง Properties เมื่อเลือกมันบนฟอร์ม - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>
+<table class="ref"><tr><th>Property</th><th>ค่าเริ่มต้น</th><th>ทำอะไร</th></tr>
+<tr class="group"><td colspan="3">ออกแบบ</td></tr>
+<tr><td><b>รหัส</b></td><td><code>button</code></td><td>ชื่อ control ในโค้ด และ #id ใน CSS</td></tr>
+<tr><td><b>คลาส</b></td><td><span class="muted">-</span></td><td>คลาส CSS จากธีม เช่น primary หลายคลาสคั่นด้วยช่องว่าง</td></tr>
+<tr><td><b>ล็อก</b></td><td><code>False</code></td><td>ล็อกไว้: เมาส์และปุ่มลูกศรจะไม่ย้ายหรือปรับขนาดในหน้าออกแบบ</td></tr>
+<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
+<tr><td><b>ข้อความ</b></td><td><code>Button</code></td><td>ข้อความที่แสดง - คีย์ภาษาอังกฤษ โปรแกรมแปลให้</td></tr>
+<tr><td><b>ฟอนต์</b></td><td><code>Segoe UI, 9pt</code></td><td>ขนาดและน้ำหนักของตัวอักษร - Segoe UI, 9pt คือของ Windows</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>ขนาดฟอนต์</b></td><td><span class="muted">-</span></td><td>ขนาดตัวอักษร (พอยต์) ของ control นี้ ทับของฟอร์ม</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>ตัวหนา</b></td><td><code>False</code></td><td>แสดงข้อความเป็นตัวหนา</td></tr>
+<tr><td><b>สีพื้น</b></td><td><span class="muted">-</span></td><td>สีพื้นหลัง ทับธีม - เขียนเป็น CSS #id { background }</td></tr>
+<tr><td><b>สีตัวอักษร</b></td><td><span class="muted">-</span></td><td>สีข้อความ ทับธีม - #id { color }</td></tr>
+<tr><td><b>สีขอบ</b></td><td><span class="muted">-</span></td><td>สีขอบ ทับธีม - #id { border-color }</td></tr>
+<tr><td><b>มุมมน</b></td><td><span class="muted">-</span></td><td>ความมนของมุม เป็นพิกเซล - #id { border-radius }</td></tr>
+<tr><td><b>ToolTip</b></td><td><span class="muted">-</span></td><td>ข้อความที่ขึ้นเมื่อวางเมาส์ค้างไว้</td></tr>
+<tr><td><b>Cursor</b></td><td><code>default</code></td><td>รูปตัวชี้เมาส์เมื่ออยู่บนตัวนี้</td></tr>
+<tr><td><b>Border width</b></td><td><span class="muted">-</span></td><td>ความหนาของขอบ (พิกเซล) - #id { border-width }</td></tr>
+<tr><td><b>Accent colour</b></td><td><span class="muted">-</span></td><td>สีของเครื่องหมายติ๊ก จุด แถบ หรือเส้นใต้แท็บที่เลือก - #id { accent-color }</td></tr>
+<tr><td><b>Animation</b></td><td><span class="muted">-</span></td><td>สีเคลื่อนไหวเอง: blink 1s infinite (กะพริบ), pulse 1.5s infinite (เต้น), fade-in 400ms (ค่อย ๆ ปรากฏ) หรือ @keyframes ในธีม - #id { animation }</td></tr>
+<tr><td><b>FontFamily</b></td><td><span class="muted">-</span></td><td>แบบตัวอักษรของข้อความ เช่น Consolas สำหรับ log ส่วน Segoe UI คือแบบของ Windows เอง</td></tr>
+<tr><td><b>Transition</b></td><td><span class="muted">-</span></td><td>สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน เช่น 150ms, 0.3s ease-out - #id { transition }</td></tr>
+<tr><td><b>Background gradient</b></td><td><span class="muted">-</span></td><td>สีที่ไล่ต่อกันไปทั่วตัว เช่น linear-gradient(to bottom, #ffffff, #dde3ea) - #id { background-image }</td></tr>
+<tr><td><b>Shadow</b></td><td><span class="muted">-</span></td><td>เงานุ่ม เช่น 0 2px 6px rgba(0, 0, 0, 0.25) - เลื่อนขวา เลื่อนลง ความฟุ้ง สี - #id { box-shadow }</td></tr>
+<tr><td><b>TextAlign</b></td><td><code>center</code></td><td>ตำแหน่งของข้อความ</td></tr>
+<tr class="group"><td colspan="3">พฤติกรรม</td></tr>
+<tr><td><b>ใช้งานได้</b></td><td><code>True</code></td><td>ใช้งานได้ หรือแสดงเป็นสีเทา</td></tr>
+<tr><td><b>มองเห็น</b></td><td><code>True</code></td><td>แสดงเมื่อเปิดหน้าต่างหรือไม่</td></tr>
+<tr><td><b>TabIndex</b></td><td><span class="muted">-</span></td><td>ลำดับที่ปุ่ม Tab เลื่อนผ่าน ถ้าไม่ตั้งใช้ลำดับในฟอร์ม</td></tr>
+<tr><td><b>TabStop</b></td><td><code>True</code></td><td>ปุ่ม Tab หยุดที่ตัวนี้หรือไม่</td></tr>
+<tr><td><b>DialogResult</b></td><td><code>none</code></td><td>เมื่อคลิก หน้าต่างจะปิด และ show_dialog คืนค่านี้</td></tr>
+<tr><td><b>AllowDrop</b></td><td><code>False</code></td><td>ลากไฟล์จาก Explorer มาวางได้ - ใช้ event DragDrop</td></tr>
+<tr class="group"><td colspan="3">การจัดวาง</td></tr>
+<tr><td><b>ตำแหน่ง</b></td><td><code>12, 12</code></td><td>มุมซ้ายบนนับจากของฟอร์ม ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>X</b></td><td><code>12</code></td><td>ระยะจากซ้ายของฟอร์ม ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>Y</b></td><td><code>12</code></td><td>ระยะจากบนของฟอร์ม ที่สเกล 100%</td></tr>
+<tr><td><b>ขนาด</b></td><td><code>120, 24</code></td><td>ความกว้างและความสูง ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>กว้าง</b></td><td><code>120</code></td><td>ที่สเกล 100%</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<b>สูง</b></td><td><code>24</code></td><td>ที่สเกล 100%</td></tr>
+<tr><td><b>ติดขอบ</b></td><td><code>none</code></td><td>ติดขอบหนึ่งของฟอร์ม หรือเต็มพื้นที่ที่เหลือ</td></tr>
+<tr><td><b>ยึดขอบ</b></td><td><code>left top</code></td><td>ขอบที่รักษาระยะไว้เมื่อหน้าต่างขยาย</td></tr>
+<tr class="group"><td colspan="3">ข้อมูล</td></tr>
+<tr><td><b>DataBindings</b></td><td><span class="muted">-</span></td><td>id ของแหล่งข้อมูลผูกกับคอลัมน์ - people.name: control แสดงคอลัมน์นั้นของแถวปัจจุบัน และสิ่งที่แก้จะเขียนกลับ</td></tr>
+</table>
+<h2>Events</h2>
+<p>ดับเบิลคลิกชื่อ event ในแท็บ Events ของ Properties แล้ว Phai Studio จะเขียน method ให้ (ชื่อในตารางนี้สมมติว่า Id ของมันคือ <code>button</code> และอยู่บนฟอร์ม MainWindow) - ชี้เมาส์ที่ชนิดของ <code>e</code> เพื่อดูชื่อเต็ม</p>
+<table class="ref"><tr><th>Event</th><th>ทำอะไร</th><th>method ที่ Phai Studio เขียนให้</th></tr>
+<tr><td><b>คลิก</b></td><td>เมธอดที่ทำงานเมื่อเกิดเหตุการณ์นี้ ดับเบิลคลิก control เพื่อเขียน</td><td><code>fn button_clicked(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>DoubleClick</b></td><td>ถูกดับเบิลคลิก</td><td><code>fn button_double_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Enter</b></td><td>ได้รับโฟกัส แป้นที่กดต่อไปจะเข้าตัวนี้</td><td><code>fn button_enter(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>Leave</b></td><td>โฟกัสย้ายไปที่อื่น</td><td><code>fn button_leave(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>KeyDown</b></td><td>กดแป้นขณะมีโฟกัส - e.key, e.ctrl; เรียก e.set_handled() เพื่อไม่ให้ control ได้รับแป้นนั้น</td><td><code title="phai_ui::events::KeyEventArgs">fn button_key_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyUp</b></td><td>ปล่อยแป้นขณะมีโฟกัส</td><td><code title="phai_ui::events::KeyEventArgs">fn button_key_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyEventArgs)</code></td></tr>
+<tr><td><b>KeyPress</b></td><td>พิมพ์ตัวอักษร - e.ch; เรียก e.set_handled() เพื่อไม่ให้ตัวอักษรเข้าไป</td><td><code title="phai_ui::events::KeyPressEventArgs">fn button_key_press(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;KeyPressEventArgs)</code></td></tr>
+<tr><td><b>MouseEnter</b></td><td>เมาส์เลื่อนเข้ามาบนตัวนี้</td><td><code>fn button_mouse_enter(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>MouseLeave</b></td><td>เมาส์เลื่อนออกจากตัวนี้</td><td><code>fn button_mouse_leave(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>MouseDown</b></td><td>กดปุ่มเมาส์บนตัวนี้ - e.x, e.y, e.button</td><td><code title="phai_ui::events::MouseEventArgs">fn button_mouse_down(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseUp</b></td><td>ปล่อยปุ่มเมาส์บนตัวนี้</td><td><code title="phai_ui::events::MouseEventArgs">fn button_mouse_up(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseMove</b></td><td>เมาส์เคลื่อนบนตัวนี้</td><td><code title="phai_ui::events::MouseEventArgs">fn button_mouse_move(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>MouseWheel</b></td><td>หมุนลูกล้อเมาส์บน control - e.delta ทีละ 120 ต่อหนึ่งจังหวะ มากกว่า 0 คือหมุนออกจากตัว</td><td><code title="phai_ui::events::MouseEventArgs">fn button_mouse_wheel(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;MouseEventArgs)</code></td></tr>
+<tr><td><b>Resize</b></td><td>ขนาดเปลี่ยน - หน้าต่างถูกย่อขยายและตัวนี้ยึดขอบหรือ dock ไว้</td><td><code>fn button_resize(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>DragDrop</b></td><td>มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)</td><td><code title="phai_ui::events::FileDropEventArgs">fn button_drag_drop(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;FileDropEventArgs)</code></td></tr>
+</table>
+<h2>ลองทำเอง</h2><div class="try"><ol><li>เพิ่มปุ่ม "-1" ที่ลดจำนวนลง แต่ไม่ให้ต่ำกว่าศูนย์</li><li>ให้ปุ่ม <code>click_me</code> เปลี่ยนข้อความเป็น "พอแล้ว!" และกดไม่ได้เมื่อกดครบ 10 ครั้ง</li><li>ใช้ <code>ui.click_me.set_tooltip("…")</code> ใน <code>loaded</code> ให้มีคำอธิบายเมื่อชี้เมาส์</li></ol></div>
+<div class="pager"><a href="ctl-form.html">← ฟอร์ม (Form)</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+</main>
+</div>
+</body>
+</html>

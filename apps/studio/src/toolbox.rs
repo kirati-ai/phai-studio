@@ -38,14 +38,14 @@ enum Line {
 
 /// The groups, in Visual Studio's order: every tool, then by kind. A kind's own group is where
 /// [`group_of`] puts it; every tool is in the first one too.
-fn groups() -> [&'static str; 8] {
+pub(crate) fn groups() -> [&'static str; 8] {
     [t("All controls"), t("Common controls"), t("Containers"), t("Menus and toolbars"), t("Data"), t("Components"), t("Printing"), t("Dialogs")]
 }
 
 /// Open to begin with, as in Visual Studio: Common controls only.
 const OPEN_AT_FIRST: usize = 1;
 
-fn group_of(k: Kind) -> usize {
+pub(crate) fn group_of(k: Kind) -> usize {
     match k {
         Kind::Group | Kind::Tabs | Kind::Flow | Kind::Table | Kind::Panel | Kind::Split | Kind::UserControl => 2,
         Kind::Statusbar | Kind::ContextMenu => 3,

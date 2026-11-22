@@ -93,3 +93,6 @@ table.ref tr.group td { background: var(--panel); font-weight: 600; color: var(-
 figure { margin: 16px 0; }
 figure img.shot { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
 figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
+nav h5 { margin: 10px 0 2px 12px; font-size: 0.72rem; font-weight: 600; color: var(--muted); }
+details.common { margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; }
+details.common summary { cursor: pointer; font-weight: 600; }

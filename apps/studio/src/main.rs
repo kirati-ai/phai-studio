@@ -2592,6 +2592,7 @@ impl Studio {
             let verb = match event {
                 "on_click" => "clicked",
                 "on_change" => "changed",
+                "on_tick" => "ticked",
                 _ => "chosen",
             };
             format!("{}_{verb}", c.id)

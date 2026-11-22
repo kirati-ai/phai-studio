@@ -1,0 +1,30 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ButtonDemo"
+title = "Button"
+size = [360, 150]
+start = "center"
+accept_button = "click_me"
+
+[[control]]
+kind = "label"
+id = "count_label"
+text = "Not clicked yet"
+bounds = [16, 16, 328, 24]
+
+[[control]]
+kind = "button"
+id = "click_me"
+text = "Click me"
+bounds = [16, 56, 150, 32]
+class = "primary"
+on_click = "click_me_clicked"
+
+[[control]]
+kind = "button"
+id = "reset"
+text = "Start again"
+bounds = [178, 56, 150, 32]
+on_click = "reset_clicked"

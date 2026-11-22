@@ -22,6 +22,8 @@
 <a href="report.html">รายงานพิมพ์</a>
 <h4>Toolbox</h4>
 <a href="ctl-form.html" class="here">ฟอร์ม (Form)</a>
+<h5>Common controls</h5>
+<a href="ctl-button.html">ปุ่ม (Button)</a>
 <h4>Rust Language</h4>
 <a href="rust-01.html">1. เริ่มต้นกับ Rust</a>
 <a href="rust-02.html">2. ตัวแปร ชนิดข้อมูล ฟังก์ชัน</a>
@@ -206,47 +208,40 @@ impl NameFormEvents for NameForm {
 <table class="ref"><tr><th>Property</th><th>ค่าเริ่มต้น</th><th>ทำอะไร</th></tr>
 <tr class="group"><td colspan="3">ออกแบบ</td></tr>
 <tr><td><b>ชื่อ</b></td><td><code>MainWindow</code></td><td>ชื่อหน้าต่างในโค้ด: ชื่อ struct และชื่อไฟล์</td></tr>
+<tr><td><b>UserControl</b></td><td><code>False</code></td><td>ไม่ใช่หน้าต่าง แต่เป็น control ที่ฟอร์มอื่นในโปรเจกต์วางได้ (kind usercontrol)</td></tr>
 <tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
 <tr><td><b>หัวเรื่อง</b></td><td><code>MainWindow</code></td><td>ข้อความบนแถบชื่อ - คีย์ภาษาอังกฤษ โปรแกรมแปลให้</td></tr>
 <tr><td><b>ขนาดฟอนต์</b></td><td><span class="muted">-</span></td><td>ขนาดตัวอักษร (พอยต์) ของทุก control ว่างไว้คือ 9 ของ Windows</td></tr>
 <tr><td><b>ธีม</b></td><td><span class="muted">-</span></td><td>ไฟล์ CSS ที่ทุก control ใช้สี</td></tr>
+<tr><td><b>FormBorderStyle</b></td><td><code>sizable</code></td><td>Sizable: ลากขอบย่อขยายได้, Fixed: ลากไม่ได้, Dialog: กรอบแบบกล่องโต้ตอบ, Tool: แถบชื่อเล็ก, None: ไม่มีกรอบเลย</td></tr>
+<tr><td><b>BackColor</b></td><td><span class="muted">-</span></td><td>สีพื้นหลังของหน้าต่างนี้ทับธีม control ข้างในวางบนสีนี้</td></tr>
+<tr><td><b>ForeColor</b></td><td><span class="muted">-</span></td><td>สีตัวอักษรของหน้าต่างนี้ทับธีม</td></tr>
+<tr><td><b>BackgroundImage</b></td><td><span class="muted">-</span></td><td>ไฟล์รูปในโปรเจกต์ ใช้เป็นพื้นหลังใต้ control ของหน้าต่าง</td></tr>
+<tr><td><b>BackgroundImageLayout</b></td><td><code>tile</code></td><td>Tile: ปูซ้ำ, None: ขนาดจริงมุมซ้ายบน, Center: อยู่กลาง, Stretch: ยืดเต็มหน้าต่าง, Zoom: ขยายเต็มที่โดยคงสัดส่วน</td></tr>
 <tr class="group"><td colspan="3">การจัดวาง</td></tr>
 <tr><td><b>ขนาด</b></td><td><code>480, 320</code></td><td>ขนาดด้านในหน้าต่าง ที่สเกล 100%</td></tr>
 <tr><td>&nbsp;&nbsp;&nbsp;<b>กว้าง</b></td><td><code>480</code></td><td>ขนาดด้านในหน้าต่าง ที่สเกล 100%</td></tr>
 <tr><td>&nbsp;&nbsp;&nbsp;<b>สูง</b></td><td><code>320</code></td><td>ขนาดด้านในหน้าต่าง ที่สเกล 100%</td></tr>
 <tr><td><b>ตำแหน่งเริ่มต้น</b></td><td><code>กลางจอ</code></td><td>หน้าต่างขึ้นที่ไหนตอนเปิด: กลางจอ หรือตามที่ Windows วางให้</td></tr>
 <tr><td><b>สถานะหน้าต่าง</b></td><td><code>ปกติ</code></td><td>เต็มจอ: หน้าต่างเปิดขึ้นมาเต็มจอ</td></tr>
+<tr><td><b>PhoneLayout</b></td><td><code>stack</code></td><td>บนจอที่แคบกว่าฟอร์ม (มือถือ บนเว็บ): stack เรียง control ลงมาทีละตัว กว้างเต็มจอ ตามลำดับการอ่าน ขนาดพอให้นิ้วกด; zoom ย่อทั้งฟอร์มให้พอดีจอ</td></tr>
+<tr><td><b>MinimumSize</b></td><td><span class="muted">-</span></td><td>ขนาดภายในที่เล็กที่สุดที่ลากย่อได้ ที่สเกล 100%</td></tr>
+<tr><td><b>MaximumSize</b></td><td><span class="muted">-</span></td><td>ขนาดภายในที่ใหญ่ที่สุดที่ลากขยายได้ ที่สเกล 100%</td></tr>
+<tr><td><b>AutoScroll</b></td><td><code>False</code></td><td>เมื่อหน้าต่างเล็กกว่าที่ออกแบบ จะมีแถบเลื่อนและ control เลื่อนตาม</td></tr>
+<tr><td><b>Padding</b></td><td><code>0</code></td><td>ระยะว่างรอบขอบหน้าต่าง (พิกเซล) สำหรับ control ที่ dock</td></tr>
 <tr class="group"><td colspan="3">อื่น ๆ</td></tr>
 <tr><td><b>AcceptButton</b></td><td><span class="muted">-</span></td><td>ปุ่มที่ถูกกดเมื่อกด Enter ไม่ว่าโฟกัสอยู่ที่ไหน</td></tr>
 <tr><td><b>CancelButton</b></td><td><span class="muted">-</span></td><td>ปุ่มที่ถูกกดเมื่อกด Esc</td></tr>
 <tr><td><b>KeyPreview</b></td><td><code>False</code></td><td>KeyDown, KeyUp และ KeyPress ของหน้าต่างได้รับแป้นที่กดใน control ก่อนตัว control</td></tr>
-<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
-<tr><td><b>FormBorderStyle</b></td><td><code>sizable</code></td><td>Sizable: ลากขอบย่อขยายได้, Fixed: ลากไม่ได้, Dialog: กรอบแบบกล่องโต้ตอบ, Tool: แถบชื่อเล็ก, None: ไม่มีกรอบเลย</td></tr>
-<tr class="group"><td colspan="3">การจัดวาง</td></tr>
-<tr><td><b>PhoneLayout</b></td><td><code>stack</code></td><td>บนจอที่แคบกว่าฟอร์ม (มือถือ บนเว็บ): stack เรียง control ลงมาทีละตัว กว้างเต็มจอ ตามลำดับการอ่าน ขนาดพอให้นิ้วกด; zoom ย่อทั้งฟอร์มให้พอดีจอ</td></tr>
 <tr class="group"><td colspan="3">รูปแบบหน้าต่าง</td></tr>
 <tr><td><b>MaximizeBox</b></td><td><code>True</code></td><td>ปุ่มขยายเต็มจอบนแถบชื่อ</td></tr>
 <tr><td><b>MinimizeBox</b></td><td><code>True</code></td><td>ปุ่มย่อหน้าต่างบนแถบชื่อ</td></tr>
 <tr><td><b>ControlBox</b></td><td><code>True</code></td><td>ปุ่มและเมนูบนแถบชื่อ ถ้าปิดจะไม่มีทั้งหมด</td></tr>
-<tr class="group"><td colspan="3">ออกแบบ</td></tr>
-<tr><td><b>UserControl</b></td><td><code>False</code></td><td>ไม่ใช่หน้าต่าง แต่เป็น control ที่ฟอร์มอื่นในโปรเจกต์วางได้ (kind usercontrol)</td></tr>
-<tr class="group"><td colspan="3">รูปแบบหน้าต่าง</td></tr>
 <tr><td><b>IsMdiContainer</b></td><td><code>False</code></td><td>ฟอร์มอื่นเปิดข้างในได้ (show_mdi_child) เรียงซ้อนหรือเรียงต่อกัน</td></tr>
 <tr><td><b>TopMost</b></td><td><code>False</code></td><td>อยู่เหนือหน้าต่างอื่นทุกหน้าต่างเสมอ</td></tr>
 <tr><td><b>ShowInTaskbar</b></td><td><code>True</code></td><td>มีปุ่มบนแถบงาน (taskbar)</td></tr>
 <tr><td><b>Opacity</b></td><td><code>100</code></td><td>ความทึบเป็นเปอร์เซ็นต์ ยิ่งน้อยยิ่งเห็นสิ่งที่อยู่ข้างหลัง</td></tr>
 <tr><td><b>Icon</b></td><td><span class="muted">-</span></td><td>ไฟล์ .ico ในโปรเจกต์ สำหรับแถบชื่อและปุ่มบนแถบงาน</td></tr>
-<tr class="group"><td colspan="3">การจัดวาง</td></tr>
-<tr><td><b>MinimumSize</b></td><td><span class="muted">-</span></td><td>ขนาดภายในที่เล็กที่สุดที่ลากย่อได้ ที่สเกล 100%</td></tr>
-<tr><td><b>MaximumSize</b></td><td><span class="muted">-</span></td><td>ขนาดภายในที่ใหญ่ที่สุดที่ลากขยายได้ ที่สเกล 100%</td></tr>
-<tr class="group"><td colspan="3">รูปลักษณ์</td></tr>
-<tr><td><b>BackColor</b></td><td><span class="muted">-</span></td><td>สีพื้นหลังของหน้าต่างนี้ทับธีม control ข้างในวางบนสีนี้</td></tr>
-<tr><td><b>ForeColor</b></td><td><span class="muted">-</span></td><td>สีตัวอักษรของหน้าต่างนี้ทับธีม</td></tr>
-<tr><td><b>BackgroundImage</b></td><td><span class="muted">-</span></td><td>ไฟล์รูปในโปรเจกต์ ใช้เป็นพื้นหลังใต้ control ของหน้าต่าง</td></tr>
-<tr><td><b>BackgroundImageLayout</b></td><td><code>tile</code></td><td>Tile: ปูซ้ำ, None: ขนาดจริงมุมซ้ายบน, Center: อยู่กลาง, Stretch: ยืดเต็มหน้าต่าง, Zoom: ขยายเต็มที่โดยคงสัดส่วน</td></tr>
-<tr class="group"><td colspan="3">การจัดวาง</td></tr>
-<tr><td><b>AutoScroll</b></td><td><code>False</code></td><td>เมื่อหน้าต่างเล็กกว่าที่ออกแบบ จะมีแถบเลื่อนและ control เลื่อนตาม</td></tr>
-<tr><td><b>Padding</b></td><td><code>0</code></td><td>ระยะว่างรอบขอบหน้าต่าง (พิกเซล) สำหรับ control ที่ dock</td></tr>
 <tr class="group"><td colspan="3">พฤติกรรม</td></tr>
 <tr><td><b>AllowDrop</b></td><td><code>False</code></td><td>ลากไฟล์จาก Explorer มาวางบนหน้าต่างได้ - ใช้ event DragDrop</td></tr>
 </table>
@@ -281,7 +276,7 @@ impl NameFormEvents for NameForm {
 <li>ตั้ง Opacity ของ NoteForm เป็น 85 แล้วดูว่าเห็นอะไรอยู่ข้างหลัง</li>
 </ol></div>
 <p class="muted">โค้ดทั้งหมดในหน้านี้อยู่ในโปรเจกต์ <code>docs/help-src/examples/form</code> ของ Phai Studio - เปิดด้วย Phai Studio แล้วกด <kbd>F5</kbd> ได้เลย</p>
-<div class="pager"><a href="report.html">← รายงานพิมพ์</a><a href="rust-01.html">1. เริ่มต้นกับ Rust →</a></div>
+<div class="pager"><a href="report.html">← รายงานพิมพ์</a><a href="ctl-button.html">ปุ่ม (Button) →</a></div>
 </main>
 </div>
 </body>

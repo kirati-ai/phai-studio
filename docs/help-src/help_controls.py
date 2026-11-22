@@ -42,6 +42,9 @@ def head(tag, title, winforms, data):
 
 def props_table(rows):
     out = ['<table class="ref"><tr><th>Property</th><th>ค่าเริ่มต้น</th><th>ทำอะไร</th></tr>']
+    # One heading a category, in the order they first come; the rows keep theirs within it.
+    order = list(dict.fromkeys(r['category'] for r in rows))
+    rows = sorted(rows, key=lambda r: order.index(r['category']))
     group = None
     for r in rows:
         if r['category'] != group:
@@ -185,7 +188,105 @@ def form_page(data):
     return '\n'.join(p)
 
 
+import control_pages, method_th, methods
+
+# Made by Phai Studio's generated code itself, never called by the program.
+HIDDEN = {'new', 'with_id'}
+VERB = {'on_click': 'clicked', 'on_change': 'changed', 'on_tick': 'ticked'}
+
+
+def sig_of(sig):
+    """`pub fn set_text(self, s: &str)` as the page shows it: `set_text(s: &str)`."""
+    s = re.sub(r'^(pub )?fn ', '', sig)
+    s = re.sub(r'\(self,\s*', '(', s)
+    s = s.replace('(self)', '()')
+    return s
+
+
+def method_rows(items, prefix):
+    rows = []
+    for name, sig, doc in items:
+        if name in HIDDEN:
+            continue
+        what = method_th.TH.get(f'{prefix}.{name}') or e(doc) or '<span class="muted">-</span>'
+        rows.append((sig_of(sig), what))
+    return rows
+
+
+def control_events_table(tool, ui):
+    out = ['<table class="ref"><tr><th>Event</th><th>ทำอะไร</th><th>method ที่ Phai Studio เขียนให้</th></tr>']
+    tag = tool['tag']
+    for r in tool['events']:
+        if r['key'].startswith('on_'):
+            method = f'{tag}_{VERB.get(r["key"], "chosen")}'
+        else:
+            method = f'{tag}_{r["key"]}'
+        arg = r['arg']
+        sig = f'fn {method}(&amp;mut self, ui: &amp;{ui}' + (f', e: &amp;{e(arg.split("::")[-1])}' if arg else '') + ')'
+        title = f' title="{e(arg)}"' if arg else ''
+        out.append(f'<tr><td><b>{e(r["name"])}</b></td><td>{e(r["help"])}</td><td><code{title}>{sig}</code></td></tr>')
+    out.append('</table>')
+    return '\n'.join(out)
+
+
+def control_page(tag, data):
+    c = control_pages.PAGES[tag]
+    tool = next(t for t in data['tools'] if t['tag'] == tag)
+    group = next(g for g in data['groups'] if g['index'] == tool['group'])
+    ty = tool['type']
+    ui = f'{"".join(w.capitalize() for w in tag.split("_"))}DemoUi'
+    p = [head(tag, f'{c["title"]} ({c["winforms"]})', c['winforms'], data)]
+    p.append(c['intro'])
+    p.append(f'<figure><img class="shot" src="img/ctl-{tag}.png" alt="{e(c["title"])} ในหน้าต่างตัวอย่าง"><figcaption>ตัวอย่างในหน้านี้ตอนรัน</figcaption></figure>')
+    where = (f'<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>{e(group["th"])}</b> ({e(group["en"])}) - ลากมาวางบนฟอร์ม แล้วตั้ง <b>Id</b> '
+             f'(ชื่อที่ใช้ในโค้ด) ในหน้าต่าง Properties · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::{e(ty)}</code></p>')
+    if tool.get('component'):
+        where = (f'<p>อยู่ในกล่องเครื่องมือกลุ่ม <b>{e(group["th"])}</b> ({e(group["en"])}) - ลากมาวางแล้วมันจะไปอยู่ในแถบด้านล่างของตัวออกแบบ '
+                 f'(ไม่ได้อยู่บนหน้าต่าง) · ในโค้ดเรียกมันว่า <code>ui.ชื่อId</code> ซึ่งเป็นชนิด <code>phai_ui::ctl::{e(ty)}</code></p>')
+    p.append(where)
+    if c['examples']:
+        p.append('<h2>ตัวอย่าง</h2>')
+        for heading, text, names in c['examples']:
+            if heading:
+                p.append(f'<h3>{e(heading)}</h3>')
+            p.append(text)
+            for n in names:
+                p.append(snippet('controls', f'{tag}_demo.rs', n))
+        p.append(f'<p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>{tag}_demo.phaiform</code> กับ <code>{tag}_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- {tag}</code></p>')
+
+    own = method_rows(methods.own(ty), ty)
+    if own:
+        p.append(f'<h2>Method ของ {e(c["winforms"])}</h2>')
+        p.append(methods_table(own))
+    if c.get('textedit'):
+        p.append('<h2>Method ของช่องข้อความ (TextEdit)</h2>')
+        p.append('<p>ใส่ <code>use phai_ui::ctl::TextEdit;</code> ไว้บนสุดของไฟล์ก่อน แล้วเรียกได้เลย</p>')
+        p.append(methods_table(method_rows(methods.text_edit(), 'TextEdit')))
+    if not tool.get('component'):
+        common = methods_table(method_rows(methods.common(), 'common'))
+        p.append(f'<details class="common"><summary>Method ที่ control ทุกตัวมี (ข้อความ เปิด/ปิด แสดง/ซ่อน ตำแหน่ง …)</summary>{common}</details>')
+
+    p.append('<h2>Properties</h2>')
+    p.append('<p>ตั้งได้ในหน้าต่าง Properties เมื่อเลือกมันบนฟอร์ม - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>')
+    p.append(props_table(tool['properties']))
+    if tool['events']:
+        p.append('<h2>Events</h2>')
+        p.append('<p>ดับเบิลคลิกชื่อ event ในแท็บ Events ของ Properties แล้ว Phai Studio จะเขียน method ให้ (ชื่อในตารางนี้สมมติว่า Id ของมันคือ <code>' + tag + '</code> และอยู่บนฟอร์ม MainWindow) - ชี้เมาส์ที่ชนิดของ <code>e</code> เพื่อดูชื่อเต็ม</p>')
+        p.append(control_events_table(tool, 'MainWindowUi'))
+    if c['tries']:
+        p.append('<h2>ลองทำเอง</h2><div class="try"><ol>' + ''.join(f'<li>{t}</li>' for t in c['tries']) + '</ol></div>')
+    return '\n'.join(p)
+
+
 def pages():
-    """(file, title, body) of every Toolbox page there is so far."""
+    """(file, title, body, menu group) of every Toolbox page there is: the Form, then each group of the
+    Toolbox as Phai Studio has them, its tools by their WinForms names."""
     data = load_data()
-    return [('ctl-form.html', 'ฟอร์ม (Form)', form_page(data))]
+    out = [('ctl-form.html', 'ฟอร์ม (Form)', form_page(data), 'Toolbox')]
+    for g in data['groups']:
+        tags = [t['tag'] for t in data['tools'] if t.get('group') == g['index'] and t['tag'] in control_pages.PAGES]
+        tags.sort(key=lambda t: control_pages.PAGES[t]['winforms'].lower())
+        for tag in tags:
+            c = control_pages.PAGES[tag]
+            out.append((f'ctl-{tag}.html', f'{c["title"]} ({c["winforms"]})', control_page(tag, data), 'Toolbox/' + g['en']))
+    return out

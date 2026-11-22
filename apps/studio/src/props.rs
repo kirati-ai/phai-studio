@@ -156,6 +156,195 @@ fn form_rows(f: &phai_form::FormFile) -> Vec<Prop> {
     .collect()
 }
 
+/// A control's rows in the Properties pane, from the form and the control alone (and what the
+/// theme draws it with, when the canvas has it) - the pane's, and the guide's (`--help-data`).
+fn control_rows(f: &phai_form::FormFile, c: &phai_form::Control, theme: Option<&phai_ui::theme::Style>) -> Vec<Prop> {
+    let p = |category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: None, set: false };
+    let part = |parent: Key, category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: Some(parent), set: false };
+    let sizes: Vec<String> = ["", "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"].iter().map(|s| s.to_string()).collect();
+    let bools = Ed::Bool;
+    // A context menu: its name and its items.
+    if c.kind == Kind::ContextMenu {
+        return [
+            p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
+            p(t("Data"), Key::Items, t("Items"), c.items.join("\n"), Ed::Dialog, t("One a line: method | label - the method runs when it is chosen; - alone a separator.")),
+        ]
+        .into_iter()
+        .map(|mut q| {
+            q.set = is_set(q.key, &q.value);
+            q
+        })
+        .collect();
+    }
+    // A timer: its name, how often, whether it runs from the start.
+    if c.kind == Kind::Timer {
+        return [
+            p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
+            p(t("Behavior"), Key::Value, t("Interval"), c.value.unwrap_or(1000).to_string(), Ed::Number, t("Milliseconds between ticks - 1000 is a second.")),
+            p(t("Behavior"), Key::Enabled, t("Enabled"), yes_no(c.enabled != Some(false)), bools.clone(), t("Whether it ticks from when the window opens.")),
+        ]
+        .into_iter()
+        .map(|mut q| {
+            q.set = is_set(q.key, &q.value);
+            q
+        })
+        .collect();
+    }
+    // A component (a dialog, ErrorProvider, BindingSource, PrintDocument, NotifyIcon) is not drawn
+    // on the form: its name and its own settings, as WinForms lists a component - no font,
+    // colours, place or size.
+    if c.kind.is_component() {
+        let mut v = vec![p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS."))];
+        if c.kind == Kind::NotifyIcon {
+            v.push(p(t("Appearance"), Key::Text, t("Text"), c.text.clone().unwrap_or_default(), Ed::Text, t("The words it shows - an English key, translated by the program.")));
+            v.push(p(t("Behavior"), Key::Visible, t("Visible"), yes_no(c.visible != Some(false)), bools.clone(), t("Whether it shows when the window opens.")));
+        }
+        for q in v.iter_mut() {
+            q.set = is_set(q.key, &q.value);
+        }
+        for sp in table::of_kind(c.kind) {
+            let val = c.prop(sp.name);
+            v.push(Prop { category: t(sp.category), key: Key::More(sp.name), name: sp.label, value: shown(sp, val), ed: ed_of(sp, &[]), help: t(sp.help).into(), parent: None, set: val.is_some() });
+        }
+        return v;
+    }
+    let [x, y, w, h] = c.rect();
+    let docked = c.dock.is_some();
+    let has_text = c.kind.has_text() || c.kind == Kind::Statusbar;
+    let colour = |o: &Option<String>| o.clone().unwrap_or_default();
+    let mut v = vec![
+        p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
+        p(t("Design"), Key::Class, t("Class"), c.class.clone().unwrap_or_default(), Ed::Choice(theme_classes(), true), t("CSS classes from the theme, like primary. Several, space between.")),
+        p(t("Design"), Key::Locked, t("Locked"), yes_no(c.locked == Some(true)), bools.clone(), t("Locked: the mouse and the arrows do not move or size it in the designer.")),
+    ];
+    if has_text {
+        v.push(p(t("Appearance"), Key::Text, t("Text"), c.text.clone().unwrap_or_default(), Ed::Text, t("The words it shows - an English key, translated by the program.")));
+    }
+    v.extend([
+        p(t("Appearance"), Key::FontAll, t("Font"), format!("Segoe UI, {}pt{}", c.font_size.or(f.form.font_size).unwrap_or(9), if c.bold == Some(true) { ", Bold" } else { "" }), Ed::Text, t("Its words' size and weight - Segoe UI, 9pt is Windows' own.")),
+        part(Key::FontAll, t("Appearance"), Key::Font, t("Font size"), c.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for this control's words, over the form's.")),
+        part(Key::FontAll, t("Appearance"), Key::Bold, t("Bold"), yes_no(c.bold == Some(true)), bools.clone(), t("Its words in bold.")),
+        p(t("Appearance"), Key::BackColor, t("Back colour"), colour(&c.back_color), Ed::Color, t("Its background, over the theme - written into CSS as #id { background }.")),
+        p(t("Appearance"), Key::ForeColor, t("Fore colour"), colour(&c.fore_color), Ed::Color, t("Its words' colour, over the theme - #id { color }.")),
+        p(t("Appearance"), Key::BorderColor, t("Border colour"), colour(&c.border_color), Ed::Color, t("Its border, over the theme - #id { border-color }.")),
+        p(t("Appearance"), Key::Radius, t("Corner radius"), c.radius.map(|n| n.to_string()).unwrap_or_default(), Ed::Number, t("How round its corners are, pixels - #id { border-radius }.")),
+        p(t("Behavior"), Key::Enabled, t("Enabled"), yes_no(c.enabled != Some(false)), bools.clone(), t("Whether it can be used, or shows greyed.")),
+        p(t("Behavior"), Key::Visible, t("Visible"), yes_no(c.visible != Some(false)), bools.clone(), t("Whether it shows when the window opens.")),
+    ]);
+    if matches!(c.kind, Kind::Checkbox | Kind::Radio) {
+        v.push(p(t("Behavior"), Key::Checked, t("Checked"), yes_no(c.checked == Some(true)), bools.clone(), t("Ticked when the window opens.")));
+    }
+    if c.kind == Kind::Radio {
+        v.push(p(t("Behavior"), Key::Group, t("Group"), c.group.unwrap_or(0).to_string(), Ed::Number, t("Options with the same group number exclude each other.")));
+    }
+    if c.kind == Kind::Edit {
+        v.push(p(t("Behavior"), Key::Password, t("Password"), yes_no(c.password == Some(true)), bools.clone(), t("Shows dots instead of what is typed.")));
+    }
+    if matches!(c.kind, Kind::Number | Kind::Progress | Kind::Slider) {
+        v.push(p(t("Data"), Key::Min, t("Minimum"), c.min.unwrap_or(0).to_string(), Ed::Number, t("The smallest value.")));
+        v.push(p(t("Data"), Key::Max, t("Maximum"), c.max.unwrap_or(100).to_string(), Ed::Number, t("The largest value.")));
+        v.push(p(t("Data"), Key::Value, t("Value"), c.value.unwrap_or(0).to_string(), Ed::Number, t("The value when the window opens.")));
+    }
+    // A context menu for any control, when the form has one.
+    let menus: Vec<String> = f.control.iter().filter(|m| m.kind == Kind::ContextMenu).map(|m| m.id.clone()).collect();
+    if !menus.is_empty() && !c.kind.is_component() {
+        let mut choices = vec![String::new()];
+        choices.extend(menus);
+        v.push(p(t("Behavior"), Key::ContextMenu, t("Context menu"), c.context_menu.clone().unwrap_or_default(), Ed::Choice(choices, false), t("The menu a right-click on it opens.")));
+    }
+    if c.kind == Kind::Table {
+        v.push(p(t("Layout"), Key::Cols, t("Columns"), c.cols.unwrap_or(2).to_string(), Ed::Number, t("How many equal columns the controls in it are laid in.")));
+    }
+    if c.kind == Kind::Picture {
+        v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
+    }
+    if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree | Kind::Grid | Kind::ListBox | Kind::CheckedList) {
+        let items = match c.kind {
+            Kind::Combo | Kind::Tree | Kind::ListBox | Kind::CheckedList => c.items.join("\n"),
+            Kind::Tabs => c.tabs.join("\n"),
+            _ => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
+        };
+        v.push(p(t("Data"), Key::Items, if matches!(c.kind, Kind::List | Kind::Grid) { t("Columns") } else { t("Items") }, items, Ed::Dialog, t("One a line; a list's columns as Name:width.")));
+    }
+    if !docked {
+        v.extend([
+            p(t("Layout"), Key::Location, t("Location"), format!("{x}, {y}"), Ed::Text, t("Its top-left corner from the form's, at 100% scale.")),
+            part(Key::Location, t("Layout"), Key::X, "X", x.to_string(), Ed::Number, t("From the form's left, at 100% scale.")),
+            part(Key::Location, t("Layout"), Key::Y, "Y", y.to_string(), Ed::Number, t("From the form's top, at 100% scale.")),
+        ]);
+    }
+    v.extend([
+        p(t("Layout"), Key::Size, t("Size"), format!("{w}, {h}"), Ed::Text, t("Its width and height, at 100% scale.")),
+        part(Key::Size, t("Layout"), Key::W, t("Width"), w.to_string(), Ed::Number, t("At 100% scale.")),
+        part(Key::Size, t("Layout"), Key::H, t("Height"), h.to_string(), Ed::Number, t("At 100% scale.")),
+        p(t("Layout"), Key::Dock, t("Dock"), c.dock.clone().unwrap_or_else(|| "none".into()), Ed::Choice(DOCKS.iter().map(|d| d.to_string()).collect(), false), t("Fills an edge of the form, or all that is left.")),
+    ]);
+    if !docked {
+        v.push(p(t("Layout"), Key::Anchor, t("Anchor"), c.anchor.clone().unwrap_or_else(|| "left top".into()), Ed::Anchor, t("The edges it keeps its distance to when the window grows.")));
+    }
+    for q in v.iter_mut() {
+        q.set = is_set(q.key, &q.value);
+    }
+    // What the theme gives it, where the control sets nothing of its own: plain, not bold.
+    if let Some(st) = &theme {
+        for q in v.iter_mut().filter(|q| !q.set) {
+            let from_theme = match q.key {
+                Key::BackColor => st.background.map(hex),
+                Key::ForeColor => st.color.map(hex),
+                Key::BorderColor => st.border_color.map(hex),
+                Key::Radius => st.border_radius.map(|n| n.to_string()),
+                _ => None,
+            };
+            if let Some(x) = from_theme {
+                q.value = x;
+            }
+        }
+    }
+    for sp in table::of_kind(c.kind) {
+        let val = c.prop(sp.name);
+        let mut value = shown(sp, val);
+        if val.is_none() {
+            let from_theme = theme.as_ref().and_then(|st| match sp.name {
+                "border_width" => st.border_width.map(|n| n.to_string()),
+                "accent_color" => st.accent_color.map(hex),
+                "icon_color" => st.icon_color.map(hex),
+                _ => None,
+            });
+            if let Some(x) = from_theme {
+                value = x;
+            }
+        }
+        v.push(Prop { category: t(sp.category), key: Key::More(sp.name), name: sp.label, value, ed: ed_of(sp, &[]), help: t(sp.help).into(), parent: None, set: val.is_some() });
+    }
+    v
+}
+
+/// The guide's view of a control of `kind`: its rows in the Properties pane as a new one has them
+/// (category, name, default, what it does, a part of the row before it), and its events
+/// (category, name, the file's key, what it means, the argument its method takes).
+pub type HelpRow = (&'static str, &'static str, String, String, bool);
+pub type HelpEvent = (&'static str, &'static str, &'static str, String, Option<&'static str>);
+pub fn control_for_help(kind: Kind) -> (Vec<HelpRow>, Vec<HelpEvent>) {
+    let mut f = phai_form::FormFile::new("MainWindow");
+    let c = phai_form::Control::new(kind, kind.name(), [12, 12, 120, 24]);
+    f.control.push(c.clone());
+    let rows = control_rows(&f, &c, None).into_iter().map(|q| (q.category, q.name, q.value, q.help.into_owned(), q.parent.is_some())).collect();
+    let mut events = Vec::new();
+    if let Some(e) = kind.event() {
+        let name = match e {
+            "on_click" => t("Click"),
+            "on_change" => t("Change"),
+            "on_tick" => t("Tick"),
+            _ => t("Select"),
+        };
+        events.push((t("Action"), name, e, t("The method that runs when this happens. Double-click the control to write it.").to_string(), None));
+    }
+    for e in phai_form::events::of_kind(kind) {
+        events.push((event_category(e.name), e.label, e.name, t(e.help).to_string(), e.args.param()));
+    }
+    (rows, events)
+}
+
 /// The guide's view of a form's properties: (category, name, default value, what it does, a part
 /// of the row before it) for each row the Properties pane shows a new form.
 pub fn form_rows_for_help() -> Vec<(&'static str, &'static str, String, String, bool)> {
@@ -523,9 +712,6 @@ impl Props {
         let Some(s) = studio() else { return vec![] };
         let f = &s.doc.form;
         let p = |category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: None, set: false };
-        let part = |parent: Key, category, key, name, value: String, ed, help: &'static str| Prop { category, key, name, value, ed, help: help.into(), parent: Some(parent), set: false };
-        let sizes: Vec<String> = ["", "8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36"].iter().map(|s| s.to_string()).collect();
-        let bools = Ed::Bool;
         // A part of the menu bar or toolbar: its own properties, as a ToolStripItem's.
         if let Some(b) = s.bar_sel.clone() {
             if self.mode == 1 {
@@ -586,143 +772,9 @@ impl Props {
         let Some(c) = sel.and_then(|i| f.control.get(i)) else {
             return form_rows(f);
         };
-        // A context menu: its name and its items.
-        if c.kind == Kind::ContextMenu {
-            return [
-                p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
-                p(t("Data"), Key::Items, t("Items"), c.items.join("\n"), Ed::Dialog, t("One a line: method | label - the method runs when it is chosen; - alone a separator.")),
-            ]
-            .into_iter()
-            .map(|mut q| {
-                q.set = is_set(q.key, &q.value);
-                q
-            })
-            .collect();
-        }
-        // A timer: its name, how often, whether it runs from the start.
-        if c.kind == Kind::Timer {
-            return [
-                p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
-                p(t("Behavior"), Key::Value, t("Interval"), c.value.unwrap_or(1000).to_string(), Ed::Number, t("Milliseconds between ticks - 1000 is a second.")),
-                p(t("Behavior"), Key::Enabled, t("Enabled"), yes_no(c.enabled != Some(false)), bools.clone(), t("Whether it ticks from when the window opens.")),
-            ]
-            .into_iter()
-            .map(|mut q| {
-                q.set = is_set(q.key, &q.value);
-                q
-            })
-            .collect();
-        }
-        let [x, y, w, h] = c.rect();
-        let docked = c.dock.is_some();
-        let has_text = c.kind.has_text() || c.kind == Kind::Statusbar;
-        let colour = |o: &Option<String>| o.clone().unwrap_or_default();
-        let mut v = vec![
-            p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
-            p(t("Design"), Key::Class, t("Class"), c.class.clone().unwrap_or_default(), Ed::Choice(theme_classes(), true), t("CSS classes from the theme, like primary. Several, space between.")),
-            p(t("Design"), Key::Locked, t("Locked"), yes_no(c.locked == Some(true)), bools.clone(), t("Locked: the mouse and the arrows do not move or size it in the designer.")),
-        ];
-        if has_text {
-            v.push(p(t("Appearance"), Key::Text, t("Text"), c.text.clone().unwrap_or_default(), Ed::Text, t("The words it shows - an English key, translated by the program.")));
-        }
-        v.extend([
-            p(t("Appearance"), Key::FontAll, t("Font"), format!("Segoe UI, {}pt{}", c.font_size.or(f.form.font_size).unwrap_or(9), if c.bold == Some(true) { ", Bold" } else { "" }), Ed::Text, t("Its words' size and weight - Segoe UI, 9pt is Windows' own.")),
-            part(Key::FontAll, t("Appearance"), Key::Font, t("Font size"), c.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for this control's words, over the form's.")),
-            part(Key::FontAll, t("Appearance"), Key::Bold, t("Bold"), yes_no(c.bold == Some(true)), bools.clone(), t("Its words in bold.")),
-            p(t("Appearance"), Key::BackColor, t("Back colour"), colour(&c.back_color), Ed::Color, t("Its background, over the theme - written into CSS as #id { background }.")),
-            p(t("Appearance"), Key::ForeColor, t("Fore colour"), colour(&c.fore_color), Ed::Color, t("Its words' colour, over the theme - #id { color }.")),
-            p(t("Appearance"), Key::BorderColor, t("Border colour"), colour(&c.border_color), Ed::Color, t("Its border, over the theme - #id { border-color }.")),
-            p(t("Appearance"), Key::Radius, t("Corner radius"), c.radius.map(|n| n.to_string()).unwrap_or_default(), Ed::Number, t("How round its corners are, pixels - #id { border-radius }.")),
-            p(t("Behavior"), Key::Enabled, t("Enabled"), yes_no(c.enabled != Some(false)), bools.clone(), t("Whether it can be used, or shows greyed.")),
-            p(t("Behavior"), Key::Visible, t("Visible"), yes_no(c.visible != Some(false)), bools.clone(), t("Whether it shows when the window opens.")),
-        ]);
-        if matches!(c.kind, Kind::Checkbox | Kind::Radio) {
-            v.push(p(t("Behavior"), Key::Checked, t("Checked"), yes_no(c.checked == Some(true)), bools.clone(), t("Ticked when the window opens.")));
-        }
-        if c.kind == Kind::Radio {
-            v.push(p(t("Behavior"), Key::Group, t("Group"), c.group.unwrap_or(0).to_string(), Ed::Number, t("Options with the same group number exclude each other.")));
-        }
-        if c.kind == Kind::Edit {
-            v.push(p(t("Behavior"), Key::Password, t("Password"), yes_no(c.password == Some(true)), bools.clone(), t("Shows dots instead of what is typed.")));
-        }
-        if matches!(c.kind, Kind::Number | Kind::Progress | Kind::Slider) {
-            v.push(p(t("Data"), Key::Min, t("Minimum"), c.min.unwrap_or(0).to_string(), Ed::Number, t("The smallest value.")));
-            v.push(p(t("Data"), Key::Max, t("Maximum"), c.max.unwrap_or(100).to_string(), Ed::Number, t("The largest value.")));
-            v.push(p(t("Data"), Key::Value, t("Value"), c.value.unwrap_or(0).to_string(), Ed::Number, t("The value when the window opens.")));
-        }
-        // A context menu for any control, when the form has one.
-        let menus: Vec<String> = f.control.iter().filter(|m| m.kind == Kind::ContextMenu).map(|m| m.id.clone()).collect();
-        if !menus.is_empty() && !c.kind.is_component() {
-            let mut choices = vec![String::new()];
-            choices.extend(menus);
-            v.push(p(t("Behavior"), Key::ContextMenu, t("Context menu"), c.context_menu.clone().unwrap_or_default(), Ed::Choice(choices, false), t("The menu a right-click on it opens.")));
-        }
-        if c.kind == Kind::Table {
-            v.push(p(t("Layout"), Key::Cols, t("Columns"), c.cols.unwrap_or(2).to_string(), Ed::Number, t("How many equal columns the controls in it are laid in.")));
-        }
-        if c.kind == Kind::Picture {
-            v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
-        }
-        if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree | Kind::Grid | Kind::ListBox | Kind::CheckedList) {
-            let items = match c.kind {
-                Kind::Combo | Kind::Tree | Kind::ListBox | Kind::CheckedList => c.items.join("\n"),
-                Kind::Tabs => c.tabs.join("\n"),
-                _ => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
-            };
-            v.push(p(t("Data"), Key::Items, if matches!(c.kind, Kind::List | Kind::Grid) { t("Columns") } else { t("Items") }, items, Ed::Dialog, t("One a line; a list's columns as Name:width.")));
-        }
-        if !docked {
-            v.extend([
-                p(t("Layout"), Key::Location, t("Location"), format!("{x}, {y}"), Ed::Text, t("Its top-left corner from the form's, at 100% scale.")),
-                part(Key::Location, t("Layout"), Key::X, "X", x.to_string(), Ed::Number, t("From the form's left, at 100% scale.")),
-                part(Key::Location, t("Layout"), Key::Y, "Y", y.to_string(), Ed::Number, t("From the form's top, at 100% scale.")),
-            ]);
-        }
-        v.extend([
-            p(t("Layout"), Key::Size, t("Size"), format!("{w}, {h}"), Ed::Text, t("Its width and height, at 100% scale.")),
-            part(Key::Size, t("Layout"), Key::W, t("Width"), w.to_string(), Ed::Number, t("At 100% scale.")),
-            part(Key::Size, t("Layout"), Key::H, t("Height"), h.to_string(), Ed::Number, t("At 100% scale.")),
-            p(t("Layout"), Key::Dock, t("Dock"), c.dock.clone().unwrap_or_else(|| "none".into()), Ed::Choice(DOCKS.iter().map(|d| d.to_string()).collect(), false), t("Fills an edge of the form, or all that is left.")),
-        ]);
-        if !docked {
-            v.push(p(t("Layout"), Key::Anchor, t("Anchor"), c.anchor.clone().unwrap_or_else(|| "left top".into()), Ed::Anchor, t("The edges it keeps its distance to when the window grows.")));
-        }
-        for q in v.iter_mut() {
-            q.set = is_set(q.key, &q.value);
-        }
-        // What the theme gives it, where the control sets nothing of its own: plain, not bold.
+        // What the theme gives it, where the control sets nothing of its own.
         let theme = sel.and_then(|i| s.canvas.as_ref().and_then(|cv| cv.control_window(i))).and_then(|h| win::kind_of(h).map(|k| win::style_of(h, k, State::default())));
-        if let Some(st) = &theme {
-            for q in v.iter_mut().filter(|q| !q.set) {
-                let from_theme = match q.key {
-                    Key::BackColor => st.background.map(hex),
-                    Key::ForeColor => st.color.map(hex),
-                    Key::BorderColor => st.border_color.map(hex),
-                    Key::Radius => st.border_radius.map(|n| n.to_string()),
-                    _ => None,
-                };
-                if let Some(x) = from_theme {
-                    q.value = x;
-                }
-            }
-        }
-        for sp in table::of_kind(c.kind) {
-            let val = c.prop(sp.name);
-            let mut value = shown(sp, val);
-            if val.is_none() {
-                let from_theme = theme.as_ref().and_then(|st| match sp.name {
-                    "border_width" => st.border_width.map(|n| n.to_string()),
-                    "accent_color" => st.accent_color.map(hex),
-                    "icon_color" => st.icon_color.map(hex),
-                    _ => None,
-                });
-                if let Some(x) = from_theme {
-                    value = x;
-                }
-            }
-            v.push(Prop { category: t(sp.category), key: Key::More(sp.name), name: sp.label, value, ed: ed_of(sp, &[]), help: t(sp.help).into(), parent: None, set: val.is_some() });
-        }
-        v
+        control_rows(f, c, theme.as_ref())
     }
 
     /// The Style tab: the chosen control's look in the chosen state - each value as it is drawn,

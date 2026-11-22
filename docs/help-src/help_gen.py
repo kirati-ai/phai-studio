@@ -44,8 +44,8 @@ sys.path.insert(0, HERE)
 import help_controls
 # The Toolbox group goes right after Phai Studio's own pages, before Rust.
 at = max(i for i, p in enumerate(PAGES) if p[2] == 'Phai Studio') + 1
-for f, title, body in help_controls.pages():
-    PAGES.insert(at, (f, title, 'Toolbox'))
+for f, title, body, group in help_controls.pages():
+    PAGES.insert(at, (f, title, group))
     at += 1
     bodies[f] = body
 
@@ -84,8 +84,13 @@ def nav(current):
     out = ['<a class="brand" href="index.html">คู่มือ Phai Studio</a>']
     group = None
     for f, title, g in PAGES:
+        # 'Toolbox/Common controls': the Toolbox heading once, its group under it.
         if g != group and g:
-            out.append(f'<h4>{html.escape(g)}</h4>')
+            top, _, sub = g.partition('/')
+            if top != (group or '').partition('/')[0]:
+                out.append(f'<h4>{html.escape(top)}</h4>')
+            if sub:
+                out.append(f'<h5>{html.escape(sub)}</h5>')
             group = g
         cls = ' class="here"' if f == current else ''
         out.append(f'<a href="{f}"{cls}>{html.escape(title)}</a>')
