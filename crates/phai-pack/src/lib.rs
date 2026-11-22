@@ -23,6 +23,22 @@ pub struct Manifest {
     pub all_users: bool,
     /// Every file installed, relative - for the uninstaller to take away.
     pub files: Vec<String>,
+    /// The kinds of file the program opens: shown with their own icon in Explorer, opened in it by
+    /// a double-click, taken away again by the uninstaller.
+    pub file_types: Vec<FileType>,
+}
+
+/// A kind of file a program opens - `.phf`, Phai Studio's forms.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FileType {
+    /// Without its dot: `phf`.
+    pub ext: String,
+    /// Windows' name for the kind (a ProgID): `PhaiStudio.Form`. Extensions of one kind share it.
+    pub prog_id: String,
+    /// What Explorer calls it: `Phai form`.
+    pub description: String,
+    /// Its icon, an .ico among the files installed, relative: `phf.ico`.
+    pub icon: String,
 }
 
 impl Manifest {
@@ -30,6 +46,9 @@ impl Manifest {
         let mut s = format!("name={}\nversion={}\npublisher={}\nexe={}\ndesktop={}\nall_users={}\n", self.name, self.version, self.publisher, self.exe, self.desktop as u8, self.all_users as u8);
         for f in &self.files {
             s.push_str(&format!("file={f}\n"));
+        }
+        for t in &self.file_types {
+            s.push_str(&format!("file_type={}|{}|{}|{}\n", t.ext, t.prog_id, t.description, t.icon));
         }
         s
     }
@@ -46,6 +65,11 @@ impl Manifest {
                 "desktop" => m.desktop = v == "1",
                 "all_users" => m.all_users = v == "1",
                 "file" => m.files.push(v.into()),
+                "file_type" => {
+                    let mut p = v.splitn(4, '|');
+                    let mut next = || p.next().unwrap_or("").to_string();
+                    m.file_types.push(FileType { ext: next(), prog_id: next(), description: next(), icon: next() });
+                }
                 _ => {}
             }
         }
@@ -192,7 +216,8 @@ mod tests {
     #[test]
     fn packed_files_come_back_whole() {
         let stub = b"MZ pretend setup program".to_vec();
-        let m = Manifest { name: "ร้านค้า Shop".into(), version: "1.2.0".into(), publisher: "Monrak Net".into(), exe: "shop.exe".into(), desktop: true, all_users: true, files: vec![] };
+        let order = FileType { ext: "shop".into(), prog_id: "Shop.Order".into(), description: "ใบสั่งซื้อ Shop order".into(), icon: "order.ico".into() };
+        let m = Manifest { name: "ร้านค้า Shop".into(), version: "1.2.0".into(), publisher: "Monrak Net".into(), exe: "shop.exe".into(), desktop: true, all_users: true, files: vec![], file_types: vec![order.clone()] };
         let big: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
         let files = vec![("shop.exe".to_string(), big.clone()), ("data/readme.txt".to_string(), "ไผ่".as_bytes().to_vec())];
         let setup = pack(&stub, &m, &files);
@@ -201,6 +226,7 @@ mod tests {
         assert_eq!(back.name, "ร้านค้า Shop");
         assert!(back.all_users);
         assert_eq!(back.files, ["shop.exe", "data/readme.txt"]);
+        assert_eq!(back.file_types, vec![order]);
         assert_eq!(got, files);
         assert_eq!(strip(&setup), &stub[..]);
         // Packed again onto a packed setup: the old load goes, not doubled.

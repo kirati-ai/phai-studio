@@ -148,6 +148,123 @@ fn register(m: &Manifest, dir: &Path, size: u64) -> Result<(), String> {
     Ok(())
 }
 
+/// Where Windows keeps the kinds of file: this user's `Software\Classes` (or the computer's, for
+/// everyone - the same root as the list of apps).
+const CLASSES: &str = "Software\\Classes";
+
+fn create_key(root: reg::HKEY, path: &str) -> Option<reg::HKEY> {
+    let mut key = reg::HKEY::default();
+    let r = unsafe { reg::RegCreateKeyExW(root, &HSTRING::from(path), None, PCWSTR::null(), reg::REG_OPTION_NON_VOLATILE, reg::KEY_WRITE, None, &mut key, None) };
+    r.is_ok().then_some(key)
+}
+
+fn close(key: reg::HKEY) {
+    unsafe {
+        let _ = reg::RegCloseKey(key);
+    }
+}
+
+/// The words of `name` under `path` (`""` the key's default), when it has some.
+fn get_str(root: reg::HKEY, path: &str, name: &str) -> Option<String> {
+    let mut buf = vec![0u16; 512];
+    let mut len = (buf.len() * 2) as u32;
+    let r = unsafe { reg::RegGetValueW(root, &HSTRING::from(path), &HSTRING::from(name), reg::RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut _), Some(&mut len)) };
+    if r.is_err() {
+        return None;
+    }
+    let n = (len as usize / 2).saturating_sub(1);
+    Some(String::from_utf16_lossy(&buf[..n.min(buf.len())]))
+}
+
+/// Explorer told the kinds of file changed: their icons drawn again.
+fn associations_changed() {
+    use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
+    unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
+}
+
+/// The program's kinds of file in `classes` under `root`: each kind (its ProgID) named, with its
+/// icon and its open command; each extension that kind's - unless another program already has it -
+/// and the kind in its Open with list either way.
+fn register_file_types(root: reg::HKEY, classes: &str, m: &Manifest, dir: &Path) {
+    let exe = dir.join(&m.exe);
+    for t in &m.file_types {
+        if t.ext.is_empty() || t.prog_id.is_empty() {
+            continue;
+        }
+        let kind = format!("{classes}\\{}", t.prog_id);
+        if let Some(k) = create_key(root, &kind) {
+            set_str(k, "", &t.description);
+            close(k);
+        }
+        if let Some(k) = create_key(root, &format!("{kind}\\DefaultIcon")) {
+            set_str(k, "", &format!("{},0", dir.join(t.icon.replace('/', "\\")).display()));
+            close(k);
+        }
+        if let Some(k) = create_key(root, &format!("{kind}\\shell\\open\\command")) {
+            set_str(k, "", &format!("\"{}\" \"%1\"", exe.display()));
+            close(k);
+        }
+        let ext = format!("{classes}\\.{}", t.ext);
+        let theirs = get_str(root, &ext, "").filter(|v| !v.is_empty() && *v != t.prog_id);
+        if let Some(k) = create_key(root, &ext) {
+            if theirs.is_none() {
+                set_str(k, "", &t.prog_id);
+            }
+            close(k);
+        }
+        if let Some(k) = create_key(root, &format!("{ext}\\OpenWithProgids")) {
+            set_str(k, &t.prog_id, "");
+            close(k);
+        }
+    }
+    if !m.file_types.is_empty() {
+        associations_changed();
+    }
+}
+
+/// What [`register_file_types`] wrote taken away: the kinds, the extensions' pointers to them, and
+/// an extension's key when nothing else is left in it - another program's say over it stays.
+fn unregister_file_types(root: reg::HKEY, classes: &str, m: &Manifest) {
+    for t in &m.file_types {
+        if t.ext.is_empty() || t.prog_id.is_empty() {
+            continue;
+        }
+        let ext = format!("{classes}\\.{}", t.ext);
+        unsafe {
+            if get_str(root, &ext, "").as_deref() == Some(t.prog_id.as_str()) {
+                let _ = reg::RegDeleteKeyValueW(root, &HSTRING::from(ext.as_str()), PCWSTR::null());
+            }
+            let _ = reg::RegDeleteKeyValueW(root, &HSTRING::from(format!("{ext}\\OpenWithProgids")), &HSTRING::from(t.prog_id.as_str()));
+        }
+        for path in [format!("{ext}\\OpenWithProgids"), ext.clone()] {
+            if key_is_empty(root, &path) {
+                unsafe {
+                    let _ = reg::RegDeleteKeyW(root, &HSTRING::from(path.as_str()));
+                }
+            }
+        }
+        unsafe {
+            let _ = reg::RegDeleteTreeW(root, &HSTRING::from(format!("{classes}\\{}", t.prog_id)));
+            let _ = reg::RegDeleteKeyW(root, &HSTRING::from(format!("{classes}\\{}", t.prog_id)));
+        }
+    }
+    if !m.file_types.is_empty() {
+        associations_changed();
+    }
+}
+
+/// Whether the key at `path` has nothing in it: no values (its default unset), no keys under it.
+fn key_is_empty(root: reg::HKEY, path: &str) -> bool {
+    let mut key = reg::HKEY::default();
+    if unsafe { reg::RegOpenKeyExW(root, &HSTRING::from(path), None, reg::KEY_READ, &mut key) }.is_err() {
+        return false;
+    }
+    let (mut subkeys, mut values) = (0u32, 0u32);
+    let r = unsafe { reg::RegQueryInfoKeyW(key, None, None, None, Some(&mut subkeys), None, None, Some(&mut values), None, None, None, None) };
+    close(key);
+    r.is_ok() && subkeys == 0 && values == 0
+}
+
 struct Options {
     dir: PathBuf,
     start_menu: bool,
@@ -186,6 +303,7 @@ fn install(me: &[u8], m: &Manifest, files: &[(String, Vec<u8>)], o: &Options) ->
     }
     if o.registry {
         register(m, &o.dir, size + uninstaller.len() as u64)?;
+        register_file_types(root(m), CLASSES, m, &o.dir);
     }
     Ok(())
 }
@@ -219,6 +337,7 @@ fn uninstall(m: &Manifest, dir: &Path, quiet: bool, wait_for: Option<u32>) {
     unsafe {
         let _ = reg::RegDeleteTreeW(root(m), &HSTRING::from(uninstall_key(m)));
     }
+    unregister_file_types(root(m), CLASSES, m);
     if !quiet {
         win::message(None, &fill(tr("{0} has been removed."), &[&m.name]), tr("Setup"), wm::MB_ICONINFORMATION);
     }
@@ -439,3 +558,40 @@ fn main() {
     wizard(me, m, files, dir);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A program's kinds of file registered and taken away again - in a key of this test's own
+    /// under this user's registry, not the real `Software\Classes`; another program's hold on an
+    /// extension is left as it was.
+    #[test]
+    fn file_types_come_and_go_and_leave_others_alone() {
+        let classes = format!("Software\\PhaiSetupTest-{}\\Classes", std::process::id());
+        let root = reg::HKEY_CURRENT_USER;
+        let t = |ext: &str| phai_pack::FileType { ext: ext.into(), prog_id: "PhaiTest.Form".into(), description: "Phai form".into(), icon: "phf.ico".into() };
+        let m = Manifest { name: "Phai Test".into(), exe: "phai-test.exe".into(), file_types: vec![t("phf"), t("phaiform")], ..Default::default() };
+        // .phaiform already another program's.
+        if let Some(k) = create_key(root, &format!("{classes}\\.phaiform")) {
+            set_str(k, "", "Other.Thing");
+            close(k);
+        }
+        let dir = Path::new("C:\\Programs\\Phai Test");
+        register_file_types(root, &classes, &m, dir);
+        assert_eq!(get_str(root, &format!("{classes}\\.phf"), "").as_deref(), Some("PhaiTest.Form"));
+        assert_eq!(get_str(root, &format!("{classes}\\PhaiTest.Form"), "").as_deref(), Some("Phai form"));
+        assert_eq!(get_str(root, &format!("{classes}\\PhaiTest.Form\\DefaultIcon"), "").as_deref(), Some("C:\\Programs\\Phai Test\\phf.ico,0"));
+        assert_eq!(get_str(root, &format!("{classes}\\PhaiTest.Form\\shell\\open\\command"), "").as_deref(), Some("\"C:\\Programs\\Phai Test\\phai-test.exe\" \"%1\""));
+        assert_eq!(get_str(root, &format!("{classes}\\.phaiform"), "").as_deref(), Some("Other.Thing"), "another program's stays");
+        assert_eq!(get_str(root, &format!("{classes}\\.phaiform\\OpenWithProgids"), "PhaiTest.Form").as_deref(), Some(""), "ours in its Open with");
+        unregister_file_types(root, &classes, &m);
+        assert!(get_str(root, &format!("{classes}\\PhaiTest.Form"), "").is_none());
+        assert!(!key_is_empty(root, &format!("{classes}\\.phf")) && get_str(root, &format!("{classes}\\.phf"), "").is_none(), "our extension gone");
+        assert_eq!(get_str(root, &format!("{classes}\\.phaiform"), "").as_deref(), Some("Other.Thing"));
+        assert!(get_str(root, &format!("{classes}\\.phaiform\\OpenWithProgids"), "PhaiTest.Form").is_none());
+        unsafe {
+            let _ = reg::RegDeleteTreeW(root, &HSTRING::from(format!("Software\\PhaiSetupTest-{}", std::process::id())));
+            let _ = reg::RegDeleteKeyW(root, &HSTRING::from(format!("Software\\PhaiSetupTest-{}", std::process::id())));
+        }
+    }
+}

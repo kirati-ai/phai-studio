@@ -78,7 +78,11 @@ fn main() {
         }
     }
     add_dir(&root.join("docs").join("help"), "help", &mut files);
-    let m = phai_pack::Manifest { name: "Phai Studio".into(), version: version.clone(), publisher: "Monrak Net".into(), exe: "phai-studio.exe".into(), desktop: true, all_users: false, files: vec![] };
+    // Phai forms open in Phai Studio with their own icon - .phf, and .phaiform as they were called
+    // before 0.2.6.
+    files.push(("phf.ico".into(), read(root.join("apps").join("studio").join("phf.ico"))));
+    let form = |ext: &str| phai_pack::FileType { ext: ext.into(), prog_id: "PhaiStudio.Form".into(), description: "Phai form".into(), icon: "phf.ico".into() };
+    let m = phai_pack::Manifest { name: "Phai Studio".into(), version: version.clone(), publisher: "Monrak Net".into(), exe: "phai-studio.exe".into(), desktop: true, all_users: false, files: vec![], file_types: vec![form("phf"), form("phaiform")] };
     let out_dir = root.join("dist");
     std::fs::create_dir_all(&out_dir).expect("dist folder");
     let out = out_dir.join(format!("PhaiStudio-{version}-setup.exe"));
