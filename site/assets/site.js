@@ -5,12 +5,12 @@
 // (its number, name, line and points) follows.
 // It waits while the pointer or focus is on it, while it is off screen or the tab hidden, and never
 // moves by itself for a reader who asked for less motion. It never scrolls the page.
-(() => {
-    const box = document.querySelector('.slider');
+document.querySelectorAll('.gallery').forEach((gal) => {
+    const box = gal.querySelector('.slider');
     if (!box) return;
     const track = box.querySelector('.slides');
     const slides = [...track.querySelectorAll('.slide')];
-    const cap = document.getElementById('shot-caption');
+    const cap = gal.querySelector('.shot-info');
     const n = slides.length;
     const EVERY = 5000;
     let at = 0;
@@ -51,42 +51,14 @@
         const dx = e.changedTouches[0].clientX - x0;
         if (Math.abs(dx) > 40) { go(at + (dx < 0 ? 1 : -1)); start(); }
     });
-})();
-
-// Phai Desk's windows: one fades into the next every few seconds (not under the pointer, off screen,
-// or for less motion); the dots choose one.
-(() => {
-    const box = document.querySelector('.made-shots');
-    if (!box) return;
-    const shots = [...box.querySelectorAll('.made-shot')];
-    const dots = [...box.querySelectorAll('.made-dots button')];
-    const cap = box.querySelector('.made-cap');
-    let at = 0, held = false, seen = false, timer = 0;
-    const go = (i) => {
-        at = (i + shots.length) % shots.length;
-        shots.forEach((s, k) => s.classList.toggle('on', k === at));
-        dots.forEach((d, k) => d.classList.toggle('on', k === at));
-        cap.textContent = shots[at].dataset.caption;
-        const next = shots[(at + 1) % shots.length].querySelector('img');
-        if (next) next.loading = 'eager';
-    };
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const start = () => {
-        clearInterval(timer);
-        if (!still.matches && !held && seen && !document.hidden) timer = setInterval(() => go(at + 1), 4500);
-    };
-    dots.forEach((d, k) => d.onclick = () => { go(k); start(); });
-    box.addEventListener('mouseenter', () => { held = true; start(); });
-    box.addEventListener('mouseleave', () => { held = false; start(); });
-    document.addEventListener('visibilitychange', start);
-    new IntersectionObserver((es) => { seen = es[0].isIntersecting; start(); }, { threshold: 0.3 }).observe(box);
-})();
+});
 
 // gallery: a picture opens large; arrows or keys move, Esc or a click outside closes
 (() => {
-    const links = [...document.querySelectorAll('[data-gallery]')];
+    const all = [...document.querySelectorAll('[data-gallery]')];
     const box = document.getElementById('lightbox');
-    if (!box || !links.length) return;
+    if (!box || !all.length) return;
+    let links = all;
     const img = box.querySelector('img');
     const cap = box.querySelector('.lb-caption');
     const stage = box.querySelector('.lb-stage');
@@ -97,9 +69,10 @@
         img.alt = cap.textContent = links[at].dataset.caption + '  (' + (at + 1) + ' / ' + links.length + ')';
     };
     const close = () => { box.hidden = true; document.body.style.overflow = ''; };
-    links.forEach((a, i) => a.addEventListener('click', (e) => {
+    all.forEach((a) => a.addEventListener('click', (e) => {
         e.preventDefault();
-        show(i);
+        links = all.filter((x) => x.dataset.gallery === a.dataset.gallery);
+        show(links.indexOf(a));
         box.hidden = false;
         document.body.style.overflow = 'hidden';
     }));

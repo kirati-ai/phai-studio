@@ -107,11 +107,23 @@ $T = $th ? [
     'madeH' => 'สร้างด้วย Phai Studio', 'madeSub' => 'โปรแกรมจริงที่ออกแบบและเขียนด้วย Phai Studio ทั้งตัว',
     'madeName' => 'คอนโซลของ Phai Desk', 'madeP' => 'โปรแกรมรีโมทและดูแลคอมพิวเตอร์ในสำนักงาน ทั้ง 7 หน้าต่าง (รายการเครื่อง ดูจอ ส่งไฟล์ แชท โปรแกรมในเครื่อง log) ออกแบบด้วยการลากวางใน Phai Studio แล้วทำตัวติดตั้งด้วย Publish',
     'madeLink' => 'รู้จัก Phai Desk',
-    'madeShots' => [
-        ['desk-main', 'คอมพิวเตอร์ทุกเครื่องในสำนักงาน: สีเขียวออนไลน์ สีเทาปิดอยู่ สีแดงกำลังขอความช่วยเหลือ คลิกขวาเพื่อรีโมท แชท หรือเปิดไฟล์'],
-        ['phaidesk', 'โปรแกรมในเครื่อง: รายการทุกโปรแกรมที่ลงไว้ ค้นหาได้'],
-        ['desk-files', 'ไฟล์: เปิดดู ดาวน์โหลด อัปโหลด และจัดการไฟล์ของเครื่องที่ดูแล'],
-        ['desk-project', 'โปรเจกต์ Phai Desk ใน Phai Studio: ทุกหน้าต่างออกแบบด้วยการลากวาง'],
+    'deskShots' => [
+        ['desk-main', 'คอมทุกเครื่องในสำนักงาน', 'หน้าต่างหลักของ Phai Desk ตอนโปรแกรมทำงาน'],
+        ['desk-design-software', 'ออกแบบหน้าต่าง "โปรแกรมในเครื่อง"', 'หน้าต่างเดียวกันนี้ในตัวออกแบบของ Phai Studio'],
+        ['phaidesk', 'โปรแกรมในเครื่อง ตอนทำงานจริง', 'ฟอร์มที่ออกแบบไว้ กลายเป็นโปรแกรมที่อ่านรายการจริงของเครื่อง'],
+        ['desk-design-files', 'ออกแบบหน้าต่าง "ไฟล์"', 'แถบเครื่องมือ ช่องที่อยู่ และรายการไฟล์'],
+        ['desk-files', 'ไฟล์ ตอนทำงานจริง', 'เปิดดูไฟล์ของเครื่องที่ดูแลอยู่'],
+        ['desk-code', 'โค้ดของหน้าต่าง "ไฟล์"', 'เขียน Rust ในตัวแก้โค้ดของ Phai Studio'],
+        ['desk-project', 'หน้าต่างแชท ในตัวออกแบบ', 'ทั้ง 7 หน้าต่างของ Phai Desk เป็นไฟล์ .phaiform ในโปรเจกต์เดียว'],
+    ],
+    'deskMore' => [
+        'desk-main' => ['ไอคอนเขียว = ออนไลน์ เทา = ปิดอยู่ แดง = ขอความช่วยเหลือ', 'ใต้ไอคอนบอกชื่อเครื่องและคนที่ใช้อยู่', 'คลิกขวาเพื่อรีโมทดูจอ แชท หรือเปิดไฟล์'],
+        'desk-design-software' => ['ลากช่องค้นหา ป้าย และตารางลงบนฟอร์ม', 'ตารางแสดงข้อมูลตัวอย่างระหว่างออกแบบ', 'ไฟล์ทั้งหมดของ Phai Desk อยู่ในหน้าต่าง Project ทางขวา'],
+        'phaidesk' => ['ทุกโปรแกรมที่ลงไว้ พร้อมรุ่นและผู้ผลิต', 'พิมพ์ในช่องค้นหาแล้วกรองทันที', 'โค้ดที่อ่านรายการเขียนด้วย Rust ในไฟล์ของฟอร์มนั้น'],
+        'desk-design-files' => ['ปุ่มขึ้นโฟลเดอร์ ดาวน์โหลด อัปโหลด และลบ อยู่บนแถบเครื่องมือ', 'กล่องเลือกไฟล์สำหรับอัปโหลดวางไว้ใต้ฟอร์ม', 'ตั้งค่าทุกอย่างในหน้าต่าง Properties'],
+        'desk-files' => ['ดับเบิลคลิกเพื่อเข้าโฟลเดอร์', 'ดาวน์โหลด อัปโหลด และลบไฟล์', 'แถบล่างบอกจำนวนรายการ'],
+        'desk-code' => ['หน้าตาอยู่ใน files_form_ui.rs ที่ Phai Studio เขียนให้เอง', 'ส่วนที่ทำงานเขียนเองใน files_form.rs', 'บอกจำนวนที่ถูกใช้ เติมคำ และไปยังที่ประกาศ ด้วย rust-analyzer'],
+        'desk-project' => ['ช่องข้อความ ช่องพิมพ์ และปุ่มส่ง ลากวางเสร็จในไม่กี่นาที', 'Build และ Debug ได้จากเมนูเดียวกัน', 'Publish ทำตัวติดตั้งของ Phai Desk ให้'],
     ],
     'demosH' => 'โปรแกรมตัวอย่างในคู่มือ', 'demosSub' => '42 โปรแกรมเล็ก ๆ หนึ่งโปรแกรมต่อหนึ่งเครื่องมือ ทุกตัว build ได้จริง พร้อมโค้ดให้ลองแก้ - กดดูวิธีเขียน',
     'demos' => [
@@ -288,11 +300,23 @@ $T = $th ? [
     'madeH' => 'Made with Phai Studio', 'madeSub' => 'A real program designed and written in Phai Studio from start to finish',
     'madeName' => 'The Phai Desk console', 'madeP' => 'Remote support and care for the office\'s computers: all 7 of its windows (the computers, the remote screen, files, chat, this computer\'s software and log) designed by drag and drop in Phai Studio, and its installer made with Publish',
     'madeLink' => 'About Phai Desk',
-    'madeShots' => [
-        ['desk-main', 'Every computer in the office: green online, grey off, red asking for help; right-click to take over the screen, chat or open its files'],
-        ['phaidesk', 'Software on a computer: everything installed, with a search'],
-        ['desk-files', 'Files: browse, download, upload and manage the files of a computer in care'],
-        ['desk-project', 'The Phai Desk project in Phai Studio: every window designed by drag and drop'],
+    'deskShots' => [
+        ['desk-main', 'Every computer in the office', 'Phai Desk\'s main window, running'],
+        ['desk-design-software', 'Designing "Software on this computer"', 'The same window in Phai Studio\'s designer'],
+        ['phaidesk', 'Software on this computer, running', 'The form designed above, now reading the computer\'s real list'],
+        ['desk-design-files', 'Designing "Files"', 'A toolbar, an address box and the list of files'],
+        ['desk-files', 'Files, running', 'The files of the computer in care'],
+        ['desk-code', 'The code of "Files"', 'Rust in Phai Studio\'s code editor'],
+        ['desk-project', 'The chat window in the designer', 'All 7 of Phai Desk\'s windows are .phaiform files in one project'],
+    ],
+    'deskMore' => [
+        'desk-main' => ['Green = online, grey = off, red = asking for help', 'Under each icon: the computer\'s name and who is using it', 'Right-click to see its screen, chat or open its files'],
+        'desk-design-software' => ['A search box, a label and a grid dragged onto the form', 'The grid shows sample rows while you design', 'All of Phai Desk\'s files in the Project window on the right'],
+        'phaidesk' => ['Everything installed, with its version and publisher', 'Type in the search box and the list narrows at once', 'The code that reads the list is Rust in the form\'s own file'],
+        'desk-design-files' => ['Up, download, upload and delete on the toolbar', 'The file chooser for uploads sits under the form', 'Everything set in the Properties window'],
+        'desk-files' => ['Double-click to open a folder', 'Download, upload and delete', 'The bar at the bottom counts the items'],
+        'desk-code' => ['Its look is in files_form_ui.rs, which Phai Studio writes', 'What it does is in files_form.rs, written by hand', 'Reference counts, completion and go to definition, with rust-analyzer'],
+        'desk-project' => ['The messages, the typing box and Send: a few minutes of drag and drop', 'Build and Debug from the same menus', 'Publish makes Phai Desk\'s installer'],
     ],
     'demosH' => 'Example programs in the guide', 'demosSub' => '42 small programs, one for each tool, each building as it stands, with its code to change - click to see how it is written',
     'demos' => [
@@ -454,6 +478,32 @@ $T = $th ? [
         ['https://www.monrak.net/', 'Monrak Net', 'A love of the internet since 2002, and the home of the Phai family'],
     ],
 ];
+/** A slider of screenshots on the left, and beside it what the one showing is: its number, name, line and points. */
+function gallery(array $T, array $shots, array $more, string $group, string $after = ''): string
+{
+    ob_start(); ?>
+        <div class="gallery">
+            <div class="slider">
+                <div class="slides">
+                    <?php foreach ($shots as $i => [$f, $h, $p]): ?>
+                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery="<?= $group ?>" data-caption="<?= e("$h — $p") ?>" data-h="<?= e($h) ?>" data-p="<?= e($p) ?>" data-more="<?= e(json_encode($more[$f] ?? [], JSON_UNESCAPED_UNICODE)) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
+                    <?php endforeach ?>
+                </div>
+                <button type="button" class="nav-btn sl-prev" aria-label="<?= e($T['prev']) ?>"><i class="ti ti-chevron-left"></i></button>
+                <button type="button" class="nav-btn sl-next" aria-label="<?= e($T['next']) ?>"><i class="ti ti-chevron-right"></i></button>
+                <span class="zoom"><i class="ti ti-photo"></i> <?= e($T['zoom']) ?></span>
+            </div>
+            <div class="shot-info" aria-live="polite">
+                <span class="shot-n"><b>01</b> / <?= sprintf('%02d', count($shots)) ?></span>
+                <h3><?= e($shots[0][1]) ?></h3>
+                <p><?= e($shots[0][2]) ?></p>
+                <ul><?php foreach ($more[$shots[0][0]] ?? [] as $m): ?><li><?= e($m) ?></li><?php endforeach ?></ul>
+                <?= $after ?>
+            </div>
+        </div>
+<?php return ob_get_clean();
+}
+
 $base = 'https://phai-studio.monrak.net/';
 ?><!doctype html>
 <html lang="<?= $lang ?>">
@@ -519,24 +569,7 @@ $base = 'https://phai-studio.monrak.net/';
         <span class="label">Real screens</span>
         <h2><?= e($T['shotsH']) ?></h2>
         <p class="sub"><?= e($T['shotsSub']) ?></p>
-        <div class="gallery">
-            <div class="slider">
-                <div class="slides">
-                    <?php foreach ($T['shots'] as $i => [$f, $h, $p]): ?>
-                        <a class="slide" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e("$h — $p") ?>" data-h="<?= e($h) ?>" data-p="<?= e($p) ?>" data-more="<?= e(json_encode($T['shotMore'][$f] ?? [], JSON_UNESCAPED_UNICODE)) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($h) ?>" width="1432" height="969" loading="<?= $i ? 'lazy' : 'eager' ?>"></a>
-                    <?php endforeach ?>
-                </div>
-                <button type="button" class="nav-btn sl-prev" aria-label="<?= e($T['prev']) ?>"><i class="ti ti-chevron-left"></i></button>
-                <button type="button" class="nav-btn sl-next" aria-label="<?= e($T['next']) ?>"><i class="ti ti-chevron-right"></i></button>
-                <span class="zoom"><i class="ti ti-photo"></i> <?= e($T['zoom']) ?></span>
-            </div>
-            <div class="shot-info" id="shot-caption" aria-live="polite">
-                <span class="shot-n"><b>01</b> / <?= sprintf('%02d', count($T['shots'])) ?></span>
-                <h3><?= e($T['shots'][0][1]) ?></h3>
-                <p><?= e($T['shots'][0][2]) ?></p>
-                <ul><?php foreach ($T['shotMore'][$T['shots'][0][0]] ?? [] as $m): ?><li><?= e($m) ?></li><?php endforeach ?></ul>
-            </div>
-        </div>
+        <?= gallery($T, $T['shots'], $T['shotMore'], 'screens') ?>
     </div>
 </section>
 
@@ -568,22 +601,13 @@ $base = 'https://phai-studio.monrak.net/';
         <span class="label">Made with Phai Studio</span>
         <h2><?= e($T['madeH']) ?></h2>
         <p class="sub"><?= e($T['madeSub']) ?></p>
-        <article class="card made">
-            <div class="made-shots">
-                <?php foreach ($T['madeShots'] as $i => [$f, $c]): ?>
-                    <a class="made-shot<?= $i ? '' : ' on' ?>" href="<?= v("shots/$f.jpg") ?>" data-gallery data-caption="<?= e($c) ?>"><img src="<?= v("shots/$f.jpg") ?>" alt="<?= e($c) ?>" width="1432" height="980" loading="lazy"></a>
-                <?php endforeach ?>
-                <p class="made-cap"><?= e($T['madeShots'][0][1]) ?></p>
-                <div class="made-dots"><?php foreach ($T['madeShots'] as $i => $_): ?><button type="button" class="<?= $i ? '' : 'on' ?>" aria-label="<?= $i + 1 ?>"></button><?php endforeach ?></div>
-            </div>
-            <div><h3><?= e($T['madeName']) ?></h3><p><?= e($T['madeP']) ?></p>
-                <p class="mt"><a class="btn btn-ghost" href="https://phai-desk.monrak.net/" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> <?= e($T['madeLink']) ?></a></p></div>
-        </article>
+        <p class="made-lead"><b><?= e($T['madeName']) ?></b> - <?= e($T['madeP']) ?></p>
+        <?= gallery($T, $T['deskShots'], $T['deskMore'], 'desk', '<p class="mt"><a class="btn btn-ghost" href="https://phai-desk.monrak.net/" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> ' . e($T['madeLink']) . '</a></p>') ?>
         <h3 class="part mt"><i class="ti ti-apps"></i> <?= e($T['demosH']) ?></h3>
         <p class="muted"><?= e($T['demosSub']) ?></p>
         <div class="grid g4 demos">
-            <?php foreach ($T['demos'] as [$tag, $b, $c]): ?>
-                <a class="card demo" href="<?= $B ?>help/ctl-<?= $tag ?>.html" target="_blank" rel="noopener"><span class="demo-shot"><img src="<?= $B ?>help/img/ctl-<?= $tag ?>.png" alt="<?= e($b) ?>" loading="lazy"></span><b><?= e($b) ?></b><small><?= e($c) ?></small></a>
+            <?php foreach ($T['demos'] as [$tag, $b, $dc]): ?>
+                <a class="card demo" href="<?= $B ?>help/ctl-<?= $tag ?>.html" target="_blank" rel="noopener"><span class="demo-shot"><img src="<?= $B ?>help/img/ctl-<?= $tag ?>.png" alt="<?= e($b) ?>" loading="lazy"></span><b><?= e($b) ?></b><small><?= e($dc) ?></small></a>
             <?php endforeach ?>
         </div>
     </div>

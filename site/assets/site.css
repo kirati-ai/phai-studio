@@ -237,9 +237,6 @@ h3.part .ti { color: var(--green); font-size: 1.3rem; }
 h3.part + .muted { margin: 0 0 16px; }
 .card.tool .icon img { width: 26px; height: 26px; }
 .card.tool p { font-size: .92rem; }
-.card.made { display: grid; grid-template-columns: 3fr 2fr; gap: 28px; align-items: center; }
-.made-shot img { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(15, 60, 40, .12); }
-@media (max-width: 760px) { .card.made { grid-template-columns: 1fr; } }
 /* The guide's cards: the icon on the left, the name and what it is beside it. */
 #learn .card.lesson { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto; align-content: center; column-gap: 14px; }
 #learn .card.lesson .icon { grid-row: 1 / 3; align-self: center; margin-bottom: 0; }
@@ -278,15 +275,9 @@ h3.part + .muted { margin: 0 0 16px; }
 @media (prefers-reduced-motion: reduce) { .shot-info.fresh > * { animation: none; } }
 @media (max-width: 860px) { .gallery { grid-template-columns: 1fr; gap: 18px; } .shot-info { min-height: 0; } }
 .slider { overflow: clip; clip-path: inset(0 round var(--radius)); }
-/* Phai Desk: its windows one after another, a line under each; then the guide's example programs. */
-.made-shots { position: relative; display: grid; }
-.made-shots .made-shot { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity .6s ease, visibility 0s .6s; }
-.made-shots .made-shot.on { opacity: 1; visibility: visible; transition: opacity .6s ease; }
-.made-shots .made-shot img { aspect-ratio: 1432 / 980; object-fit: contain; object-position: center top; background: transparent; box-shadow: none; border: 0; }
-.made-cap { grid-area: 2 / 1; margin: 12px 0 0; color: var(--muted); font-size: .92rem; min-height: 3em; }
-.made-dots { grid-area: 3 / 1; display: flex; gap: 6px; }
-.made-dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 4px; background: #c9ddd2; cursor: pointer; transition: width .3s, background .3s; }
-.made-dots button.on { width: 22px; background: var(--green); }
+/* Phai Desk: one line about it, then the same slider as the screens. */
+.made-lead { margin: -8px 0 22px; max-width: 70ch; color: var(--muted); }
+.made-lead b { color: var(--ink); }
 .grid.demos { grid-auto-rows: auto; }
 .card.demo { display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 12px; }
 .card.demo .demo-shot { display: block; aspect-ratio: 840 / 578; margin-bottom: 8px; overflow: hidden; border-radius: 8px; border: 1px solid var(--line); background: #fff; }
