@@ -92,11 +92,11 @@ $mb = number_format($release['size'] / 1048576, 1);
 $date = date($th ? 'd/m/Y' : 'd M Y', strtotime($release['date']));
 
 $T = $th ? [
-    'title' => 'Phai Studio — เขียนโปรแกรม Windows ด้วย Rust แบบ Visual Studio ฟรี โอเพนซอร์ส พร้อมคู่มือภาษาไทย',
+    'title' => 'Phai Studio — เขียนโปรแกรม Windows ด้วย Rust แบบลากวาง ฟรี โอเพนซอร์ส พร้อมคู่มือภาษาไทย',
     'desc' => 'Phai Studio เครื่องมือเขียนโปรแกรม (IDE) ฟรีแบบโอเพนซอร์ส (MIT) สำหรับสร้างโปรแกรม Windows ด้วยภาษา Rust ลากวางออกแบบหน้าจอ เขียนโค้ด ดีบัก ทดสอบ และทำตัวติดตั้งได้ในที่เดียว หน้าจอภาษาไทย พร้อมคู่มือสอน Rust ภาษาไทยสำหรับมือใหม่',
     'nav' => ['features' => 'ความสามารถ', 'learn' => 'คู่มือภาษาไทย', 'install' => 'วิธีติดตั้ง', 'download' => 'ดาวน์โหลด'],
     'tag' => 'วิทยาทาน · โอเพนซอร์ส · ฟรี',
-    'h1' => 'เขียนโปรแกรม Windows ด้วย Rust <em>ง่ายแบบ Visual Studio</em>',
+    'h1' => 'เขียนโปรแกรม Windows ด้วย Rust <em>ง่ายแค่ลากวาง</em>',
     'lead' => 'ลากวางปุ่ม ช่องกรอก ตาราง ลงบนฟอร์ม ดับเบิลคลิกเขียนโค้ด กด F5 ก็ได้โปรแกรม Windows จริง พร้อมตัวแก้โค้ดที่เติมคำให้ ดีบักเกอร์ เทสต์ Git และทำตัวติดตั้งให้ด้วย หน้าจอภาษาไทย และมีคู่มือสอน Rust ภาษาไทยในตัว',
     'btnDownload' => 'ดาวน์โหลดตัวติดตั้ง', 'btnGithub' => 'โค้ดบน GitHub', 'btnGuide' => 'อ่านคู่มือภาษาไทย',
     'meta' => fn ($c) => "รุ่น {$release['version']} · {$mb} MB · Windows 10/11 (64 บิต) · <b>ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง</b> · เข้าชม {$c['visitors']} คน",
@@ -142,7 +142,7 @@ $T = $th ? [
         ['ti-git-branch', 'Git', 'commit, push, pull, branch, ประวัติไฟล์, blame และหน้าต่างแก้ conflict'],
         ['ti-language', 'ไทย / อังกฤษ', 'สลับภาษาหน้าจอได้ทันที โปรแกรมที่สร้างก็ทำสองภาษาได้ และแสดงตัวอักษรไทยถูกต้อง'],
     ],
-    'shotsH' => 'หน้าจอจริง', 'shotsSub' => 'ภาพจากการใช้งานจริง หน้าตาแบบ Windows มาตรฐาน คนที่เคยใช้ Visual Studio คุ้นมือทันที',
+    'shotsH' => 'หน้าจอจริง', 'shotsSub' => 'ภาพจากการใช้งานจริง หน้าตาแบบ Windows มาตรฐาน ใช้งานคุ้นมือทันที',
     'shots' => [
         ['designer', 'ออกแบบฟอร์ม', 'ลากวางปุ่ม ช่องกรอก และตาราง แล้วแก้คุณสมบัติในหน้าต่าง Properties'],
         ['theme', 'แต่งธีม', 'เลือกธีมสำเร็จรูป หรือปรับสีทุกส่วนของหน้าจอ เห็นผลทันทีก่อนบันทึก'],
@@ -162,9 +162,9 @@ $T = $th ? [
     'whyH' => 'ทำไมต้อง Phai Studio',
     'why' => [
         ['ฟรีทุกฟีเจอร์ ไม่มีรุ่นเสียเงิน', 'สัญญาอนุญาต MIT ใช้ แก้ และแจกต่อได้ รวมถึงใช้ทำโปรแกรมขาย'],
-        ['โปรแกรมที่ได้เล็กและเร็ว', 'เป็นโปรแกรม Windows แท้ ไฟล์เดียว ไม่ต้องลง .NET, Java หรือ runtime อื่นที่เครื่องลูกค้า'],
+        ['โปรแกรมที่ได้เล็กและเร็ว', 'เป็นโปรแกรม Windows แท้ ไฟล์เดียว ไม่ต้องลง runtime ใด ๆ เพิ่มที่เครื่องลูกค้า'],
         ['ภาษา Rust ปลอดภัยตั้งแต่ตอนเขียน', 'คอมไพเลอร์จับข้อผิดพลาดเรื่องหน่วยความจำและ thread ให้ก่อนโปรแกรมจะได้รัน'],
-        ['หน้าตาแบบ Visual Studio', 'เมนู แถบเครื่องมือ Toolbox, Properties, Solution ที่เดิม ย้ายมาจาก C# / VB ได้ง่าย'],
+        ['หน้าจอที่คุ้นมือ', 'เมนู แถบเครื่องมือ Toolbox, Properties และ Solution อยู่ในที่ที่คาดไว้ เริ่มใช้ได้ทันที'],
         ['เหมาะกับมือใหม่', 'หน้าจอภาษาไทย คู่มือภาษาไทย มีบทสอนอ่านข้อความ error และโปรเจกต์ตัวอย่างให้ลอง'],
         ['ไม่เก็บข้อมูลผู้ใช้', 'ไม่มี telemetry ไม่ต้องสมัครสมาชิก ส่งข้อมูลออกเฉพาะเมื่อสั่งเอง เช่น ดาวน์โหลด crate หรือ push Git'],
     ],
@@ -211,11 +211,11 @@ $T = $th ? [
             'ตารางข้อมูลเต็มรูปแบบ: ตั้งค่ารายคอลัมน์ ตัวแก้ค่าในช่อง รูปแบบตัวเลขและวันที่ กฎสี ผลรวม ค้นหา และจัดกลุ่ม',
             'Database Designer: สร้างฐานข้อมูลและออกแบบตารางในหน้าเดียว',
             'ออกแบบเมนูและ toolbar บนฟอร์มได้โดยตรง พร้อม Properties และ Events',
-            'ตัวแก้โค้ดแบบ Visual Studio: sticky scroll, สีวงเล็บ, ชนิดข้อมูลแสดงในบรรทัด, ตัดบรรทัด และเทียบไฟล์',
+            'ตัวแก้โค้ดครบเครื่อง: sticky scroll, สีวงเล็บ, ชนิดข้อมูลแสดงในบรรทัด, ตัดบรรทัด และเทียบไฟล์',
         ]],
         ['0.1.3', '20 พ.ย. 2569', [
             'เว็บแอป (PWA): ฟอร์มเดิมรันในเบราว์เซอร์และติดตั้งลงมือถือได้ทั้ง Android และ iPhone',
-            'control ของ WinForms ครบ: Properties, Methods และ Events แบบ Visual Studio, UserControl, MDI, SplitContainer, การพิมพ์ และ DataBindings',
+            'control ครบชุด: Properties, Methods และ Events, UserControl, MDI, SplitContainer, การพิมพ์ และ DataBindings',
             'แต่งหน้าตา: แท็บ Style, Theme Editor, ตัวตรวจสด (F12) ในโปรแกรมที่กำลังรัน, เงาและไล่สี',
         ]],
         ['0.1.2', '19 พ.ย. 2569', [
@@ -243,11 +243,11 @@ $T = $th ? [
         ['https://www.monrak.net/', 'Monrak Net', 'มนต์รักที่มีต่ออินเทอร์เน็ต ตั้งแต่ปี 2545 บ้านของซอฟต์แวร์ตระกูลไผ่'],
     ],
 ] : [
-    'title' => 'Phai Studio — build Windows programs in Rust, Visual Studio style. Free and open source, with a Thai guide',
+    'title' => 'Phai Studio — build Windows programs in Rust by drag and drop. Free and open source, with a Thai guide',
     'desc' => 'Phai Studio is a free, open-source (MIT) IDE for building Windows programs in Rust: drag-and-drop form designer, code editor, debugger, tests and installer in one place. English and Thai interface, with a Thai Rust guide for beginners.',
     'nav' => ['features' => 'Features', 'learn' => 'Thai guide', 'install' => 'Install', 'download' => 'Download'],
     'tag' => 'A gift of knowledge · Open source · Free',
-    'h1' => 'Build Windows programs in Rust <em>the Visual Studio way</em>',
+    'h1' => 'Build Windows programs in Rust <em>by drag and drop</em>',
     'lead' => 'Drag buttons, text boxes and grids onto a form, double-click to write the code, press F5 and you have a real Windows program. A code editor that completes for you, a debugger, tests, Git and an installer maker come with it, in English or Thai, with a Thai Rust guide built in.',
     'btnDownload' => 'Download the installer', 'btnGithub' => 'Code on GitHub', 'btnGuide' => 'Read the guide (Thai)',
     'meta' => fn ($c) => "Version {$release['version']} · {$mb} MB · Windows 10/11 (64-bit) · <b>Downloaded {$c['downloads']} times</b> · {$c['visitors']} visitors",
@@ -293,7 +293,7 @@ $T = $th ? [
         ['ti-git-branch', 'Git', 'Commit, push, pull, branches, file history, blame and a merge conflict editor'],
         ['ti-language', 'English / Thai', 'Switch the interface language at once; the programs you make can be bilingual too, with Thai shown right'],
     ],
-    'shotsH' => 'Real screens', 'shotsSub' => 'Taken from real use: a standard Windows look that anyone who has used Visual Studio knows',
+    'shotsH' => 'Real screens', 'shotsSub' => 'Taken from real use: a standard Windows look that feels familiar from the start',
     'shots' => [
         ['designer', 'Form designer', 'Drag buttons, text boxes and grids, and set their properties in the Properties window'],
         ['theme', 'Theme editor', 'Start from a ready theme or set every colour of the screen, and see it before saving'],
@@ -313,9 +313,9 @@ $T = $th ? [
     'whyH' => 'Why Phai Studio',
     'why' => [
         ['Every feature free, no paid edition', 'MIT licence: use it, change it, pass it on, and sell the programs you make'],
-        ['Small, fast programs', 'Real Windows programs in one file; no .NET, Java or other runtime on your customers\' computers'],
+        ['Small, fast programs', 'Real Windows programs in one file; no runtime to install on your customers\' computers'],
         ['Rust catches mistakes while you write', 'The compiler stops memory and threading mistakes before the program ever runs'],
-        ['The Visual Studio layout', 'Menus, toolbars, Toolbox, Properties and Solution where you expect them; easy to come from C# or VB'],
+        ['A familiar layout', 'Menus, toolbars, Toolbox, Properties and Solution where you expect them; ready from the first day'],
         ['Made for beginners', 'Thai interface, a Thai guide with a lesson on reading errors, and a sample project to try'],
         ['Nothing collected about you', 'No telemetry, no sign-up; it goes online only when you ask, such as downloading crates or pushing to Git'],
     ],
@@ -362,11 +362,11 @@ $T = $th ? [
             'A full data grid: per-column settings, in-cell editors, number and date formats, colour rules, totals, find and grouping',
             'Database Designer: make databases and design their tables in one place',
             'Menus and toolbars designed right on the form, with their properties and events',
-            'A Visual Studio-style code editor: sticky scroll, bracket colours, inline type hints, word wrap and file compare',
+            'A full code editor: sticky scroll, bracket colours, inline type hints, word wrap and file compare',
         ]],
         ['0.1.3', '20 Nov 2026', [
             'Web apps (PWA): the same forms run in a browser and install on Android and iPhone',
-            "WinForms' controls in full: Visual Studio's properties, methods and events, UserControl, MDI, SplitContainer, printing and DataBindings",
+            "A full set of controls: properties, methods and events, UserControl, MDI, SplitContainer, printing and DataBindings",
             'Styling: the Style tab, the Theme Editor, a live inspector (F12) in the running program, shadows and gradients',
         ]],
         ['0.1.2', '19 Nov 2026', [
