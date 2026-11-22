@@ -1,0 +1,49 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "EditDemo"
+title = "TextBox"
+size = [360, 190]
+start = "center"
+accept_button = "sign_in"
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name:"
+bounds = [16, 18, 80, 24]
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [100, 16, 240, 24]
+on_change = "name_changed"
+max_length = 30
+placeholder = "Your name"
+
+[[control]]
+kind = "label"
+id = "password_label"
+text = "Password:"
+bounds = [16, 52, 80, 24]
+
+[[control]]
+kind = "edit"
+id = "password"
+bounds = [100, 50, 240, 24]
+password = true
+
+[[control]]
+kind = "button"
+id = "sign_in"
+text = "Sign in"
+bounds = [100, 88, 120, 30]
+class = "primary"
+on_click = "sign_in_clicked"
+
+[[control]]
+kind = "label"
+id = "message"
+text = ""
+bounds = [16, 132, 328, 24]

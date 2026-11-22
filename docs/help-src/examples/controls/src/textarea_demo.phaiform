@@ -1,0 +1,30 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "TextareaDemo"
+title = "TextBox (Multiline)"
+size = [360, 240]
+start = "center"
+
+[[control]]
+kind = "textarea"
+id = "diary"
+bounds = [16, 16, 328, 140]
+anchor = "all"
+on_change = "diary_changed"
+
+[[control]]
+kind = "button"
+id = "add_line"
+text = "Add a line"
+bounds = [16, 166, 120, 30]
+anchor = "left bottom"
+on_click = "add_line_clicked"
+
+[[control]]
+kind = "label"
+id = "count"
+text = ""
+bounds = [148, 170, 196, 24]
+anchor = "left bottom right"

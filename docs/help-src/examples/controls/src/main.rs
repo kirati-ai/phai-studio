@@ -14,6 +14,8 @@ mod combo_demo;
 mod combo_demo_ui;
 mod date_demo;
 mod date_demo_ui;
+mod edit_demo;
+mod edit_demo_ui;
 mod label_demo;
 mod label_demo_ui;
 mod link_demo;
@@ -34,6 +36,14 @@ mod progress_demo;
 mod progress_demo_ui;
 mod radio_demo;
 mod radio_demo_ui;
+mod richtext_demo;
+mod richtext_demo_ui;
+mod slider_demo;
+mod slider_demo_ui;
+mod textarea_demo;
+mod textarea_demo_ui;
+mod tree_demo;
+mod tree_demo_ui;
 
 fn main() {
     match std::env::args().nth(1).as_deref().unwrap_or("") {
@@ -43,6 +53,7 @@ fn main() {
         "checkedlist" => checkedlist_demo_ui::CheckedlistDemoUi::run(checkedlist_demo::CheckedlistDemo::default()),
         "combo" => combo_demo_ui::ComboDemoUi::run(combo_demo::ComboDemo::default()),
         "date" => date_demo_ui::DateDemoUi::run(date_demo::DateDemo::default()),
+        "edit" => edit_demo_ui::EditDemoUi::run(edit_demo::EditDemo::default()),
         "label" => label_demo_ui::LabelDemoUi::run(label_demo::LabelDemo::default()),
         "link" => link_demo_ui::LinkDemoUi::run(link_demo::LinkDemo::default()),
         "list" => list_demo_ui::ListDemoUi::run(list_demo::ListDemo::default()),
@@ -53,6 +64,10 @@ fn main() {
         "picture" => picture_demo_ui::PictureDemoUi::run(picture_demo::PictureDemo::default()),
         "progress" => progress_demo_ui::ProgressDemoUi::run(progress_demo::ProgressDemo::default()),
         "radio" => radio_demo_ui::RadioDemoUi::run(radio_demo::RadioDemo::default()),
+        "richtext" => richtext_demo_ui::RichtextDemoUi::run(richtext_demo::RichtextDemo::default()),
+        "slider" => slider_demo_ui::SliderDemoUi::run(slider_demo::SliderDemo::default()),
+        "textarea" => textarea_demo_ui::TextareaDemoUi::run(textarea_demo::TextareaDemo::default()),
+        "tree" => tree_demo_ui::TreeDemoUi::run(tree_demo::TreeDemo::default()),
         other => eprintln!("no demo called {other:?}"),
     }
 }

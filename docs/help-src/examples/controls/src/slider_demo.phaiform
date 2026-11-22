@@ -1,0 +1,31 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "SliderDemo"
+title = "TrackBar"
+size = [360, 150]
+start = "center"
+
+[[control]]
+kind = "slider"
+id = "volume"
+bounds = [16, 16, 328, 36]
+on_change = "volume_changed"
+min = 0
+max = 100
+value = 40
+tick_frequency = 10
+
+[[control]]
+kind = "label"
+id = "shown"
+text = ""
+bounds = [16, 60, 200, 24]
+
+[[control]]
+kind = "button"
+id = "mute"
+text = "Mute"
+bounds = [224, 58, 120, 30]
+on_click = "mute_clicked"

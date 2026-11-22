@@ -1,0 +1,41 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "RichtextDemo"
+title = "RichTextBox"
+size = [420, 260]
+start = "center"
+
+[[control]]
+kind = "edit"
+id = "word"
+bounds = [16, 16, 200, 24]
+placeholder = "A word to find"
+
+[[control]]
+kind = "button"
+id = "find"
+text = "Find"
+bounds = [226, 14, 80, 28]
+on_click = "find_clicked"
+
+[[control]]
+kind = "button"
+id = "save"
+text = "Save"
+bounds = [316, 14, 88, 28]
+on_click = "save_clicked"
+
+[[control]]
+kind = "richtext"
+id = "story"
+bounds = [16, 52, 388, 160]
+anchor = "all"
+on_change = "story_changed"
+
+[[control]]
+kind = "label"
+id = "status"
+text = ""
+bounds = [16, 220, 388, 24]

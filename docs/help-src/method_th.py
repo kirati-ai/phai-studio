@@ -30,7 +30,7 @@ TH = {
     'common.do_drag_drop': 'เริ่มลากข้อความนี้ออกไปวางที่อื่น',
     'common.set_cursor': 'รูปเมาส์เมื่อชี้มัน เช่น <code>"hand"</code>, <code>"wait"</code>, <code>"ibeam"</code>',
 
-    # text boxes: TextEdit (`use phai_ui::ctl::TextEdit;`)
+    # text boxes: TextEdit's, which TextBox and RichTextBox have as their own too (text_edit_methods!)
     'TextEdit.clear': 'ลบข้อความทั้งหมด',
     'TextEdit.append_text': 'ต่อข้อความท้ายสุด แล้วเลื่อนไปให้เห็น',
     'TextEdit.select_all': 'เลือกข้อความทั้งหมด',

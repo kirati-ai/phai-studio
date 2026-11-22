@@ -269,8 +269,8 @@ def control_page(tag, data):
         p.append(f'<h2>Method ของ {e(c["winforms"])}</h2>')
         p.append(methods_table(own))
     if c.get('textedit'):
-        p.append('<h2>Method ของช่องข้อความ (TextEdit)</h2>')
-        p.append('<p>ใส่ <code>use phai_ui::ctl::TextEdit;</code> ไว้บนสุดของไฟล์ก่อน แล้วเรียกได้เลย</p>')
+        p.append('<h2>Method ของช่องข้อความ</h2>')
+        p.append('<p>ช่องข้อความทุกแบบ (TextBox, TextBox หลายบรรทัด, RichTextBox) มี method ชุดนี้ด้วย</p>')
         p.append(methods_table(method_rows(methods.text_edit(), 'TextEdit')))
     if not tool.get('component'):
         common = methods_table(method_rows(methods.common(), 'common'))
