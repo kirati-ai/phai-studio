@@ -314,6 +314,21 @@ pub fn icon_spacing(h: HWND, v: &str) {
     }
 }
 
+/// Each column's words to the left, centre or right, in order - `left, right, left`, as WinForms'
+/// ColumnHeader.TextAlign (a size on the right). The first column stays left, as Windows keeps it.
+pub fn column_align(h: HWND, v: &str) {
+    use windows::Win32::UI::Controls as cc;
+    for (i, a) in v.split(',').map(str::trim).enumerate().skip(1) {
+        let fmt = match a {
+            "right" => cc::LVCFMT_RIGHT,
+            "center" | "centre" => cc::LVCFMT_CENTER,
+            _ => cc::LVCFMT_LEFT,
+        };
+        let col = cc::LVCOLUMNW { mask: cc::LVCF_FMT, fmt, ..Default::default() };
+        send(h, cc::LVM_SETCOLUMNW, i, &col as *const _ as isize);
+    }
+}
+
 /// GridLines: lines between rows and columns.
 pub fn grid_lines(h: HWND, on: bool) {
     list_ex(h, 0x1, on);
@@ -620,6 +635,7 @@ pub fn apply(h: HWND, name: &str, value: &str) {
         "view" => view(h, value),
         "icons" => icons(h, value),
         "icon_spacing" => icon_spacing(h, value),
+        "column_align" => column_align(h, value),
         "grid_lines" => grid_lines(h, yes),
         "full_row_select" => full_row_select(h, yes),
         "multi_select" => multi_select(h, yes),

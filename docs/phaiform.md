@@ -163,6 +163,10 @@ icon_spacing = [120, 76]                        # ที่ว่างต่อ
 
 ในโค้ด: `ui.computers.items_add_with_icon(&["ACC-PC01
 
+คอลัมน์ของ list ชิดซ้าย/กลาง/ขวา: `column_align = "left, right, left"` (ColumnHeader.TextAlign — ขนาดไฟล์ชิดขวา)
+กล่องถาม/แจ้งแบบ `MessageBox.Show`: `phai_ui::form::message_box(ui.hwnd, "ลบไหม?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`
+ตำแหน่ง (`bounds`) นับจากบนสุดของพื้นที่ในหน้าต่าง รวม toolbar ด้วย (แบบ WinForms) — control ที่ไม่ dock วางใต้ toolbar (y ≥ 34)
+
 แบบตัวอักษร: `font_family = "Consolas"` (= CSS `#id { font-family: Consolas }`; ใน theme.css ใช้กับชนิดหรือ class ได้)
 ช่องพิมพ์เปลี่ยนเป็นจุดรหัสผ่านตอนรัน: `ui.answer.set_password(true)` (UseSystemPasswordChar)
 

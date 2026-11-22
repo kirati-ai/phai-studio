@@ -141,6 +141,7 @@ pub const CONTROL: &[Spec] = &[
     spec("max_drop_down_items", "MaxDropDownItems", "Behavior", Ty::Int(1, 100), "8", &[Kind::Combo], How::Call, "How many items the open list shows before it scrolls."),
     spec("view", "View", "Appearance", Ty::Choice(&["details", "list", "small_icons", "large_icons"]), "details", &[Kind::List], How::Call, "Rows with columns, or the items alone."),
     spec("icons", "Icons", "Appearance", Ty::Text, "", &[Kind::List], How::Call, "The pictures its rows show (LargeImageList, SmallImageList): glyph names, each with a colour - MONITOR #12855f, MONITOR #8a9a90. A row's is chosen in code by its place: items_add_with_icon."),
+    spec("column_align", "ColumnAlign", "Appearance", Ty::Text, "", &[Kind::List], How::Call, "Each column's words left, center or right, in order - left, right, left for a size on the right (ColumnHeader.TextAlign)."),
     spec("icon_spacing", "IconSpacing", "Appearance", Ty::Size, "", &[Kind::List], How::Call, "The room each item takes in the icons views, wide enough for a long name under its icon - 120, 76."),
     spec("grid_lines", "GridLines", "Appearance", Ty::Bool, "false", &[Kind::List], How::Call, "Lines between rows and columns."),
     spec("grid_lines", "GridLines", "Appearance", Ty::Bool, "true", &[Kind::Grid], How::Call, "Lines between rows and columns."),

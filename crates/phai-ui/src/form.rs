@@ -39,6 +39,58 @@ impl DialogResult {
     }
 }
 
+/// The buttons of a [`message_box`] - WinForms' MessageBoxButtons.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageBoxButtons {
+    Ok,
+    OkCancel,
+    YesNo,
+    YesNoCancel,
+    RetryCancel,
+    AbortRetryIgnore,
+}
+
+/// The picture of a [`message_box`] - WinForms' MessageBoxIcon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageBoxIcon {
+    None,
+    Information,
+    Warning,
+    Error,
+    Question,
+}
+
+/// A question or a notice over `owner`, waiting for its answer - WinForms'
+/// `MessageBox.Show(text, caption, buttons, icon)`:
+/// `if message_box(ui.hwnd, "Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`.
+pub fn message_box(owner: impl Into<HWND>, text: &str, caption: &str, buttons: MessageBoxButtons, icon: MessageBoxIcon) -> DialogResult {
+    let b = match buttons {
+        MessageBoxButtons::Ok => wm::MB_OK,
+        MessageBoxButtons::OkCancel => wm::MB_OKCANCEL,
+        MessageBoxButtons::YesNo => wm::MB_YESNO,
+        MessageBoxButtons::YesNoCancel => wm::MB_YESNOCANCEL,
+        MessageBoxButtons::RetryCancel => wm::MB_RETRYCANCEL,
+        MessageBoxButtons::AbortRetryIgnore => wm::MB_ABORTRETRYIGNORE,
+    };
+    let i = match icon {
+        MessageBoxIcon::None => wm::MESSAGEBOX_STYLE(0),
+        MessageBoxIcon::Information => wm::MB_ICONINFORMATION,
+        MessageBoxIcon::Warning => wm::MB_ICONWARNING,
+        MessageBoxIcon::Error => wm::MB_ICONERROR,
+        MessageBoxIcon::Question => wm::MB_ICONQUESTION,
+    };
+    let owner: HWND = owner.into();
+    match crate::win::message(Some(owner).filter(|h| !h.is_invalid()), text, caption, b | i) {
+        wm::IDOK => DialogResult::Ok,
+        wm::IDYES => DialogResult::Yes,
+        wm::IDNO => DialogResult::No,
+        wm::IDRETRY => DialogResult::Retry,
+        wm::IDABORT => DialogResult::Abort,
+        wm::IDIGNORE => DialogResult::Ignore,
+        _ => DialogResult::Cancel,
+    }
+}
+
 static RESULTS: Mutex<Option<HashMap<isize, DialogResult>>> = Mutex::new(None);
 
 /// Sets the window's answer and closes it - a button with a DialogResult, clicked.
