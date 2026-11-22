@@ -63,6 +63,9 @@ fn main() {
         }
     }
     let _ = std::fs::read(root.join("LICENSE")).map(|l| files.push(("LICENSE.txt".into(), l)));
+    for text in ["MIT.txt", "PolyForm-Perimeter-1.0.1.md"] {
+        let _ = std::fs::read(root.join("LICENSES").join(text)).map(|l| files.push((format!("LICENSES/{text}"), l)));
+    }
     // The Thai guide, opened by Help > Phai Studio Guide (F1) from help\ beside the program - its
     // folders too (the Toolbox pages' icons/ and img/).
     fn add_dir(dir: &std::path::Path, under: &str, files: &mut Vec<(String, Vec<u8>)>) {

@@ -3,7 +3,7 @@ name = "phai-pack"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
 description = "A program's files packed onto the end of Phai's setup program, and read back by it"
 

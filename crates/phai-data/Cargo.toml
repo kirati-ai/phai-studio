@@ -3,7 +3,7 @@ name = "phai-data"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
 description = "Phai Studio's data connections: MySQL / MariaDB servers, their databases, tables and rows"
 

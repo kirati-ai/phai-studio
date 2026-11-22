@@ -3,7 +3,7 @@ name = "phai-ui"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
 description = "Win32 windows the Windows 11 way, themed with CSS, Thai and English built in"
 

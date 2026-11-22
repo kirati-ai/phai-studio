@@ -109,4 +109,13 @@ approves it, and what the program sends over the network:
 
 ## License
 
-MIT - see [LICENSE](LICENSE). © 2026 Monrak Net. Part of the Phai family (Phai ERP, PhaiDesk).
+Two parts, two licenses - see [LICENSE](LICENSE). © 2026 Monrak Net (Kirati Kittikhun).
+
+- **The libraries your programs use** (phai-ui, phai-data, phai-web, phai-pack, the setup program): **MIT**.
+  Use them in any program, free or sold.
+- **Phai Studio itself**: [PolyForm Perimeter 1.0.1](LICENSES/PolyForm-Perimeter-1.0.1.md). Free to use, change and
+  share for any purpose - making programs you sell included - but not to offer a product that competes with Phai Studio.
+  What Phai Studio writes into your projects is yours.
+
+Versions up to 0.2.7 were MIT alone. "Phai Studio" and the bamboo logo are Monrak Net's. Part of the Phai family
+(Phai ERP, PhaiDesk).

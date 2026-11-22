@@ -8948,10 +8948,10 @@ fn about(owner: HWND) -> bool {
     let title = wide(t("About Phai Studio"));
     let head = wide(&format!("Phai Studio {}", env!("CARGO_PKG_VERSION")));
     let body = wide(&tf(
-        "A free, open-source RAD studio for Windows programs in Rust: draw the forms, style them with CSS, write what happens in Rust.\n\n<a href=\"{0}\">{1}</a> - downloads, the guide, what's new\n<a href=\"{2}\">Source code on GitHub</a>",
+        "A free RAD studio for Windows programs in Rust: draw the forms, style them with CSS, write what happens in Rust.\n\n<a href=\"{0}\">{1}</a> - downloads, the guide, what's new\n<a href=\"{2}\">Source code on GitHub</a>",
         &[&SITE, &site_name, &env!("CARGO_PKG_REPOSITORY")],
     ));
-    let foot = wide(t("Made by Kirati Kittikhun - Monrak Net\nMIT License - free to use, change and hand on"));
+    let foot = wide(t("Made by Kirati Kittikhun - Monrak Net\nFree to use, also for programs you sell; its libraries are MIT"));
     let check = wide(t("Check for updates"));
     let buttons = [cc::TASKDIALOG_BUTTON { nButtonID: ID_CHECK_UPDATES, pszButtonText: PCWSTR(check.as_ptr()) }];
     let config = cc::TASKDIALOGCONFIG {

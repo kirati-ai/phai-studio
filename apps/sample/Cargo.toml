@@ -3,7 +3,7 @@ name = "phai-sample"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
 description = "A program made from a Phai Studio form: proves the generated code builds and runs"
 

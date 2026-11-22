@@ -3,7 +3,7 @@ name = "phai-editor"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license-file = "../../LICENSES/PolyForm-Perimeter-1.0.1.md"
 authors.workspace = true
 description = "Phai's code editor: Monaco's design in Rust and Win32"
 

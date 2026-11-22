@@ -35,7 +35,7 @@ BODY['index.html'] = r'''
 
 BODY['studio.html'] = r'''
 <h1>ใช้งาน Phai Studio</h1>
-<p class="lead">Phai Studio คือโปรแกรมสำหรับสร้างโปรแกรม Windows ด้วย Rust แบบเดียวกับ Visual Studio: ลากปุ่มลงหน้าต่าง เขียนโค้ด กดรัน และไล่หาบั๊กได้ในที่เดียว ฟรีและเปิดซอร์ส</p>
+<p class="lead">Phai Studio คือโปรแกรมสำหรับสร้างโปรแกรม Windows ด้วย Rust แบบเดียวกับ Visual Studio: ลากปุ่มลงหน้าต่าง เขียนโค้ด กดรัน และไล่หาบั๊กได้ในที่เดียว ใช้ฟรีและดูซอร์สโค้ดได้</p>
 
 <h2>ก่อนเริ่ม: ติดตั้ง Rust</h2>
 <p>Phai Studio ใช้ Rust ของเครื่องคุณในการ build ถ้ายังไม่มี ตอนกด build ครั้งแรก Phai Studio จะถามว่าจะเปิดเว็บ <a href="https://rustup.rs">rustup.rs</a> ไหม ให้ดาวน์โหลด <code>rustup-init.exe</code> แล้วติดตั้งตามค่าที่ให้มา เท่านั้นก็พอ</p>

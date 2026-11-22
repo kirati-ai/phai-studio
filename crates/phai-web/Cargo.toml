@@ -3,7 +3,7 @@ name = "phai-web"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
 description = "Phai forms in a web browser: the same program as on Windows, compiled to WebAssembly, installable as a PWA on Android and iOS"
 

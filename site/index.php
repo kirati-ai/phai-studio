@@ -92,10 +92,10 @@ $mb = number_format($release['size'] / 1048576, 1);
 $date = date($th ? 'd/m/Y' : 'd M Y', strtotime($release['date']));
 
 $T = $th ? [
-    'title' => 'Phai Studio — เขียนโปรแกรม Windows ด้วย Rust ออกแบบหน้าจอแบบลากวาง ฟรี โอเพนซอร์ส พร้อมคู่มือภาษาไทย',
-    'desc' => 'Phai Studio เครื่องมือเขียนโปรแกรม (IDE) ฟรีแบบโอเพนซอร์ส (MIT) สำหรับสร้างโปรแกรม Windows ด้วยภาษา Rust ลากวางออกแบบหน้าจอ เขียนโค้ด ดีบัก ทดสอบ และทำตัวติดตั้งได้ในที่เดียว หน้าจอภาษาไทย พร้อมคู่มือสอน Rust ภาษาไทยสำหรับมือใหม่',
+    'title' => 'Phai Studio — เขียนโปรแกรม Windows ด้วย Rust ออกแบบหน้าจอแบบลากวาง ใช้ฟรี พร้อมคู่มือภาษาไทย',
+    'desc' => 'Phai Studio เครื่องมือเขียนโปรแกรม (IDE) ใช้ฟรี ดูซอร์สโค้ดได้ สำหรับสร้างโปรแกรม Windows ด้วยภาษา Rust ลากวางออกแบบหน้าจอ เขียนโค้ด ดีบัก ทดสอบ และทำตัวติดตั้งได้ในที่เดียว หน้าจอภาษาไทย พร้อมคู่มือสอน Rust ภาษาไทยสำหรับมือใหม่',
     'nav' => ['features' => 'ความสามารถ', 'learn' => 'คู่มือภาษาไทย', 'install' => 'วิธีติดตั้ง', 'download' => 'ดาวน์โหลด'],
-    'tag' => 'วิทยาทาน · โอเพนซอร์ส · ฟรี',
+    'tag' => 'วิทยาทาน · ดูซอร์สโค้ดได้ · ฟรี',
     'h1' => 'เขียนโปรแกรม Windows ด้วย Rust <em>ออกแบบหน้าจอแบบลากวาง</em>',
     'lead' => 'ลากวางปุ่ม ช่องกรอก ตาราง ลงบนฟอร์ม ดับเบิลคลิกเขียนโค้ด Rust กด F5 ก็ได้โปรแกรม Windows จริง (ลง Rust ครั้งแรกครั้งเดียว ฟรี) พร้อมตัวแก้โค้ดที่เติมคำให้ ดีบักเกอร์ เทสต์ Git และทำตัวติดตั้งให้ด้วย หน้าจอภาษาไทย และมีคู่มือสอน Rust ภาษาไทยในตัว',
     'btnDownload' => 'ดาวน์โหลดตัวติดตั้ง', 'btnGithub' => 'โค้ดบน GitHub', 'btnGuide' => 'อ่านคู่มือภาษาไทย',
@@ -200,10 +200,10 @@ $T = $th ? [
     ],
     'statVisitors' => 'ผู้เข้าชมทั้งหมด', 'statDownloads' => 'ดาวน์โหลดแล้ว', 'statVersion' => 'เวอร์ชัน', 'cta' => 'ดาวน์โหลด',
     'zoom' => 'คลิกเพื่อดูภาพเต็ม', 'prev' => 'ก่อนหน้า', 'next' => 'ถัดไป', 'close' => 'ปิด',
-    'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'วิทยาทาน · โอเพนซอร์ส', 'คู่มือ RUST ภาษาไทย', 'ดาวน์โหลดฟรี'],
+    'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'วิทยาทาน · ใช้ฟรี', 'คู่มือ RUST ภาษาไทย', 'ดาวน์โหลดฟรี'],
     'whyH' => 'ทำไมต้อง Phai Studio',
     'why' => [
-        ['ฟรีทุกฟีเจอร์ ไม่มีรุ่นเสียเงิน', 'สัญญาอนุญาต MIT ใช้ แก้ และแจกต่อได้ รวมถึงใช้ทำโปรแกรมขาย'],
+        ['ฟรีทุกฟีเจอร์ ไม่มีรุ่นเสียเงิน', 'ใช้ทำโปรแกรมขายได้ ไลบรารีที่ติดไปกับโปรแกรมเป็นสัญญาอนุญาต MIT'],
         ['โปรแกรมที่ได้เล็กและเร็ว', 'เป็นโปรแกรม Windows แท้ ไฟล์ .exe เดียว ไม่ต้องลง .NET หรือเฟรมเวิร์กใหญ่ ใช้แค่ Visual C++ runtime ของ Microsoft ที่เครื่องส่วนใหญ่มีอยู่แล้ว'],
         ['ภาษา Rust ปลอดภัยตั้งแต่ตอนเขียน', 'คอมไพเลอร์จับข้อผิดพลาดเรื่องหน่วยความจำและ thread ให้ก่อนโปรแกรมจะได้รัน'],
         ['หน้าจอที่คุ้นมือ', 'เมนู แถบเครื่องมือ Toolbox, Properties และ Solution อยู่ในที่ที่คาดไว้ เริ่มใช้ได้ทันที'],
@@ -291,7 +291,7 @@ $T = $th ? [
     'dlBuilt' => 'ตัวติดตั้ง build จากซอร์สโค้ดโดย GitHub Actions ตรวจสอบได้ทุกขั้น ดูได้ที่ <a href="' . $github . '/releases" rel="noopener">หน้า Releases</a>',
     'dlSign' => 'การเซ็นโค้ด: ตอนนี้ไฟล์ยังไม่ได้เซ็น ใบรับรองเซ็นโค้ดฟรีสำหรับโอเพนซอร์สให้กับโปรเจกต์ที่มีคนใช้และรู้จักแล้ว เมื่อ Phai Studio มีคนใช้มากขึ้นจะขออีกครั้ง อ่าน <a href="' . $github . '/blob/main/docs/code-signing-policy.md" rel="noopener">นโยบายการเซ็นโค้ด</a>',
     'dlGit' => 'หรือดึงโค้ดล่าสุดจาก GitHub (แจก แก้ และส่ง pull request ได้):',
-    'license' => 'สัญญาอนุญาต MIT — ใช้ แก้ และแจกต่อได้ฟรี รวมถึงใช้ในเชิงพาณิชย์',
+    'license' => 'ใช้ฟรีทุกงาน รวมถึงทำโปรแกรมขาย · ไลบรารีที่ติดไปกับโปรแกรมของคุณ (phai-ui, phai-data, phai-web) เป็นสัญญาอนุญาต MIT · ตัว Phai Studio เป็น PolyForm Perimeter 1.0.1: ใช้ แก้ และแจกต่อได้ แต่ห้ามนำไปทำเป็นโปรแกรมที่แข่งกับ Phai Studio · ชื่อ Phai Studio และโลโก้ไผ่เป็นของ Monrak Net',
     'quote' => 'เราได้เรียนรู้จากซอฟต์แวร์โอเพนซอร์ส ของผู้อื่นมามาก จึงขอมอบซอฟต์แวร์ตระกูลไผ่ เป็นวิทยาทานแก่ทุกคน ให้ใครก็ได้มาเรียนรู้ ใช้งาน และต่อยอดได้ฟรี',
     'family' => 'ตระกูลไผ่',
     'suite' => [
@@ -302,10 +302,10 @@ $T = $th ? [
         ['https://www.monrak.net/', 'Monrak Net', 'มนต์รักที่มีต่ออินเทอร์เน็ต ตั้งแต่ปี 2545 บ้านของซอฟต์แวร์ตระกูลไผ่'],
     ],
 ] : [
-    'title' => 'Phai Studio — build Windows programs in Rust, with screens designed by drag and drop. Free and open source, with a Thai guide',
-    'desc' => 'Phai Studio is a free, open-source (MIT) IDE for building Windows programs in Rust: drag-and-drop form designer, code editor, debugger, tests and installer in one place. English and Thai interface, with a Thai Rust guide for beginners.',
+    'title' => 'Phai Studio — build Windows programs in Rust, with screens designed by drag and drop. Free, with its source open to read, and a Thai guide',
+    'desc' => 'Phai Studio is a free IDE, its source open to read, for building Windows programs in Rust: drag-and-drop form designer, code editor, debugger, tests and installer in one place. English and Thai interface, with a Thai Rust guide for beginners.',
     'nav' => ['features' => 'Features', 'learn' => 'Thai guide', 'install' => 'Install', 'download' => 'Download'],
-    'tag' => 'A gift of knowledge · Open source · Free',
+    'tag' => 'A gift of knowledge · Source open to read · Free',
     'h1' => 'Build Windows programs in Rust <em>with screens designed by drag and drop</em>',
     'lead' => 'Drag buttons, text boxes and grids onto a form, double-click to write the Rust, press F5 and you have a real Windows program (Rust is installed once, free). A code editor that completes for you, a debugger, tests, Git and an installer maker come with it, in English or Thai, with a Thai Rust guide built in.',
     'btnDownload' => 'Download the installer', 'btnGithub' => 'Code on GitHub', 'btnGuide' => 'Read the guide (Thai)',
@@ -413,7 +413,7 @@ $T = $th ? [
     'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'A GIFT OF KNOWLEDGE', 'LEARN RUST IN THAI', 'FREE DOWNLOAD'],
     'whyH' => 'Why Phai Studio',
     'why' => [
-        ['Every feature free, no paid edition', 'MIT licence: use it, change it, pass it on, and sell the programs you make'],
+        ['Every feature free, no paid edition', 'Sell the programs you make: the libraries that go with them are MIT'],
         ['Small, fast programs', 'Real Windows programs in one .exe; no large framework to install, only Microsoft\'s Visual C++ runtime, which most computers already have'],
         ['Rust catches mistakes while you write', 'The compiler stops memory and threading mistakes before the program ever runs'],
         ['A familiar layout', 'Menus, toolbars, Toolbox, Properties and Solution where you expect them; ready from the first day'],
@@ -501,7 +501,7 @@ $T = $th ? [
     'dlBuilt' => 'The installer is built from source by GitHub Actions, every step open to check, on the <a href="' . $github . '/releases" rel="noopener">Releases page</a>',
     'dlSign' => 'Code signing: the files are not signed yet. Free code signing for open source is given to projects that are already widely used; Phai Studio will apply again as more people use it. See the <a href="' . $github . '/blob/main/docs/code-signing-policy.md" rel="noopener">code signing policy</a>',
     'dlGit' => 'Or get the latest code from GitHub (share it, change it, send pull requests):',
-    'license' => 'MIT licence — free to use, change and pass on, commercial use included',
+    'license' => 'Free for any work, programs you sell included · The libraries that go into your programs (phai-ui, phai-data, phai-web) are MIT · Phai Studio itself is PolyForm Perimeter 1.0.1: use it, change it and pass it on, but not to make a product that competes with Phai Studio · The Phai Studio name and bamboo logo are Monrak Net\'s',
     'quote' => 'We have learned a great deal from other people\'s open-source software, so we give the Phai family of software to everyone as a gift of knowledge: anyone may learn from it, use it and build on it, free.',
     'family' => 'The Phai family',
     'suite' => [
@@ -744,7 +744,7 @@ $base = 'https://phai-studio.monrak.net/';
 
 <footer class="foot">
     <div class="wrap">
-        <span class="label">MIT License</span>
+        <span class="label"><a href="<?= e($github) ?>/blob/main/LICENSE" rel="noopener">License</a></span>
         <p class="note"><?= e($T['license']) ?></p>
         <blockquote><?= e($T['quote']) ?></blockquote>
         <h3><?= e($T['family']) ?></h3>

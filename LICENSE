@@ -1,21 +1,33 @@
-MIT License
+Phai Studio is made of two parts, under two licenses.
 
-Copyright (c) 2026 Monrak Net
+1. The libraries that go into the programs you make: MIT License
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+     crates/phai-ui     crates/phai-data    crates/phai-web
+     crates/phai-pack   apps/setup (the setup program Publish makes)
+     and the examples:  apps/sample, apps/gallery, docs/help-src/examples
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+   Use them in any program, free or sold, without asking.
+   The text is in LICENSES/MIT.txt and in each of those folders.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. Phai Studio itself: PolyForm Perimeter License 1.0.1
+
+     everything else: apps/studio, crates/phai-editor, crates/phai-form,
+     crates/phai-design, crates/phai-debug, the guide and the website
+
+   Use it, change it and share it for any purpose, making programs you sell
+   included, but not to offer others a product that competes with Phai Studio
+   (a copy or a changed version under another name, for example).
+   The text is in LICENSES/PolyForm-Perimeter-1.0.1.md.
+
+Required Notice: Copyright (c) 2026 Monrak Net (Kirati Kittikhun) - https://phai-studio.monrak.net
+
+What Phai Studio writes into your projects - the code it generates from your
+forms, a new project's starting files, themes - is yours, to use however you like.
+
+Phai Studio 0.2.7 and the versions before it were released under the MIT License
+alone, and stay so.
+
+"Phai Studio" and the bamboo logo are Monrak Net's. A product made from Phai Studio
+must not use them. For anything these licenses do not allow - selling Phai Studio
+or a version of it, for example - ask for written permission:
+https://github.com/kirati-ai/phai-studio/issues

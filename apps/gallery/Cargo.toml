@@ -3,7 +3,7 @@ name = "phai-gallery"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license = "MIT"
 authors.workspace = true
 description = "Every phai-ui control in one window, light and dark, Thai and English"
 

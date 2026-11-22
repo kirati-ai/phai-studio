@@ -3,7 +3,7 @@ name = "phai-debug"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license-file = "../../LICENSES/PolyForm-Perimeter-1.0.1.md"
 authors.workspace = true
 description = "A debugger for Rust programs on Windows, on the Windows debug API and dbghelp"
 

@@ -3,7 +3,7 @@ name = "phai-form"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+license-file = "../../LICENSES/PolyForm-Perimeter-1.0.1.md"
 authors.workspace = true
 description = "The form file (.phf): read, check, write, generate Rust from it, and build it live"
 

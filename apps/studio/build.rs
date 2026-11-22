@@ -18,7 +18,7 @@ fn main() {
         res.set("ProductName", "Phai Studio");
         res.set("FileDescription", "Phai Studio");
         res.set("CompanyName", "Monrak Net");
-        res.set("LegalCopyright", "MIT License - Monrak Net");
+        res.set("LegalCopyright", "Copyright (c) 2026 Monrak Net - PolyForm Perimeter 1.0.1");
         res.set("OriginalFilename", "phai-studio.exe");
         if let Err(e) = res.compile() {
             println!("cargo:warning=no version information in phai-studio.exe: {e}");

@@ -50,7 +50,9 @@ What Phai Studio sends, and only when the person asks for it:
 - **Git** pushes to and pulls from the remotes the person has set up.
 - **Server Explorer** connects to the database servers the person adds.
 - **Code Coverage** installs Rust's `llvm-tools` with rustup, after asking.
-- Links in the guide and the start window open in the browser when clicked.
+- **Help > Check for Updates** (and the button in About) asks GitHub for the newest release, and
+  downloads its setup from GitHub Releases when the person says yes.
+- Links in the guide, the start window and About open in the browser when clicked.
 
 Phai Studio collects no usage data and has no telemetry. rust-analyzer, which Phai Studio uses for
 code completion, runs on the same computer.
