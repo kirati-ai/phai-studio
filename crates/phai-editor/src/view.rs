@@ -2130,6 +2130,10 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
             _ => {}
         }
     }
+    // Esc ends a snippet being filled in.
+    if vk == 0x1B && v.model.snippet.take().is_some() {
+        return true;
+    }
     // Several carets: Esc leaves the main one, Delete works at each, a move leaves the main one.
     if !v.model.extra.is_empty() {
         match vk {
@@ -2424,7 +2428,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
                 0x09 => {
                     let shift = unsafe { km::GetKeyState(0x10) } < 0;
-                    if v.model.caret != v.model.anchor && v.model.selected_text().contains('\n') || shift {
+                    if !shift && v.model.next_snippet_field() {
+                        // A snippet's next field.
+                    } else if v.model.caret != v.model.anchor && v.model.selected_text().contains('\n') || shift {
                         v.model.indent_lines(shift);
                     } else if v.lang == Language::Rust && v.model.expand_snippet() {
                         // A snippet's word before the caret: its code.

@@ -135,7 +135,8 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <li><kbd>F12</kbd> ไปที่ที่ประกาศ, <kbd>Alt+F12</kbd> ดูแบบไม่ต้องออกจากไฟล์, <kbd>Shift+F12</kbd> หาทุกที่ที่ใช้</li>
   <li><kbd>F2</kbd> เปลี่ยนชื่อทั้งโปรเจกต์, <kbd>Ctrl+.</kbd> ให้ช่วยแก้หรือปรับโค้ด</li>
   <li>เหนือฟังก์ชันจะบอกว่าถูกใช้กี่แห่ง (CodeLens) คลิกเพื่อดูรายการ</li>
-  <li>Snippet: พิมพ์ <code>fn</code>, <code>for</code>, <code>match</code>, <code>test</code> แล้วกด <kbd>Tab</kbd> ได้โค้ดทั้งก้อน</li>
+  <li>Snippet: พิมพ์ <code>fn</code>, <code>for</code>, <code>match</code>, <code>test</code> แล้วกด <kbd>Tab</kbd> ได้โค้ดทั้งก้อน แล้วกรอกทีละช่อง: ช่องแรกถูกเลือกไว้ พิมพ์ทับได้เลย <kbd>Tab</kbd> ไปช่องถัดไป ช่องชื่อเดียวกันเปลี่ยนตามกันทุกที่ (<kbd>Esc</kbd> เลิก) — มีของ Phai Studio ด้วย: <code>msg</code> กล่องข้อความ, <code>yesno</code> ถามใช่/ไม่ใช่, <code>bg</code> งานหนักบน thread แล้วกลับมาแก้หน้าจอ, <code>show</code> / <code>dialog</code> เปิดฟอร์มอื่น, <code>status</code> ข้อความแถบสถานะ — <kbd>Ctrl+K, Ctrl+X</kbd> เลือกจากรายการ</li>
+  <li>Snippet ของคุณเอง: <b>Tools &gt; Snippet ของฉัน...</b> เปิดไฟล์ <code>snippets.toml</code> เขียน <code>word</code> กับ <code>body</code> (ช่องกรอกเขียนว่า <code>${1:ชื่อ}</code>, <code>$0</code> คือที่ caret ไปจบ) บันทึกแล้วใช้ได้ทันที</li>
   <li><kbd>Ctrl+K, Ctrl+D</kbd> จัดรูปแบบโค้ดทั้งไฟล์ด้วย rustfmt</li>
   <li>แถบบนตัวแก้โค้ด (breadcrumb) บอกว่าเคอร์เซอร์อยู่ในไฟล์ไหน และอยู่ใน <code>mod</code> / <code>impl</code> / <code>fn</code> ไหน</li>
   <li>หลายเคอร์เซอร์: <kbd>Ctrl+Alt+คลิก</kbd> เพิ่มเคอร์เซอร์, <kbd>Alt+ลาก</kbd> ได้เคอร์เซอร์ทุกบรรทัดเป็นกล่อง</li>

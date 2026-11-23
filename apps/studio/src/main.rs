@@ -223,6 +223,7 @@ const ID_ADD_FORM: i32 = 291;
 const ID_ADD_USER_CONTROL: i32 = 293;
 const ID_IMPORT_WINFORMS: i32 = 2903;
 const ID_VIEW_AI: i32 = 2904;
+const ID_USER_SNIPPETS: i32 = 2905;
 /// Project > Add Report: a printed report of the project's, designed in the Report Designer.
 const ID_ADD_REPORT: i32 = 292;
 /// Build > Build for Web: the project as a web page that installs as an app on phones.
@@ -1560,6 +1561,7 @@ fn build_menu() -> HMENU {
         sub_of(tools, t("Command Line"), cmd);
         sep(tools);
         add(tools, ID_COMPARE, t("Compare Files..."), "");
+        add(tools, ID_USER_SNIPPETS, t("Code Snippets..."), "");
         add(tools, ID_KEYMAP, t("Keyboard Shortcuts..."), "");
         add(tools, ID_OPTIONS, t("Options..."), "");
         sub(t("T&ools"), tools);
@@ -5120,6 +5122,15 @@ impl Studio {
                     phai_editor::view::set_clean(h);
                     phai_editor::view::set_changes(h, &changes::of_file(&path));
                     self.doc.dirty = false;
+                    // Tools > Code Snippets saved: ready at once.
+                    if snippets_file().is_some_and(|s| phai_editor::lsp::same_path(&s, &path)) {
+                        match load_snippets() {
+                            Ok(n) => self.say_status(&tf("{0} snippets of your own are ready", &[&n])),
+                            Err(e) => {
+                                win::message(Some(self.hwnd), &e, t("Code Snippets"), wm::MB_ICONWARNING);
+                            }
+                        }
+                    }
                     self.say_title();
                     self.refresh_tabs();
                     controls::status_text(self.status, 0, &tf("Saved {0}", &[&path.file_name().unwrap_or_default().to_string_lossy()]));
@@ -8267,14 +8278,16 @@ impl Studio {
                 Some(h) => unsafe {
                     // Every snippet, its word and its first line, as a menu under the caret.
                     let m = wm::CreatePopupMenu().unwrap_or_default();
-                    for (i, (word, body)) in phai_editor::model::SNIPPETS.iter().enumerate() {
-                        let label = wide(&format!("{word}	{}", body.lines().next().unwrap_or_default().replace("$0", "").replace('&', "&&")));
+                    let all = phai_editor::model::all_snippets();
+                    for (i, (word, body)) in all.iter().enumerate() {
+                        let first = phai_editor::model::parse_snippet(body.lines().next().unwrap_or_default()).0;
+                        let label = wide(&format!("{word}	{}", first.chars().take(70).collect::<String>().replace('&', "&&")));
                         let _ = wm::AppendMenuW(m, wm::MF_STRING, i + 1, PCWSTR(label.as_ptr()));
                     }
                     let (x, y) = phai_editor::view::caret_screen(h);
                     let n = wm::TrackPopupMenu(m, wm::TPM_RETURNCMD | wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, self.hwnd, None).0 as usize;
                     let _ = wm::DestroyMenu(m);
-                    if let Some((word, _)) = n.checked_sub(1).and_then(|i| phai_editor::model::SNIPPETS.get(i)) {
+                    if let Some((word, _)) = n.checked_sub(1).and_then(|i| all.get(i)) {
                         phai_editor::view::insert_snippet(h, word);
                     }
                 },
@@ -8341,6 +8354,19 @@ impl Studio {
                 self.toggle_split();
                 self.rebuild_menu();
             }
+            ID_USER_SNIPPETS => match snippets_file() {
+                Some(p) => {
+                    if !p.exists() {
+                        let _ = p.parent().map(std::fs::create_dir_all);
+                        let _ = std::fs::write(&p, SNIPPETS_TEMPLATE);
+                    }
+                    self.open_code(&p);
+                    self.say_status(t("Your snippets: save the file and they are ready - type the word, then Tab"));
+                }
+                None => {
+                    win::message(Some(self.hwnd), t("There is no folder for Phai Studio's settings."), t("Code Snippets"), wm::MB_ICONWARNING);
+                }
+            },
             ID_VIEW_AI => {
                 let on = !explorer::ai_shown(self.side);
                 if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
@@ -8815,6 +8841,54 @@ fn set_list_cell(list: HWND, row: usize, col: usize, text: &str) {
 
 pub fn file_dialog_pub(owner: HWND, save: bool, description: &str, pattern: &str, suggested: &str) -> Option<PathBuf> {
     file_dialog(owner, save, description, pattern, suggested)
+}
+
+/// The person's own code snippets: `snippets.toml` beside Phai Studio's settings.
+fn snippets_file() -> Option<PathBuf> {
+    settings_dir().map(|d| d.join("snippets.toml"))
+}
+
+const SNIPPETS_TEMPLATE: &str = r#"# Your own code snippets, for the code editor: type the word, then Tab.
+# ${1:name} is a field to fill in - Tab goes to the next, a field written twice changes in both;
+# $0 is where the caret ends. A snippet with a built-in's word takes its place.
+# Save this file and they are ready.
+
+[[snippet]]
+word = "hello"
+body = """
+ui.${1:status}.set_part_text(0, "${2:Hello}");$0"""
+
+[[snippet]]
+word = "row"
+body = """
+ui.${1:grid}.add_row(&[${2:"a", "b"}]);$0"""
+"#;
+
+/// Reads the person's snippets into the editor; how many, or what is wrong with the file.
+fn snippets_of(text: &str) -> Result<Vec<(String, String)>, String> {
+    let v: phai_form::toml::Table = phai_form::toml::from_str(text).map_err(|e: phai_form::toml::de::Error| e.message().to_string())?;
+    let mut out = Vec::new();
+    for s in v.get("snippet").and_then(|s| s.as_array()).cloned().unwrap_or_default() {
+        let (Some(word), Some(body)) = (s.get("word").and_then(|w| w.as_str()), s.get("body").and_then(|b| b.as_str())) else {
+            return Err(t("Each [[snippet]] needs a word and a body").to_string());
+        };
+        if word.is_empty() || !word.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Err(tf("{0}: a snippet's word is letters, digits and _", &[&word]));
+        }
+        out.push((word.to_string(), body.trim_start_matches(['\r', '\n']).replace("\r\n", "\n")));
+    }
+    Ok(out)
+}
+
+fn load_snippets() -> Result<usize, String> {
+    let Some(text) = snippets_file().and_then(|p| std::fs::read_to_string(p).ok()) else {
+        phai_editor::model::set_user_snippets(vec![]);
+        return Ok(0);
+    };
+    let list = snippets_of(&text)?;
+    let n = list.len();
+    phai_editor::model::set_user_snippets(list);
+    Ok(n)
 }
 
 pub fn settings_dir_pub() -> Option<PathBuf> {
@@ -9856,6 +9930,7 @@ fn main() {
         });
         STUDIO.store(Box::into_raw(studio_box), Ordering::Relaxed);
         let s = studio().unwrap();
+        let _ = load_snippets();
         // The right side: the project's files above, the chosen thing's properties below.
         let side = explorer::side_panel(hwnd);
         let explorer = explorer::Explorer::new(side, font);
@@ -10968,6 +11043,17 @@ mod {file}_ui;
 #[cfg(test)]
 mod add_form_tests {
     use super::*;
+
+    #[test]
+    fn the_persons_own_snippets_are_read() {
+        let got = snippets_of(SNIPPETS_TEMPLATE).unwrap();
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0], ("hello".to_string(), "ui.${1:status}.set_part_text(0, \"${2:Hello}\");$0".to_string()));
+        assert!(snippets_of("[[snippet]]\nword = \"a b\"\nbody = \"x\"").is_err());
+        assert!(snippets_of("[[snippet]]\nbody = \"x\"").is_err());
+        assert!(snippets_of("not toml [").is_err());
+        assert_eq!(snippets_of("").unwrap(), vec![]);
+    }
 
     #[test]
     fn publish_reads_the_kinds_of_file_a_program_opens() {

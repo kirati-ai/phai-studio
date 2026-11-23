@@ -84,11 +84,80 @@ pub struct Model {
     pub dirty: bool,
     /// More carets, each with its selection's other end: (caret, anchor). Typing goes to all.
     pub extra: Vec<(usize, usize)>,
+    /// A snippet being filled in: Tab goes to its next field.
+    pub snippet: Option<SnippetRun>,
+}
+
+/// A snippet's fields being filled in, as Visual Studio's: each field's places (a field written
+/// twice changes in both), the one the caret is in, where the caret goes at the end.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SnippetRun {
+    fields: Vec<Vec<(usize, usize)>>,
+    current: usize,
+    end: usize,
+    /// The text's length when the caret came into the current field: what was typed since is
+    /// the field's new length.
+    len_at: usize,
+}
+
+/// A snippet's code, parsed: its text with the markers taken out, each field's number and place
+/// in it, and where `$0` was. `${1:name}` is field 1 with `name` in it; `$1` an empty one.
+pub fn parse_snippet(body: &str) -> (String, Vec<(usize, usize, usize)>, Option<usize>) {
+    let mut text = String::new();
+    let mut fields = Vec::new();
+    let mut zero = None;
+    let mut rest = body;
+    while let Some(i) = rest.find('$') {
+        text.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        if let Some(inner) = after.strip_prefix('{') {
+            let close = inner.find('}').unwrap_or(inner.len());
+            let spec = &inner[..close];
+            let (num, default) = spec.split_once(':').unwrap_or((spec, ""));
+            if let Ok(n) = num.parse::<usize>() {
+                let start = text.len();
+                text.push_str(default);
+                if n == 0 { zero = Some(start) } else { fields.push((n, start, text.len())) }
+            } else {
+                text.push_str(&rest[i..i + 2 + close + 1]);
+            }
+            rest = &inner[(close + 1).min(inner.len())..];
+        } else {
+            let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            match digits.parse::<usize>() {
+                Ok(0) => zero = Some(text.len()),
+                Ok(n) => fields.push((n, text.len(), text.len())),
+                Err(_) => text.push('$'),
+            }
+            rest = &after[digits.len()..];
+        }
+    }
+    text.push_str(rest);
+    (text, fields, zero)
+}
+
+/// The snippets the person keeps of their own (Tools > Code Snippets), beside the built-in ones.
+static USER_SNIPPETS: std::sync::RwLock<Vec<(String, String)>> = std::sync::RwLock::new(Vec::new());
+
+pub fn set_user_snippets(list: Vec<(String, String)>) {
+    *USER_SNIPPETS.write().unwrap_or_else(|e| e.into_inner()) = list;
+}
+
+/// Every snippet: the person's first (one of theirs takes the place of a built-in of its word),
+/// then the built-in ones.
+pub fn all_snippets() -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = USER_SNIPPETS.read().unwrap_or_else(|e| e.into_inner()).clone();
+    for (w, b) in SNIPPETS {
+        if !out.iter().any(|(x, _)| x == w) {
+            out.push((w.to_string(), b.to_string()));
+        }
+    }
+    out
 }
 
 impl Model {
     pub fn new(text: &str) -> Model {
-        Model { buf: Buffer::new(text), caret: 0, anchor: 0, goal: None, undo: vec![], redo: vec![], typing: false, dirty: false, extra: vec![] }
+        Model { buf: Buffer::new(text), caret: 0, anchor: 0, goal: None, undo: vec![], redo: vec![], typing: false, dirty: false, extra: vec![], snippet: None }
     }
 
     pub fn selection(&self) -> (usize, usize) {
@@ -577,16 +646,86 @@ impl Model {
         if word.is_empty() || before[..start].chars().last().is_some_and(|c| c == '.' || c == ':' || c.is_alphanumeric()) {
             return false;
         }
-        let Some((_, body)) = SNIPPETS.iter().find(|(k, _)| *k == word) else { return false };
+        let Some((_, body)) = all_snippets().into_iter().find(|(k, _)| k == word) else { return false };
         let indent: String = text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
-        let body = body.replace('\n', &format!("\n{indent}"));
-        let at = body.find("$0").unwrap_or(body.len());
-        let body = body.replace("$0", "");
+        let (body, fields, zero) = parse_snippet(&body.replace('\n', &format!("\n{indent}")));
         let from = self.buf.line_start(line) + start;
         self.anchor = from;
         self.insert(&body);
-        self.caret = from + at;
-        self.anchor = self.caret;
+        let end = from + zero.unwrap_or(body.len());
+        // Its fields by number, each number's places together.
+        let mut numbers: Vec<usize> = fields.iter().map(|f| f.0).collect();
+        numbers.sort_unstable();
+        numbers.dedup();
+        let places: Vec<Vec<(usize, usize)>> = numbers.iter().map(|n| fields.iter().filter(|f| f.0 == *n).map(|f| (from + f.1, from + f.2)).collect()).collect();
+        if places.is_empty() {
+            self.caret = end;
+            self.anchor = end;
+            self.snippet = None;
+        } else {
+            let (a, b) = places[0][0];
+            self.anchor = a;
+            self.caret = b;
+            self.snippet = Some(SnippetRun { fields: places, current: 0, end, len_at: self.buf.len() });
+        }
+        true
+    }
+
+    /// Tab in a snippet: what was typed in this field written in its other places too, then the
+    /// next field chosen - or, after the last, the caret where the snippet ends. False when no
+    /// snippet is being filled in, or the caret has left its field (the snippet is over then).
+    pub fn next_snippet_field(&mut self) -> bool {
+        let Some(mut run) = self.snippet.take() else { return false };
+        let (s, e) = run.fields[run.current][0];
+        let delta = self.buf.len() as isize - run.len_at as isize;
+        let new_e = (e as isize + delta).max(s as isize) as usize;
+        let (a, b) = self.selection();
+        if a < s || b > new_e || new_e > self.buf.len() {
+            return false;
+        }
+        // Everything after the field moves by what was typed in it.
+        let shift = |p: usize, at: usize, by: isize| if p >= at { (p as isize + by) as usize } else { p };
+        for (fi, places) in run.fields.iter_mut().enumerate() {
+            for (pi, (x, y)) in places.iter_mut().enumerate() {
+                if fi == run.current && pi == 0 {
+                    *y = new_e;
+                } else {
+                    *x = shift(*x, e, delta);
+                    *y = shift(*y, e, delta);
+                }
+            }
+        }
+        run.end = shift(run.end, e, delta);
+        // The field's other places take its words, last first so the earlier places stay put.
+        let words = self.buf.slice(s, new_e);
+        let mut mirrors: Vec<(usize, usize)> = run.fields[run.current].iter().skip(1).copied().collect();
+        mirrors.sort_by_key(|m| std::cmp::Reverse(m.0));
+        for (x, y) in mirrors {
+            let by = words.len() as isize - (y - x) as isize;
+            self.replace_range(x, y, &words, self.caret, self.anchor);
+            for (fi, places) in run.fields.iter_mut().enumerate() {
+                for (px, py) in places.iter_mut() {
+                    if fi == run.current && *px == x {
+                        *py = x + words.len();
+                    } else {
+                        *px = shift(*px, y, by);
+                        *py = shift(*py, y, by);
+                    }
+                }
+            }
+            run.end = shift(run.end, y, by);
+        }
+        run.current += 1;
+        if run.current >= run.fields.len() {
+            self.caret = run.end.min(self.buf.len());
+            self.anchor = self.caret;
+            return true;
+        }
+        let (a, b) = run.fields[run.current][0];
+        self.anchor = a;
+        self.caret = b;
+        run.len_at = self.buf.len();
+        self.snippet = Some(run);
         true
     }
 
@@ -812,25 +951,33 @@ fn matching_in(b: &[u8], code: &[usize], at: usize) -> Option<(usize, usize)> {
 
 /// Rust code snippets, as Visual Studio's: a short word, then Tab, and the code is there - `$0`
 /// where the caret goes.
+/// `${1:name}` is a field to fill in, Tab goes to the next; a field written twice changes in both.
 pub const SNIPPETS: &[(&str, &str)] = &[
-    ("fn", "fn $0() {\n}"),
-    ("pfn", "pub fn $0() {\n}"),
-    ("if", "if $0 {\n}"),
-    ("ifl", "if let Some($0) = {\n}"),
-    ("ife", "if $0 {\n} else {\n}"),
-    ("for", "for $0 in  {\n}"),
-    ("while", "while $0 {\n}"),
+    ("fn", "fn ${1:name}($2) {\n    $0\n}"),
+    ("pfn", "pub fn ${1:name}($2) {\n    $0\n}"),
+    ("if", "if ${1:condition} {\n    $0\n}"),
+    ("ifl", "if let Some(${1:x}) = ${2:value} {\n    $0\n}"),
+    ("ife", "if ${1:condition} {\n    $0\n} else {\n}"),
+    ("for", "for ${1:item} in ${2:items} {\n    $0\n}"),
+    ("while", "while ${1:condition} {\n    $0\n}"),
     ("loop", "loop {\n    $0\n}"),
-    ("match", "match $0 {\n    _ => {}\n}"),
-    ("struct", "struct $0 {\n}"),
-    ("enum", "enum $0 {\n}"),
-    ("impl", "impl $0 {\n}"),
-    ("test", "#[test]\nfn $0() {\n}"),
-    ("tests", "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn $0() {\n    }\n}"),
+    ("match", "match ${1:value} {\n    ${2:_} => {$0}\n}"),
+    ("struct", "struct ${1:Name} {\n    $0\n}"),
+    ("enum", "enum ${1:Name} {\n    $0\n}"),
+    ("impl", "impl ${1:Name} {\n    $0\n}"),
+    ("test", "#[test]\nfn ${1:it_works}() {\n    $0\n}"),
+    ("tests", "#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn ${1:it_works}() {\n        $0\n    }\n}"),
     ("main", "fn main() {\n    $0\n}"),
-    ("pln", "println!(\"{}\", $0);"),
+    ("pln", "println!(\"{}\", ${1:value});$0"),
     ("ok", "Ok($0)"),
     ("derive", "#[derive(Debug, Clone$0)]"),
+    // Phai Studio's own: a window's everyday code.
+    ("msg", "phai_ui::form::message_box(ui.hwnd, \"${1:Saved}\", \"${2:Title}\", phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);$0"),
+    ("yesno", "if phai_ui::form::message_box(ui.hwnd, \"${1:Delete it?}\", \"${2:Title}\", phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes {\n    $0\n}"),
+    ("bg", "let invoker = ui.invoker();\nstd::thread::spawn(move || {\n    let ${2:result} = ${3:work()};\n    ${1:MainWindow}Ui::begin_invoke(invoker, move |me: &mut ${1:MainWindow}, ui: &${1:MainWindow}Ui| {\n        $0\n    });\n});"),
+    ("show", "crate::${2:other_form}_ui::${1:OtherForm}Ui::show(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default());$0"),
+    ("dialog", "if crate::${2:other_form}_ui::${1:OtherForm}Ui::show_dialog(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default()) == phai_ui::form::DialogResult::Ok {\n    $0\n}"),
+    ("status", "ui.${1:status}.set_part_text(0, &tf(\"${2:Ready}\", &[]));$0"),
 ];
 
 /// The find bar's choices.
@@ -1213,14 +1360,56 @@ fn main() {", "broken at the start, the brace was not before the caret");
         m.caret = "fn main() {\n    for".len();
         m.anchor = m.caret;
         assert!(m.expand_snippet());
-        assert_eq!(m.buf.text(), "fn main() {\n    for  in  {\n    }\n}", "at the line's indent");
-        assert_eq!(&m.buf.text()[..m.caret], "fn main() {\n    for ", "the caret where the snippet says");
+        assert_eq!(m.buf.text(), "fn main() {\n    for item in items {\n        \n    }\n}", "at the line's indent");
+        assert_eq!(m.selected_text(), "item", "its first field chosen");
         m.undo();
         assert_eq!(m.buf.text(), "fn main() {\n    for\n}", "one undo step");
         let mut m = Model::new("x.fn");
         m.caret = 4;
         m.anchor = 4;
         assert!(!m.expand_snippet(), "a method name is not a snippet");
+    }
+
+    #[test]
+    fn a_snippets_fields_are_filled_in_with_tab_and_a_field_twice_changes_twice() {
+        assert_eq!(parse_snippet("a ${1:x} b $2 ${1:x} $0!"), ("a x b  x !".to_string(), vec![(1, 2, 3), (2, 6, 6), (1, 7, 8)], Some(9)));
+        assert_eq!(parse_snippet("cost $5 and ${x}"), ("cost  and ${x}".to_string(), vec![(5, 5, 5)], None));
+        let mut m = Model::new("bg");
+        m.caret = 2;
+        m.anchor = 2;
+        assert!(m.expand_snippet());
+        assert_eq!(m.selected_text(), "MainWindow", "field 1 first, where it is first written");
+        m.type_text("Shop");
+        assert!(m.next_snippet_field());
+        assert_eq!(m.selected_text(), "result");
+        assert_eq!(m.buf.text().matches("Shop").count(), 3, "every place of field 1: {}", m.buf.text());
+        assert!(!m.buf.text().contains("MainWindow"));
+        m.type_text("rows");
+        assert!(m.next_snippet_field());
+        assert_eq!(m.selected_text(), "work()");
+        m.type_text("load()");
+        assert!(m.next_snippet_field(), "the last field: the caret goes to $0");
+        assert!(m.snippet.is_none());
+        let t = m.buf.text();
+        assert!(t.contains("let rows = load();"), "{t}");
+        assert!(t.contains("ShopUi::begin_invoke(invoker, move |me: &mut Shop, ui: &ShopUi| {"), "{t}");
+        assert_eq!(&t[m.caret..m.caret + 1], "\n", "the caret inside the closure: {t}");
+        // The caret gone elsewhere: Tab is Tab again.
+        let mut m = Model::new("fn main() {\n    if\n}");
+        m.caret = "fn main() {\n    if".len();
+        m.anchor = m.caret;
+        assert!(m.expand_snippet());
+        m.caret = 0;
+        m.anchor = 0;
+        assert!(!m.next_snippet_field());
+        // A snippet of the person's own, in place of a built-in.
+        set_user_snippets(vec![("pln".into(), "eprintln!(\"${1:x}\");".into())]);
+        let mut m = Model::new("pln");
+        m.caret = 3;
+        m.anchor = 3;
+        assert!(m.expand_snippet());
+        assert_eq!(m.buf.text(), "eprintln!(\"x\");");
+        set_user_snippets(vec![]);
     }
 
     #[test]
