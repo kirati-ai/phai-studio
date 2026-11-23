@@ -2615,13 +2615,12 @@ impl Studio {
         let Some(i) = self.selected else {
             let Some(path) = self.doc.path.clone() else { return };
             let user = path.with_file_name(format!("{}.rs", snake(&self.doc.form.form.name)));
-            let Ok(src) = std::fs::read_to_string(&user) else { return };
+            let Some(src) = self.user_text(&user) else { return };
             if first_method_line(&src).is_none() {
-                if let Some(more) = codegen::add_handler(&src, &self.doc.form.form.name, "loaded") {
-                    let _ = std::fs::write(&user, more);
-                }
+                let form = self.doc.form.form.name.clone();
+                self.write_method(&user, &form, "loaded", None);
             }
-            let src = std::fs::read_to_string(&user).unwrap_or_default();
+            let src = self.user_text(&user).unwrap_or_default();
             self.open_code_at(&user, first_method_line(&src));
             return;
         };
@@ -2649,16 +2648,9 @@ impl Studio {
         }
         let Some(path) = self.doc.path.clone() else { return };
         let user = path.with_file_name(format!("{}.rs", snake(&self.doc.form.form.name)));
-        if let Ok(src) = std::fs::read_to_string(&user) {
-            if let Some(more) = codegen::add_handler(&src, &self.doc.form.form.name, &name) {
-                if std::fs::write(&user, more).is_ok() {
-                    controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
-                }
-            }
-        }
+        let form = self.doc.form.form.name.clone();
         // Then to it, as Visual Studio goes to the handler it writes.
-        let src = std::fs::read_to_string(&user).unwrap_or_default();
-        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
+        let line = self.write_method(&user, &form, &name, None);
         self.open_code_at(&user, line);
     }
 
@@ -2668,16 +2660,39 @@ impl Studio {
     pub fn open_item_handler(&mut self, name: &str) {
         let Some(path) = self.doc.path.clone() else { return };
         let user = path.with_file_name(format!("{}.rs", snake(&self.doc.form.form.name)));
-        if let Ok(src) = std::fs::read_to_string(&user) {
-            if let Some(more) = codegen::add_handler(&src, &self.doc.form.form.name, name) {
-                if std::fs::write(&user, more).is_ok() {
-                    controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
+        let form = self.doc.form.form.name.clone();
+        let line = self.write_method(&user, &form, name, None);
+        self.open_code_at(&user, line);
+    }
+
+    /// The programmer's file as they see it: the open editor's text, unsaved changes and all,
+    /// else the file's.
+    fn user_text(&self, user: &Path) -> Option<String> {
+        self.editor_of(user).map(phai_editor::view::text).or_else(|| std::fs::read_to_string(user).ok())
+    }
+
+    /// Method `name` of form `form` written into the programmer's file if it is not there - into
+    /// its editor when the file is open (so what is open stays what is true, and its unsaved
+    /// changes stay), else into the file. The line its body starts on, from 1, for the caret: under
+    /// the line that says what the event's arguments hold, when there is one.
+    fn write_method(&mut self, user: &Path, form: &str, name: &str, param: Option<&str>) -> Option<usize> {
+        let open = self.editor_of(user);
+        let src = self.user_text(user)?;
+        if let Some(more) = codegen::add_handler_with(&src, form, name, param) {
+            let written = match open {
+                Some(h) => {
+                    phai_editor::view::replace_whole(h, &more);
+                    true
                 }
+                None => std::fs::write(user, &more).is_ok(),
+            };
+            if written {
+                controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
             }
         }
-        let src = std::fs::read_to_string(&user).unwrap_or_default();
-        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
-        self.open_code_at(&user, line);
+        let src = self.user_text(user).unwrap_or_default();
+        let below = param.and_then(codegen::args_hint).map_or(0, |_| 1);
+        src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1 + below)
     }
 
     /// A double-click on an event in the Events tab: the method it names - or a new one, named as
@@ -2764,17 +2779,7 @@ impl Studio {
         // Saved first, so the generated trait has the method the new code implements.
         self.save(false);
         let user = path.with_file_name(format!("{}.rs", snake(&form)));
-        if let Ok(src) = std::fs::read_to_string(&user) {
-            if let Some(more) = codegen::add_handler_with(&src, &form, &name, param) {
-                if std::fs::write(&user, more).is_ok() {
-                    controls::status_text(self.status, 0, &tf("Added {0} to {1}", &[&format!("fn {name}"), &user.file_name().unwrap_or_default().to_string_lossy()]));
-                }
-            }
-        }
-        let src = std::fs::read_to_string(&user).unwrap_or_default();
-        // The caret under the line that says what the arguments hold, when there is one.
-        let below = param.and_then(codegen::args_hint).map_or(0, |_| 1);
-        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1 + below);
+        let line = self.write_method(&user, &form, &name, param);
         self.open_code_at(&user, line);
     }
 
