@@ -253,7 +253,9 @@ fn paint(h: HWND) {
     let p = places();
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
-        let dc = Gdi::BeginPaint(h, &mut ps);
+        let screen = Gdi::BeginPaint(h, &mut ps);
+        let buf = phai_ui::win::off_screen(h, screen);
+        let dc = buf.dc;
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         let bg = theme::current().var_color("--surface").unwrap_or(Color::rgb(255, 255, 255));
@@ -332,6 +334,7 @@ fn paint(h: HWND) {
         win::fill(dc, &RECT { left: b.left + 1, top: b.top + 1, right: mid, bottom: b.bottom - 1 }, s.was.unwrap_or(s.colour()));
         win::fill(dc, &RECT { left: mid, top: b.top + 1, right: b.right - 1, bottom: b.bottom - 1 }, s.colour());
         Gdi::SelectObject(dc, old);
+        drop(buf);
         let _ = Gdi::EndPaint(h, &ps);
     }
 }

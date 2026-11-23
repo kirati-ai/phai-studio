@@ -89,7 +89,9 @@ fn paint(h: HWND) {
     let Some(s) = (unsafe { win::state::<Strip>(h) }) else { return };
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
-        let dc = Gdi::BeginPaint(h, &mut ps);
+        let screen = Gdi::BeginPaint(h, &mut ps);
+        let buf = phai_ui::win::off_screen(h, screen);
+        let dc = buf.dc;
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         let base = theme::style("tabs", State::default());
@@ -115,6 +117,7 @@ fn paint(h: HWND) {
             let _ = Gdi::TextOutW(dc, x, a + win::px(h, 8), &w);
         }
         Gdi::SelectObject(dc, old);
+        drop(buf);
         let _ = Gdi::EndPaint(h, &ps);
     }
 }

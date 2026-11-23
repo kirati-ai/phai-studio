@@ -386,7 +386,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         (wm::WM_ERASEBKGND, _) => LRESULT(1),
         (wm::WM_PAINT, Some(p)) => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let bg = theme::style("edit", State::default()).background_or(win::window_background());
@@ -431,6 +433,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
             }
             Gdi::SelectObject(dc, old);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

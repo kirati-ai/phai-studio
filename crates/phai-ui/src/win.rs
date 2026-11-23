@@ -555,6 +555,60 @@ fn root_colors(h: HWND) -> (Option<Color>, Option<Color>) {
 
 /// What is behind control `h` in `r` of its `dc`: the window's gradient or picture where it has
 /// one (Windows asks the parent to paint into the control's place), its colour else.
+/// A window's painting drawn off screen and put on it at once when dropped, so the screen never
+/// shows it half drawn - its background filled and the words not yet on it, which flickers.
+/// Painted on `dc` in the window's own coordinates; begun with the class's background brush, as
+/// erasing would have, so the window's WM_ERASEBKGND should do nothing (return 1).
+pub struct OffScreen {
+    pub dc: HDC,
+    screen: HDC,
+    bmp: Gdi::HBITMAP,
+    old: Gdi::HGDIOBJ,
+    area: RECT,
+}
+
+/// Painting `h`, given BeginPaint's `screen`, off screen: draw on `.dc`, then drop it before EndPaint.
+pub fn off_screen(h: HWND, screen: HDC) -> OffScreen {
+    let mut r = RECT::default();
+    unsafe {
+        let _ = wm::GetClientRect(h, &mut r);
+    }
+    let buf = off_screen_area(screen, r);
+    unsafe {
+        let brush = wm::GetClassLongPtrW(h, wm::GCLP_HBRBACKGROUND);
+        if brush != 0 {
+            Gdi::FillRect(buf.dc, &r, Gdi::HBRUSH(brush as *mut _));
+        }
+    }
+    buf
+}
+
+/// Drawing `area` of `screen` off screen, in `screen`'s coordinates and with its font - as for an
+/// owner-drawn button's WM_DRAWITEM.
+pub fn off_screen_area(screen: HDC, area: RECT) -> OffScreen {
+    unsafe {
+        let dc = Gdi::CreateCompatibleDC(Some(screen));
+        let bmp = Gdi::CreateCompatibleBitmap(screen, area.right.max(1), area.bottom.max(1));
+        let old = Gdi::SelectObject(dc, bmp.into());
+        Gdi::SelectObject(dc, Gdi::GetCurrentObject(screen, Gdi::OBJ_FONT));
+        OffScreen { dc, screen, bmp, old, area }
+    }
+}
+
+impl Drop for OffScreen {
+    fn drop(&mut self) {
+        let a = self.area;
+        unsafe {
+            let _ = Gdi::BitBlt(self.screen, a.left, a.top, a.right - a.left, a.bottom - a.top, Some(self.dc), a.left, a.top, Gdi::SRCCOPY);
+            // The font back before the DC goes: it is the window's, not ours to free.
+            Gdi::SelectObject(self.dc, Gdi::GetStockObject(Gdi::SYSTEM_FONT));
+            Gdi::SelectObject(self.dc, self.old);
+            let _ = Gdi::DeleteObject(self.bmp.into());
+            let _ = Gdi::DeleteDC(self.dc);
+        }
+    }
+}
+
 pub fn paint_behind(h: HWND, dc: HDC, r: &RECT) {
     if window_patterned(h) {
         unsafe {
@@ -916,6 +970,8 @@ fn check_radio(h: HWND) {
 unsafe extern "system" fn button_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM, _id: usize, _data: usize) -> LRESULT {
     use windows::Win32::UI::Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT};
     match msg {
+        // Its drawing covers it all, off screen (draw_item): no wiping first.
+        wm::WM_ERASEBKGND => return LRESULT(1),
         wm::WM_MOUSEMOVE => {
             if with_css(h, |c| !std::mem::replace(&mut c.hot, true)).unwrap_or(false) {
                 let mut t = TRACKMOUSEEVENT { cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: h, dwHoverTime: 0 };
@@ -989,7 +1045,10 @@ pub fn draw_item(l: LPARAM) -> bool {
         selected: false,
     };
     let s = style_animated(d.hwndItem, kind, state);
-    let dc = d.hDC;
+    // Drawn off screen and put on at once: the parent's colour, then the box, then the words,
+    // straight on the screen, flickered at every hover and redraw.
+    let buf = off_screen_area(d.hDC, d.rcItem);
+    let dc = buf.dc;
     let r = d.rcItem;
     let h = d.hwndItem;
     // The parent's colour behind the rounded corners and around the box.
@@ -1807,7 +1866,9 @@ pub fn panel(parent: HWND, id: i32, outline: bool) -> HWND {
 fn panel_paint(h: HWND, outline: bool) {
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
-        let dc = Gdi::BeginPaint(h, &mut ps);
+        let screen = Gdi::BeginPaint(h, &mut ps);
+        let buf = off_screen(h, screen);
+        let dc = buf.dc;
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         // A panel with a colour of its own (its BackColor) shows it; else what is behind it.
@@ -1830,6 +1891,7 @@ fn panel_paint(h: HWND, outline: bool) {
                 y += 8;
             }
         }
+        drop(buf);
         let _ = Gdi::EndPaint(h, &ps);
     }
 }
@@ -3499,11 +3561,14 @@ pub fn def(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             }
         }
         wm::WM_ERASEBKGND => {
-            let dc = HDC(w.0 as *mut _);
             let mut r = RECT::default();
             unsafe {
                 let _ = wm::GetClientRect(hwnd, &mut r);
             }
+            // Its colour, gradient and picture drawn off screen and put on at once - one over the
+            // other on the screen, they flickered.
+            let buf = off_screen_area(HDC(w.0 as *mut _), r);
+            let dc = buf.dc;
             fill(dc, &r, window_background_for(hwnd));
             // A gradient for the window, where its own colour does not stand over it.
             if root_colors(hwnd).0.is_none() {

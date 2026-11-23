@@ -365,7 +365,9 @@ extern "system" fn key_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_CHAR | wm::WM_SYSCHAR => LRESULT(0),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let focused = km::GetFocus() == h;
@@ -380,6 +382,7 @@ extern "system" fn key_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             let mut tr = RECT { left: win::px(h, 8), ..inner };
             win::draw_text(dc, h, &text, &mut tr, win::window_text_for(h), Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_NOPREFIX);
             Gdi::SelectObject(dc, old);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

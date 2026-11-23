@@ -80,7 +80,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut rc = RECT::default();
             let _ = wm::GetClientRect(h, &mut rc);
             let bg = win::window_background_for(h);
@@ -120,6 +122,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             line(&ask, d.font, text, 20, false);
             line(&url, d.bold, theme_accent(), 24, false);
             line(&note, d.font, text.mix(bg, 0.3), TEXT_H - 44, true);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

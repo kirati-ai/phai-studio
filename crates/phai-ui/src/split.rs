@@ -108,7 +108,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = crate::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             match win::style_of(h, Kind::Group, Default::default()).background {
@@ -121,6 +123,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let t = win::px(h, 1).max(1);
             let mid = if is_vertical(h) { RECT { left: (b.left + b.right - t) / 2, right: (b.left + b.right + t) / 2, ..b } } else { RECT { top: (b.top + b.bottom - t) / 2, bottom: (b.top + b.bottom + t) / 2, ..b } };
             win::fill(dc, &mid, line);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

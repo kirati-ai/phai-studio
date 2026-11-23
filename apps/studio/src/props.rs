@@ -1104,9 +1104,14 @@ impl Props {
         let h = self.grid;
         unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
+            // Drawn off screen and copied once: painted straight on, the white filled first wiped the
+            // line between names and values for a moment at every turn of the wheel - it flickered.
+            let dc = Gdi::CreateCompatibleDC(Some(screen));
+            let bmp = Gdi::CreateCompatibleBitmap(screen, r.right.max(1), r.bottom.max(1));
+            let old_bmp = Gdi::SelectObject(dc, bmp.into());
             let bg = win::window_background();
             win::fill(dc, &r, bg);
             let rule = phai_ui::theme::style("group", State::default()).border_or(Color::rgb(0xe5, 0xe5, 0xe5));
@@ -1186,6 +1191,10 @@ impl Props {
                 }
                 win::fill(dc, &RECT { left: gutter, top: lr.bottom - 1, ..lr }, rule);
             }
+            let _ = Gdi::BitBlt(screen, 0, 0, r.right, r.bottom, Some(dc), 0, 0, Gdi::SRCCOPY);
+            Gdi::SelectObject(dc, old_bmp);
+            let _ = Gdi::DeleteObject(bmp.into());
+            let _ = Gdi::DeleteDC(dc);
             let _ = Gdi::EndPaint(h, &ps);
         }
     }

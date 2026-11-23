@@ -1422,11 +1422,13 @@ extern "system" fn tray_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
     let on_split = |l: LPARAM| win::point_of(l).1 < win::px(h, SPLIT);
     match msg {
         wm::WM_ERASEBKGND => {
-            let dc = Gdi::HDC(w.0 as *mut _);
             let mut r = RECT::default();
             unsafe {
                 let _ = wm::GetClientRect(h, &mut r);
             }
+            // Drawn off screen and put on at once, the form's frame over the canvas's colour.
+            let buf = win::off_screen_area(Gdi::HDC(w.0 as *mut _), r);
+            let dc = buf.dc;
             let bg = theme::style("canvas", State::default()).background_or(Color::rgb(243, 243, 243));
             win::fill(dc, &r, bg);
             // The splitter: a hatched band, as Visual Studio's between the form and its tray.
@@ -1554,11 +1556,13 @@ extern "system" fn tray_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
 extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
         wm::WM_ERASEBKGND => {
-            let dc = Gdi::HDC(w.0 as *mut _);
             let mut r = RECT::default();
             unsafe {
                 let _ = wm::GetClientRect(h, &mut r);
             }
+            // Drawn off screen and put on at once, the form's frame over the canvas's colour.
+            let buf = win::off_screen_area(Gdi::HDC(w.0 as *mut _), r);
+            let dc = buf.dc;
             let bg = theme::style("canvas", State::default()).background_or(Color::rgb(243, 243, 243));
             win::fill(dc, &r, bg);
             if let Some(s) = studio().filter(|s| s.doc.code.is_none()) {
@@ -1800,7 +1804,9 @@ extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let done = wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA) != 0;
@@ -1815,6 +1821,7 @@ extern "system" fn number_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             phai_ui::win::draw_text_w(dc, &mut w16, &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(font.into());
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },
@@ -1829,7 +1836,9 @@ extern "system" fn tag_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
@@ -1847,6 +1856,7 @@ extern "system" fn tag_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             Gdi::SelectObject(dc, op);
             let _ = Gdi::DeleteObject(brush.into());
             let _ = Gdi::DeleteObject(pen.into());
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },
@@ -1861,13 +1871,16 @@ extern "system" fn mark_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
             win::fill(dc, &r, accent);
             let inner = RECT { left: r.left + 1, top: r.top + 1, right: r.right - 1, bottom: r.bottom - 1 };
             win::fill(dc, &inner, Color::rgb(255, 255, 255));
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },
@@ -1881,7 +1894,9 @@ extern "system" fn handle_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
@@ -1890,6 +1905,7 @@ extern "system" fn handle_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             win::fill(dc, &inner, Color::rgb(255, 255, 255));
             let core = RECT { left: r.left + 2, top: r.top + 2, right: r.right - 2, bottom: r.bottom - 2 };
             win::fill(dc, &core, accent);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

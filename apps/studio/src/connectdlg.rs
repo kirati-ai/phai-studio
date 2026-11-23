@@ -275,7 +275,9 @@ fn cards_paint(h: HWND) {
     let cur = theme::current();
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
-        let dc = Gdi::BeginPaint(h, &mut ps);
+        let screen = Gdi::BeginPaint(h, &mut ps);
+        let buf = phai_ui::win::off_screen(h, screen);
+        let dc = buf.dc;
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         let surface = cur.var_color("--surface").unwrap_or(Color::rgb(255, 255, 255));
@@ -322,6 +324,7 @@ fn cards_paint(h: HWND) {
             phai_ui::win::draw_text_w(dc, &mut w, &mut wr, Gdi::DT_LEFT | Gdi::DT_WORDBREAK | Gdi::DT_END_ELLIPSIS);
             Gdi::SelectObject(dc, old);
         }
+        drop(buf);
         let _ = Gdi::EndPaint(h, &ps);
     }
 }

@@ -331,7 +331,9 @@ extern "system" fn mark_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         wm::WM_ERASEBKGND => LRESULT(1),
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = crate::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             win::paint_behind(h, dc, &r);
@@ -352,6 +354,7 @@ extern "system" fn mark_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             crate::win::draw_text_w(dc, &mut bang[..1], &mut r, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
             Gdi::SelectObject(dc, old);
             let _ = Gdi::DeleteObject(f.into());
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

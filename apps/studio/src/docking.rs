@@ -93,7 +93,9 @@ extern "system" fn guide_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
     match msg {
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let v = wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA);
@@ -131,6 +133,7 @@ extern "system" fn guide_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
             Gdi::SelectObject(dc, op);
             let _ = Gdi::DeleteObject(brush.into());
             let _ = Gdi::DeleteObject(pen.into());
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },
@@ -165,11 +168,14 @@ extern "system" fn preview_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
     match msg {
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
             win::fill(dc, &r, accent);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

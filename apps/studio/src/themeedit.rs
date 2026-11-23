@@ -577,7 +577,9 @@ fn gallery_paint(h: HWND) {
     let dark_now = cur.is_dark();
     unsafe {
         let mut ps = Gdi::PAINTSTRUCT::default();
-        let dc = Gdi::BeginPaint(h, &mut ps);
+        let screen = Gdi::BeginPaint(h, &mut ps);
+        let buf = phai_ui::win::off_screen(h, screen);
+        let dc = buf.dc;
         let mut r = RECT::default();
         let _ = wm::GetClientRect(h, &mut r);
         win::fill(dc, &r, cur.var_color("--surface").unwrap_or(Color::rgb(255, 255, 255)));
@@ -608,6 +610,7 @@ fn gallery_paint(h: HWND) {
             phai_ui::win::draw_text_w(dc, &mut w, &mut tr, Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_VCENTER | Gdi::DT_END_ELLIPSIS);
         }
         Gdi::SelectObject(dc, old);
+        drop(buf);
         let _ = Gdi::EndPaint(h, &ps);
     }
 }

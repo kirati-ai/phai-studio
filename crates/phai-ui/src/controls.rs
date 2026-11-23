@@ -90,7 +90,9 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
             wm::WM_NCHITTEST => LRESULT(-1), // HTTRANSPARENT: clicks reach what is inside
             wm::WM_PAINT => {
                 let mut ps = Gdi::PAINTSTRUCT::default();
-                let dc = Gdi::BeginPaint(h, &mut ps);
+                let screen = Gdi::BeginPaint(h, &mut ps);
+                let buf = crate::win::off_screen(h, screen);
+                let dc = buf.dc;
                 let st = win::style_of(h, Kind::Group, State::default());
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
@@ -108,6 +110,7 @@ extern "system" fn group_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                     let mut tr = RECT { left: x, top: r.top, right: x + tw, bottom: r.top + th };
                     win::draw_text_styled(dc, h, &text, &mut tr, st.color_or(win::window_text_for(h)), Gdi::DT_LEFT | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX, &st);
                 }
+                drop(buf);
                 let _ = Gdi::EndPaint(h, &ps);
                 LRESULT(0)
             }
@@ -242,7 +245,9 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             wm::WM_ERASEBKGND => LRESULT(1),
             wm::WM_PAINT => {
                 let mut ps = Gdi::PAINTSTRUCT::default();
-                let dc = Gdi::BeginPaint(h, &mut ps);
+                let screen = Gdi::BeginPaint(h, &mut ps);
+                let buf = crate::win::off_screen(h, screen);
+                let dc = buf.dc;
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 // As they look now: the strip's `animation`, and each tab moving to its new
@@ -306,6 +311,7 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                         win::fill(dc, &line, base.border_or(Color::rgb(200, 200, 200)));
                     }
                 }
+                drop(buf);
                 let _ = Gdi::EndPaint(h, &ps);
                 LRESULT(0)
             }
@@ -432,7 +438,9 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             wm::WM_ERASEBKGND => LRESULT(1),
             wm::WM_PAINT => {
                 let mut ps = Gdi::PAINTSTRUCT::default();
-                let dc = Gdi::BeginPaint(h, &mut ps);
+                let screen = Gdi::BeginPaint(h, &mut ps);
+                let buf = crate::win::off_screen(h, screen);
+                let dc = buf.dc;
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 let st = win::style_of(h, Kind::StatusBar, State::default());
@@ -453,6 +461,7 @@ extern "system" fn status_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
                     win::draw_text_styled(dc, h, text, &mut tr, fg, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS, &st);
                     x += width;
                 }
+                drop(buf);
                 let _ = Gdi::EndPaint(h, &ps);
                 LRESULT(0)
             }
@@ -563,7 +572,9 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
             wm::WM_ERASEBKGND => LRESULT(1),
             wm::WM_PAINT => {
                 let mut ps = Gdi::PAINTSTRUCT::default();
-                let dc = Gdi::BeginPaint(h, &mut ps);
+                let screen = Gdi::BeginPaint(h, &mut ps);
+                let buf = crate::win::off_screen(h, screen);
+                let dc = buf.dc;
                 let mut r = RECT::default();
                 let _ = wm::GetClientRect(h, &mut r);
                 let base = win::style_of(h, Kind::Tabs, State::default());
@@ -595,6 +606,7 @@ extern "system" fn caption_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
                 }
                 Gdi::SelectObject(dc, old);
                 let _ = Gdi::DeleteObject(icons.into());
+                drop(buf);
                 let _ = Gdi::EndPaint(h, &ps);
                 LRESULT(0)
             }

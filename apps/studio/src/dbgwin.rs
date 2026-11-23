@@ -143,7 +143,9 @@ extern "system" fn helper_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
     match msg {
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let back = win::window_background_for(h);
@@ -167,6 +169,7 @@ extern "system" fn helper_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             let mut nr = RECT { left: m, top: r.bottom - win::px(h, 22), right: r.right - m, bottom: r.bottom - win::px(h, 4) };
             win::draw_text(dc, h, t("F5 goes on, Shift+F5 stops - Esc or a click closes this"), &mut nr, text.mix(back, 0.4), Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
             Gdi::SelectObject(dc, old);
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },

@@ -167,7 +167,9 @@ extern "system" fn cards_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
         }
         wm::WM_PAINT => unsafe {
             let mut ps = Gdi::PAINTSTRUCT::default();
-            let dc = Gdi::BeginPaint(h, &mut ps);
+            let screen = Gdi::BeginPaint(h, &mut ps);
+            let buf = phai_ui::win::off_screen(h, screen);
+            let dc = buf.dc;
             let mut r = RECT::default();
             let _ = wm::GetClientRect(h, &mut r);
             let cur = theme::current();
@@ -193,6 +195,7 @@ extern "system" fn cards_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESUL
                 win::draw_text(dc, h, t(about), &mut ar, text.mix(back, 0.3), Gdi::DT_WORDBREAK | Gdi::DT_NOPREFIX);
                 Gdi::SelectObject(dc, old);
             }
+            drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },
