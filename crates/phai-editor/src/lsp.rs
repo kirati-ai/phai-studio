@@ -170,6 +170,9 @@ impl Lsp {
                         "inlayHint": {},
                         "completion": { "completionItem": { "snippetSupport": false } },
                         "publishDiagnostics": {},
+                        // Its own findings - a name it does not know, a wrong type - it gives only
+                        // when asked (`pull_diagnostics`); pushed are syntax and `cargo check`'s.
+                        "diagnostic": { "dynamicRegistration": false, "relatedDocumentSupport": false },
                         "definition": { "linkSupport": true },
                         "references": {},
                         "rename": { "prepareSupport": true },
@@ -252,6 +255,12 @@ impl Lsp {
     }
 
     /// What the call the caret is in takes, and which of it the caret is at (Parameter Info).
+    /// The server's own findings in a file, as they are now - asked after each change and when it
+    /// says they have changed (`workspace/diagnostic/refresh`); see [`pulled_diagnostics`].
+    pub fn pull_diagnostics(&mut self, path: &Path) -> i64 {
+        self.request("textDocument/diagnostic", json!({ "textDocument": { "uri": uri_of(path) } }))
+    }
+
     pub fn signature_help(&mut self, path: &Path, line: u32, character: u32) -> i64 {
         self.at("textDocument/signatureHelp", path, line, character, json!({}))
     }
@@ -382,7 +391,18 @@ pub fn diagnostics_of(msg: &Value) -> Option<(PathBuf, Vec<Diagnostic>)> {
     }
     let p = msg.get("params")?;
     let path = path_of(p.get("uri")?.as_str()?)?;
-    let list = p.get("diagnostics")?.as_array()?;
+    Some((path, diagnostic_list(p.get("diagnostics")?.as_array()?)))
+}
+
+/// A `textDocument/diagnostic` answer's findings; `None` when unchanged since the last asked.
+pub fn pulled_diagnostics(result: &Value) -> Option<Vec<Diagnostic>> {
+    if result["kind"] == "unchanged" {
+        return None;
+    }
+    Some(diagnostic_list(result.get("items")?.as_array()?))
+}
+
+fn diagnostic_list(list: &[Value]) -> Vec<Diagnostic> {
     let pos = |v: &Value| (v["line"].as_u64().unwrap_or(0) as u32, v["character"].as_u64().unwrap_or(0) as u32);
     let out = list
         .iter()
@@ -393,7 +413,7 @@ pub fn diagnostics_of(msg: &Value) -> Option<(PathBuf, Vec<Diagnostic>)> {
             message: d["message"].as_str().unwrap_or_default().to_string(),
         })
         .collect();
-    Some((path, out))
+    out
 }
 
 /// The words of a hover answer, as plain text: code fences dropped, the rest kept.
@@ -770,6 +790,15 @@ mod tests {
         let ch = to_lsp(line, col);
         assert_eq!(from_lsp(line, ch), col);
         assert_eq!(ch as usize, line[..col].encode_utf16().count());
+    }
+
+    #[test]
+    fn asked_for_findings_are_read() {
+        let full = json!({"kind": "full", "items": [{"range": {"start": {"line": 19, "character": 8}, "end": {"line": 19, "character": 10}}, "severity": 1, "message": "no such value in this scope"}]});
+        let d = pulled_diagnostics(&full).unwrap();
+        assert_eq!(d, vec![Diagnostic { start: (19, 8), end: (19, 10), error: true, message: "no such value in this scope".into() }]);
+        assert_eq!(pulled_diagnostics(&json!({"kind": "unchanged", "resultId": "3"})), None, "unchanged: what is shown stays");
+        assert_eq!(pulled_diagnostics(&json!({"kind": "full", "items": []})), Some(vec![]), "all mended");
     }
 
     #[test]

@@ -330,6 +330,8 @@ const TIMER_SLIDE: usize = 7301;
 const TIMER_DIAG: usize = 7302;
 /// The breadcrumb over the editor follows the caret.
 const TIMER_CRUMB: usize = 7303;
+/// A moment after typing rests: the server asked for its findings in the code (see `pull_now`).
+const TIMER_PULL: usize = 7304;
 /// The breadcrumb's height, design pixels.
 const CRUMB_H: i32 = 24;
 /// File > Recent: `ID_RECENT + n`, newest first.
@@ -465,7 +467,8 @@ struct TableView {
 #[derive(Clone)]
 enum Ask {
     Hover,
-    Complete,
+    /// The list of what may be typed; only the newest ask's answer is shown.
+    Complete(i64),
     Definition,
     /// Peek Definition: the place shown in a window, not opened.
     Peek,
@@ -490,6 +493,8 @@ enum Ask {
     /// The changes that rename `old` to `new`.
     Rename { old: String, new: String },
     References,
+    /// The server's own findings in this file (pull diagnostics), and the ask's id.
+    Pull(PathBuf, i64),
 }
 
 struct Tab {
@@ -628,6 +633,11 @@ pub struct Studio {
     /// rust-analyzer still loading: its diagnostics held until it is quiet, the last of each file's.
     lsp_loading: bool,
     held_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
+    /// Each file's findings as the server pushed them (syntax, `cargo check`) and as asked for
+    /// (its own: names it does not know, wrong types) - shown together; the last ask of each file.
+    pushed_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
+    pulled_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
+    pull_ids: std::collections::HashMap<PathBuf, i64>,
     /// The last code coverage found: each file's lines and counts.
     coverage: Vec<coverage::FileCoverage>,
     /// What the Memory window shows: an address or a variable.
@@ -3059,6 +3069,7 @@ impl Studio {
             if let Some(l) = self.lsp_for(path) {
                 l.did_open(path, &text);
             }
+            self.pull_soon();
         }
         self.undo.clear();
         self.redo.clear();
@@ -3108,8 +3119,14 @@ impl Studio {
         }
         // The server asking something of us: it waits for an answer.
         if let (Some(id), Some(_)) = (msg.get("id"), msg.get("method")) {
+            if std::env::var_os("PHAI_PRINT_DIAGS").is_some() {
+                println!("server asks {}: {}", msg["method"], msg["params"]);
+            }
             if let Some(l) = self.lsp.as_ref() {
                 l.respond(id);
+            }
+            if msg["method"] == "workspace/diagnostic/refresh" {
+                self.pull_now();
             }
             return;
         }
@@ -3123,8 +3140,10 @@ impl Studio {
             self.lsp_loading = !quiet;
             if quiet {
                 for (path, diags) in std::mem::take(&mut self.held_diagnostics) {
-                    self.show_lsp_diagnostics(&path, &diags);
+                    self.pushed_diagnostics.insert(path.clone(), diags);
+                    self.show_lsp_diagnostics(&path);
                 }
+                self.pull_now();
             }
             return;
         }
@@ -3133,12 +3152,48 @@ impl Studio {
                 self.held_diagnostics.insert(path, diags);
                 return;
             }
-            self.show_lsp_diagnostics(&path, &diags);
+            self.pushed_diagnostics.insert(path.clone(), diags);
+            self.show_lsp_diagnostics(&path);
         }
     }
 
     /// rust-analyzer's findings for a file drawn under its code; the counts said when it is in front.
-    fn show_lsp_diagnostics(&mut self, path: &Path, diags: &[phai_editor::lsp::Diagnostic]) {
+    /// The server asked for its own findings in the code, a moment from now - typing on puts it
+    /// off, so it is asked once typing rests.
+    fn pull_soon(&mut self) {
+        unsafe {
+            wm::SetTimer(Some(self.hwnd), TIMER_PULL, 250, None);
+        }
+    }
+
+    /// The server asked for its own findings in every open code file.
+    fn pull_now(&mut self) {
+        let mut paths: Vec<PathBuf> = self.tabs.iter().filter(|t| t.doc.code.is_some()).filter_map(|t| t.doc.path.clone()).collect();
+        if self.doc.code.is_some() {
+            paths.extend(self.doc.path.clone());
+        }
+        paths.retain(|p| p.extension().is_some_and(|e| e == "rs"));
+        paths.sort();
+        paths.dedup();
+        for path in paths {
+            let Some(h) = self.editor_of(&path) else { continue };
+            if let Some(l) = self.lsp_for(&path) {
+                let id = l.pull_diagnostics(&path);
+                self.asked.insert(id, (h, Ask::Pull(path.clone(), id)));
+                self.pull_ids.insert(path, id);
+            }
+        }
+    }
+
+    /// A file's findings, pushed and asked for together; one place said twice is shown once.
+    fn show_lsp_diagnostics(&mut self, path: &Path) {
+        let mut diags: Vec<phai_editor::lsp::Diagnostic> = self.pushed_diagnostics.get(path).cloned().unwrap_or_default();
+        for d in self.pulled_diagnostics.get(path).into_iter().flatten() {
+            if !diags.iter().any(|e| e.start == d.start && e.end == d.end) {
+                diags.push(d.clone());
+            }
+        }
+        let diags = &diags;
         if std::env::var_os("PHAI_PRINT_DIAGS").is_some() {
             println!("shown: {} for {}", diags.len(), path.file_name().unwrap_or_default().to_string_lossy());
         }
@@ -3169,7 +3224,25 @@ impl Studio {
                     phai_editor::view::show_tip(h, &text);
                 }
             }
-            Ask::Complete => phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300)),
+            Ask::Complete(id) => {
+                // Asked again since (typing ran ahead of the server): that answer will come.
+                if self.asked.values().any(|(_, a)| matches!(a, Ask::Complete(newer) if *newer > id)) {
+                    return;
+                }
+                phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300));
+            }
+            Ask::Pull(path, id) => {
+                // An older ask answered after a newer was sent: the newer will say.
+                if self.pull_ids.get(&path) != Some(&id) || error.is_some() {
+                    return;
+                }
+                if let Some(diags) = phai_editor::lsp::pulled_diagnostics(&result) {
+                    self.pulled_diagnostics.insert(path.clone(), diags);
+                }
+                if !self.lsp_loading {
+                    self.show_lsp_diagnostics(&path);
+                }
+            }
             Ask::Definition => match phai_editor::lsp::locations_of(&result).into_iter().next() {
                 Some(place) => {
                     self.remember_place();
@@ -3448,10 +3521,23 @@ impl Studio {
                 let key = |u: u16| unsafe {
                     wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
                 };
-                if LSP_TEST.load(Ordering::Relaxed) == 0 {
+                // `PHAI_ARG_WAIT=N`: N seconds then the wavy lines printed and the end, list or none.
+                static TICKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                let wait = std::env::var("PHAI_ARG_WAIT").ok().and_then(|n| n.parse::<u32>().ok());
+                let ticks = TICKS.fetch_add(1, Ordering::Relaxed);
+                // `PHAI_ARG_AFTER=N`: typed only after N seconds, the server loaded.
+                let after = std::env::var("PHAI_ARG_AFTER").ok().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
+                if LSP_TEST.load(Ordering::Relaxed) == 0 && (ticks < after || self.lsp_loading) {
+                } else if LSP_TEST.load(Ordering::Relaxed) == 0 {
+                    TICKS.store(1, Ordering::Relaxed);
                     phai_editor::view::go_to(h, l, c);
                     words.encode_utf16().for_each(key);
                     LSP_TEST.store(1, Ordering::Relaxed);
+                } else if wait.is_some_and(|w| ticks >= w) {
+                    let (names, signing) = phai_editor::view::list_labels(h);
+                    println!("after {ticks}s: list [{}], Parameter Info {signing}, wavy lines: {:?}", names.join(", "), phai_editor::view::mark_messages(h));
+                    std::process::exit(0);
+                } else if wait.is_some() {
                 } else if phai_editor::view::list_open(h) {
                     let (names, signing) = phai_editor::view::list_labels(h);
                     println!("argument list open, Parameter Info {signing}: {}", names.join(", "));
@@ -4311,9 +4397,10 @@ impl Studio {
     pub fn lsp_complete(&mut self, h: HWND) {
         let Some(path) = self.doc.path.clone() else { return };
         let pos = phai_editor::view::caret_lsp(h);
+        phai_editor::view::asking_list(h);
         if let Some(l) = self.lsp_for(&path) {
             let id = l.completion(&path, pos.0, pos.1);
-            self.asked.insert(id, (h, Ask::Complete));
+            self.asked.insert(id, (h, Ask::Complete(id)));
         }
     }
 
@@ -4467,6 +4554,7 @@ impl Studio {
                 if let Some(l) = self.lsp_for(&path) {
                     l.did_change(&path, version, &text);
                 }
+                self.pull_soon();
             }
         }
         if let Some(h) = self.doc.code {
@@ -9272,6 +9360,13 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             ring_add(hwnd);
             LRESULT(0)
         }
+        wm::WM_TIMER if w.0 == TIMER_PULL => {
+            unsafe {
+                let _ = wm::KillTimer(Some(hwnd), TIMER_PULL);
+            }
+            s.pull_now();
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_CRUMB => {
             s.crumb_tick();
             LRESULT(0)
@@ -9940,6 +10035,9 @@ fn main() {
             coverage: vec![],
             lsp_loading: false,
             held_diagnostics: Default::default(),
+            pushed_diagnostics: Default::default(),
+            pulled_diagnostics: Default::default(),
+            pull_ids: Default::default(),
             frames: vec![],
             servers: None,
             watches: vec![],

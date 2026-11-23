@@ -377,6 +377,12 @@ struct View {
     /// The tip is Parameter Info: it stays while the call's arguments are typed, asked again
     /// after each change so the argument being typed is the one marked, until `)` or Esc.
     signing: bool,
+    /// At a call's argument: the list of what fits waits for Parameter Info - a call the server
+    /// knows; a name it does not (`ur.mess(`) gets no list of everything, but its wavy line.
+    args_list: bool,
+    /// Where the word began when the list was asked for: an answer for another place - the caret
+    /// gone on, a quick hand ahead of the server - is passed by.
+    list_at: usize,
     list: Option<Box<crate::popup::Popup>>,
     /// Every completion the server gave; the list shows those that start with what is typed.
     all_items: Vec<crate::lsp::Completion>,
@@ -683,7 +689,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
         let (thai, thai_dy, line_h) = thai_font(h, font, line_h);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, signing: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, signing: false, args_list: false, list_at: usize::MAX, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -905,6 +911,11 @@ fn hide_tip(v: &mut View) {
     v.signing = false;
 }
 
+/// The wavy lines' messages - for tests.
+pub fn mark_messages(h: HWND) -> Vec<String> {
+    view(h).map(|v| v.marks.iter().map(|m| m.message.clone()).collect()).unwrap_or_default()
+}
+
 /// Whether the completion list is open - for tests.
 pub fn list_open(h: HWND) -> bool {
     view(h).is_some_and(|v| v.list.is_some())
@@ -934,12 +945,19 @@ pub fn list_labels(h: HWND) -> (Vec<String>, bool) {
 /// line - kept as the arguments are typed (see `signing`). `None`: the caret has left the call.
 pub fn show_signature(h: HWND, text: Option<&str>) {
     let Some(v) = view(h) else { return };
+    // No signature (a name it does not know, or a server too busy to say): no list yet - a later
+    // answer at the same argument may still bring it.
     let Some(text) = text else {
         if v.signing {
             hide_tip(v);
         }
         return;
     };
+    // Posted, not sent: this comes while the window above is answering the server.
+    if std::mem::take(&mut v.args_list) && v.model.at_argument() {
+        v.list_at = word_before(v).0;
+        post_notify(h, COMPLETE);
+    }
     let mut pt = windows::Win32::Foundation::POINT::default();
     unsafe {
         let _ = wm::GetCaretPos(&mut pt);
@@ -971,9 +989,19 @@ fn word_before(v: &View) -> (usize, String) {
     (v.model.buf.line_start(line) + start, s[start..col].to_string())
 }
 
+/// The list is being asked for here: its answer belongs to the word at the caret now.
+pub fn asking_list(h: HWND) {
+    if let Some(v) = view(h) {
+        v.list_at = word_before(v).0;
+    }
+}
+
 /// The language server's completions, as a list under the caret, filtered by what is typed.
 pub fn show_completions(h: HWND, items: Vec<crate::lsp::Completion>) {
     let Some(v) = view(h) else { return };
+    if word_before(v).0 != v.list_at {
+        return;
+    }
     v.all_items = items;
     filter_list(h);
 }
@@ -1024,6 +1052,16 @@ fn accept(h: HWND, v: &mut View) {
     v.list = None;
     v.all_items.clear();
     changed(h);
+}
+
+/// As [`notify`], but after what is being done now.
+fn post_notify(h: HWND, code: u16) {
+    unsafe {
+        let id = wm::GetDlgCtrlID(h) as usize;
+        if let Ok(p) = wm::GetParent(h) {
+            let _ = wm::PostMessageW(Some(p), wm::WM_COMMAND, WPARAM(((code as usize) << 16) | (id & 0xFFFF)), LPARAM(h.0 as isize));
+        }
+    }
 }
 
 fn notify(h: HWND, code: u16) {
@@ -2314,6 +2352,7 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
         return true;
     }
     if vk == 0x20 && ctrl {
+        v.list_at = word_before(v).0;
         notify(h, COMPLETE);
         return true;
     }
@@ -2623,6 +2662,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     // there and Parameter Info, as Visual Studio does.
                     let signing = v.signing;
                     let at_argument = v.lang == Language::Rust && matches!(s.as_str(), "(" | "," | " ") && v.model.at_argument();
+                    if at_argument {
+                        v.args_list = true;
+                    }
                     if (s == "(" || s == "," || at_argument) && !signing {
                         notify(h, SIGNATURE);
                     } else if s == ")" {
@@ -2631,7 +2673,8 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         }
                     }
                     let Some(v) = view(h) else { return LRESULT(0) };
-                    if s == "." || (s == ":" && before_colon) || at_argument {
+                    if s == "." || (s == ":" && before_colon) {
+                        v.list_at = word_before(v).0;
                         notify(h, COMPLETE);
                     } else if v.list.is_some() {
                         if s.chars().all(|c| c.is_alphanumeric() || c == '_') {
