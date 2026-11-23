@@ -52,6 +52,10 @@ What Phai Studio sends, and only when the person asks for it:
 - **Code Coverage** installs Rust's `llvm-tools` with rustup, after asking.
 - **Help > Check for Updates** (and the button in About) asks GitHub for the newest release, and
   downloads its setup from GitHub Releases when the person says yes.
+- **The AI assistant** (View > AI Assistant) sends what the person writes to it, with the parts of
+  the open project Claude asks to read (files, search results, build output, a picture of the
+  program's window), to Anthropic's API - only when the person has given their own API key and
+  presses Send. The key is kept in Windows' Credential Manager, not in a file of Phai Studio's.
 - Links in the guide, the start window and About open in the browser when clicked.
 
 Phai Studio collects no usage data and has no telemetry. rust-analyzer, which Phai Studio uses for

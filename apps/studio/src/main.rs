@@ -58,6 +58,8 @@ mod dbgwin;
 mod vsextra;
 mod update;
 mod about;
+mod claude;
+mod ai;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -220,6 +222,7 @@ const ID_ADD_FORM: i32 = 291;
 /// Project > Add User Control: a control of the project's own, made as a form.
 const ID_ADD_USER_CONTROL: i32 = 293;
 const ID_IMPORT_WINFORMS: i32 = 2903;
+const ID_VIEW_AI: i32 = 2904;
 /// Project > Add Report: a printed report of the project's, designed in the Report Designer.
 const ID_ADD_REPORT: i32 = 292;
 /// Build > Build for Web: the project as a web page that installs as an app on phones.
@@ -1330,6 +1333,7 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
+        add(view, ID_VIEW_AI, t("AI Assistant"), "Ctrl+Alt+A");
         add(view, ID_VIEW_TERMINAL, t("Terminal"), "Ctrl+`");
         // Every tab of the panel below, each one closable on its own, opened again from here.
         let other = wm::CreatePopupMenu().unwrap_or_default();
@@ -1349,6 +1353,9 @@ fn build_menu() -> HMENU {
         }
         if studio().is_some_and(|s| explorer::outline_shown(s.side)) {
             wm::CheckMenuItem(view, ID_VIEW_OUTLINE as u32, wm::MF_CHECKED.0);
+        }
+        if studio().is_some_and(|s| explorer::ai_shown(s.side)) {
+            wm::CheckMenuItem(view, ID_VIEW_AI as u32, wm::MF_CHECKED.0);
         }
         if let Some(s) = studio() {
             let (e, p) = explorer::side_panes(s.side);
@@ -7049,6 +7056,52 @@ impl Studio {
     }
 
     /// File > Save all: every tab with changes, the one in front last shown again.
+    /// Save All, for the AI assistant before it builds.
+    pub fn save_all_pub(&mut self) {
+        self.save_all();
+    }
+
+    /// The text of a file as it is open in an editor here, unsaved changes and all.
+    pub fn open_text_of(&self, path: &Path) -> Option<String> {
+        self.editor_of(path).map(phai_editor::view::text)
+    }
+
+    /// A file the AI assistant wrote: its open editor shows the new text, an open form is read
+    /// again, a form's generated code is written - and a new form gets its own code file and its
+    /// place in main.rs, as Add Form gives it.
+    pub fn file_changed_by_assistant(&mut self, path: &Path, text: &str) {
+        if let Some(h) = self.editor_of(path) {
+            if phai_editor::view::text(h).replace("\r\n", "\n") != text {
+                phai_editor::view::replace_whole(h, text);
+            }
+        }
+        if phai_form::is_form(path) {
+            if let Ok(f) = FormFile::parse(text) {
+                let same = |p: &Option<PathBuf>| p.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+                if same(&self.doc.path) && self.doc.code.is_none() {
+                    self.check_form_on_disk();
+                } else if let Some(t) = self.tabs.iter_mut().find(|t| same(&t.doc.path) && t.doc.code.is_none()) {
+                    t.doc.form = f.clone();
+                }
+                let file = snake(&f.form.name);
+                let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+                let opts = theme_options(path, f.form.theme.as_deref());
+                let _ = std::fs::write(dir.join(format!("{file}_ui.rs")), codegen::generate(&f, &opts));
+                let user = dir.join(format!("{file}.rs"));
+                if !user.exists() {
+                    let _ = std::fs::write(&user, codegen::user_stub(&f));
+                    let main_rs = dir.join("main.rs");
+                    if let Ok(m) = std::fs::read_to_string(&main_rs) {
+                        let _ = std::fs::write(&main_rs, declare_form(&m, &f.form.name));
+                    }
+                }
+            }
+        }
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(Some(path));
+        }
+    }
+
     fn save_all(&mut self) {
         let front = self.active;
         for i in 0..self.tabs.len() {
@@ -8288,6 +8341,15 @@ impl Studio {
                 self.toggle_split();
                 self.rebuild_menu();
             }
+            ID_VIEW_AI => {
+                let on = !explorer::ai_shown(self.side);
+                if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
+                    self.show_pane(Pane::Explorer, true);
+                }
+                explorer::show_ai(self.side, on);
+                self.refresh_side();
+                self.rebuild_menu();
+            }
             ID_VIEW_OUTLINE => {
                 let on = !explorer::outline_shown(self.side);
                 if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
@@ -9462,6 +9524,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x47 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_GIT_CHANGES),
             0x54 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_OUTLINE),
+            0x41 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_AI),
             0x49 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_IMMEDIATE),
             0x71 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DIAG_TOOLS),
             0x50 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_ATTACH),
@@ -9799,7 +9862,8 @@ fn main() {
         let props = Props::new(side, ID_PROPS, font);
         let servers = servers::Servers::new(side, font);
         let outline = outline::Outline::new(side, font);
-        explorer::set_side_parts(side, &explorer, props.hwnd, servers.tree, outline.tree, font);
+        let ai = ai::create(side, font);
+        explorer::set_side_parts(side, &explorer, props.hwnd, servers.tree, outline.tree, ai, font);
         // Project and Properties as tabs along the bottom, as Visual Studio groups them - unless
         // switched off from a pane's ▾ menu.
         explorer::set_tabbed(side, setting("side_tabbed").as_deref() != Some("0"));
@@ -10589,6 +10653,13 @@ fn main() {
             // mouse elsewhere must not reach it. Tests send theirs straight to the window, past this queue.
             if quiet && ((wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) || (wm::WM_MOUSEFIRST..=wm::WM_MOUSELAST).contains(&msg.message)) {
                 continue;
+            }
+            // Ctrl+Enter in the AI assistant's box sends it.
+            if msg.message == wm::WM_KEYDOWN {
+                if let Some(pane) = ai::is_send_key(km::GetFocus(), msg.wParam.0, km::GetKeyState(0x11) < 0) {
+                    ai::send_from_key(pane);
+                    continue;
+                }
             }
             if let Some(cmd) = shortcut(&msg) {
                 if let Some(s) = studio() {

@@ -281,6 +281,18 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <p>ลากตารางจาก Server Explorer ไปวางบนฟอร์ม ได้ตารางที่ผูกกับตารางนั้นพร้อมโหลดและบันทึก (เหมือนคลิกขวา &gt; <b>Add to Form</b>)</p>
 <p>อ่านละเอียดที่ <a href="database.html">ทำงานกับฐานข้อมูล</a></p>
 
+<h2 id="ai">ผู้ช่วย AI</h2>
+<p><b>View &gt; AI Assistant</b> (<kbd>Ctrl+Alt+A</kbd>) เปิดแผง <b>AI</b> ข้าง Project และ Properties คุยกับ Claude เรื่องโปรเจกต์ที่เปิดอยู่ได้เลย พิมพ์แล้วกด <b>ส่ง</b> หรือ <kbd>Ctrl+Enter</kbd></p>
+<figure><img class="shot" src="img/ai-pane.png" alt="แผงผู้ช่วย AI ตอบคำถามเรื่องโปรเจกต์" width="300"><figcaption>Claude ดูรายชื่อไฟล์ของโปรเจกต์เองก่อนตอบ</figcaption></figure>
+<ul>
+  <li><b>ถาม</b> — ตอบและอธิบายอย่างเดียว ไม่แก้ไฟล์ใด ๆ เช่น "ปุ่ม OK ทำอะไร" "ทำไม build ไม่ผ่าน"</li>
+  <li><b>ลงมือ</b> — บอกสิ่งที่ต้องการ เช่น "เพิ่มช่องกรอกอีเมลใต้ชื่อ แล้วตรวจว่ามี @" Claude อ่านไฟล์ที่ต้องใช้ แก้โค้ดและฟอร์ม (.phf) build แล้วแก้ error จนผ่าน รันเทสต์ และถ่ายภาพหน้าจอโปรแกรมเพื่อดูหน้าตาที่ทำ</li>
+  <li><b>ทุกการแก้ไฟล์ขึ้นหน้าต่างเทียบ</b> ซ้ายคือไฟล์ตอนนี้ ขวาคือที่จะเป็น กด <b>รับ</b>, <b>รับทั้งหมดในแชตนี้</b> หรือ <b>ไม่รับ</b> — ไม่มีอะไรถูกเขียนลงไฟล์ถ้าไม่รับ ฟอร์มที่ Phai Studio อ่านไม่ได้จะไม่ถูกเขียนเลย</li>
+  <li>เลือกโมเดลได้: Claude Opus 5.5 (ค่าเริ่มต้น เก่งที่สุด), Sonnet 5.5 (เร็วกว่า ถูกกว่า), Haiku 5.5 (เร็วและถูกที่สุด) — <b>เริ่มใหม่</b> ล้างแชต</li>
+</ul>
+<figure><img class="shot" src="img/ai-review.png" alt="หน้าต่างเทียบการแก้ไฟล์ของ Claude" width="560"><figcaption>Claude ขอแก้ main_window.rs: บรรทัดใหม่มีแถบเขียว</figcaption></figure>
+<p><b>คีย์ API:</b> ผู้ช่วย AI ใช้ Claude ของ Anthropic ผ่านคีย์ของคุณเอง สมัครและสร้างคีย์ที่ <code>console.anthropic.com</code> แล้วกด <b>คีย์ API...</b> ในแผง คีย์เก็บใน Credential Manager ของ Windows ไม่อยู่ในไฟล์ใด ๆ ของ Phai Studio ค่าใช้ Claude ทาง Anthropic เรียกเก็บจากคุณตามที่ใช้ (Phai Studio เองยังฟรี) — ส่งข้อมูลไปเฉพาะตอนกดส่ง: สิ่งที่พิมพ์ และส่วนของโปรเจกต์ที่ Claude ขออ่าน</p>
+
 <h2>ปุ่มลัดที่ใช้บ่อย</h2>
 <table>
   <tr><th>ปุ่ม</th><th>ทำอะไร</th><th>ปุ่ม</th><th>ทำอะไร</th></tr>
@@ -292,6 +304,7 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td><kbd>Alt+F7</kbd></td><td>ตั้งค่าโปรเจกต์</td><td><kbd>Ctrl+Shift+B</kbd></td><td>Build ทั้ง solution</td></tr>
   <tr><td><kbd>Ctrl+Q</kbd></td><td>ค้นหาคำสั่ง ค่าตั้ง ไฟล์</td><td><kbd>Shift+F4</kbd></td><td>ดูฟอร์มบนมือถือ/แท็บเล็ต</td></tr>
   <tr><td><kbd>Ctrl+Alt+1</kbd>…<kbd>0</kbd></td><td>เรียกการจัดหน้าต่างที่บันทึกไว้</td><td><kbd>Ctrl+`</kbd></td><td>Terminal</td></tr>
+  <tr><td><kbd>Ctrl+Alt+A</kbd></td><td>ผู้ช่วย AI</td><td><kbd>Ctrl+Enter</kbd></td><td>ส่งข้อความถึง Claude</td></tr>
 </table>
 <div class="pager"><a href="index.html">← หน้าแรก</a><a href="css.html">ตกแต่งหน้าตาด้วย CSS →</a></div>
 </main>
