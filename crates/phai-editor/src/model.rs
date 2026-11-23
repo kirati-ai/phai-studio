@@ -884,6 +884,63 @@ impl Model {
         })
     }
 
+    /// Whether the caret is where a call's next argument goes - just after its `(`, or after a
+    /// `,` and at most one space - outside a comment or a string: there the list of what fits is
+    /// shown at once, as Visual Studio does, with no letter typed. Not in a function's own
+    /// parameters (`fn f(a, `), a tuple (`let (a, `), `if (` or a closure's `|(a, `.
+    pub fn at_argument(&self) -> bool {
+        let (line, col) = self.buf.position(self.caret);
+        let here = &self.buf.line(line)[..col];
+        let lead = here.strip_suffix(' ').unwrap_or(here);
+        if !(lead.ends_with(',') || lead.ends_with('(') && lead.len() == here.len()) {
+            return false;
+        }
+        // The open brackets before the caret, from up to 40 lines back; strings and comments
+        // skipped.
+        let from = self.buf.line_start(line.saturating_sub(40));
+        let text = &self.buf.text()[from..self.caret];
+        let mut open: Vec<(char, usize)> = Vec::new();
+        let (mut string, mut comment, mut escaped) = (false, false, false);
+        let mut prev = '\0';
+        for (i, c) in text.char_indices() {
+            if comment {
+                comment = c != '\n';
+            } else if string {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == '"' {
+                    string = false;
+                }
+            } else if c == '/' && prev == '/' {
+                comment = true;
+            } else if c == '"' {
+                string = true;
+            } else if matches!(c, '(' | '[' | '{') {
+                open.push((c, i));
+            } else if matches!(c, ')' | ']' | '}') {
+                open.pop();
+            }
+            prev = c;
+        }
+        if string || comment {
+            return false;
+        }
+        let Some(&('(', at)) = open.last() else { return false };
+        // A call: a name (or `>` of `::<T>`, `!` of a macro) just before the `(`.
+        let before = text[..at].trim_end();
+        let name_start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
+        let name = &before[name_start..];
+        if name.is_empty() {
+            return before.ends_with('>') || before.ends_with('!');
+        }
+        if name.chars().next().is_some_and(|c| c.is_ascii_digit()) || ["if", "while", "match", "for", "in", "return", "let", "fn", "mut", "else"].contains(&name) {
+            return false;
+        }
+        !before[..name_start].trim_end().ends_with("fn")
+    }
+
     /// The lines the selection (or the caret) is on: a selection ending at a line's start leaves
     /// that line out.
     fn chosen_lines(&self) -> (usize, usize) {
@@ -1655,6 +1712,34 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(!at_end("    // ui:"), "in a comment");
         assert!(!at_end("    let s = \"ui:"), "in a string");
         assert!(!at_end("    crate::ui:"), "a module's");
+    }
+
+    #[test]
+    fn the_next_argument_of_a_call_is_known() {
+        let at_end = |t: &str| {
+            let mut m = Model::new(t);
+            m.caret = t.len();
+            m.anchor = m.caret;
+            m.at_argument()
+        };
+        assert!(at_end("    ui.message_box(\"ok\","));
+        assert!(at_end("    ui.message_box(\"ok\", "), "a space after the comma too");
+        assert!(at_end("    ui.message_box("));
+        assert!(at_end("    ui.message_box(\"a, b\", "), "a comma in a string is not the call's");
+        assert!(at_end("    f(g(1), "), "the inner call closed");
+        assert!(at_end("    foo(\n        1, "), "the call over lines");
+        assert!(at_end("    v.push::<u8>("));
+        assert!(!at_end("    ui.message_box(\"ok\",  "), "two spaces: the person is laying it out");
+        assert!(!at_end("    ui.message_box(\"ok\", x"), "a word begun: the list comes as it is typed");
+        assert!(!at_end("    let s = \"a, "), "in a string");
+        assert!(!at_end("    // f(a, "), "in a comment");
+        assert!(!at_end("    let v = [1, "), "an array");
+        assert!(!at_end("    let (a, "), "a tuple");
+        assert!(!at_end("    fn add(a: i32, "), "a function's own parameters");
+        assert!(!at_end("    pub fn add("));
+        assert!(!at_end("    if ("));
+        assert!(!at_end("    let t = (1, "), "a tuple's value");
+        assert!(!at_end("    Point { x: 1, "), "a struct's fields");
     }
 
     #[test]

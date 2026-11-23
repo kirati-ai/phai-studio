@@ -3275,13 +3275,14 @@ impl Studio {
                 gotoall::set_symbols(items);
             }
             Ask::Signature => {
-                if let Some(text) = phai_editor::lsp::signature_text(&result) {
+                let text = phai_editor::lsp::signature_text(&result);
+                if let Some(text) = &text {
                     if std::env::var_os("PHAI_SIG_TEST").is_some() {
                         println!("signature {}", text.lines().next().unwrap_or_default());
                         LSP_TEST.store(9, Ordering::Relaxed);
                     }
-                    phai_editor::view::show_peek(h, &text);
                 }
+                phai_editor::view::show_signature(h, text.as_deref());
             }
             Ask::Peek => match phai_editor::lsp::locations_of(&result).into_iter().next() {
                 Some(place) => {
@@ -3437,6 +3438,31 @@ impl Studio {
                 LSP_TEST.store(1, Ordering::Relaxed);
             }
             9 if std::env::var_os("PHAI_SIG_TEST").is_some() && std::env::var_os("PHAI_SHOT").is_none() => std::process::exit(0),
+            // `PHAI_ARG_TEST=line:col:words`: the words typed there, as the keys would, then the last
+            // letter typed again each second until the list of what fits the argument is open.
+            0 | 1 if std::env::var_os("PHAI_ARG_TEST").is_some() => {
+                let spec = std::env::var("PHAI_ARG_TEST").unwrap_or_default();
+                let mut parts = spec.splitn(3, ':');
+                let (l, c) = (parts.next().and_then(|n| n.parse().ok()).unwrap_or(1), parts.next().and_then(|n| n.parse().ok()).unwrap_or(1));
+                let words = parts.next().unwrap_or_default().to_string();
+                let key = |u: u16| unsafe {
+                    wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
+                };
+                if LSP_TEST.load(Ordering::Relaxed) == 0 {
+                    phai_editor::view::go_to(h, l, c);
+                    words.encode_utf16().for_each(key);
+                    LSP_TEST.store(1, Ordering::Relaxed);
+                } else if phai_editor::view::list_open(h) {
+                    let (names, signing) = phai_editor::view::list_labels(h);
+                    println!("argument list open, Parameter Info {signing}: {}", names.join(", "));
+                    println!("tip and list (top, bottom): {:?}", phai_editor::view::popup_spans(h));
+                    LSP_TEST.store(9, Ordering::Relaxed);
+                } else if let Some(last) = words.encode_utf16().last() {
+                    key(0x08);
+                    key(last);
+                }
+            }
+            9 if std::env::var_os("PHAI_ARG_TEST").is_some() && std::env::var_os("PHAI_SHOT").is_none() => std::process::exit(0),
             // `PHAI_PEEK_TEST`: Peek Definition instead, asked again until it answers.
             0 | 1 if std::env::var_os("PHAI_PEEK_TEST").is_some() => {
                 on_call(h);

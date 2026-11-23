@@ -18,6 +18,9 @@ pub struct Popup {
     lines: Vec<String>,
     pub items: Vec<Completion>,
     pub chosen: usize,
+    /// The choice is only a suggestion - the list opened by itself at a call's argument, nothing
+    /// typed or moved to yet: Enter is a new line, not this choice; it is framed, not filled.
+    pub soft: bool,
     row_h: i32,
     /// Its font is its own, made for it, deleted with it.
     own_font: bool,
@@ -42,6 +45,19 @@ impl Popup {
         p
     }
 
+    /// A tip whose bottom is at screen point `(x, y)` - Parameter Info above the line typed on,
+    /// out of the way of the list that opens below it.
+    pub fn tip_above(owner: HWND, font: HFONT, text: &str, x: i32, y: i32) -> Box<Popup> {
+        let p = Popup::tip(owner, font, text, x, y);
+        unsafe {
+            let mut r = windows::Win32::Foundation::RECT::default();
+            let _ = wm::GetWindowRect(p.hwnd, &mut r);
+            let top = (y - (r.bottom - r.top)).max(0);
+            let _ = wm::SetWindowPos(p.hwnd, Some(wm::HWND_TOPMOST), r.left, top, 0, 0, wm::SWP_NOACTIVATE | wm::SWP_NOSIZE);
+        }
+        p
+    }
+
     /// A completion list below screen point `(x, y)`.
     /// In Windows' own letters (Segoe UI 9 pt), smaller than the code's, as Visual Studio's
     /// IntelliSense list; `font` is the code's, for nothing but the call.
@@ -56,7 +72,7 @@ impl Popup {
     fn new(owner: HWND, font: HFONT, lines: Vec<String>, items: Vec<Completion>) -> Box<Popup> {
         let hwnd = make(owner);
         let row_h = win::measure(hwnd, font, "Ag").1 + win::px(hwnd, 6);
-        let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, row_h, own_font: false });
+        let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, soft: false, row_h, own_font: false });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Popup as isize);
         }
@@ -99,6 +115,7 @@ impl Popup {
         }
         let n = self.items.len().min(MAX_ROWS) as i32;
         self.chosen = ((self.chosen as i32 + by).rem_euclid(n)) as usize;
+        self.soft = false;
         unsafe {
             let _ = Gdi::InvalidateRect(Some(self.hwnd), None, true);
         }
@@ -148,7 +165,14 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let y = pad / 2 + i as i32 * p.row_h;
                 let line = RECT { left: 0, top: y, right: r.right, bottom: y + p.row_h };
                 if !p.items.is_empty() && i == p.chosen {
-                    win::fill(dc, &line, chosen_bg);
+                    if p.soft {
+                        let one = win::px(h, 1);
+                        for edge in [RECT { bottom: line.top + one, ..line }, RECT { top: line.bottom - one, ..line }, RECT { right: line.left + one, ..line }, RECT { left: line.right - one, ..line }] {
+                            win::fill(dc, &edge, muted);
+                        }
+                    } else {
+                        win::fill(dc, &line, chosen_bg);
+                    }
                 }
                 let mut tr = RECT { left: pad, ..line };
                 let label_w = win::measure(h, p.font, row).0;

@@ -374,6 +374,9 @@ struct View {
     box_from: Option<(usize, usize)>,
     /// The tip is a Peek Definition: it stays while the pointer moves, until Esc or a change.
     peeking: bool,
+    /// The tip is Parameter Info: it stays while the call's arguments are typed, asked again
+    /// after each change so the argument being typed is the one marked, until `)` or Esc.
+    signing: bool,
     list: Option<Box<crate::popup::Popup>>,
     /// Every completion the server gave; the list shows those that start with what is typed.
     all_items: Vec<crate::lsp::Completion>,
@@ -680,7 +683,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
         let (thai, thai_dy, line_h) = thai_font(h, font, line_h);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, signing: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -899,6 +902,52 @@ pub fn show_tip(h: HWND, text: &str) {
 fn hide_tip(v: &mut View) {
     v.tip = None;
     v.peeking = false;
+    v.signing = false;
+}
+
+/// Whether the completion list is open - for tests.
+pub fn list_open(h: HWND) -> bool {
+    view(h).is_some_and(|v| v.list.is_some())
+}
+
+/// A window's top and bottom on the screen.
+pub type Span = (i32, i32);
+
+/// Where Parameter Info and the list are on the screen (top, bottom) - for tests.
+pub fn popup_spans(h: HWND) -> (Option<Span>, Option<Span>) {
+    let span = |p: &crate::popup::Popup| {
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetWindowRect(p.hwnd, &mut r);
+        }
+        (r.top, r.bottom)
+    };
+    view(h).map(|v| (v.tip.as_deref().map(span), v.list.as_deref().map(span))).unwrap_or_default()
+}
+
+/// The open list's first names, and whether Parameter Info shows - for tests.
+pub fn list_labels(h: HWND) -> (Vec<String>, bool) {
+    view(h).map(|v| (v.list.as_ref().map(|l| l.items.iter().take(12).map(|c| c.label.clone()).collect()).unwrap_or_default(), v.signing)).unwrap_or_default()
+}
+
+/// Parameter Info: the call's signature, the argument being typed marked, above the caret's
+/// line - kept as the arguments are typed (see `signing`). `None`: the caret has left the call.
+pub fn show_signature(h: HWND, text: Option<&str>) {
+    let Some(v) = view(h) else { return };
+    let Some(text) = text else {
+        if v.signing {
+            hide_tip(v);
+        }
+        return;
+    };
+    let mut pt = windows::Win32::Foundation::POINT::default();
+    unsafe {
+        let _ = wm::GetCaretPos(&mut pt);
+        let _ = Gdi::ClientToScreen(h, &mut pt);
+    }
+    v.tip = Some(crate::popup::Popup::tip_above(h, v.font, text, pt.x, pt.y - win::px(h, 2)));
+    v.peeking = true;
+    v.signing = true;
 }
 
 /// Peek Definition: `text` (a heading line, then the code) in a window under the caret's line,
@@ -949,13 +998,20 @@ fn filter_list(h: HWND) {
         pt.y = y + v.line_h;
         let _ = Gdi::ClientToScreen(h, &mut pt);
     }
+    // Opened by itself at a call's argument with nothing typed: a suggestion Enter passes by.
+    let soft = typed.is_empty() && v.model.at_argument();
     match v.list.as_mut() {
         Some(list) => {
             list.items = shown;
             list.chosen = 0;
+            list.soft = soft;
             list.place(pt.x, pt.y);
         }
-        None => v.list = Some(crate::popup::Popup::list(h, v.font, shown, pt.x, pt.y)),
+        None => {
+            let mut list = crate::popup::Popup::list(h, v.font, shown, pt.x, pt.y);
+            list.soft = soft;
+            v.list = Some(list);
+        }
     }
 }
 
@@ -1655,7 +1711,9 @@ fn changed(h: HWND) {
         v.version += 1;
         // Old marks point at text that moved; the server sends fresh ones.
         v.marks.clear();
-        hide_tip(v);
+        if !v.signing {
+            hide_tip(v);
+        }
     }
     place_caret(h);
     unsafe {
@@ -1664,6 +1722,9 @@ fn changed(h: HWND) {
         if let Ok(p) = wm::GetParent(h) {
             wm::SendMessageW(p, wm::WM_COMMAND, Some(WPARAM(((CHANGED as usize) << 16) | (id & 0xFFFF))), Some(LPARAM(h.0 as isize)));
         }
+    }
+    if view(h).is_some_and(|v| v.signing) {
+        notify(h, SIGNATURE);
     }
 }
 
@@ -2199,6 +2260,8 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
                 }
                 return true;
             }
+            // A suggestion only (see `Popup::soft`): Enter closes the list and is a new line.
+            0x0D if v.list.as_ref().is_some_and(|l| l.soft) => v.list = None,
             0x0D | 0x09 => {
                 accept(h, v);
                 v.swallow_char = true;
@@ -2556,14 +2619,19 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     }
                     changed(h);
                     // A member or a path asks for completions; typing on narrows the open list.
-                    if s == "(" || s == "," {
+                    // A call's next argument - after `(`, `,` or `, ` - asks for both what fits
+                    // there and Parameter Info, as Visual Studio does.
+                    let signing = v.signing;
+                    let at_argument = v.lang == Language::Rust && matches!(s.as_str(), "(" | "," | " ") && v.model.at_argument();
+                    if (s == "(" || s == "," || at_argument) && !signing {
                         notify(h, SIGNATURE);
                     } else if s == ")" {
                         if let Some(v) = view(h) {
                             hide_tip(v);
                         }
                     }
-                    if s == "." || (s == ":" && before_colon) {
+                    let Some(v) = view(h) else { return LRESULT(0) };
+                    if s == "." || (s == ":" && before_colon) || at_argument {
                         notify(h, COMPLETE);
                     } else if v.list.is_some() {
                         if s.chars().all(|c| c.is_alphanumeric() || c == '_') {
