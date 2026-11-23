@@ -98,7 +98,10 @@ pub fn add(table: &'static [(&'static str, &'static str)]) {
     }
 }
 
-/// `en` in the chosen language.
+/// The words in the language the program shows now: Thai when it is set to Thai and the
+/// words have a Thai line in its text table, else as written.
+///
+/// Example: `ui.ok.set_text(t("Save"));`
 pub fn t(en: &'static str) -> &'static str {
     if !is_thai() {
         return en;
@@ -106,7 +109,9 @@ pub fn t(en: &'static str) -> &'static str {
     lookup(en).unwrap_or(en)
 }
 
-/// `en` in the chosen language with `{0}`, `{1}`... filled in.
+/// As `t`, with `{0}`, `{1}`... filled in by the values after it, in turn.
+///
+/// Example: `ui.status.set_part_text(0, &tf("Hello, {0}", &[&name]));`
 pub fn tf(en: &'static str, args: &[&dyn Display]) -> String {
     fill(t(en), args)
 }

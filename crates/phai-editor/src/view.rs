@@ -936,6 +936,23 @@ pub fn popup_spans(h: HWND) -> (Option<Span>, Option<Span>) {
     view(h).map(|v| (v.tip.as_deref().map(span), v.list.as_deref().map(span))).unwrap_or_default()
 }
 
+/// The list's and its guide's places on the screen (left, top, right, bottom) - for tests.
+pub fn list_and_guide(h: HWND) -> Vec<(i32, i32, i32, i32)> {
+    let Some(l) = view(h).and_then(|v| v.list.as_ref()) else { return vec![] };
+    [Some(l.hwnd), l.guide_hwnd()].into_iter().flatten().map(|w| {
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetWindowRect(w, &mut r);
+        }
+        (r.left, r.top, r.right, r.bottom)
+    }).collect()
+}
+
+/// The open list's chosen item's guide - for tests.
+pub fn list_doc(h: HWND) -> String {
+    view(h).and_then(|v| v.list.as_ref().and_then(|l| l.choice()).map(crate::popup::guide_text)).unwrap_or_default()
+}
+
 /// The open list's first names, and whether Parameter Info shows - for tests.
 pub fn list_labels(h: HWND) -> (Vec<String>, bool) {
     view(h).map(|v| (v.list.as_ref().map(|l| l.items.iter().take(12).map(|c| c.label.clone()).collect()).unwrap_or_default(), v.signing)).unwrap_or_default()
@@ -1036,10 +1053,12 @@ fn filter_list(h: HWND) {
             list.chosen = 0;
             list.soft = soft;
             list.place(pt.x, pt.y);
+            list.show_guide();
         }
         None => {
             let mut list = crate::popup::Popup::list(h, v.font, shown, pt.x, pt.y);
             list.soft = soft;
+            list.show_guide();
             v.list = Some(list);
         }
     }

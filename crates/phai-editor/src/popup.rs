@@ -24,6 +24,9 @@ pub struct Popup {
     row_h: i32,
     /// Its font is its own, made for it, deleted with it.
     own_font: bool,
+    /// Beside a list: the chosen item's guide - what it does, how it is written - for a hand new
+    /// to it, as Visual Studio's Quick Info beside IntelliSense.
+    guide: Option<Box<Popup>>,
 }
 
 const MAX_ROWS: usize = 10;
@@ -72,7 +75,7 @@ impl Popup {
     fn new(owner: HWND, font: HFONT, lines: Vec<String>, items: Vec<Completion>) -> Box<Popup> {
         let hwnd = make(owner);
         let row_h = win::measure(hwnd, font, "Ag").1 + win::px(hwnd, 6);
-        let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, soft: false, row_h, own_font: false });
+        let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, soft: false, row_h, own_font: false, guide: None });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Popup as isize);
         }
@@ -116,6 +119,7 @@ impl Popup {
         let n = self.items.len().min(MAX_ROWS) as i32;
         self.chosen = ((self.chosen as i32 + by).rem_euclid(n)) as usize;
         self.soft = false;
+        self.show_guide();
         unsafe {
             let _ = Gdi::InvalidateRect(Some(self.hwnd), None, true);
         }
@@ -124,10 +128,159 @@ impl Popup {
     pub fn choice(&self) -> Option<&Completion> {
         self.items.get(self.chosen)
     }
+
+    /// The guide's window, when one shows - for tests.
+    pub fn guide_hwnd(&self) -> Option<HWND> {
+        self.guide.as_ref().map(|g| g.hwnd)
+    }
+
+    /// The chosen item's guide beside the list - at its right, or its left where the screen ends;
+    /// none for an item with nothing to say.
+    pub fn show_guide(&mut self) {
+        self.guide = None;
+        let Some(text) = self.choice().map(guide_text).filter(|t| !t.is_empty()) else { return };
+        let mut r = RECT::default();
+        unsafe {
+            let _ = wm::GetWindowRect(self.hwnd, &mut r);
+        }
+        let g = Popup::tip(self.hwnd, self.font, &text, r.right + win::px(self.hwnd, 2), r.top);
+        unsafe {
+            let mut gr = RECT::default();
+            let _ = wm::GetWindowRect(g.hwnd, &mut gr);
+            // Pushed back over the list by the screen's edge: to the list's left instead.
+            if gr.left < r.right {
+                let w = gr.right - gr.left;
+                let _ = wm::SetWindowPos(g.hwnd, Some(wm::HWND_TOPMOST), (r.left - w - win::px(self.hwnd, 2)).max(0), r.top, 0, 0, wm::SWP_NOACTIVATE | wm::SWP_NOSIZE);
+            }
+        }
+        self.guide = Some(g);
+    }
+}
+
+/// A completion's guide as a beginner reads it: how it is written (its signature), then its
+/// `///` words - Rust's marks taken out (`[`Self::hide`]` is hide), each line wrapped to read.
+pub fn guide_text(c: &Completion) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let head = heading(c);
+    if !head.is_empty() {
+        out.push(head);
+    }
+    let doc = clean_doc(&c.doc);
+    if !doc.trim().is_empty() {
+        if !out.is_empty() {
+            out.push(String::new());
+        }
+        // The comment's lines, cut where its writer's editor ended them, joined again into
+        // paragraphs and wrapped to the box; an Example starts a line of its own.
+        let mut para = String::new();
+        let flush = |para: &mut String, out: &mut Vec<String>| {
+            if !para.is_empty() {
+                out.extend(wrap(para, 72));
+                para.clear();
+            }
+        };
+        for line in doc.lines() {
+            if line.starts_with("    ") {
+                flush(&mut para, &mut out);
+                out.push(line.to_string());
+            } else if line.trim().is_empty() {
+                flush(&mut para, &mut out);
+                if out.last().is_some_and(|l| !l.is_empty()) {
+                    out.push(String::new());
+                }
+            } else {
+                if line.starts_with("Example:") {
+                    flush(&mut para, &mut out);
+                }
+                if !para.is_empty() {
+                    para.push(' ');
+                }
+                para.push_str(line.trim());
+            }
+        }
+        flush(&mut para, &mut out);
+    }
+    while out.last().is_some_and(|l| l.trim().is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// How it is written, as a beginner reads it: `alert(&str)`, `confirm(&str) -> bool`, `ok: Button` -
+/// the name, then what it takes (the `self` it is called on left out) or what it is.
+fn heading(c: &Completion) -> String {
+    let d = c.detail.trim();
+    if d.is_empty() {
+        return String::new();
+    }
+    if let Some(rest) = d.strip_prefix("fn(") {
+        let rest = ["&mut self, ", "&self, ", "self, ", "&mut self", "&self", "self"].iter().find_map(|s| rest.strip_prefix(s)).unwrap_or(rest);
+        return format!("{}({rest}", c.label);
+    }
+    if d.contains(c.label.as_str()) { d.to_string() } else { format!("{}: {d}", c.label) }
+}
+
+/// A `///` comment in plain words: links `[`x`]` and `[x](..)` as their words, `Self::` and
+/// backticks gone, a code block's lines indented and its fences dropped.
+fn clean_doc(doc: &str) -> String {
+    let mut out = Vec::new();
+    let mut code = false;
+    for line in doc.lines() {
+        if line.trim_start().starts_with("```") {
+            code = !code;
+            continue;
+        }
+        if code {
+            out.push(format!("    {line}"));
+            continue;
+        }
+        let mut s = String::new();
+        let mut rest = line;
+        while let Some(i) = rest.find('[') {
+            s.push_str(&rest[..i]);
+            let after = &rest[i + 1..];
+            match after.find(']') {
+                Some(j) => {
+                    s.push_str(&after[..j]);
+                    rest = &after[j + 1..];
+                    // `[words](link)`: the link dropped.
+                    if rest.starts_with('(') {
+                        rest = rest.find(')').map(|k| &rest[k + 1..]).unwrap_or("");
+                    }
+                }
+                None => {
+                    s.push('[');
+                    rest = after;
+                }
+            }
+        }
+        s.push_str(rest);
+        out.push(s.replace("Self::", "").replace('`', ""));
+    }
+    out.join("\n")
+}
+
+/// Words cut into lines of at most `width` letters, between words.
+fn wrap(s: &str, width: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut line = String::new();
+    for word in s.split(' ') {
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+            out.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    out.push(line);
+    out
 }
 
 impl Drop for Popup {
     fn drop(&mut self) {
+        // The guide first: it draws in this list's font.
+        self.guide = None;
         unsafe {
             wm::SetWindowLongPtrW(self.hwnd, wm::GWLP_USERDATA, 0);
             let _ = wm::DestroyWindow(self.hwnd);
@@ -200,5 +353,26 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             LRESULT(0)
         },
         _ => win::def(h, msg, w, l),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_guide_reads_as_words() {
+        let c = Completion { label: "hide".into(), insert: "hide".into(), detail: "fn(&self)".into(), doc: "Out of sight, still running; [`Self::show_window`] brings it back.\n\n```\nui.hide();\n```".into() };
+        assert_eq!(guide_text(&c), "hide()\n\nOut of sight, still running; show_window brings it back.\n\n    ui.hide();");
+        // A comment's lines joined again; its Example on a line of its own.
+        let alert = Completion { label: "alert".into(), detail: "fn(&self, &str)".into(), doc: "Shows a message with an OK button; the title is the\nwindow's.\nExample: `ui.alert(\"Saved\");`".into(), ..c.clone() };
+        assert_eq!(guide_text(&alert), "alert(&str)\n\nShows a message with an OK button; the title is the window's.\nExample: ui.alert(\"Saved\");");
+        let field = Completion { label: "ok".into(), detail: "Button".into(), doc: String::new(), ..c.clone() };
+        assert_eq!(guide_text(&field), "ok: Button");
+        let long = Completion { doc: "word ".repeat(30), ..c.clone() };
+        assert!(guide_text(&long).lines().all(|l| l.chars().count() <= 72), "wrapped");
+        let none = Completion { detail: String::new(), doc: String::new(), ..c };
+        assert_eq!(guide_text(&none), "", "nothing to say: no guide");
+        assert_eq!(clean_doc("See [the guide](https://x.y/z) and [`DateTime::format`]."), "See the guide and DateTime::format.");
     }
 }

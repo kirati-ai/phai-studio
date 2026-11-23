@@ -51,14 +51,23 @@ pub struct MainWindowUi {
     pub hwnd: HWND,
     pub font: HFONT,
     pub toolbar: HWND,
+    /// The GroupBox `details` on this window: `ui.details.` lists what it can do.
     pub details: phai_ui::ctl::GroupBox,
+    /// The Label `name_label` on this window: `ui.name_label.` lists what it can do.
     pub name_label: phai_ui::ctl::Label,
+    /// The TextBox `name` on this window: `ui.name.` lists what it can do.
     pub name: phai_ui::ctl::TextBox,
+    /// The CheckBox `active` on this window: `ui.active.` lists what it can do.
     pub active: phai_ui::ctl::CheckBox,
+    /// The ComboBox `kind` on this window: `ui.kind.` lists what it can do.
     pub kind: phai_ui::ctl::ComboBox,
+    /// The ListView `customers` on this window: `ui.customers.` lists what it can do.
     pub customers: phai_ui::ctl::ListView,
+    /// The Button `save_button` on this window: `ui.save_button.` lists what it can do.
     pub save_button: phai_ui::ctl::Button,
+    /// The Button `close` on this window: `ui.close.` lists what it can do.
     pub close: phai_ui::ctl::Button,
+    /// The StatusBar `status` on this window: `ui.status.` lists what it can do.
     pub status: phai_ui::ctl::StatusBar,
     layout: Layout,
 }
@@ -249,7 +258,9 @@ impl MainWindowUi {
         }
     }
 
-    /// Closes the window, as the close box would - its FormClosing first.
+    /// Closes the window, as its close box would - its FormClosing comes first.
+    ///
+    /// Example: `ui.close();`
     pub fn close(&self) {
         unsafe {
             let _ = wm::PostMessageW(Some(self.hwnd), wm::WM_CLOSE, WPARAM(0), LPARAM(0));
@@ -279,74 +290,102 @@ impl MainWindowUi {
         self.toolbar.0 as isize
     }
 
-    /// Out of sight, still running; [`Self::show_window`] brings it back.
+    /// Hides the window; the program keeps running and `ui.show_window()` brings it back.
+    ///
+    /// Example: `ui.hide();`
     pub fn hide(&self) {
         win::show(self.hwnd, false);
     }
 
-    /// Shown again after [`Self::hide`].
+    /// Shows the window again after `ui.hide()`.
+    ///
+    /// Example: `ui.show_window();`
     pub fn show_window(&self) {
         win::show(self.hwnd, true);
     }
 
-    /// In front, taking the keys.
+    /// Brings the window to the front, the keyboard on it.
+    ///
+    /// Example: `ui.activate();`
     pub fn activate(&self) {
         unsafe {
             let _ = wm::SetForegroundWindow(self.hwnd);
         }
     }
 
-    /// A notice or a question over this window - WinForms' MessageBox.Show:
-    /// `if ui.message_box("Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`.
+    /// A message box with the buttons and the icon you choose, its title `caption`; the button
+    /// pressed comes back - DialogResult::Yes, No, Ok, Cancel... For a plain notice `ui.alert` is
+    /// shorter, for Yes or No `ui.confirm`.
+    ///
+    /// Example: `if ui.message_box("Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { ... }`
     pub fn message_box(&self, text: &str, caption: &str, buttons: phai_ui::form::MessageBoxButtons, icon: phai_ui::form::MessageBoxIcon) -> phai_ui::form::DialogResult {
         phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)
     }
 
-    /// A notice with an OK button over this window, its title the window's - JavaScript's alert:
-    /// `ui.alert("Saved")`.
+    /// Shows a message with an OK button and waits until it is pressed; the title is the
+    /// window's - as JavaScript's alert.
+    ///
+    /// Example: `ui.alert("Saved");`
     pub fn alert(&self, text: &str) {
         phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);
     }
 
-    /// A question with Yes and No over this window, its title the window's - true for Yes, as
-    /// JavaScript's confirm: `if ui.confirm("Delete it?") { ... }`.
+    /// Asks a question with Yes and No buttons: `true` when Yes is pressed - as JavaScript's
+    /// confirm.
+    ///
+    /// Example: `if ui.confirm("Delete it?") { ... }`
     pub fn confirm(&self, text: &str) -> bool {
         phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes
     }
 
-    /// Words asked for in a small window over this one - JavaScript's prompt, VB's InputBox; `None`
-    /// for Cancel: `if let Some(name) = ui.prompt("Your name?", "") { ... }`.
+    /// Asks for words in a small window with a box to type in: what was typed, or `None` when
+    /// Cancel is pressed; `default` is in the box at first - as JavaScript's prompt.
+    ///
+    /// Example: `if let Some(name) = ui.prompt("Your name?", "") { ui.alert(&name); }`
     pub fn prompt(&self, prompt: &str, default: &str) -> Option<String> {
         phai_ui::dialogs::ask_fields(Some(self.hwnd), &self.title(), &[phai_ui::dialogs::Field::Text(prompt, default)]).and_then(|a| a.into_iter().next())
     }
 
-    /// A file to open, chosen - OpenFileDialog; `None` for Cancel. The filter as WinForms writes it,
-    /// empty for every file: `ui.open_file("Text files|*.txt")`.
+    /// Lets the user choose a file to open: its path, or `None` when Cancel is pressed. The
+    /// filter is name|pattern - empty for every file.
+    ///
+    /// Example: `if let Some(path) = ui.open_file("Text files|*.txt") { ... }`
     pub fn open_file(&self, filter: &str) -> Option<std::path::PathBuf> {
         phai_ui::components::OpenFileDialog::new(self.hwnd, "", filter, "", "", false).show_dialog()
     }
 
-    /// A file to save to, chosen - SaveFileDialog; `None` for Cancel: `ui.save_file("Text files|*.txt", "notes.txt")`.
+    /// Lets the user choose where to save a file: its path, or `None` when Cancel is pressed;
+    /// `name` is the file name offered at first.
+    ///
+    /// Example: `if let Some(path) = ui.save_file("Text files|*.txt", "notes.txt") { ... }`
     pub fn save_file(&self, filter: &str, name: &str) -> Option<std::path::PathBuf> {
         phai_ui::components::SaveFileDialog::new(self.hwnd, "", filter, "", "").show_dialog_named(name)
     }
 
-    /// A folder, chosen - FolderBrowserDialog; `None` for Cancel.
+    /// Lets the user choose a folder: its path, or `None` when Cancel is pressed.
+    ///
+    /// Example: `if let Some(folder) = ui.choose_folder() { ... }`
     pub fn choose_folder(&self) -> Option<std::path::PathBuf> {
         phai_ui::components::FolderBrowserDialog::new(self.hwnd, "", "").show_dialog()
     }
 
-    /// Moved to the middle of the screen it is on.
+    /// Moves the window to the middle of the screen.
+    ///
+    /// Example: `ui.center_to_screen();`
     pub fn center_to_screen(&self) {
         win::center_on_screen(self.hwnd);
     }
 
-    /// The words in its title bar.
+    /// The words in the window's title bar.
+    ///
+    /// Example: `let t = ui.title();`
     pub fn title(&self) -> String {
         win::text_of(self.hwnd)
     }
 
-    /// New words in its title bar.
+    /// Changes the words in the window's title bar.
+    ///
+    /// Example: `ui.set_title("Score book - 2026");`
     pub fn set_title(&self, s: &str) {
         win::set_text(self.hwnd, s);
     }

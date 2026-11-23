@@ -168,7 +168,7 @@ impl Lsp {
                         "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
                         "codeLens": {},
                         "inlayHint": {},
-                        "completion": { "completionItem": { "snippetSupport": false } },
+                        "completion": { "completionItem": { "snippetSupport": false, "documentationFormat": ["markdown", "plaintext"] } },
                         "publishDiagnostics": {},
                         // Its own findings - a name it does not know, a wrong type - it gives only
                         // when asked (`pull_diagnostics`); pushed are syntax and `cargo check`'s.
@@ -499,6 +499,8 @@ pub struct Completion {
     pub label: String,
     pub insert: String,
     pub detail: String,
+    /// What it is and how it is used - its `///` comment - shown beside the list for the one chosen.
+    pub doc: String,
 }
 
 /// The items of a completion answer, best first, at most `max`.
@@ -544,7 +546,12 @@ pub fn completions_of(result: &Value, max: usize) -> Vec<Completion> {
                 }
             }
             let sort = i["sortText"].as_str().unwrap_or(&label).to_string();
-            (sort, Completion { label, insert: plain, detail: i["detail"].as_str().unwrap_or_default().to_string() })
+            let doc = match &i["documentation"] {
+                Value::String(s) => s.clone(),
+                Value::Object(o) => o.get("value").and_then(Value::as_str).unwrap_or_default().to_string(),
+                _ => String::new(),
+            };
+            (sort, Completion { label, insert: plain, detail: i["detail"].as_str().unwrap_or_default().to_string(), doc })
         })
         .collect();
     v.sort_by(|a, b| a.0.cmp(&b.0));

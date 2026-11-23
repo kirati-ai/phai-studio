@@ -181,78 +181,128 @@ macro_rules! control {
             pub fn hwnd(self) -> HWND {
                 self.0
             }
+            /// The words it shows - a text box's typing, a button's or a label's caption.
+            /// Example: `let name = ui.name_box.text();`
             pub fn text(self) -> String {
                 Control::text(self)
             }
+            /// Changes the words it shows.
+            /// Example: `ui.ok.set_text("Save");`
             pub fn set_text(self, s: &str) {
                 Control::set_text(self, s)
             }
+            /// Whether it can be used now - `false` when it is greyed out.
+            /// Example: `if ui.ok.enabled() { ... }`
             pub fn enabled(self) -> bool {
                 Control::enabled(self)
             }
+            /// `true`: it can be used; `false`: greyed out, it cannot be clicked or typed in.
+            /// Example: `ui.ok.set_enabled(false);`
             pub fn set_enabled(self, on: bool) {
                 Control::set_enabled(self, on)
             }
+            /// Whether it can be seen.
+            /// Example: `if ui.panel1.visible() { ... }`
             pub fn visible(self) -> bool {
                 Control::visible(self)
             }
+            /// `true` shows it, `false` hides it - the same as `show()` and `hide()`.
+            /// Example: `ui.panel1.set_visible(false);`
             pub fn set_visible(self, on: bool) {
                 Control::set_visible(self, on)
             }
+            /// Shows it again after `hide()`.
+            /// Example: `ui.panel1.show();`
             pub fn show(self) {
                 Control::show(self)
             }
+            /// Hides it; it is still there, and `show()` brings it back.
+            /// Example: `ui.panel1.hide();`
             pub fn hide(self) {
                 Control::hide(self)
             }
+            /// Puts the keyboard on it: what is typed next goes to it.
+            /// Example: `ui.name_box.focus();`
             pub fn focus(self) {
                 Control::focus(self)
             }
+            /// Whether the keyboard is on it now.
+            /// Example: `if ui.name_box.focused() { ... }`
             pub fn focused(self) -> bool {
                 Control::focused(self)
             }
+            /// Puts it on top of the controls it overlaps.
+            /// Example: `ui.panel1.bring_to_front();`
             pub fn bring_to_front(self) {
                 Control::bring_to_front(self)
             }
+            /// Puts it behind the controls it overlaps.
+            /// Example: `ui.panel1.send_to_back();`
             pub fn send_to_back(self) {
                 Control::send_to_back(self)
             }
+            /// Draws it again now - after changing what its Paint draws.
+            /// Example: `ui.picture1.refresh();`
             pub fn refresh(self) {
                 Control::refresh(self)
             }
+            /// Asks for it to be drawn again when Windows is free - lighter than `refresh()`.
+            /// Example: `ui.picture1.invalidate();`
             pub fn invalidate(self) {
                 Control::invalidate(self)
             }
+            /// Where it is on the window and how big: `left`, `top`, `right`, `bottom`.
+            /// Example: `let r = ui.ok.bounds(); let width = r.right - r.left;`
             pub fn bounds(self) -> RECT {
                 Control::bounds(self)
             }
+            /// Its width and height inside its border.
+            /// Example: `let (w, h) = ui.picture1.client_size();`
             pub fn client_size(self) -> (i32, i32) {
                 Control::client_size(self)
             }
+            /// Moves it and sets its size: left, top, width, height.
+            /// Example: `ui.ok.set_bounds(10, 10, 80, 28);`
             pub fn set_bounds(self, x: i32, y: i32, w: i32, h: i32) {
                 Control::set_bounds(self, x, y, w, h)
             }
+            /// A point on it, as a point on the screen.
+            /// Example: `let (sx, sy) = ui.ok.point_to_screen(0, 0);`
             pub fn point_to_screen(self, x: i32, y: i32) -> (i32, i32) {
                 Control::point_to_screen(self, x, y)
             }
+            /// A point on the screen, as a point on it.
+            /// Example: `let (x, y) = ui.panel1.point_to_client(sx, sy);`
             pub fn point_to_client(self, x: i32, y: i32) -> (i32, i32) {
                 Control::point_to_client(self, x, y)
             }
+            /// The window (form) it is on.
+            /// Example: `let form = ui.ok.find_form();`
             pub fn find_form(self) -> HWND {
                 Control::find_form(self)
             }
+            /// Stops arranging its controls while many are changed at once; `resume_layout()` after.
+            /// Example: `ui.panel1.suspend_layout();`
             pub fn suspend_layout(self) {
                 Control::suspend_layout(self)
             }
+            /// Arranges its controls again after `suspend_layout()`.
+            /// Example: `ui.panel1.resume_layout();`
             pub fn resume_layout(self) {
                 Control::resume_layout(self)
             }
+            /// The small words shown when the mouse rests on it.
+            /// Example: `ui.ok.set_tooltip("Saves the score");`
             pub fn set_tooltip(self, text: &str) {
                 Control::set_tooltip(self, text)
             }
+            /// Starts dragging these words out of it, to drop somewhere else; `true` when they were dropped.
+            /// Example: `ui.list1.do_drag_drop(&ui.list1.text());`
             pub fn do_drag_drop(self, text: &str) -> bool {
                 Control::do_drag_drop(self, text)
             }
+            /// The mouse pointer's shape over it: `"hand"`, `"wait"`, `"ibeam"`, `"arrow"`, `"cross"`.
+            /// Example: `ui.link1.set_cursor("hand");`
             pub fn set_cursor(self, name: &str) {
                 Control::set_cursor(self, name)
             }
@@ -394,24 +444,38 @@ impl ListBox {
     pub fn items_add(self, s: &str) -> usize {
         crate::extra::list_box_add(self.0, s)
     }
+    /// Puts a line in at place `at` (0 is the top); the lines below move down.
+    /// Example: `ui.list1.items_insert(0, "First");`
     pub fn items_insert(self, at: usize, s: &str) {
         crate::extra::list_box_insert(self.0, at, s)
     }
+    /// Takes out the line at place `i` (0 is the top).
+    /// Example: `ui.list1.items_remove_at(0);`
     pub fn items_remove_at(self, i: usize) {
         crate::extra::list_box_remove_at(self.0, i)
     }
+    /// Takes out every line.
+    /// Example: `ui.list1.items_clear();`
     pub fn items_clear(self) {
         crate::extra::list_box_clear(self.0)
     }
+    /// How many lines it has.
+    /// Example: `let n = ui.list1.items_count();`
     pub fn items_count(self) -> usize {
         crate::extra::list_box_count(self.0)
     }
+    /// The words of the line at place `i` (0 is the top).
+    /// Example: `let first = ui.list1.item(0);`
     pub fn item(self, i: usize) -> String {
         crate::extra::list_box_item(self.0, i)
     }
+    /// The place of the chosen line - `None` when none is chosen.
+    /// Example: `if let Some(i) = ui.list1.selected_index() { let s = ui.list1.item(i); }`
     pub fn selected_index(self) -> Option<usize> {
         crate::extra::list_box_selected(self.0)
     }
+    /// Chooses the line at a place; `None` chooses none.
+    /// Example: `ui.list1.set_selected_index(Some(0));`
     pub fn set_selected_index(self, i: Option<usize>) {
         crate::extra::list_box_select(self.0, i)
     }
@@ -426,21 +490,33 @@ impl ListBox {
 }
 
 impl CheckedListBox {
+    /// Adds a line with a tick box at the end.
+    /// Example: `ui.checks1.items_add("Milk");`
     pub fn items_add(self, s: &str) {
         ListView(self.0).items_add(&[s]);
     }
+    /// Takes out every line.
+    /// Example: `ui.checks1.items_clear();`
     pub fn items_clear(self) {
         ListView(self.0).items_clear()
     }
+    /// How many lines it has.
+    /// Example: `let n = ui.checks1.items_count();`
     pub fn items_count(self) -> usize {
         ListView(self.0).items_count()
     }
+    /// The words of the line at place `i` (0 is the top).
+    /// Example: `let s = ui.checks1.item(0);`
     pub fn item(self, i: usize) -> String {
         ListView(self.0).cell(i, 0)
     }
+    /// Whether the line at place `i` is ticked.
+    /// Example: `if ui.checks1.checked(0) { ... }`
     pub fn checked(self, i: usize) -> bool {
         crate::extra::checked_list_checked(self.0, i)
     }
+    /// Ticks (`true`) or clears (`false`) the line at place `i`.
+    /// Example: `ui.checks1.set_checked(0, true);`
     pub fn set_checked(self, i: usize, on: bool) {
         crate::extra::checked_list_set_checked(self.0, i, on)
     }
@@ -448,6 +524,8 @@ impl CheckedListBox {
     pub fn checked_indices(self) -> Vec<usize> {
         (0..self.items_count()).filter(|i| self.checked(*i)).collect()
     }
+    /// The place of the chosen line - `None` when none is chosen.
+    /// Example: `if let Some(i) = ui.checks1.selected_index() { ... }`
     pub fn selected_index(self) -> Option<usize> {
         ListView(self.0).selected_index()
     }
@@ -473,6 +551,8 @@ impl MaskedTextBox {
     pub fn mask_completed(self) -> bool {
         crate::extra::mask_completed(self.0)
     }
+    /// Takes out what is typed in it.
+    /// Example: `ui.phone1.clear();`
     pub fn clear(self) {
         crate::win::set_text(self.0, "")
     }
@@ -483,6 +563,8 @@ impl MonthCalendar {
     pub fn selection_start(self) -> (i32, i32, i32) {
         crate::extra::calendar_date(self.0)
     }
+    /// Shows and chooses a day: year, month (1-12), day.
+    /// Example: `ui.calendar1.set_date(2026, 11, 23);`
     pub fn set_date(self, y: i32, m: i32, d: i32) {
         crate::extra::calendar_set_date(self.0, y, m, d)
     }
@@ -504,12 +586,18 @@ pub enum CheckState {
 }
 
 impl CheckBox {
+    /// Whether it is ticked.
+    /// Example: `if ui.agree.checked() { ... }`
     pub fn checked(self) -> bool {
         win::is_checked(self.0)
     }
+    /// Ticks it (`true`) or clears it (`false`).
+    /// Example: `ui.agree.set_checked(true);`
     pub fn set_checked(self, on: bool) {
         win::set_checked(self.0, on)
     }
+    /// Ticked, not ticked, or half (a three-state box): `CheckState::Checked`, `Unchecked`, `Indeterminate`.
+    /// Example: `if ui.agree.check_state() == CheckState::Indeterminate { ... }`
     pub fn check_state(self) -> CheckState {
         match win::check_state(self.0) {
             0 => CheckState::Unchecked,
@@ -517,12 +605,16 @@ impl CheckBox {
             _ => CheckState::Indeterminate,
         }
     }
+    /// Sets it ticked, not ticked, or half.
+    /// Example: `ui.agree.set_check_state(CheckState::Checked);`
     pub fn set_check_state(self, s: CheckState) {
         win::set_check_state(self.0, s as u8)
     }
 }
 
 impl RadioButton {
+    /// Whether it is the one chosen of its group.
+    /// Example: `if ui.option_cash.checked() { ... }`
     pub fn checked(self) -> bool {
         win::is_checked(self.0)
     }
@@ -628,57 +720,93 @@ macro_rules! text_edit_methods {
     ($name:ident) => {
         #[allow(dead_code)]
         impl $name {
+            /// Takes out all its words.
+            /// Example: `ui.name_box.clear();`
             pub fn clear(self) {
                 TextEdit::clear(self)
             }
+            /// Adds words at the end and scrolls to show them.
+            /// Example: `ui.log.append_text("Done\r\n");`
             pub fn append_text(self, s: &str) {
                 TextEdit::append_text(self, s)
             }
+            /// Chooses all its words - typing then replaces them.
+            /// Example: `ui.name_box.select_all();`
             pub fn select_all(self) {
                 TextEdit::select_all(self)
             }
+            /// Chooses `length` letters starting at place `start` (0 is the first letter).
+            /// Example: `ui.name_box.select(0, 3);`
             pub fn select(self, start: usize, length: usize) {
                 TextEdit::select(self, start, length)
             }
+            /// Where the chosen words begin (or where the caret is).
+            /// Example: `let at = ui.name_box.selection_start();`
             pub fn selection_start(self) -> usize {
                 TextEdit::selection_start(self)
             }
+            /// How many letters are chosen.
+            /// Example: `let n = ui.name_box.selection_length();`
             pub fn selection_length(self) -> usize {
                 TextEdit::selection_length(self)
             }
+            /// The chosen words.
+            /// Example: `let s = ui.name_box.selected_text();`
             pub fn selected_text(self) -> String {
                 TextEdit::selected_text(self)
             }
+            /// Puts words in at the caret, in place of the chosen ones.
+            /// Example: `ui.notes.paste_text("Hello");`
             pub fn paste_text(self, s: &str) {
                 TextEdit::paste_text(self, s)
             }
+            /// Copies the chosen words to the clipboard - Ctrl+C.
+            /// Example: `ui.notes.copy();`
             pub fn copy(self) {
                 TextEdit::copy(self)
             }
+            /// Moves the chosen words to the clipboard - Ctrl+X.
+            /// Example: `ui.notes.cut();`
             pub fn cut(self) {
                 TextEdit::cut(self)
             }
+            /// Puts in the clipboard's words at the caret - Ctrl+V.
+            /// Example: `ui.notes.paste();`
             pub fn paste(self) {
                 TextEdit::paste(self)
             }
+            /// Takes back the last change - Ctrl+Z.
+            /// Example: `ui.notes.undo();`
             pub fn undo(self) {
                 TextEdit::undo(self)
             }
+            /// Whether there is a change to take back.
+            /// Example: `ui.undo_button.set_enabled(ui.notes.can_undo());`
             pub fn can_undo(self) -> bool {
                 TextEdit::can_undo(self)
             }
+            /// Scrolls so the caret can be seen.
+            /// Example: `ui.log.scroll_to_caret();`
             pub fn scroll_to_caret(self) {
                 TextEdit::scroll_to_caret(self)
             }
+            /// Whether it can only be read, not typed in.
+            /// Example: `if ui.notes.read_only() { ... }`
             pub fn read_only(self) -> bool {
                 TextEdit::read_only(self)
             }
+            /// `true`: it can be read and copied, not typed in.
+            /// Example: `ui.notes.set_read_only(true);`
             pub fn set_read_only(self, on: bool) {
                 TextEdit::set_read_only(self, on)
             }
+            /// The most letters that can be typed in it.
+            /// Example: `ui.code_box.set_max_length(10);`
             pub fn set_max_length(self, n: i32) {
                 TextEdit::set_max_length(self, n)
             }
+            /// Its words, line by line.
+            /// Example: `for line in ui.notes.lines() { ... }`
             pub fn lines(self) -> Vec<String> {
                 TextEdit::lines(self)
             }
@@ -718,19 +846,29 @@ impl ComboBox {
         let w = win::wide(s);
         send(self.0, 0x0143 /* CB_ADDSTRING */, 0, w.as_ptr() as isize).max(0) as usize
     }
+    /// Puts a choice in at place `at` (0 is the top).
+    /// Example: `ui.combo1.items_insert(0, "Any");`
     pub fn items_insert(self, at: usize, s: &str) {
         let w = win::wide(s);
         send(self.0, 0x014A /* CB_INSERTSTRING */, at, w.as_ptr() as isize);
     }
+    /// Takes out the choice at place `at` (0 is the top).
+    /// Example: `ui.combo1.items_remove_at(0);`
     pub fn items_remove_at(self, at: usize) {
         send(self.0, 0x0144 /* CB_DELETESTRING */, at, 0);
     }
+    /// Takes out every choice.
+    /// Example: `ui.combo1.items_clear();`
     pub fn items_clear(self) {
         send(self.0, 0x014B /* CB_RESETCONTENT */, 0, 0);
     }
+    /// How many choices it has.
+    /// Example: `let n = ui.combo1.items_count();`
     pub fn items_count(self) -> usize {
         send(self.0, 0x0146 /* CB_GETCOUNT */, 0, 0).max(0) as usize
     }
+    /// The words of the choice at place `at` (0 is the top).
+    /// Example: `let first = ui.combo1.item(0);`
     pub fn item(self, at: usize) -> String {
         let n = send(self.0, 0x0149 /* CB_GETLBTEXTLEN */, at, 0);
         if n < 0 {
@@ -740,6 +878,8 @@ impl ComboBox {
         send(self.0, 0x0148 /* CB_GETLBTEXT */, at, buf.as_mut_ptr() as isize);
         String::from_utf16_lossy(&buf[..n as usize])
     }
+    /// All its choices.
+    /// Example: `for s in ui.combo1.items() { ... }`
     pub fn items(self) -> Vec<String> {
         (0..self.items_count()).map(|i| self.item(i)).collect()
     }
@@ -748,6 +888,8 @@ impl ComboBox {
         let i = win::combo_selected(self.0);
         (i >= 0).then_some(i as usize)
     }
+    /// Chooses the choice at a place; `None` chooses none.
+    /// Example: `ui.combo1.set_selected_index(Some(0));`
     pub fn set_selected_index(self, i: Option<usize>) {
         send(self.0, 0x014E /* CB_SETCURSEL */, i.unwrap_or(usize::MAX), 0);
     }
@@ -775,6 +917,8 @@ impl ComboBox {
     pub fn begin_update(self) {
         Control::suspend_layout(self)
     }
+    /// Shows the changes made after `begin_update()`, all at once.
+    /// Example: `ui.combo1.end_update();`
     pub fn end_update(self) {
         Control::resume_layout(self)
     }
@@ -800,18 +944,28 @@ impl ListView {
     pub fn set_icons(self, icons: &str) {
         crate::props::icons(self.0, icons);
     }
+    /// Takes out the row at place `at` (0 is the top).
+    /// Example: `ui.list1.items_remove_at(0);`
     pub fn items_remove_at(self, at: usize) {
         send(self.0, cc::LVM_DELETEITEM, at, 0);
     }
+    /// Takes out every row.
+    /// Example: `ui.list1.items_clear();`
     pub fn items_clear(self) {
         send(self.0, cc::LVM_DELETEALLITEMS, 0, 0);
     }
+    /// How many rows it has.
+    /// Example: `let n = ui.list1.items_count();`
     pub fn items_count(self) -> usize {
         send(self.0, cc::LVM_GETITEMCOUNT, 0, 0).max(0) as usize
     }
+    /// The words in row `row`, column `col` (both from 0).
+    /// Example: `let name = ui.list1.cell(0, 1);`
     pub fn cell(self, row: usize, col: usize) -> String {
         win::list_text(self.0, row, col as i32)
     }
+    /// Changes the words in row `row`, column `col` (both from 0).
+    /// Example: `ui.list1.set_cell(0, 1, "Somchai");`
     pub fn set_cell(self, row: usize, col: usize, text: &str) {
         let mut w = win::wide(text);
         let it = cc::LVITEMW { iSubItem: col as i32, pszText: windows::core::PWSTR(w.as_mut_ptr()), ..Default::default() };
@@ -822,6 +976,8 @@ impl ListView {
         let i = send(self.0, cc::LVM_GETNEXTITEM, usize::MAX, 2 /* LVNI_SELECTED */);
         (i >= 0).then_some(i as usize)
     }
+    /// The places of every chosen row.
+    /// Example: `for i in ui.list1.selected_indices() { ... }`
     pub fn selected_indices(self) -> Vec<usize> {
         let mut out = Vec::new();
         let mut i = -1isize;
@@ -837,6 +993,8 @@ impl ListView {
     pub fn select(self, at: usize) {
         win::list_select(self.0, at)
     }
+    /// Scrolls so the row at place `at` can be seen.
+    /// Example: `ui.list1.ensure_visible(ui.list1.items_count() - 1);`
     pub fn ensure_visible(self, at: usize) {
         send(self.0, cc::LVM_ENSUREVISIBLE, at, 0);
     }
@@ -844,13 +1002,19 @@ impl ListView {
     pub fn checked(self, at: usize) -> bool {
         (send(self.0, cc::LVM_GETITEMSTATE, at, 0xF000 /* LVIS_STATEIMAGEMASK */) >> 12) == 2
     }
+    /// Ticks or clears the tick box of the row at place `at`.
+    /// Example: `ui.list1.set_checked(0, true);`
     pub fn set_checked(self, at: usize, on: bool) {
         let it = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(0xF000), state: cc::LIST_VIEW_ITEM_STATE_FLAGS(if on { 2 } else { 1 } << 12), ..Default::default() };
         send(self.0, cc::LVM_SETITEMSTATE, at, &it as *const _ as isize);
     }
+    /// Stops drawing while many rows are added; `end_update()` shows them all at once.
+    /// Example: `ui.list1.begin_update();`
     pub fn begin_update(self) {
         Control::suspend_layout(self)
     }
+    /// Shows the rows added after `begin_update()`, all at once.
+    /// Example: `ui.list1.end_update();`
     pub fn end_update(self) {
         Control::resume_layout(self)
     }
@@ -861,12 +1025,18 @@ impl Grid {
     pub fn rows(self) -> Vec<Vec<String>> {
         crate::grid::grid_rows(self.0)
     }
+    /// Adds a row at the bottom, a cell for each column.
+    /// Example: `ui.grid1.rows_add(&["1", "Somchai", "90"]);`
     pub fn rows_add(self, cells: &[&str]) {
         crate::grid::grid_add(self.0, cells)
     }
+    /// Takes out every row.
+    /// Example: `ui.grid1.rows_clear();`
     pub fn rows_clear(self) {
         crate::grid::grid_clear(self.0)
     }
+    /// How many rows it has.
+    /// Example: `let n = ui.grid1.rows_count();`
     pub fn rows_count(self) -> usize {
         send(self.0, cc::LVM_GETITEMCOUNT, 0, 0).max(0) as usize
     }
@@ -874,12 +1044,18 @@ impl Grid {
     pub fn fill(self, rows: &[Vec<String>]) {
         crate::grid::grid_fill(self.0, rows)
     }
+    /// The words in row `row`, column `col` (both from 0).
+    /// Example: `let score = to_int(&ui.grid1.cell(0, 2));`
     pub fn cell(self, row: usize, col: usize) -> String {
         crate::grid::cell(self.0, row, col)
     }
+    /// Changes the words in row `row`, column `col` (both from 0).
+    /// Example: `ui.grid1.set_cell(0, 2, "95");`
     pub fn set_cell(self, row: usize, col: usize, text: &str) {
         crate::grid::set_cell(self.0, row, col, text)
     }
+    /// The place of the chosen row - `None` when none is chosen.
+    /// Example: `if let Some(r) = ui.grid1.selected_row() { ... }`
     pub fn selected_row(self) -> Option<usize> {
         let i = send(self.0, cc::LVM_GETNEXTITEM, usize::MAX, 2);
         (i >= 0).then_some(i as usize)
@@ -889,6 +1065,8 @@ impl Grid {
         let it = cc::LVITEMW { stateMask: cc::LVIS_SELECTED, state: cc::LIST_VIEW_ITEM_STATE_FLAGS(0), ..Default::default() };
         send(self.0, cc::LVM_SETITEMSTATE, usize::MAX, &it as *const _ as isize);
     }
+    /// `true`: its cells can be read, not changed.
+    /// Example: `ui.grid1.set_read_only(true);`
     pub fn set_read_only(self, on: bool) {
         crate::grid::set_read_only(self.0, on)
     }
@@ -904,6 +1082,8 @@ impl Grid {
     pub fn column(self, col: usize) -> crate::grid::Column {
         crate::grid::column(self.0, col)
     }
+    /// How column `col` (from 0) shows and takes its cells.
+    /// Example: `let mut c = ui.grid1.column(2); c.format = "n2".into(); ui.grid1.set_column(2, c);`
     pub fn set_column(self, col: usize, c: crate::grid::Column) {
         crate::grid::set_column(self.0, col, c)
     }
@@ -960,9 +1140,13 @@ impl TreeView {
     pub fn nodes_add(self, text: &str) -> Node {
         Node(win::tree_add(self.0, 0, text, -1, 0))
     }
+    /// Adds a node under `parent`; the new node, to add under in turn.
+    /// Example: `let fruit = ui.tree1.nodes_add("Fruit"); ui.tree1.nodes_add_under(fruit, "Mango");`
     pub fn nodes_add_under(self, parent: Node, text: &str) -> Node {
         Node(win::tree_add(self.0, parent.0, text, -1, 0))
     }
+    /// Takes out every node.
+    /// Example: `ui.tree1.nodes_clear();`
     pub fn nodes_clear(self) {
         win::tree_clear(self.0)
     }
@@ -971,9 +1155,13 @@ impl TreeView {
         win::tree_clear(self.0);
         win::tree_items(self.0, lines)
     }
+    /// Opens every node, so all are seen.
+    /// Example: `ui.tree1.expand_all();`
     pub fn expand_all(self) {
         crate::props::expand_all(self.0, true)
     }
+    /// Closes every node.
+    /// Example: `ui.tree1.collapse_all();`
     pub fn collapse_all(self) {
         crate::props::expand_all(self.0, false)
     }
@@ -982,6 +1170,8 @@ impl TreeView {
         let i = send(self.0, 0x110A /* TVM_GETNEXTITEM */, 9 /* TVGN_CARET */, 0);
         (i != 0).then_some(Node(i))
     }
+    /// Chooses a node.
+    /// Example: `ui.tree1.select(fruit);`
     pub fn select(self, n: Node) {
         send(self.0, 0x110B /* TVM_SELECTITEM */, 9, n.0);
     }
@@ -997,9 +1187,13 @@ impl TreeView {
     pub fn selected_text(self) -> Option<String> {
         self.selected_node().map(|n| self.node_text(n))
     }
+    /// Opens a node, showing the nodes under it.
+    /// Example: `ui.tree1.expand(fruit);`
     pub fn expand(self, n: Node) {
         send(self.0, 0x1102 /* TVM_EXPAND */, 2, n.0);
     }
+    /// Closes a node, hiding the nodes under it.
+    /// Example: `ui.tree1.collapse(fruit);`
     pub fn collapse(self, n: Node) {
         send(self.0, 0x1102, 1, n.0);
     }
@@ -1010,6 +1204,8 @@ impl DateTimePicker {
     pub fn value(self) -> (i32, i32, i32) {
         win::date_value(self.0)
     }
+    /// Sets the day it shows: year, month (1-12), day.
+    /// Example: `ui.date1.set_value(2026, 11, 23);`
     pub fn set_value(self, year: i32, month: i32, day: i32) {
         win::set_date(self.0, year, month, day)
     }
@@ -1020,6 +1216,8 @@ impl DateTimePicker {
 }
 
 impl NumericUpDown {
+    /// The number it shows.
+    /// Example: `let qty = ui.qty.value();`
     pub fn value(self) -> i32 {
         win::value(self.0)
     }
@@ -1044,24 +1242,34 @@ impl NumericUpDown {
     pub fn up_button(self) {
         self.set_value(self.value() + self.step())
     }
+    /// Takes one step off the number, as its down arrow does.
+    /// Example: `ui.qty.down_button();`
     pub fn down_button(self) {
         self.set_value(self.value() - self.step())
     }
 }
 
 impl TrackBar {
+    /// Where its handle is, as a number.
+    /// Example: `let volume = ui.volume.value();`
     pub fn value(self) -> i32 {
         win::value(self.0)
     }
+    /// Moves its handle to a number.
+    /// Example: `ui.volume.set_value(50);`
     pub fn set_value(self, v: i32) {
         win::set_value(self.0, v)
     }
 }
 
 impl ProgressBar {
+    /// How far it is filled, as a number.
+    /// Example: `let done = ui.progress1.value();`
     pub fn value(self) -> i32 {
         win::value(self.0)
     }
+    /// Fills it up to a number (0 to 100 unless set otherwise).
+    /// Example: `ui.progress1.set_value(40);`
     pub fn set_value(self, v: i32) {
         win::set_value(self.0, v)
     }
@@ -1073,6 +1281,8 @@ impl ProgressBar {
     pub fn increment(self, n: i32) {
         win::set_value(self.0, win::value(self.0) + n)
     }
+    /// `true`: a moving bar, for work whose end is not known.
+    /// Example: `ui.progress1.set_marquee(true);`
     pub fn set_marquee(self, on: bool) {
         crate::props::marquee(self.0, on)
     }
@@ -1083,12 +1293,16 @@ impl PictureBox {
     pub fn load(self, path: &str) {
         crate::picture::set_picture(self.0, path)
     }
+    /// How its picture fits: `"normal"` as it is, `"stretch"` to fill, `"center"`, `"zoom"` to fit and keep its shape.
+    /// Example: `ui.picture1.set_size_mode("zoom");`
     pub fn set_size_mode(self, mode: &str) {
         crate::picture::set_size_mode(self.0, mode)
     }
 }
 
 impl TabControl {
+    /// The place of the tab in front (0 is the first).
+    /// Example: `if ui.tabs1.selected_index() == 0 { ... }`
     pub fn selected_index(self) -> usize {
         crate::controls::tabs_selected(self.0)
     }
@@ -1143,19 +1357,27 @@ impl Timer {
     fn put(self, v: (u32, bool)) {
         INTERVALS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert((self.hwnd.0 as isize, self.id), v);
     }
+    /// Starts it: its Tick comes every `interval` milliseconds.
+    /// Example: `ui.timer1.start();`
     pub fn start(self) {
         let (ms, _) = self.get();
         self.put((ms, true));
         win::timer_start(self.hwnd, self.id, ms);
     }
+    /// Stops it: no more Tick.
+    /// Example: `ui.timer1.stop();`
     pub fn stop(self) {
         let (ms, _) = self.get();
         self.put((ms, false));
         win::timer_stop(self.hwnd, self.id);
     }
+    /// Whether it is running.
+    /// Example: `if ui.timer1.enabled() { ... }`
     pub fn enabled(self) -> bool {
         self.get().1
     }
+    /// `true` starts it, `false` stops it - as `start()` and `stop()`.
+    /// Example: `ui.timer1.set_enabled(false);`
     pub fn set_enabled(self, on: bool) {
         if on {
             self.start()
@@ -1163,6 +1385,8 @@ impl Timer {
             self.stop()
         }
     }
+    /// How many milliseconds between its Ticks (1000 is one second).
+    /// Example: `let ms = ui.timer1.interval();`
     pub fn interval(self) -> u32 {
         self.get().0
     }

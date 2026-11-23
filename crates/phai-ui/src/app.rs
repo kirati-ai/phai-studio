@@ -10,18 +10,25 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 
 pub use crate::convert::DateTime;
 
-/// The words on the clipboard; empty when it holds none - `Clipboard.GetText()`.
+/// The words on the clipboard (what Ctrl+C copied); empty when it holds none - as C#'s
+/// `Clipboard.GetText()`.
+///
+/// Example: `ui.notes.set_text(&clipboard_text());`
 pub fn clipboard_text() -> String {
     crate::grid::clipboard_words().unwrap_or_default()
 }
 
-/// Puts words on the clipboard - `Clipboard.SetText(text)`.
+/// Puts words on the clipboard, for Ctrl+V anywhere - as C#'s `Clipboard.SetText(text)`.
+///
+/// Example: `set_clipboard_text(&ui.result.text());`
 pub fn set_clipboard_text(text: &str) {
     crate::grid::put_on_clipboard(text);
 }
 
-/// A web address, a file or a folder opened as Windows opens it - `Process.Start(target)`:
-/// `open_with_windows("https://phai-studio.monrak.net")`, `open_with_windows("report.pdf")`.
+/// Opens a web address, a file or a folder as a double-click in Windows would - the browser,
+/// the PDF reader, Explorer - as C#'s `Process.Start(target)`.
+///
+/// Example: `open_with_windows("https://phai-studio.monrak.net");`
 pub fn open_with_windows(target: &str) {
     let w: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
     unsafe {
@@ -29,19 +36,26 @@ pub fn open_with_windows(target: &str) {
     }
 }
 
-/// The folder the program is in - `Application.StartupPath`: `app_folder().join("data.db")`.
+/// The folder the program is in - for files that go with it; as C#'s `Application.StartupPath`.
+///
+/// Example: `let db = app_folder().join("data.db");`
 pub fn app_folder() -> PathBuf {
     std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Ends the program once what it is doing now is done - `Application.Exit()`.
+/// Ends the program, once what it is doing now is done - as C#'s `Application.Exit()`.
+///
+/// Example: `if ui.confirm("Quit?") { exit_app(); }`
 pub fn exit_app() {
     unsafe {
         wm::PostQuitMessage(0);
     }
 }
 
-/// The local date and time now - `DateTime.Now`: `now().format("dd/MM/yyyy HH:mm")`.
+/// The date and time now, on this computer - as C#'s `DateTime.Now`. `.format(..)` writes it
+/// as you like; `bbbb` is the Buddhist year.
+///
+/// Example: `ui.clock.set_text(&now().format("dd/MM/bbbb HH:mm"));`
 pub fn now() -> DateTime {
     let t = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
     DateTime { year: t.wYear as i32, month: t.wMonth as u32, day: t.wDay as u32, hour: t.wHour as u32, minute: t.wMinute as u32, second: t.wSecond as u32, millisecond: t.wMilliseconds as u32 }

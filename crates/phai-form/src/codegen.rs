@@ -362,6 +362,8 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    pub toolbar: HWND,");
     }
     for c in &f.control {
+        // What the list beside `ui.` says of it: a beginner is shown where its methods are.
+        let _ = writeln!(w, "    /// The {} `{}` on this window: `ui.{}.` lists what it can do.", ctl_type(c.kind), c.id, c.id);
         let _ = writeln!(w, "    pub {}: phai_ui::ctl::{},", c.id, ctl_type(c.kind));
     }
     for c in f.control.iter().filter(|c| c.bind.is_some()) {
@@ -876,7 +878,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
 
     // the form's methods, as a WinForms Form's
-    let _ = writeln!(w, "    /// Closes the window, as the close box would - its FormClosing first.");
+    let _ = writeln!(w, "    /// Closes the window, as its close box would - its FormClosing comes first.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `ui.close();`");
     let _ = writeln!(w, "    pub fn close(&self) {{");
     let _ = writeln!(w, "        unsafe {{");
     let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(self.hwnd), wm::WM_CLOSE, WPARAM(0), LPARAM(0));");
@@ -941,14 +945,17 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    }}");
         let _ = writeln!(w);
     }
-    let _ = writeln!(w, "    /// Out of sight, still running; [`Self::show_window`] brings it back.");
+    let _ = writeln!(w, "    /// Hides the window; the program keeps running and `ui.show_window()` brings it back.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `ui.hide();`");
     let _ = writeln!(w, "    pub fn hide(&self) {{");
     let _ = writeln!(w, "        win::show(self.hwnd, false);");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
     if f.form.flag("start_hidden", false) {
-        let _ = writeln!(w, "    /// Shown: the first time as the form says (maximized or not), its Shown raised; again");
-        let _ = writeln!(w, "    /// after [`Self::hide`]. The form starts hidden (`start_hidden`).");
+        let _ = writeln!(w, "    /// Shows the window again after `ui.hide()`; the first time (the form starts hidden), as the form says, its Shown raised.");
+        let _ = writeln!(w, "    ///");
+        let _ = writeln!(w, "    /// Example: `ui.show_window();`");
         let _ = writeln!(w, "    pub fn show_window(&self) {{");
         let _ = writeln!(w, "        Self::first_shown(self.hwnd);");
         let _ = writeln!(w, "        win::show(self.hwnd, true);");
@@ -972,7 +979,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "    }}");
         let _ = writeln!(w);
     } else {
-        let _ = writeln!(w, "    /// Shown again after [`Self::hide`].");
+        let _ = writeln!(w, "    /// Shows the window again after `ui.hide()`.");
+        let _ = writeln!(w, "    ///");
+        let _ = writeln!(w, "    /// Example: `ui.show_window();`");
         let _ = writeln!(w, "    pub fn show_window(&self) {{");
         let _ = writeln!(w, "        win::show(self.hwnd, true);");
         let _ = writeln!(w, "    }}");
@@ -1004,64 +1013,88 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             let _ = writeln!(w);
         }
     }
-    let _ = writeln!(w, "    /// In front, taking the keys.");
+    let _ = writeln!(w, "    /// Brings the window to the front, the keyboard on it.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `ui.activate();`");
     let _ = writeln!(w, "    pub fn activate(&self) {{");
     let _ = writeln!(w, "        unsafe {{");
     let _ = writeln!(w, "            let _ = wm::SetForegroundWindow(self.hwnd);");
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// A notice or a question over this window - WinForms' MessageBox.Show:");
-    let _ = writeln!(w, "    /// `if ui.message_box(\"Delete it?\", \"Files\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`.");
+    let _ = writeln!(w, "    /// A message box with the buttons and the icon you choose, its title `caption`; the button");
+    let _ = writeln!(w, "    /// pressed comes back - DialogResult::Yes, No, Ok, Cancel... For a plain notice `ui.alert` is");
+    let _ = writeln!(w, "    /// shorter, for Yes or No `ui.confirm`.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `if ui.message_box(\"Delete it?\", \"Files\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes {{ ... }}`");
     let _ = writeln!(w, "    pub fn message_box(&self, text: &str, caption: &str, buttons: phai_ui::form::MessageBoxButtons, icon: phai_ui::form::MessageBoxIcon) -> phai_ui::form::DialogResult {{");
     let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// A notice with an OK button over this window, its title the window's - JavaScript's alert:");
-    let _ = writeln!(w, "    /// `ui.alert(\"Saved\")`.");
+    let _ = writeln!(w, "    /// Shows a message with an OK button and waits until it is pressed; the title is the");
+    let _ = writeln!(w, "    /// window's - as JavaScript's alert.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `ui.alert(\"Saved\");`");
     let _ = writeln!(w, "    pub fn alert(&self, text: &str) {{");
     let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// A question with Yes and No over this window, its title the window's - true for Yes, as");
-    let _ = writeln!(w, "    /// JavaScript's confirm: `if ui.confirm(\"Delete it?\") {{ ... }}`.");
+    let _ = writeln!(w, "    /// Asks a question with Yes and No buttons: `true` when Yes is pressed - as JavaScript's");
+    let _ = writeln!(w, "    /// confirm.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `if ui.confirm(\"Delete it?\") {{ ... }}`");
     let _ = writeln!(w, "    pub fn confirm(&self, text: &str) -> bool {{");
     let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// Words asked for in a small window over this one - JavaScript's prompt, VB's InputBox; `None`");
-    let _ = writeln!(w, "    /// for Cancel: `if let Some(name) = ui.prompt(\"Your name?\", \"\") {{ ... }}`.");
+    let _ = writeln!(w, "    /// Asks for words in a small window with a box to type in: what was typed, or `None` when");
+    let _ = writeln!(w, "    /// Cancel is pressed; `default` is in the box at first - as JavaScript's prompt.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `if let Some(name) = ui.prompt(\"Your name?\", \"\") {{ ui.alert(&name); }}`");
     let _ = writeln!(w, "    pub fn prompt(&self, prompt: &str, default: &str) -> Option<String> {{");
     let _ = writeln!(w, "        phai_ui::dialogs::ask_fields(Some(self.hwnd), &self.title(), &[phai_ui::dialogs::Field::Text(prompt, default)]).and_then(|a| a.into_iter().next())");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// A file to open, chosen - OpenFileDialog; `None` for Cancel. The filter as WinForms writes it,");
-    let _ = writeln!(w, "    /// empty for every file: `ui.open_file(\"Text files|*.txt\")`.");
+    let _ = writeln!(w, "    /// Lets the user choose a file to open: its path, or `None` when Cancel is pressed. The");
+    let _ = writeln!(w, "    /// filter is name|pattern - empty for every file.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `if let Some(path) = ui.open_file(\"Text files|*.txt\") {{ ... }}`");
     let _ = writeln!(w, "    pub fn open_file(&self, filter: &str) -> Option<std::path::PathBuf> {{");
     let _ = writeln!(w, "        phai_ui::components::OpenFileDialog::new(self.hwnd, \"\", filter, \"\", \"\", false).show_dialog()");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// A file to save to, chosen - SaveFileDialog; `None` for Cancel: `ui.save_file(\"Text files|*.txt\", \"notes.txt\")`.");
+    let _ = writeln!(w, "    /// Lets the user choose where to save a file: its path, or `None` when Cancel is pressed;");
+    let _ = writeln!(w, "    /// `name` is the file name offered at first.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `if let Some(path) = ui.save_file(\"Text files|*.txt\", \"notes.txt\") {{ ... }}`");
     let _ = writeln!(w, "    pub fn save_file(&self, filter: &str, name: &str) -> Option<std::path::PathBuf> {{");
     let _ = writeln!(w, "        phai_ui::components::SaveFileDialog::new(self.hwnd, \"\", filter, \"\", \"\").show_dialog_named(name)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// A folder, chosen - FolderBrowserDialog; `None` for Cancel.");
+    let _ = writeln!(w, "    /// Lets the user choose a folder: its path, or `None` when Cancel is pressed.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `if let Some(folder) = ui.choose_folder() {{ ... }}`");
     let _ = writeln!(w, "    pub fn choose_folder(&self) -> Option<std::path::PathBuf> {{");
     let _ = writeln!(w, "        phai_ui::components::FolderBrowserDialog::new(self.hwnd, \"\", \"\").show_dialog()");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// Moved to the middle of the screen it is on.");
+    let _ = writeln!(w, "    /// Moves the window to the middle of the screen.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `ui.center_to_screen();`");
     let _ = writeln!(w, "    pub fn center_to_screen(&self) {{");
     let _ = writeln!(w, "        win::center_on_screen(self.hwnd);");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// The words in its title bar.");
+    let _ = writeln!(w, "    /// The words in the window's title bar.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `let t = ui.title();`");
     let _ = writeln!(w, "    pub fn title(&self) -> String {{");
     let _ = writeln!(w, "        win::text_of(self.hwnd)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// New words in its title bar.");
+    let _ = writeln!(w, "    /// Changes the words in the window's title bar.");
+    let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// Example: `ui.set_title(\"Score book - 2026\");`");
     let _ = writeln!(w, "    pub fn set_title(&self, s: &str) {{");
     let _ = writeln!(w, "        win::set_text(self.hwnd, s);");
     let _ = writeln!(w, "    }}");

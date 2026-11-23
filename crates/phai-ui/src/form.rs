@@ -9,7 +9,9 @@ use std::sync::Mutex;
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
-/// What a dialog answers - the button that closed it, or `Cancel` for its close box.
+/// The button that closed a dialog or a message box - `Cancel` for its close box.
+///
+/// Example: `if ui.message_box("Save?", "Notes", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { ... }`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum DialogResult {
     #[default]
@@ -39,24 +41,41 @@ impl DialogResult {
     }
 }
 
-/// The buttons of a [`message_box`] - WinForms' MessageBoxButtons.
+/// The buttons a message box shows: `Ok`, `OkCancel`, `YesNo`, `YesNoCancel`, `RetryCancel`,
+/// `AbortRetryIgnore` - as WinForms' MessageBoxButtons.
+///
+/// Example: `ui.message_box("Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question)`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageBoxButtons {
+    /// One OK button - for news; it answers `DialogResult::Ok`.
     Ok,
+    /// OK and Cancel - go ahead or not; `DialogResult::Ok` or `Cancel`.
     OkCancel,
+    /// Yes and No - a question; `DialogResult::Yes` or `No`.
     YesNo,
+    /// Yes, No and Cancel - such as "Save the changes?"; `Yes`, `No` or `Cancel`.
     YesNoCancel,
+    /// Retry and Cancel - after something failed; `DialogResult::Retry` or `Cancel`.
     RetryCancel,
+    /// Abort, Retry and Ignore; `DialogResult::Abort`, `Retry` or `Ignore`.
     AbortRetryIgnore,
 }
 
-/// The picture of a [`message_box`] - WinForms' MessageBoxIcon.
+/// The picture a message box shows: `Information` (i), `Warning` (!), `Error` (x), `Question` (?),
+/// or `None` - as WinForms' MessageBoxIcon.
+///
+/// Example: `ui.message_box("Disk is full", "Save", MessageBoxButtons::Ok, MessageBoxIcon::Error)`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageBoxIcon {
+    /// No picture.
     None,
+    /// A blue (i) - news: "Saved".
     Information,
+    /// A yellow (!) - take care: "The file is large".
     Warning,
+    /// A red (x) - something failed: "Cannot save".
     Error,
+    /// A blue (?) - a question: "Delete it?".
     Question,
 }
 

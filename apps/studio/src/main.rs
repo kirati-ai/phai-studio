@@ -3553,6 +3553,8 @@ impl Studio {
                 } else if wait.is_some_and(|w| ticks >= w) {
                     let (names, signing) = phai_editor::view::list_labels(h);
                     println!("after {ticks}s: list [{}], Parameter Info {signing}, wavy lines: {:?}", names.join(", "), phai_editor::view::mark_messages(h));
+                    println!("chosen's guide: {:?}", phai_editor::view::list_doc(h));
+                    println!("list and guide: {:?}", phai_editor::view::list_and_guide(h));
                     std::process::exit(0);
                 } else if wait.is_some() {
                     if std::env::var_os("PHAI_ARG_SLOW").is_some() {
