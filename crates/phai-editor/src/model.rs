@@ -884,6 +884,22 @@ impl Model {
         })
     }
 
+    /// C# and VB write a type's member with `.` - `MessageBoxButtons.YesNo` - where Rust writes
+    /// `::`: true when the word before the caret is a type's name (CamelCase: a capital first and
+    /// a small letter in it, not a CONSTANT) standing alone, outside a comment or a string. The
+    /// `.` about to be typed is then `::`, and the list of what the type has.
+    pub fn dot_after_type(&self) -> bool {
+        let (line, col) = self.buf.position(self.caret);
+        let before = &self.buf.line(line)[..col];
+        if before.contains("//") || unescaped_quotes(before) % 2 == 1 {
+            return false;
+        }
+        let start = before.rfind(|c: char| !(c.is_alphanumeric() || c == '_')).map(|i| i + 1).unwrap_or(0);
+        let word = &before[start..];
+        let lead = &before[..start];
+        word.starts_with(|c: char| c.is_ascii_uppercase()) && word.chars().any(|c| c.is_lowercase()) && word != "Self" && !lead.ends_with('.') && !lead.ends_with('\'')
+    }
+
     /// Whether the caret is where a call's next argument goes - just after its `(`, or after a
     /// `,` and at most one space - outside a comment or a string: there the list of what fits is
     /// shown at once, as Visual Studio does, with no letter typed. Not in a function's own
@@ -1712,6 +1728,26 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(!at_end("    // ui:"), "in a comment");
         assert!(!at_end("    let s = \"ui:"), "in a string");
         assert!(!at_end("    crate::ui:"), "a module's");
+    }
+
+    #[test]
+    fn a_types_dot_is_rusts_colons() {
+        let at_end = |t: &str| {
+            let mut m = Model::new(t);
+            m.caret = t.len();
+            m.anchor = m.caret;
+            m.dot_after_type()
+        };
+        assert!(at_end("    ui.alert(\"ok\", MessageBoxButtons"));
+        assert!(at_end("    let c = Color"));
+        assert!(at_end("DialogResult"));
+        assert!(!at_end("    ui"), "a variable");
+        assert!(!at_end("    MAX"), "a constant");
+        assert!(!at_end("    self.Name"), "a field, though oddly named");
+        assert!(!at_end("    Self"), "Self.x is no Rust, Self:: is typed as it is");
+        assert!(!at_end("    // see Color"), "in a comment");
+        assert!(!at_end("    let s = \"Color"), "in a string");
+        assert!(!at_end("    let x = 1"), "a number");
     }
 
     #[test]

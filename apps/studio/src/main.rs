@@ -638,6 +638,8 @@ pub struct Studio {
     pushed_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
     pulled_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
     pull_ids: std::collections::HashMap<PathBuf, i64>,
+    /// The id of the last list asked for: an older one's answer is not shown.
+    last_complete: i64,
     /// The last code coverage found: each file's lines and counts.
     coverage: Vec<coverage::FileCoverage>,
     /// What the Memory window shows: an address or a variable.
@@ -3225,8 +3227,9 @@ impl Studio {
                 }
             }
             Ask::Complete(id) => {
-                // Asked again since (typing ran ahead of the server): that answer will come.
-                if self.asked.values().any(|(_, a)| matches!(a, Ask::Complete(newer) if *newer > id)) {
+                // Asked again since (typing ran ahead of the server; answers may come out of order):
+                // only the last ask's answer is shown.
+                if id != self.last_complete {
                     return;
                 }
                 phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300));
@@ -4401,6 +4404,7 @@ impl Studio {
         if let Some(l) = self.lsp_for(&path) {
             let id = l.completion(&path, pos.0, pos.1);
             self.asked.insert(id, (h, Ask::Complete(id)));
+            self.last_complete = id;
         }
     }
 
@@ -10038,6 +10042,7 @@ fn main() {
             pushed_diagnostics: Default::default(),
             pulled_diagnostics: Default::default(),
             pull_ids: Default::default(),
+            last_complete: 0,
             frames: vec![],
             servers: None,
             watches: vec![],

@@ -2647,6 +2647,10 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         v.model.backspace();
                         s = ".".to_string();
                     }
+                    // `MessageBoxButtons.` is `MessageBoxButtons::`, as C# hands type it.
+                    if s == "." && v.lang == Language::Rust && v.model.caret == v.model.anchor && v.model.dot_after_type() {
+                        s = "::".to_string();
+                    }
                     let before_colon = {
                         let (line, col) = v.model.buf.position(v.model.caret);
                         v.model.buf.line(line)[..col].ends_with(':')
@@ -2673,7 +2677,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         }
                     }
                     let Some(v) = view(h) else { return LRESULT(0) };
-                    if s == "." || (s == ":" && before_colon) {
+                    if s == "." || s == "::" || (s == ":" && before_colon) {
                         v.list_at = word_before(v).0;
                         notify(h, COMPLETE);
                     } else if v.list.is_some() {
