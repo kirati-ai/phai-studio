@@ -364,6 +364,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for c in &f.control {
         // What the list beside `ui.` says of it: a beginner is shown where its methods are.
         let _ = writeln!(w, "    /// The {} `{}` on this window: `ui.{}.` lists what it can do.", ctl_type(c.kind), c.id, c.id);
+        let _ = writeln!(w, "    /// ไทย: {} ชื่อ {} บนหน้าต่างนี้ - พิมพ์ ui.{}. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง", ctl_type(c.kind), c.id, c.id);
         let _ = writeln!(w, "    pub {}: phai_ui::ctl::{},", c.id, ctl_type(c.kind));
     }
     for c in f.control.iter().filter(|c| c.bind.is_some()) {
@@ -880,6 +881,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     // the form's methods, as a WinForms Form's
     let _ = writeln!(w, "    /// Closes the window, as its close box would - its FormClosing comes first.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ปิดหน้าต่าง เหมือนกดปุ่มปิด - FormClosing ทำงานก่อน");
     let _ = writeln!(w, "    /// Example: `ui.close();`");
     let _ = writeln!(w, "    pub fn close(&self) {{");
     let _ = writeln!(w, "        unsafe {{");
@@ -947,6 +949,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let _ = writeln!(w, "    /// Hides the window; the program keeps running and `ui.show_window()` brings it back.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ซ่อนหน้าต่าง โปรแกรมยังทำงานอยู่ ui.show_window() เรียกกลับมาได้");
     let _ = writeln!(w, "    /// Example: `ui.hide();`");
     let _ = writeln!(w, "    pub fn hide(&self) {{");
     let _ = writeln!(w, "        win::show(self.hwnd, false);");
@@ -955,6 +958,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     if f.form.flag("start_hidden", false) {
         let _ = writeln!(w, "    /// Shows the window again after `ui.hide()`; the first time (the form starts hidden), as the form says, its Shown raised.");
         let _ = writeln!(w, "    ///");
+        let _ = writeln!(w, "    /// ไทย: แสดงหน้าต่างอีกครั้งหลัง ui.hide() - ครั้งแรก (ฟอร์มเริ่มแบบซ่อน) แสดงตามที่ฟอร์มตั้งไว้");
         let _ = writeln!(w, "    /// Example: `ui.show_window();`");
         let _ = writeln!(w, "    pub fn show_window(&self) {{");
         let _ = writeln!(w, "        Self::first_shown(self.hwnd);");
@@ -981,6 +985,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     } else {
         let _ = writeln!(w, "    /// Shows the window again after `ui.hide()`.");
         let _ = writeln!(w, "    ///");
+        let _ = writeln!(w, "    /// ไทย: แสดงหน้าต่างอีกครั้งหลัง ui.hide()");
         let _ = writeln!(w, "    /// Example: `ui.show_window();`");
         let _ = writeln!(w, "    pub fn show_window(&self) {{");
         let _ = writeln!(w, "        win::show(self.hwnd, true);");
@@ -1015,6 +1020,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     }
     let _ = writeln!(w, "    /// Brings the window to the front, the keyboard on it.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ยกหน้าต่างขึ้นมาข้างหน้า ให้แป้นพิมพ์อยู่ที่มัน");
     let _ = writeln!(w, "    /// Example: `ui.activate();`");
     let _ = writeln!(w, "    pub fn activate(&self) {{");
     let _ = writeln!(w, "        unsafe {{");
@@ -1026,6 +1032,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// pressed comes back - DialogResult::Yes, No, Ok, Cancel... For a plain notice `ui.alert` is");
     let _ = writeln!(w, "    /// shorter, for Yes or No `ui.confirm`.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: กล่องข้อความที่เลือกปุ่มและไอคอนเองได้ หัวเรื่องคือ caption ได้ปุ่มที่ถูกกดกลับมา (DialogResult::Yes, No, Ok, Cancel...) - แค่แจ้งเฉย ๆ ใช้ ui.alert สั้นกว่า ถามใช่/ไม่ใช่ใช้ ui.confirm");
     let _ = writeln!(w, "    /// Example: `if ui.message_box(\"Delete it?\", \"Files\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes {{ ... }}`");
     let _ = writeln!(w, "    pub fn message_box(&self, text: &str, caption: &str, buttons: phai_ui::form::MessageBoxButtons, icon: phai_ui::form::MessageBoxIcon) -> phai_ui::form::DialogResult {{");
     let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)");
@@ -1034,6 +1041,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// Shows a message with an OK button and waits until it is pressed; the title is the");
     let _ = writeln!(w, "    /// window's - as JavaScript's alert.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: แสดงข้อความพร้อมปุ่ม OK แล้วรอจนกด หัวเรื่องเป็นชื่อหน้าต่าง - เหมือน alert ของ JavaScript");
     let _ = writeln!(w, "    /// Example: `ui.alert(\"Saved\");`");
     let _ = writeln!(w, "    pub fn alert(&self, text: &str) {{");
     let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);");
@@ -1042,6 +1050,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// Asks a question with Yes and No buttons: `true` when Yes is pressed - as JavaScript's");
     let _ = writeln!(w, "    /// confirm.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ถามคำถามที่มีปุ่ม Yes กับ No ได้ true เมื่อกด Yes - เหมือน confirm ของ JavaScript");
     let _ = writeln!(w, "    /// Example: `if ui.confirm(\"Delete it?\") {{ ... }}`");
     let _ = writeln!(w, "    pub fn confirm(&self, text: &str) -> bool {{");
     let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes");
@@ -1050,6 +1059,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// Asks for words in a small window with a box to type in: what was typed, or `None` when");
     let _ = writeln!(w, "    /// Cancel is pressed; `default` is in the box at first - as JavaScript's prompt.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ถามให้พิมพ์ในหน้าต่างเล็ก ได้สิ่งที่พิมพ์ หรือ None เมื่อกด Cancel - default คือคำที่ใส่ไว้ให้ก่อน เหมือน prompt ของ JavaScript");
     let _ = writeln!(w, "    /// Example: `if let Some(name) = ui.prompt(\"Your name?\", \"\") {{ ui.alert(&name); }}`");
     let _ = writeln!(w, "    pub fn prompt(&self, prompt: &str, default: &str) -> Option<String> {{");
     let _ = writeln!(w, "        phai_ui::dialogs::ask_fields(Some(self.hwnd), &self.title(), &[phai_ui::dialogs::Field::Text(prompt, default)]).and_then(|a| a.into_iter().next())");
@@ -1058,6 +1068,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// Lets the user choose a file to open: its path, or `None` when Cancel is pressed. The");
     let _ = writeln!(w, "    /// filter is name|pattern - empty for every file.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ให้ผู้ใช้เลือกไฟล์ที่จะเปิด ได้ที่อยู่ไฟล์ หรือ None เมื่อกด Cancel - filter เขียนแบบ ชื่อ|รูปแบบ ว่างไว้คือทุกไฟล์");
     let _ = writeln!(w, "    /// Example: `if let Some(path) = ui.open_file(\"Text files|*.txt\") {{ ... }}`");
     let _ = writeln!(w, "    pub fn open_file(&self, filter: &str) -> Option<std::path::PathBuf> {{");
     let _ = writeln!(w, "        phai_ui::components::OpenFileDialog::new(self.hwnd, \"\", filter, \"\", \"\", false).show_dialog()");
@@ -1066,6 +1077,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// Lets the user choose where to save a file: its path, or `None` when Cancel is pressed;");
     let _ = writeln!(w, "    /// `name` is the file name offered at first.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ให้ผู้ใช้เลือกว่าจะบันทึกไฟล์ที่ไหน ได้ที่อยู่ไฟล์ หรือ None เมื่อกด Cancel - name คือชื่อไฟล์ที่เสนอให้ก่อน");
     let _ = writeln!(w, "    /// Example: `if let Some(path) = ui.save_file(\"Text files|*.txt\", \"notes.txt\") {{ ... }}`");
     let _ = writeln!(w, "    pub fn save_file(&self, filter: &str, name: &str) -> Option<std::path::PathBuf> {{");
     let _ = writeln!(w, "        phai_ui::components::SaveFileDialog::new(self.hwnd, \"\", filter, \"\", \"\").show_dialog_named(name)");
@@ -1073,6 +1085,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// Lets the user choose a folder: its path, or `None` when Cancel is pressed.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ให้ผู้ใช้เลือกโฟลเดอร์ ได้ที่อยู่โฟลเดอร์ หรือ None เมื่อกด Cancel");
     let _ = writeln!(w, "    /// Example: `if let Some(folder) = ui.choose_folder() {{ ... }}`");
     let _ = writeln!(w, "    pub fn choose_folder(&self) -> Option<std::path::PathBuf> {{");
     let _ = writeln!(w, "        phai_ui::components::FolderBrowserDialog::new(self.hwnd, \"\", \"\").show_dialog()");
@@ -1080,6 +1093,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// Moves the window to the middle of the screen.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ย้ายหน้าต่างไปกลางจอ");
     let _ = writeln!(w, "    /// Example: `ui.center_to_screen();`");
     let _ = writeln!(w, "    pub fn center_to_screen(&self) {{");
     let _ = writeln!(w, "        win::center_on_screen(self.hwnd);");
@@ -1087,6 +1101,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// The words in the window's title bar.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: ข้อความบนแถบชื่อหน้าต่าง");
     let _ = writeln!(w, "    /// Example: `let t = ui.title();`");
     let _ = writeln!(w, "    pub fn title(&self) -> String {{");
     let _ = writeln!(w, "        win::text_of(self.hwnd)");
@@ -1094,6 +1109,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w);
     let _ = writeln!(w, "    /// Changes the words in the window's title bar.");
     let _ = writeln!(w, "    ///");
+    let _ = writeln!(w, "    /// ไทย: เปลี่ยนข้อความบนแถบชื่อหน้าต่าง");
     let _ = writeln!(w, "    /// Example: `ui.set_title(\"Score book - 2026\");`");
     let _ = writeln!(w, "    pub fn set_title(&self, s: &str) {{");
     let _ = writeln!(w, "        win::set_text(self.hwnd, s);");

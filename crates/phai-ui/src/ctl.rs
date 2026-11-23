@@ -182,126 +182,151 @@ macro_rules! control {
                 self.0
             }
             /// The words it shows - a text box's typing, a button's or a label's caption.
+            /// ไทย: ข้อความที่มันแสดง - สิ่งที่พิมพ์ในช่องพิมพ์ หรือข้อความบนปุ่ม/ป้าย
             /// Example: `let name = ui.name_box.text();`
             pub fn text(self) -> String {
                 Control::text(self)
             }
             /// Changes the words it shows.
+            /// ไทย: เปลี่ยนข้อความที่มันแสดง
             /// Example: `ui.ok.set_text("Save");`
             pub fn set_text(self, s: &str) {
                 Control::set_text(self, s)
             }
             /// Whether it can be used now - `false` when it is greyed out.
+            /// ไทย: ใช้งานได้อยู่ไหม - false เมื่อเป็นสีเทา
             /// Example: `if ui.ok.enabled() { ... }`
             pub fn enabled(self) -> bool {
                 Control::enabled(self)
             }
             /// `true`: it can be used; `false`: greyed out, it cannot be clicked or typed in.
+            /// ไทย: true ใช้งานได้ · false เป็นสีเทา กดหรือพิมพ์ไม่ได้
             /// Example: `ui.ok.set_enabled(false);`
             pub fn set_enabled(self, on: bool) {
                 Control::set_enabled(self, on)
             }
             /// Whether it can be seen.
+            /// ไทย: มองเห็นอยู่ไหม
             /// Example: `if ui.panel1.visible() { ... }`
             pub fn visible(self) -> bool {
                 Control::visible(self)
             }
             /// `true` shows it, `false` hides it - the same as `show()` and `hide()`.
+            /// ไทย: true แสดง · false ซ่อน - เหมือน show() กับ hide()
             /// Example: `ui.panel1.set_visible(false);`
             pub fn set_visible(self, on: bool) {
                 Control::set_visible(self, on)
             }
             /// Shows it again after `hide()`.
+            /// ไทย: แสดงอีกครั้งหลัง hide()
             /// Example: `ui.panel1.show();`
             pub fn show(self) {
                 Control::show(self)
             }
             /// Hides it; it is still there, and `show()` brings it back.
+            /// ไทย: ซ่อนไว้ ยังอยู่ที่เดิม show() เรียกกลับมาได้
             /// Example: `ui.panel1.hide();`
             pub fn hide(self) {
                 Control::hide(self)
             }
             /// Puts the keyboard on it: what is typed next goes to it.
+            /// ไทย: ให้แป้นพิมพ์มาที่มัน สิ่งที่พิมพ์ต่อไปจะเข้าที่มัน
             /// Example: `ui.name_box.focus();`
             pub fn focus(self) {
                 Control::focus(self)
             }
             /// Whether the keyboard is on it now.
+            /// ไทย: แป้นพิมพ์อยู่ที่มันไหม
             /// Example: `if ui.name_box.focused() { ... }`
             pub fn focused(self) -> bool {
                 Control::focused(self)
             }
             /// Puts it on top of the controls it overlaps.
+            /// ไทย: ยกขึ้นไปอยู่บนสุด เหนือ control ที่ซ้อนกัน
             /// Example: `ui.panel1.bring_to_front();`
             pub fn bring_to_front(self) {
                 Control::bring_to_front(self)
             }
             /// Puts it behind the controls it overlaps.
+            /// ไทย: ส่งไปอยู่ล่างสุด ใต้ control ที่ซ้อนกัน
             /// Example: `ui.panel1.send_to_back();`
             pub fn send_to_back(self) {
                 Control::send_to_back(self)
             }
             /// Draws it again now - after changing what its Paint draws.
+            /// ไทย: วาดใหม่ทันที - หลังเปลี่ยนสิ่งที่ Paint วาด
             /// Example: `ui.picture1.refresh();`
             pub fn refresh(self) {
                 Control::refresh(self)
             }
             /// Asks for it to be drawn again when Windows is free - lighter than `refresh()`.
+            /// ไทย: ขอให้วาดใหม่เมื่อ Windows ว่าง - เบากว่า refresh()
             /// Example: `ui.picture1.invalidate();`
             pub fn invalidate(self) {
                 Control::invalidate(self)
             }
             /// Where it is on the window and how big: `left`, `top`, `right`, `bottom`.
+            /// ไทย: ตำแหน่งและขนาดบนหน้าต่าง: left, top, right, bottom
             /// Example: `let r = ui.ok.bounds(); let width = r.right - r.left;`
             pub fn bounds(self) -> RECT {
                 Control::bounds(self)
             }
             /// Its width and height inside its border.
+            /// ไทย: ความกว้างและความสูงด้านใน (ไม่รวมขอบ)
             /// Example: `let (w, h) = ui.picture1.client_size();`
             pub fn client_size(self) -> (i32, i32) {
                 Control::client_size(self)
             }
             /// Moves it and sets its size: left, top, width, height.
+            /// ไทย: ย้ายและเปลี่ยนขนาด: ซ้าย, บน, กว้าง, สูง
             /// Example: `ui.ok.set_bounds(10, 10, 80, 28);`
             pub fn set_bounds(self, x: i32, y: i32, w: i32, h: i32) {
                 Control::set_bounds(self, x, y, w, h)
             }
             /// A point on it, as a point on the screen.
+            /// ไทย: แปลงจุดบน control เป็นจุดบนจอ
             /// Example: `let (sx, sy) = ui.ok.point_to_screen(0, 0);`
             pub fn point_to_screen(self, x: i32, y: i32) -> (i32, i32) {
                 Control::point_to_screen(self, x, y)
             }
             /// A point on the screen, as a point on it.
+            /// ไทย: แปลงจุดบนจอเป็นจุดบน control
             /// Example: `let (x, y) = ui.panel1.point_to_client(sx, sy);`
             pub fn point_to_client(self, x: i32, y: i32) -> (i32, i32) {
                 Control::point_to_client(self, x, y)
             }
             /// The window (form) it is on.
+            /// ไทย: หน้าต่าง (ฟอร์ม) ที่มันอยู่
             /// Example: `let form = ui.ok.find_form();`
             pub fn find_form(self) -> HWND {
                 Control::find_form(self)
             }
             /// Stops arranging its controls while many are changed at once; `resume_layout()` after.
+            /// ไทย: หยุดจัดตำแหน่งชั่วคราว ระหว่างเปลี่ยนหลายอย่างพร้อมกัน แล้วค่อย resume_layout()
             /// Example: `ui.panel1.suspend_layout();`
             pub fn suspend_layout(self) {
                 Control::suspend_layout(self)
             }
             /// Arranges its controls again after `suspend_layout()`.
+            /// ไทย: กลับมาจัดตำแหน่งต่อ หลัง suspend_layout()
             /// Example: `ui.panel1.resume_layout();`
             pub fn resume_layout(self) {
                 Control::resume_layout(self)
             }
             /// The small words shown when the mouse rests on it.
+            /// ไทย: ข้อความเล็ก ๆ ที่ขึ้นเมื่อชี้เมาส์ค้างไว้
             /// Example: `ui.ok.set_tooltip("Saves the score");`
             pub fn set_tooltip(self, text: &str) {
                 Control::set_tooltip(self, text)
             }
             /// Starts dragging these words out of it, to drop somewhere else; `true` when they were dropped.
+            /// ไทย: เริ่มลากข้อความนี้ออกไปวางที่อื่น ได้ true เมื่อวางสำเร็จ
             /// Example: `ui.list1.do_drag_drop(&ui.list1.text());`
             pub fn do_drag_drop(self, text: &str) -> bool {
                 Control::do_drag_drop(self, text)
             }
             /// The mouse pointer's shape over it: `"hand"`, `"wait"`, `"ibeam"`, `"arrow"`, `"cross"`.
+            /// ไทย: รูปเมาส์เมื่อชี้มัน: "hand" มือ, "wait" รอ, "ibeam" พิมพ์, "arrow" ลูกศร, "cross" กากบาท
             /// Example: `ui.link1.set_cursor("hand");`
             pub fn set_cursor(self, name: &str) {
                 Control::set_cursor(self, name)
@@ -445,36 +470,43 @@ impl ListBox {
         crate::extra::list_box_add(self.0, s)
     }
     /// Puts a line in at place `at` (0 is the top); the lines below move down.
+    /// ไทย: แทรกบรรทัดที่ตำแหน่ง at (บนสุดคือ 0) บรรทัดข้างล่างเลื่อนลง
     /// Example: `ui.list1.items_insert(0, "First");`
     pub fn items_insert(self, at: usize, s: &str) {
         crate::extra::list_box_insert(self.0, at, s)
     }
     /// Takes out the line at place `i` (0 is the top).
+    /// ไทย: เอาบรรทัดที่ตำแหน่ง i ออก (บนสุดคือ 0)
     /// Example: `ui.list1.items_remove_at(0);`
     pub fn items_remove_at(self, i: usize) {
         crate::extra::list_box_remove_at(self.0, i)
     }
     /// Takes out every line.
+    /// ไทย: ลบทุกบรรทัด
     /// Example: `ui.list1.items_clear();`
     pub fn items_clear(self) {
         crate::extra::list_box_clear(self.0)
     }
     /// How many lines it has.
+    /// ไทย: มีกี่บรรทัด
     /// Example: `let n = ui.list1.items_count();`
     pub fn items_count(self) -> usize {
         crate::extra::list_box_count(self.0)
     }
     /// The words of the line at place `i` (0 is the top).
+    /// ไทย: ข้อความของบรรทัดที่ตำแหน่ง i (บนสุดคือ 0)
     /// Example: `let first = ui.list1.item(0);`
     pub fn item(self, i: usize) -> String {
         crate::extra::list_box_item(self.0, i)
     }
     /// The place of the chosen line - `None` when none is chosen.
+    /// ไทย: ตำแหน่งบรรทัดที่เลือกอยู่ - None เมื่อไม่ได้เลือก
     /// Example: `if let Some(i) = ui.list1.selected_index() { let s = ui.list1.item(i); }`
     pub fn selected_index(self) -> Option<usize> {
         crate::extra::list_box_selected(self.0)
     }
     /// Chooses the line at a place; `None` chooses none.
+    /// ไทย: เลือกบรรทัดที่ตำแหน่งนี้ - None คือไม่เลือกเลย
     /// Example: `ui.list1.set_selected_index(Some(0));`
     pub fn set_selected_index(self, i: Option<usize>) {
         crate::extra::list_box_select(self.0, i)
@@ -491,31 +523,37 @@ impl ListBox {
 
 impl CheckedListBox {
     /// Adds a line with a tick box at the end.
+    /// ไทย: เพิ่มบรรทัดที่มีช่องติ๊กต่อท้าย
     /// Example: `ui.checks1.items_add("Milk");`
     pub fn items_add(self, s: &str) {
         ListView(self.0).items_add(&[s]);
     }
     /// Takes out every line.
+    /// ไทย: ลบทุกบรรทัด
     /// Example: `ui.checks1.items_clear();`
     pub fn items_clear(self) {
         ListView(self.0).items_clear()
     }
     /// How many lines it has.
+    /// ไทย: มีกี่บรรทัด
     /// Example: `let n = ui.checks1.items_count();`
     pub fn items_count(self) -> usize {
         ListView(self.0).items_count()
     }
     /// The words of the line at place `i` (0 is the top).
+    /// ไทย: ข้อความของบรรทัดที่ตำแหน่ง i (บนสุดคือ 0)
     /// Example: `let s = ui.checks1.item(0);`
     pub fn item(self, i: usize) -> String {
         ListView(self.0).cell(i, 0)
     }
     /// Whether the line at place `i` is ticked.
+    /// ไทย: บรรทัดที่ตำแหน่ง i ติ๊กอยู่ไหม
     /// Example: `if ui.checks1.checked(0) { ... }`
     pub fn checked(self, i: usize) -> bool {
         crate::extra::checked_list_checked(self.0, i)
     }
     /// Ticks (`true`) or clears (`false`) the line at place `i`.
+    /// ไทย: ติ๊ก (true) หรือเอาติ๊กออก (false) ที่บรรทัดตำแหน่ง i
     /// Example: `ui.checks1.set_checked(0, true);`
     pub fn set_checked(self, i: usize, on: bool) {
         crate::extra::checked_list_set_checked(self.0, i, on)
@@ -525,6 +563,7 @@ impl CheckedListBox {
         (0..self.items_count()).filter(|i| self.checked(*i)).collect()
     }
     /// The place of the chosen line - `None` when none is chosen.
+    /// ไทย: ตำแหน่งบรรทัดที่เลือกอยู่ - None เมื่อไม่ได้เลือก
     /// Example: `if let Some(i) = ui.checks1.selected_index() { ... }`
     pub fn selected_index(self) -> Option<usize> {
         ListView(self.0).selected_index()
@@ -552,6 +591,7 @@ impl MaskedTextBox {
         crate::extra::mask_completed(self.0)
     }
     /// Takes out what is typed in it.
+    /// ไทย: ลบสิ่งที่พิมพ์ไว้
     /// Example: `ui.phone1.clear();`
     pub fn clear(self) {
         crate::win::set_text(self.0, "")
@@ -564,6 +604,7 @@ impl MonthCalendar {
         crate::extra::calendar_date(self.0)
     }
     /// Shows and chooses a day: year, month (1-12), day.
+    /// ไทย: แสดงและเลือกวันนี้: ปี, เดือน (1-12), วัน
     /// Example: `ui.calendar1.set_date(2026, 11, 23);`
     pub fn set_date(self, y: i32, m: i32, d: i32) {
         crate::extra::calendar_set_date(self.0, y, m, d)
@@ -587,16 +628,19 @@ pub enum CheckState {
 
 impl CheckBox {
     /// Whether it is ticked.
+    /// ไทย: ติ๊กอยู่ไหม
     /// Example: `if ui.agree.checked() { ... }`
     pub fn checked(self) -> bool {
         win::is_checked(self.0)
     }
     /// Ticks it (`true`) or clears it (`false`).
+    /// ไทย: ติ๊ก (true) หรือเอาติ๊กออก (false)
     /// Example: `ui.agree.set_checked(true);`
     pub fn set_checked(self, on: bool) {
         win::set_checked(self.0, on)
     }
     /// Ticked, not ticked, or half (a three-state box): `CheckState::Checked`, `Unchecked`, `Indeterminate`.
+    /// ไทย: ติ๊ก, ไม่ติ๊ก หรือครึ่ง ๆ (กล่องสามสถานะ): CheckState::Checked, Unchecked, Indeterminate
     /// Example: `if ui.agree.check_state() == CheckState::Indeterminate { ... }`
     pub fn check_state(self) -> CheckState {
         match win::check_state(self.0) {
@@ -606,6 +650,7 @@ impl CheckBox {
         }
     }
     /// Sets it ticked, not ticked, or half.
+    /// ไทย: ตั้งเป็นติ๊ก, ไม่ติ๊ก หรือครึ่ง ๆ
     /// Example: `ui.agree.set_check_state(CheckState::Checked);`
     pub fn set_check_state(self, s: CheckState) {
         win::set_check_state(self.0, s as u8)
@@ -614,6 +659,7 @@ impl CheckBox {
 
 impl RadioButton {
     /// Whether it is the one chosen of its group.
+    /// ไทย: ตัวนี้เป็นตัวที่เลือกในกลุ่มไหม
     /// Example: `if ui.option_cash.checked() { ... }`
     pub fn checked(self) -> bool {
         win::is_checked(self.0)
@@ -721,91 +767,109 @@ macro_rules! text_edit_methods {
         #[allow(dead_code)]
         impl $name {
             /// Takes out all its words.
+            /// ไทย: ลบข้อความทั้งหมด
             /// Example: `ui.name_box.clear();`
             pub fn clear(self) {
                 TextEdit::clear(self)
             }
             /// Adds words at the end and scrolls to show them.
+            /// ไทย: ต่อข้อความท้ายสุด แล้วเลื่อนลงไปให้เห็น
             /// Example: `ui.log.append_text("Done\r\n");`
             pub fn append_text(self, s: &str) {
                 TextEdit::append_text(self, s)
             }
             /// Chooses all its words - typing then replaces them.
+            /// ไทย: เลือกข้อความทั้งหมด - พิมพ์ต่อจะแทนที่ทั้งหมด
             /// Example: `ui.name_box.select_all();`
             pub fn select_all(self) {
                 TextEdit::select_all(self)
             }
             /// Chooses `length` letters starting at place `start` (0 is the first letter).
+            /// ไทย: เลือกข้อความ length ตัว เริ่มที่ตำแหน่ง start (ตัวแรกคือ 0)
             /// Example: `ui.name_box.select(0, 3);`
             pub fn select(self, start: usize, length: usize) {
                 TextEdit::select(self, start, length)
             }
             /// Where the chosen words begin (or where the caret is).
+            /// ไทย: ตำแหน่งเริ่มของส่วนที่เลือก (หรือตำแหน่งเคอร์เซอร์)
             /// Example: `let at = ui.name_box.selection_start();`
             pub fn selection_start(self) -> usize {
                 TextEdit::selection_start(self)
             }
             /// How many letters are chosen.
+            /// ไทย: เลือกไว้กี่ตัว
             /// Example: `let n = ui.name_box.selection_length();`
             pub fn selection_length(self) -> usize {
                 TextEdit::selection_length(self)
             }
             /// The chosen words.
+            /// ไทย: ข้อความที่เลือกไว้
             /// Example: `let s = ui.name_box.selected_text();`
             pub fn selected_text(self) -> String {
                 TextEdit::selected_text(self)
             }
             /// Puts words in at the caret, in place of the chosen ones.
+            /// ไทย: ใส่ข้อความที่ตำแหน่งเคอร์เซอร์ แทนส่วนที่เลือก
             /// Example: `ui.notes.paste_text("Hello");`
             pub fn paste_text(self, s: &str) {
                 TextEdit::paste_text(self, s)
             }
             /// Copies the chosen words to the clipboard - Ctrl+C.
+            /// ไทย: คัดลอกส่วนที่เลือกไปคลิปบอร์ด - Ctrl+C
             /// Example: `ui.notes.copy();`
             pub fn copy(self) {
                 TextEdit::copy(self)
             }
             /// Moves the chosen words to the clipboard - Ctrl+X.
+            /// ไทย: ตัดส่วนที่เลือกไปคลิปบอร์ด - Ctrl+X
             /// Example: `ui.notes.cut();`
             pub fn cut(self) {
                 TextEdit::cut(self)
             }
             /// Puts in the clipboard's words at the caret - Ctrl+V.
+            /// ไทย: วางข้อความจากคลิปบอร์ดที่เคอร์เซอร์ - Ctrl+V
             /// Example: `ui.notes.paste();`
             pub fn paste(self) {
                 TextEdit::paste(self)
             }
             /// Takes back the last change - Ctrl+Z.
+            /// ไทย: ย้อนสิ่งที่แก้ล่าสุด - Ctrl+Z
             /// Example: `ui.notes.undo();`
             pub fn undo(self) {
                 TextEdit::undo(self)
             }
             /// Whether there is a change to take back.
+            /// ไทย: มีอะไรให้ย้อนไหม
             /// Example: `ui.undo_button.set_enabled(ui.notes.can_undo());`
             pub fn can_undo(self) -> bool {
                 TextEdit::can_undo(self)
             }
             /// Scrolls so the caret can be seen.
+            /// ไทย: เลื่อนให้เห็นเคอร์เซอร์
             /// Example: `ui.log.scroll_to_caret();`
             pub fn scroll_to_caret(self) {
                 TextEdit::scroll_to_caret(self)
             }
             /// Whether it can only be read, not typed in.
+            /// ไทย: อ่านอย่างเดียวอยู่ไหม (พิมพ์ไม่ได้)
             /// Example: `if ui.notes.read_only() { ... }`
             pub fn read_only(self) -> bool {
                 TextEdit::read_only(self)
             }
             /// `true`: it can be read and copied, not typed in.
+            /// ไทย: true อ่านและคัดลอกได้ แต่พิมพ์ไม่ได้
             /// Example: `ui.notes.set_read_only(true);`
             pub fn set_read_only(self, on: bool) {
                 TextEdit::set_read_only(self, on)
             }
             /// The most letters that can be typed in it.
+            /// ไทย: พิมพ์ได้มากสุดกี่ตัว
             /// Example: `ui.code_box.set_max_length(10);`
             pub fn set_max_length(self, n: i32) {
                 TextEdit::set_max_length(self, n)
             }
             /// Its words, line by line.
+            /// ไทย: ข้อความแยกเป็นบรรทัด
             /// Example: `for line in ui.notes.lines() { ... }`
             pub fn lines(self) -> Vec<String> {
                 TextEdit::lines(self)
@@ -847,27 +911,32 @@ impl ComboBox {
         send(self.0, 0x0143 /* CB_ADDSTRING */, 0, w.as_ptr() as isize).max(0) as usize
     }
     /// Puts a choice in at place `at` (0 is the top).
+    /// ไทย: แทรกตัวเลือกที่ตำแหน่ง at (บนสุดคือ 0)
     /// Example: `ui.combo1.items_insert(0, "Any");`
     pub fn items_insert(self, at: usize, s: &str) {
         let w = win::wide(s);
         send(self.0, 0x014A /* CB_INSERTSTRING */, at, w.as_ptr() as isize);
     }
     /// Takes out the choice at place `at` (0 is the top).
+    /// ไทย: เอาตัวเลือกที่ตำแหน่ง at ออก
     /// Example: `ui.combo1.items_remove_at(0);`
     pub fn items_remove_at(self, at: usize) {
         send(self.0, 0x0144 /* CB_DELETESTRING */, at, 0);
     }
     /// Takes out every choice.
+    /// ไทย: ลบตัวเลือกทั้งหมด
     /// Example: `ui.combo1.items_clear();`
     pub fn items_clear(self) {
         send(self.0, 0x014B /* CB_RESETCONTENT */, 0, 0);
     }
     /// How many choices it has.
+    /// ไทย: มีกี่ตัวเลือก
     /// Example: `let n = ui.combo1.items_count();`
     pub fn items_count(self) -> usize {
         send(self.0, 0x0146 /* CB_GETCOUNT */, 0, 0).max(0) as usize
     }
     /// The words of the choice at place `at` (0 is the top).
+    /// ไทย: ข้อความของตัวเลือกที่ตำแหน่ง at (บนสุดคือ 0)
     /// Example: `let first = ui.combo1.item(0);`
     pub fn item(self, at: usize) -> String {
         let n = send(self.0, 0x0149 /* CB_GETLBTEXTLEN */, at, 0);
@@ -879,6 +948,7 @@ impl ComboBox {
         String::from_utf16_lossy(&buf[..n as usize])
     }
     /// All its choices.
+    /// ไทย: ตัวเลือกทั้งหมด
     /// Example: `for s in ui.combo1.items() { ... }`
     pub fn items(self) -> Vec<String> {
         (0..self.items_count()).map(|i| self.item(i)).collect()
@@ -889,6 +959,7 @@ impl ComboBox {
         (i >= 0).then_some(i as usize)
     }
     /// Chooses the choice at a place; `None` chooses none.
+    /// ไทย: เลือกตัวเลือกที่ตำแหน่งนี้ - None คือไม่เลือก
     /// Example: `ui.combo1.set_selected_index(Some(0));`
     pub fn set_selected_index(self, i: Option<usize>) {
         send(self.0, 0x014E /* CB_SETCURSEL */, i.unwrap_or(usize::MAX), 0);
@@ -918,6 +989,7 @@ impl ComboBox {
         Control::suspend_layout(self)
     }
     /// Shows the changes made after `begin_update()`, all at once.
+    /// ไทย: แสดงสิ่งที่เปลี่ยนหลัง begin_update() ทีเดียวทั้งหมด
     /// Example: `ui.combo1.end_update();`
     pub fn end_update(self) {
         Control::resume_layout(self)
@@ -945,26 +1017,31 @@ impl ListView {
         crate::props::icons(self.0, icons);
     }
     /// Takes out the row at place `at` (0 is the top).
+    /// ไทย: เอาแถวที่ตำแหน่ง at ออก (บนสุดคือ 0)
     /// Example: `ui.list1.items_remove_at(0);`
     pub fn items_remove_at(self, at: usize) {
         send(self.0, cc::LVM_DELETEITEM, at, 0);
     }
     /// Takes out every row.
+    /// ไทย: ลบทุกแถว
     /// Example: `ui.list1.items_clear();`
     pub fn items_clear(self) {
         send(self.0, cc::LVM_DELETEALLITEMS, 0, 0);
     }
     /// How many rows it has.
+    /// ไทย: มีกี่แถว
     /// Example: `let n = ui.list1.items_count();`
     pub fn items_count(self) -> usize {
         send(self.0, cc::LVM_GETITEMCOUNT, 0, 0).max(0) as usize
     }
     /// The words in row `row`, column `col` (both from 0).
+    /// ไทย: ข้อความในแถว row คอลัมน์ col (นับจาก 0 ทั้งคู่)
     /// Example: `let name = ui.list1.cell(0, 1);`
     pub fn cell(self, row: usize, col: usize) -> String {
         win::list_text(self.0, row, col as i32)
     }
     /// Changes the words in row `row`, column `col` (both from 0).
+    /// ไทย: เปลี่ยนข้อความในแถว row คอลัมน์ col (นับจาก 0 ทั้งคู่)
     /// Example: `ui.list1.set_cell(0, 1, "Somchai");`
     pub fn set_cell(self, row: usize, col: usize, text: &str) {
         let mut w = win::wide(text);
@@ -977,6 +1054,7 @@ impl ListView {
         (i >= 0).then_some(i as usize)
     }
     /// The places of every chosen row.
+    /// ไทย: ตำแหน่งของทุกแถวที่เลือกไว้
     /// Example: `for i in ui.list1.selected_indices() { ... }`
     pub fn selected_indices(self) -> Vec<usize> {
         let mut out = Vec::new();
@@ -994,6 +1072,7 @@ impl ListView {
         win::list_select(self.0, at)
     }
     /// Scrolls so the row at place `at` can be seen.
+    /// ไทย: เลื่อนให้เห็นแถวที่ตำแหน่ง at
     /// Example: `ui.list1.ensure_visible(ui.list1.items_count() - 1);`
     pub fn ensure_visible(self, at: usize) {
         send(self.0, cc::LVM_ENSUREVISIBLE, at, 0);
@@ -1003,17 +1082,20 @@ impl ListView {
         (send(self.0, cc::LVM_GETITEMSTATE, at, 0xF000 /* LVIS_STATEIMAGEMASK */) >> 12) == 2
     }
     /// Ticks or clears the tick box of the row at place `at`.
+    /// ไทย: ติ๊กหรือเอาติ๊กออกที่แถวตำแหน่ง at
     /// Example: `ui.list1.set_checked(0, true);`
     pub fn set_checked(self, at: usize, on: bool) {
         let it = cc::LVITEMW { stateMask: cc::LIST_VIEW_ITEM_STATE_FLAGS(0xF000), state: cc::LIST_VIEW_ITEM_STATE_FLAGS(if on { 2 } else { 1 } << 12), ..Default::default() };
         send(self.0, cc::LVM_SETITEMSTATE, at, &it as *const _ as isize);
     }
     /// Stops drawing while many rows are added; `end_update()` shows them all at once.
+    /// ไทย: หยุดวาดระหว่างเพิ่มหลายแถว แล้ว end_update() แสดงทีเดียว
     /// Example: `ui.list1.begin_update();`
     pub fn begin_update(self) {
         Control::suspend_layout(self)
     }
     /// Shows the rows added after `begin_update()`, all at once.
+    /// ไทย: แสดงแถวที่เพิ่มหลัง begin_update() ทีเดียวทั้งหมด
     /// Example: `ui.list1.end_update();`
     pub fn end_update(self) {
         Control::resume_layout(self)
@@ -1026,16 +1108,19 @@ impl Grid {
         crate::grid::grid_rows(self.0)
     }
     /// Adds a row at the bottom, a cell for each column.
+    /// ไทย: เพิ่มแถวท้ายตาราง ใส่ข้อความทีละคอลัมน์
     /// Example: `ui.grid1.rows_add(&["1", "Somchai", "90"]);`
     pub fn rows_add(self, cells: &[&str]) {
         crate::grid::grid_add(self.0, cells)
     }
     /// Takes out every row.
+    /// ไทย: ลบทุกแถว
     /// Example: `ui.grid1.rows_clear();`
     pub fn rows_clear(self) {
         crate::grid::grid_clear(self.0)
     }
     /// How many rows it has.
+    /// ไทย: มีกี่แถว
     /// Example: `let n = ui.grid1.rows_count();`
     pub fn rows_count(self) -> usize {
         send(self.0, cc::LVM_GETITEMCOUNT, 0, 0).max(0) as usize
@@ -1045,16 +1130,19 @@ impl Grid {
         crate::grid::grid_fill(self.0, rows)
     }
     /// The words in row `row`, column `col` (both from 0).
+    /// ไทย: ข้อความในแถว row คอลัมน์ col (นับจาก 0 ทั้งคู่)
     /// Example: `let score = to_int(&ui.grid1.cell(0, 2));`
     pub fn cell(self, row: usize, col: usize) -> String {
         crate::grid::cell(self.0, row, col)
     }
     /// Changes the words in row `row`, column `col` (both from 0).
+    /// ไทย: เปลี่ยนข้อความในแถว row คอลัมน์ col (นับจาก 0 ทั้งคู่)
     /// Example: `ui.grid1.set_cell(0, 2, "95");`
     pub fn set_cell(self, row: usize, col: usize, text: &str) {
         crate::grid::set_cell(self.0, row, col, text)
     }
     /// The place of the chosen row - `None` when none is chosen.
+    /// ไทย: ตำแหน่งแถวที่เลือกอยู่ - None เมื่อไม่ได้เลือก
     /// Example: `if let Some(r) = ui.grid1.selected_row() { ... }`
     pub fn selected_row(self) -> Option<usize> {
         let i = send(self.0, cc::LVM_GETNEXTITEM, usize::MAX, 2);
@@ -1066,6 +1154,7 @@ impl Grid {
         send(self.0, cc::LVM_SETITEMSTATE, usize::MAX, &it as *const _ as isize);
     }
     /// `true`: its cells can be read, not changed.
+    /// ไทย: true อ่านได้ แก้ช่องในตารางไม่ได้
     /// Example: `ui.grid1.set_read_only(true);`
     pub fn set_read_only(self, on: bool) {
         crate::grid::set_read_only(self.0, on)
@@ -1083,6 +1172,7 @@ impl Grid {
         crate::grid::column(self.0, col)
     }
     /// How column `col` (from 0) shows and takes its cells.
+    /// ไทย: ตั้งค่าคอลัมน์ col (นับจาก 0): รูปแบบตัวเลข, ชิดซ้ายขวา, ซ่อน...
     /// Example: `let mut c = ui.grid1.column(2); c.format = "n2".into(); ui.grid1.set_column(2, c);`
     pub fn set_column(self, col: usize, c: crate::grid::Column) {
         crate::grid::set_column(self.0, col, c)
@@ -1141,11 +1231,13 @@ impl TreeView {
         Node(win::tree_add(self.0, 0, text, -1, 0))
     }
     /// Adds a node under `parent`; the new node, to add under in turn.
+    /// ไทย: เพิ่มกิ่งใต้ parent ได้กิ่งใหม่ไว้เพิ่มใต้มันต่อได้
     /// Example: `let fruit = ui.tree1.nodes_add("Fruit"); ui.tree1.nodes_add_under(fruit, "Mango");`
     pub fn nodes_add_under(self, parent: Node, text: &str) -> Node {
         Node(win::tree_add(self.0, parent.0, text, -1, 0))
     }
     /// Takes out every node.
+    /// ไทย: ลบทุกกิ่ง
     /// Example: `ui.tree1.nodes_clear();`
     pub fn nodes_clear(self) {
         win::tree_clear(self.0)
@@ -1156,11 +1248,13 @@ impl TreeView {
         win::tree_items(self.0, lines)
     }
     /// Opens every node, so all are seen.
+    /// ไทย: กางทุกกิ่ง ให้เห็นทั้งหมด
     /// Example: `ui.tree1.expand_all();`
     pub fn expand_all(self) {
         crate::props::expand_all(self.0, true)
     }
     /// Closes every node.
+    /// ไทย: หุบทุกกิ่ง
     /// Example: `ui.tree1.collapse_all();`
     pub fn collapse_all(self) {
         crate::props::expand_all(self.0, false)
@@ -1171,6 +1265,7 @@ impl TreeView {
         (i != 0).then_some(Node(i))
     }
     /// Chooses a node.
+    /// ไทย: เลือกกิ่งนี้
     /// Example: `ui.tree1.select(fruit);`
     pub fn select(self, n: Node) {
         send(self.0, 0x110B /* TVM_SELECTITEM */, 9, n.0);
@@ -1188,11 +1283,13 @@ impl TreeView {
         self.selected_node().map(|n| self.node_text(n))
     }
     /// Opens a node, showing the nodes under it.
+    /// ไทย: กางกิ่งนี้ ให้เห็นกิ่งข้างใต้
     /// Example: `ui.tree1.expand(fruit);`
     pub fn expand(self, n: Node) {
         send(self.0, 0x1102 /* TVM_EXPAND */, 2, n.0);
     }
     /// Closes a node, hiding the nodes under it.
+    /// ไทย: หุบกิ่งนี้ ซ่อนกิ่งข้างใต้
     /// Example: `ui.tree1.collapse(fruit);`
     pub fn collapse(self, n: Node) {
         send(self.0, 0x1102, 1, n.0);
@@ -1205,6 +1302,7 @@ impl DateTimePicker {
         win::date_value(self.0)
     }
     /// Sets the day it shows: year, month (1-12), day.
+    /// ไทย: ตั้งวันที่ที่แสดง: ปี, เดือน (1-12), วัน
     /// Example: `ui.date1.set_value(2026, 11, 23);`
     pub fn set_value(self, year: i32, month: i32, day: i32) {
         win::set_date(self.0, year, month, day)
@@ -1217,6 +1315,7 @@ impl DateTimePicker {
 
 impl NumericUpDown {
     /// The number it shows.
+    /// ไทย: ตัวเลขที่แสดงอยู่
     /// Example: `let qty = ui.qty.value();`
     pub fn value(self) -> i32 {
         win::value(self.0)
@@ -1243,6 +1342,7 @@ impl NumericUpDown {
         self.set_value(self.value() + self.step())
     }
     /// Takes one step off the number, as its down arrow does.
+    /// ไทย: ลดลงหนึ่งขั้น เหมือนกดลูกศรลง
     /// Example: `ui.qty.down_button();`
     pub fn down_button(self) {
         self.set_value(self.value() - self.step())
@@ -1251,11 +1351,13 @@ impl NumericUpDown {
 
 impl TrackBar {
     /// Where its handle is, as a number.
+    /// ไทย: ตำแหน่งของปุ่มเลื่อน เป็นตัวเลข
     /// Example: `let volume = ui.volume.value();`
     pub fn value(self) -> i32 {
         win::value(self.0)
     }
     /// Moves its handle to a number.
+    /// ไทย: เลื่อนปุ่มไปที่ตัวเลขนี้
     /// Example: `ui.volume.set_value(50);`
     pub fn set_value(self, v: i32) {
         win::set_value(self.0, v)
@@ -1264,11 +1366,13 @@ impl TrackBar {
 
 impl ProgressBar {
     /// How far it is filled, as a number.
+    /// ไทย: เต็มไปแค่ไหน เป็นตัวเลข
     /// Example: `let done = ui.progress1.value();`
     pub fn value(self) -> i32 {
         win::value(self.0)
     }
     /// Fills it up to a number (0 to 100 unless set otherwise).
+    /// ไทย: เติมถึงตัวเลขนี้ (0 ถึง 100 ถ้าไม่ได้ตั้งไว้อื่น)
     /// Example: `ui.progress1.set_value(40);`
     pub fn set_value(self, v: i32) {
         win::set_value(self.0, v)
@@ -1282,6 +1386,7 @@ impl ProgressBar {
         win::set_value(self.0, win::value(self.0) + n)
     }
     /// `true`: a moving bar, for work whose end is not known.
+    /// ไทย: true แถบวิ่งไปมา สำหรับงานที่ไม่รู้ว่าจะเสร็จเมื่อไร
     /// Example: `ui.progress1.set_marquee(true);`
     pub fn set_marquee(self, on: bool) {
         crate::props::marquee(self.0, on)
@@ -1294,6 +1399,7 @@ impl PictureBox {
         crate::picture::set_picture(self.0, path)
     }
     /// How its picture fits: `"normal"` as it is, `"stretch"` to fill, `"center"`, `"zoom"` to fit and keep its shape.
+    /// ไทย: รูปพอดีกล่องแบบไหน: "normal" ขนาดจริง, "stretch" ยืดเต็ม, "center" กลาง, "zoom" ย่อขยายพอดีไม่เสียทรง
     /// Example: `ui.picture1.set_size_mode("zoom");`
     pub fn set_size_mode(self, mode: &str) {
         crate::picture::set_size_mode(self.0, mode)
@@ -1302,6 +1408,7 @@ impl PictureBox {
 
 impl TabControl {
     /// The place of the tab in front (0 is the first).
+    /// ไทย: แท็บที่อยู่หน้าอยู่ลำดับที่เท่าไร (แท็บแรกคือ 0)
     /// Example: `if ui.tabs1.selected_index() == 0 { ... }`
     pub fn selected_index(self) -> usize {
         crate::controls::tabs_selected(self.0)
@@ -1358,6 +1465,7 @@ impl Timer {
         INTERVALS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert((self.hwnd.0 as isize, self.id), v);
     }
     /// Starts it: its Tick comes every `interval` milliseconds.
+    /// ไทย: เริ่มนับ: Tick จะมาทุก interval มิลลิวินาที
     /// Example: `ui.timer1.start();`
     pub fn start(self) {
         let (ms, _) = self.get();
@@ -1365,6 +1473,7 @@ impl Timer {
         win::timer_start(self.hwnd, self.id, ms);
     }
     /// Stops it: no more Tick.
+    /// ไทย: หยุด ไม่มี Tick อีก
     /// Example: `ui.timer1.stop();`
     pub fn stop(self) {
         let (ms, _) = self.get();
@@ -1372,11 +1481,13 @@ impl Timer {
         win::timer_stop(self.hwnd, self.id);
     }
     /// Whether it is running.
+    /// ไทย: กำลังทำงานอยู่ไหม
     /// Example: `if ui.timer1.enabled() { ... }`
     pub fn enabled(self) -> bool {
         self.get().1
     }
     /// `true` starts it, `false` stops it - as `start()` and `stop()`.
+    /// ไทย: true เริ่ม · false หยุด - เหมือน start() กับ stop()
     /// Example: `ui.timer1.set_enabled(false);`
     pub fn set_enabled(self, on: bool) {
         if on {
@@ -1386,6 +1497,7 @@ impl Timer {
         }
     }
     /// How many milliseconds between its Ticks (1000 is one second).
+    /// ไทย: ห่างกันกี่มิลลิวินาทีต่อหนึ่ง Tick (1000 คือ 1 วินาที)
     /// Example: `let ms = ui.timer1.interval();`
     pub fn interval(self) -> u32 {
         self.get().0

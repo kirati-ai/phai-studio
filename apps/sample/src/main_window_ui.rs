@@ -52,22 +52,31 @@ pub struct MainWindowUi {
     pub font: HFONT,
     pub toolbar: HWND,
     /// The GroupBox `details` on this window: `ui.details.` lists what it can do.
+    /// ไทย: GroupBox ชื่อ details บนหน้าต่างนี้ - พิมพ์ ui.details. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub details: phai_ui::ctl::GroupBox,
     /// The Label `name_label` on this window: `ui.name_label.` lists what it can do.
+    /// ไทย: Label ชื่อ name_label บนหน้าต่างนี้ - พิมพ์ ui.name_label. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub name_label: phai_ui::ctl::Label,
     /// The TextBox `name` on this window: `ui.name.` lists what it can do.
+    /// ไทย: TextBox ชื่อ name บนหน้าต่างนี้ - พิมพ์ ui.name. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub name: phai_ui::ctl::TextBox,
     /// The CheckBox `active` on this window: `ui.active.` lists what it can do.
+    /// ไทย: CheckBox ชื่อ active บนหน้าต่างนี้ - พิมพ์ ui.active. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub active: phai_ui::ctl::CheckBox,
     /// The ComboBox `kind` on this window: `ui.kind.` lists what it can do.
+    /// ไทย: ComboBox ชื่อ kind บนหน้าต่างนี้ - พิมพ์ ui.kind. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub kind: phai_ui::ctl::ComboBox,
     /// The ListView `customers` on this window: `ui.customers.` lists what it can do.
+    /// ไทย: ListView ชื่อ customers บนหน้าต่างนี้ - พิมพ์ ui.customers. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub customers: phai_ui::ctl::ListView,
     /// The Button `save_button` on this window: `ui.save_button.` lists what it can do.
+    /// ไทย: Button ชื่อ save_button บนหน้าต่างนี้ - พิมพ์ ui.save_button. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub save_button: phai_ui::ctl::Button,
     /// The Button `close` on this window: `ui.close.` lists what it can do.
+    /// ไทย: Button ชื่อ close บนหน้าต่างนี้ - พิมพ์ ui.close. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub close: phai_ui::ctl::Button,
     /// The StatusBar `status` on this window: `ui.status.` lists what it can do.
+    /// ไทย: StatusBar ชื่อ status บนหน้าต่างนี้ - พิมพ์ ui.status. แล้วเลือกได้ว่ามันทำอะไรได้บ้าง
     pub status: phai_ui::ctl::StatusBar,
     layout: Layout,
 }
@@ -260,6 +269,7 @@ impl MainWindowUi {
 
     /// Closes the window, as its close box would - its FormClosing comes first.
     ///
+    /// ไทย: ปิดหน้าต่าง เหมือนกดปุ่มปิด - FormClosing ทำงานก่อน
     /// Example: `ui.close();`
     pub fn close(&self) {
         unsafe {
@@ -292,6 +302,7 @@ impl MainWindowUi {
 
     /// Hides the window; the program keeps running and `ui.show_window()` brings it back.
     ///
+    /// ไทย: ซ่อนหน้าต่าง โปรแกรมยังทำงานอยู่ ui.show_window() เรียกกลับมาได้
     /// Example: `ui.hide();`
     pub fn hide(&self) {
         win::show(self.hwnd, false);
@@ -299,6 +310,7 @@ impl MainWindowUi {
 
     /// Shows the window again after `ui.hide()`.
     ///
+    /// ไทย: แสดงหน้าต่างอีกครั้งหลัง ui.hide()
     /// Example: `ui.show_window();`
     pub fn show_window(&self) {
         win::show(self.hwnd, true);
@@ -306,6 +318,7 @@ impl MainWindowUi {
 
     /// Brings the window to the front, the keyboard on it.
     ///
+    /// ไทย: ยกหน้าต่างขึ้นมาข้างหน้า ให้แป้นพิมพ์อยู่ที่มัน
     /// Example: `ui.activate();`
     pub fn activate(&self) {
         unsafe {
@@ -317,6 +330,7 @@ impl MainWindowUi {
     /// pressed comes back - DialogResult::Yes, No, Ok, Cancel... For a plain notice `ui.alert` is
     /// shorter, for Yes or No `ui.confirm`.
     ///
+    /// ไทย: กล่องข้อความที่เลือกปุ่มและไอคอนเองได้ หัวเรื่องคือ caption ได้ปุ่มที่ถูกกดกลับมา (DialogResult::Yes, No, Ok, Cancel...) - แค่แจ้งเฉย ๆ ใช้ ui.alert สั้นกว่า ถามใช่/ไม่ใช่ใช้ ui.confirm
     /// Example: `if ui.message_box("Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { ... }`
     pub fn message_box(&self, text: &str, caption: &str, buttons: phai_ui::form::MessageBoxButtons, icon: phai_ui::form::MessageBoxIcon) -> phai_ui::form::DialogResult {
         phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)
@@ -325,6 +339,7 @@ impl MainWindowUi {
     /// Shows a message with an OK button and waits until it is pressed; the title is the
     /// window's - as JavaScript's alert.
     ///
+    /// ไทย: แสดงข้อความพร้อมปุ่ม OK แล้วรอจนกด หัวเรื่องเป็นชื่อหน้าต่าง - เหมือน alert ของ JavaScript
     /// Example: `ui.alert("Saved");`
     pub fn alert(&self, text: &str) {
         phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);
@@ -333,6 +348,7 @@ impl MainWindowUi {
     /// Asks a question with Yes and No buttons: `true` when Yes is pressed - as JavaScript's
     /// confirm.
     ///
+    /// ไทย: ถามคำถามที่มีปุ่ม Yes กับ No ได้ true เมื่อกด Yes - เหมือน confirm ของ JavaScript
     /// Example: `if ui.confirm("Delete it?") { ... }`
     pub fn confirm(&self, text: &str) -> bool {
         phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes
@@ -341,6 +357,7 @@ impl MainWindowUi {
     /// Asks for words in a small window with a box to type in: what was typed, or `None` when
     /// Cancel is pressed; `default` is in the box at first - as JavaScript's prompt.
     ///
+    /// ไทย: ถามให้พิมพ์ในหน้าต่างเล็ก ได้สิ่งที่พิมพ์ หรือ None เมื่อกด Cancel - default คือคำที่ใส่ไว้ให้ก่อน เหมือน prompt ของ JavaScript
     /// Example: `if let Some(name) = ui.prompt("Your name?", "") { ui.alert(&name); }`
     pub fn prompt(&self, prompt: &str, default: &str) -> Option<String> {
         phai_ui::dialogs::ask_fields(Some(self.hwnd), &self.title(), &[phai_ui::dialogs::Field::Text(prompt, default)]).and_then(|a| a.into_iter().next())
@@ -349,6 +366,7 @@ impl MainWindowUi {
     /// Lets the user choose a file to open: its path, or `None` when Cancel is pressed. The
     /// filter is name|pattern - empty for every file.
     ///
+    /// ไทย: ให้ผู้ใช้เลือกไฟล์ที่จะเปิด ได้ที่อยู่ไฟล์ หรือ None เมื่อกด Cancel - filter เขียนแบบ ชื่อ|รูปแบบ ว่างไว้คือทุกไฟล์
     /// Example: `if let Some(path) = ui.open_file("Text files|*.txt") { ... }`
     pub fn open_file(&self, filter: &str) -> Option<std::path::PathBuf> {
         phai_ui::components::OpenFileDialog::new(self.hwnd, "", filter, "", "", false).show_dialog()
@@ -357,6 +375,7 @@ impl MainWindowUi {
     /// Lets the user choose where to save a file: its path, or `None` when Cancel is pressed;
     /// `name` is the file name offered at first.
     ///
+    /// ไทย: ให้ผู้ใช้เลือกว่าจะบันทึกไฟล์ที่ไหน ได้ที่อยู่ไฟล์ หรือ None เมื่อกด Cancel - name คือชื่อไฟล์ที่เสนอให้ก่อน
     /// Example: `if let Some(path) = ui.save_file("Text files|*.txt", "notes.txt") { ... }`
     pub fn save_file(&self, filter: &str, name: &str) -> Option<std::path::PathBuf> {
         phai_ui::components::SaveFileDialog::new(self.hwnd, "", filter, "", "").show_dialog_named(name)
@@ -364,6 +383,7 @@ impl MainWindowUi {
 
     /// Lets the user choose a folder: its path, or `None` when Cancel is pressed.
     ///
+    /// ไทย: ให้ผู้ใช้เลือกโฟลเดอร์ ได้ที่อยู่โฟลเดอร์ หรือ None เมื่อกด Cancel
     /// Example: `if let Some(folder) = ui.choose_folder() { ... }`
     pub fn choose_folder(&self) -> Option<std::path::PathBuf> {
         phai_ui::components::FolderBrowserDialog::new(self.hwnd, "", "").show_dialog()
@@ -371,6 +391,7 @@ impl MainWindowUi {
 
     /// Moves the window to the middle of the screen.
     ///
+    /// ไทย: ย้ายหน้าต่างไปกลางจอ
     /// Example: `ui.center_to_screen();`
     pub fn center_to_screen(&self) {
         win::center_on_screen(self.hwnd);
@@ -378,6 +399,7 @@ impl MainWindowUi {
 
     /// The words in the window's title bar.
     ///
+    /// ไทย: ข้อความบนแถบชื่อหน้าต่าง
     /// Example: `let t = ui.title();`
     pub fn title(&self) -> String {
         win::text_of(self.hwnd)
@@ -385,6 +407,7 @@ impl MainWindowUi {
 
     /// Changes the words in the window's title bar.
     ///
+    /// ไทย: เปลี่ยนข้อความบนแถบชื่อหน้าต่าง
     /// Example: `ui.set_title("Score book - 2026");`
     pub fn set_title(&self, s: &str) {
         win::set_text(self.hwnd, s);

@@ -11,6 +11,7 @@ use windows::Win32::UI::WindowsAndMessaging as wm;
 
 /// The button that closed a dialog or a message box - `Cancel` for its close box.
 ///
+/// ไทย: ปุ่มที่ปิดกล่องข้อความหรือหน้าต่าง dialog - Cancel เมื่อกดปุ่มปิด
 /// Example: `if ui.message_box("Save?", "Notes", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { ... }`
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum DialogResult {
@@ -44,38 +45,51 @@ impl DialogResult {
 /// The buttons a message box shows: `Ok`, `OkCancel`, `YesNo`, `YesNoCancel`, `RetryCancel`,
 /// `AbortRetryIgnore` - as WinForms' MessageBoxButtons.
 ///
+/// ไทย: ปุ่มที่กล่องข้อความแสดง: Ok, OkCancel, YesNo, YesNoCancel, RetryCancel, AbortRetryIgnore
 /// Example: `ui.message_box("Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question)`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageBoxButtons {
     /// One OK button - for news; it answers `DialogResult::Ok`.
+    /// ไทย: ปุ่ม OK ปุ่มเดียว - แจ้งให้รู้ ได้ DialogResult::Ok
     Ok,
     /// OK and Cancel - go ahead or not; `DialogResult::Ok` or `Cancel`.
+    /// ไทย: OK กับ Cancel - ทำต่อหรือไม่ ได้ Ok หรือ Cancel
     OkCancel,
     /// Yes and No - a question; `DialogResult::Yes` or `No`.
+    /// ไทย: Yes กับ No - คำถาม ได้ Yes หรือ No
     YesNo,
     /// Yes, No and Cancel - such as "Save the changes?"; `Yes`, `No` or `Cancel`.
+    /// ไทย: Yes, No กับ Cancel - เช่น "บันทึกที่แก้ไหม?" ได้ Yes, No หรือ Cancel
     YesNoCancel,
     /// Retry and Cancel - after something failed; `DialogResult::Retry` or `Cancel`.
+    /// ไทย: Retry กับ Cancel - หลังทำอะไรไม่สำเร็จ ได้ Retry หรือ Cancel
     RetryCancel,
     /// Abort, Retry and Ignore; `DialogResult::Abort`, `Retry` or `Ignore`.
+    /// ไทย: Abort, Retry กับ Ignore ได้ Abort, Retry หรือ Ignore
     AbortRetryIgnore,
 }
 
 /// The picture a message box shows: `Information` (i), `Warning` (!), `Error` (x), `Question` (?),
 /// or `None` - as WinForms' MessageBoxIcon.
 ///
+/// ไทย: รูปที่กล่องข้อความแสดง: Information (i), Warning (!), Error (x), Question (?) หรือ None
 /// Example: `ui.message_box("Disk is full", "Save", MessageBoxButtons::Ok, MessageBoxIcon::Error)`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageBoxIcon {
     /// No picture.
+    /// ไทย: ไม่มีรูป
     None,
     /// A blue (i) - news: "Saved".
+    /// ไทย: (i) สีฟ้า - แจ้งให้รู้ เช่น "บันทึกแล้ว"
     Information,
     /// A yellow (!) - take care: "The file is large".
+    /// ไทย: (!) สีเหลือง - ระวัง เช่น "ไฟล์ใหญ่มาก"
     Warning,
     /// A red (x) - something failed: "Cannot save".
+    /// ไทย: (x) สีแดง - มีอะไรผิดพลาด เช่น "บันทึกไม่ได้"
     Error,
     /// A blue (?) - a question: "Delete it?".
+    /// ไทย: (?) สีฟ้า - คำถาม เช่น "ลบไหม?"
     Question,
 }
 

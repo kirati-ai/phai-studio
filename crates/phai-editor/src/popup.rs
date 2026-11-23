@@ -160,12 +160,19 @@ impl Popup {
 /// A completion's guide as a beginner reads it: how it is written (its signature), then its
 /// `///` words - Rust's marks taken out (`[`Self::hide`]` is hide), each line wrapped to read.
 pub fn guide_text(c: &Completion) -> String {
+    guide_in(c, phai_ui::text::is_thai())
+}
+
+/// The guide in Thai or in English. A comment may say it in both: its `ไทย:` line is Thai's, the
+/// rest English's; Thai shows its own words and the same Example, English leaves Thai's out. With
+/// no Thai line, Thai shows the English.
+pub fn guide_in(c: &Completion, thai: bool) -> String {
     let mut out: Vec<String> = Vec::new();
     let head = heading(c);
     if !head.is_empty() {
         out.push(head);
     }
-    let doc = clean_doc(&c.doc);
+    let doc = in_language(&clean_doc(&c.doc), thai);
     if !doc.trim().is_empty() {
         if !out.is_empty() {
             out.push(String::new());
@@ -189,8 +196,12 @@ pub fn guide_text(c: &Completion) -> String {
                     out.push(String::new());
                 }
             } else {
-                if line.starts_with("Example:") {
+                // An Example stands apart: a line of its own after a blank one.
+                if line.starts_with("Example:") || line.starts_with("ตัวอย่าง:") {
                     flush(&mut para, &mut out);
+                    if out.last().is_some_and(|l| !l.is_empty()) {
+                        out.push(String::new());
+                    }
                 }
                 if !para.is_empty() {
                     para.push(' ');
@@ -202,6 +213,44 @@ pub fn guide_text(c: &Completion) -> String {
     }
     while out.last().is_some_and(|l| l.trim().is_empty()) {
         out.pop();
+    }
+    out.join("\n")
+}
+
+/// A comment's words in one language: its `ไทย:` paragraph (to a blank line or an Example) is
+/// Thai's; Thai keeps that, the Examples (as ตัวอย่าง:) and code; English keeps all but that.
+fn in_language(doc: &str, thai: bool) -> String {
+    let has_thai = doc.lines().any(|l| l.trim_start().starts_with("ไทย:"));
+    let mut out = Vec::new();
+    let mut in_thai = false;
+    for line in doc.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix("ไทย:") {
+            in_thai = true;
+            if thai {
+                out.push(rest.trim().to_string());
+            }
+            continue;
+        }
+        if t.is_empty() || t.starts_with("Example:") || line.starts_with("    ") {
+            in_thai = false;
+        }
+        if in_thai {
+            if thai {
+                out.push(t.to_string());
+            }
+            continue;
+        }
+        if thai && has_thai {
+            // Thai's own words stand in for the English sentences; an Example and code stay.
+            if let Some(rest) = t.strip_prefix("Example:") {
+                out.push(format!("ตัวอย่าง:{rest}"));
+            } else if line.starts_with("    ") || t.is_empty() {
+                out.push(line.to_string());
+            }
+            continue;
+        }
+        out.push(line.to_string());
     }
     out.join("\n")
 }
@@ -261,17 +310,50 @@ fn clean_doc(doc: &str) -> String {
 }
 
 /// Words cut into lines of at most `width` letters, between words.
+/// Thai's marks above and below a letter - they take no room of their own on a line.
+fn is_mark(c: char) -> bool {
+    matches!(c, '\u{0E31}' | '\u{0E34}'..='\u{0E3A}' | '\u{0E47}'..='\u{0E4E}')
+}
+
+/// How many letters wide words are, Thai's marks not counted.
+fn width_of(s: &str) -> usize {
+    s.chars().filter(|c| !is_mark(*c)).count()
+}
+
+/// Words cut into lines of at most `width` letters, between words; a word longer than a line (Thai
+/// writes a phrase with no spaces) cut where a letter begins, never between it and its marks.
 fn wrap(s: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut line = String::new();
     for word in s.split(' ') {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > width {
+        if !line.is_empty() && width_of(&line) + 1 + width_of(word) > width {
             out.push(std::mem::take(&mut line));
         }
         if !line.is_empty() {
             line.push(' ');
         }
-        line.push_str(word);
+        let mut rest = word;
+        while width_of(&line) + width_of(rest) > width {
+            let room = width.saturating_sub(width_of(&line)).max(1);
+            let mut n = 0;
+            let mut cut = rest.len();
+            for (i, c) in rest.char_indices() {
+                if !is_mark(c) {
+                    if n == room {
+                        cut = i;
+                        break;
+                    }
+                    n += 1;
+                }
+            }
+            if cut == rest.len() {
+                break;
+            }
+            line.push_str(&rest[..cut]);
+            out.push(std::mem::take(&mut line));
+            rest = &rest[cut..];
+        }
+        line.push_str(rest);
     }
     out.push(line);
     out
@@ -363,16 +445,28 @@ mod tests {
     #[test]
     fn a_guide_reads_as_words() {
         let c = Completion { label: "hide".into(), insert: "hide".into(), detail: "fn(&self)".into(), doc: "Out of sight, still running; [`Self::show_window`] brings it back.\n\n```\nui.hide();\n```".into() };
-        assert_eq!(guide_text(&c), "hide()\n\nOut of sight, still running; show_window brings it back.\n\n    ui.hide();");
+        assert_eq!(guide_in(&c, false), "hide()\n\nOut of sight, still running; show_window brings it back.\n\n    ui.hide();");
         // A comment's lines joined again; its Example on a line of its own.
         let alert = Completion { label: "alert".into(), detail: "fn(&self, &str)".into(), doc: "Shows a message with an OK button; the title is the\nwindow's.\nExample: `ui.alert(\"Saved\");`".into(), ..c.clone() };
-        assert_eq!(guide_text(&alert), "alert(&str)\n\nShows a message with an OK button; the title is the window's.\nExample: ui.alert(\"Saved\");");
+        assert_eq!(guide_in(&alert, false), "alert(&str)\n\nShows a message with an OK button; the title is the window's.\n\nExample: ui.alert(\"Saved\");");
         let field = Completion { label: "ok".into(), detail: "Button".into(), doc: String::new(), ..c.clone() };
-        assert_eq!(guide_text(&field), "ok: Button");
+        assert_eq!(guide_in(&field, false), "ok: Button");
         let long = Completion { doc: "word ".repeat(30), ..c.clone() };
-        assert!(guide_text(&long).lines().all(|l| l.chars().count() <= 72), "wrapped");
+        assert!(guide_in(&long, false).lines().all(|l| l.chars().count() <= 72), "wrapped");
         let none = Completion { detail: String::new(), doc: String::new(), ..c };
-        assert_eq!(guide_text(&none), "", "nothing to say: no guide");
+        assert_eq!(guide_in(&none, false), "", "nothing to say: no guide");
         assert_eq!(clean_doc("See [the guide](https://x.y/z) and [`DateTime::format`]."), "See the guide and DateTime::format.");
+    }
+
+    #[test]
+    fn a_guide_in_thai() {
+        let c = Completion { label: "alert".into(), insert: "alert".into(), detail: "fn(&self, &str)".into(), doc: "Shows a message with an OK button.\n\nไทย: แสดงข้อความพร้อมปุ่ม OK\n\nExample: `ui.alert(\"Saved\");`".into() };
+        assert_eq!(guide_in(&c, true), "alert(&str)\n\nแสดงข้อความพร้อมปุ่ม OK\n\nตัวอย่าง: ui.alert(\"Saved\");");
+        assert_eq!(guide_in(&c, false), "alert(&str)\n\nShows a message with an OK button.\n\nExample: ui.alert(\"Saved\");", "English leaves Thai out");
+        let english_only = Completion { doc: "Shows a message.\nExample: `ui.alert(\"x\");`".into(), ..c.clone() };
+        assert_eq!(guide_in(&english_only, true), "alert(&str)\n\nShows a message.\n\nExample: ui.alert(\"x\");", "no Thai line: the English");
+        // A long Thai phrase with no spaces cut, its marks kept with their letters.
+        let lines = wrap(&"น้ำ".repeat(40), 72);
+        assert!(lines.len() > 1 && lines.iter().all(|l| width_of(l) <= 72 && !l.starts_with(is_mark)), "{lines:?}");
     }
 }

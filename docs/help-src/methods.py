@@ -40,7 +40,8 @@ def _fns(lines, start, end, public=True):
             doc = []
             k = i - 1
             while k > start and (lines[k].strip().startswith('///') or lines[k].strip().startswith('#[')):
-                if lines[k].strip().startswith('///'):
+                # The `ไทย:` line is the editor's Thai guide - the Thai pages use method_th's.
+                if lines[k].strip().startswith('///') and not lines[k].strip()[3:].strip().startswith('ไทย:'):
                     doc.insert(0, lines[k].strip()[3:].strip())
                 k -= 1
             out.append((m.group(2), sig, ' '.join(doc)))

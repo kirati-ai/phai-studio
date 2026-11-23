@@ -101,6 +101,7 @@ pub fn add(table: &'static [(&'static str, &'static str)]) {
 /// The words in the language the program shows now: Thai when it is set to Thai and the
 /// words have a Thai line in its text table, else as written.
 ///
+/// ไทย: ข้อความในภาษาที่โปรแกรมแสดงอยู่: ไทยเมื่อตั้งเป็นไทยและมีคำแปลในตาราง ไม่เช่นนั้นตามที่เขียน
 /// Example: `ui.ok.set_text(t("Save"));`
 pub fn t(en: &'static str) -> &'static str {
     if !is_thai() {
@@ -111,6 +112,7 @@ pub fn t(en: &'static str) -> &'static str {
 
 /// As `t`, with `{0}`, `{1}`... filled in by the values after it, in turn.
 ///
+/// ไทย: เหมือน t แล้วเติม {0}, {1}... ด้วยค่าที่ให้ตามลำดับ
 /// Example: `ui.status.set_part_text(0, &tf("Hello, {0}", &[&name]));`
 pub fn tf(en: &'static str, args: &[&dyn Display]) -> String {
     fill(t(en), args)

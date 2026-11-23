@@ -13,6 +13,7 @@ pub use crate::convert::DateTime;
 /// The words on the clipboard (what Ctrl+C copied); empty when it holds none - as C#'s
 /// `Clipboard.GetText()`.
 ///
+/// ไทย: ข้อความในคลิปบอร์ด (สิ่งที่ Ctrl+C ไว้) ว่างเมื่อไม่มี - เหมือน Clipboard.GetText() ของ C#
 /// Example: `ui.notes.set_text(&clipboard_text());`
 pub fn clipboard_text() -> String {
     crate::grid::clipboard_words().unwrap_or_default()
@@ -20,6 +21,7 @@ pub fn clipboard_text() -> String {
 
 /// Puts words on the clipboard, for Ctrl+V anywhere - as C#'s `Clipboard.SetText(text)`.
 ///
+/// ไทย: ใส่ข้อความลงคลิปบอร์ด ให้ Ctrl+V ที่ไหนก็ได้ - เหมือน Clipboard.SetText() ของ C#
 /// Example: `set_clipboard_text(&ui.result.text());`
 pub fn set_clipboard_text(text: &str) {
     crate::grid::put_on_clipboard(text);
@@ -28,6 +30,7 @@ pub fn set_clipboard_text(text: &str) {
 /// Opens a web address, a file or a folder as a double-click in Windows would - the browser,
 /// the PDF reader, Explorer - as C#'s `Process.Start(target)`.
 ///
+/// ไทย: เปิดเว็บ ไฟล์ หรือโฟลเดอร์ เหมือนดับเบิลคลิกใน Windows - เบราว์เซอร์ โปรแกรมอ่าน PDF หรือ Explorer
 /// Example: `open_with_windows("https://phai-studio.monrak.net");`
 pub fn open_with_windows(target: &str) {
     let w: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
@@ -38,6 +41,7 @@ pub fn open_with_windows(target: &str) {
 
 /// The folder the program is in - for files that go with it; as C#'s `Application.StartupPath`.
 ///
+/// ไทย: โฟลเดอร์ที่โปรแกรมอยู่ - ไว้หาไฟล์ที่มากับโปรแกรม เหมือน Application.StartupPath ของ C#
 /// Example: `let db = app_folder().join("data.db");`
 pub fn app_folder() -> PathBuf {
     std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("."))
@@ -45,6 +49,7 @@ pub fn app_folder() -> PathBuf {
 
 /// Ends the program, once what it is doing now is done - as C#'s `Application.Exit()`.
 ///
+/// ไทย: ปิดโปรแกรม เมื่องานที่ทำอยู่ตอนนี้เสร็จ - เหมือน Application.Exit() ของ C#
 /// Example: `if ui.confirm("Quit?") { exit_app(); }`
 pub fn exit_app() {
     unsafe {
@@ -55,6 +60,7 @@ pub fn exit_app() {
 /// The date and time now, on this computer - as C#'s `DateTime.Now`. `.format(..)` writes it
 /// as you like; `bbbb` is the Buddhist year.
 ///
+/// ไทย: วันและเวลาตอนนี้ของเครื่องนี้ - .format(..) เขียนออกมาแบบที่ต้องการ bbbb คือปี พ.ศ.
 /// Example: `ui.clock.set_text(&now().format("dd/MM/bbbb HH:mm"));`
 pub fn now() -> DateTime {
     let t = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };

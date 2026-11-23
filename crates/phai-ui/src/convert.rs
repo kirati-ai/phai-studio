@@ -6,6 +6,7 @@
 /// A whole number from what was typed: `" 1,250 "` is 1250, `12.7` is 12, and 0 when there is no
 /// number - never an error. As VB's `Val`, or C#'s `int.Parse` that does not fail.
 ///
+/// ไทย: แปลงสิ่งที่พิมพ์เป็นจำนวนเต็ม: " 1,250 " ได้ 1250, 12.7 ได้ 12 ไม่มีตัวเลขได้ 0 - ไม่มีวัน error
 /// Example: `let qty = to_int(&ui.qty_box.text());`
 pub fn to_int(s: &str) -> i64 {
     let f = to_float(s);
@@ -15,6 +16,7 @@ pub fn to_int(s: &str) -> i64 {
 /// A number with a fraction from what was typed: `"1,250.50"` is 1250.5, and 0 when there is no
 /// number - never an error.
 ///
+/// ไทย: แปลงสิ่งที่พิมพ์เป็นตัวเลขมีทศนิยม: "1,250.50" ได้ 1250.5 ไม่มีตัวเลขได้ 0 - ไม่มีวัน error
 /// Example: `let price = to_float(&ui.price_box.text());`
 pub fn to_float(s: &str) -> f64 {
     let clean: String = s.trim().chars().filter(|c| *c != ',' && *c != ' ' && *c != '_').collect();
@@ -48,6 +50,7 @@ impl DateTime {
     /// 24, `hh` `h` of 12, `mm` `m` the minute, `ss` `s` the second, `fff` milliseconds, `tt` AM or
     /// PM; anything else as it is.
     ///
+    /// ไทย: เขียนวันเวลาตามรูปแบบที่เลือก: yyyy ปี ค.ศ., bbbb ปี พ.ศ., MM เดือน, dd วัน, HH ชั่วโมง (24), mm นาที, ss วินาที
     /// Example: `now().format("dd/MM/bbbb HH:mm")` gives 23/11/2569 21:30
     pub fn format(&self, pattern: &str) -> String {
         const TOKENS: [&str; 16] = ["yyyy", "bbbb", "fff", "yy", "MM", "dd", "HH", "hh", "mm", "ss", "tt", "M", "d", "H", "h", "m"];
@@ -90,6 +93,7 @@ impl DateTime {
 
     /// The day as `dd/MM/yyyy`, such as 23/11/2026.
     ///
+    /// ไทย: วันที่แบบ dd/MM/yyyy เช่น 23/11/2026
     /// Example: `ui.date_label.set_text(&now().date_text());`
     pub fn date_text(&self) -> String {
         self.format("dd/MM/yyyy")
@@ -97,6 +101,7 @@ impl DateTime {
 
     /// The time as `HH:mm:ss`, such as 21:30:05.
     ///
+    /// ไทย: เวลาแบบ HH:mm:ss เช่น 21:30:05
     /// Example: `ui.time_label.set_text(&now().time_text());`
     pub fn time_text(&self) -> String {
         self.format("HH:mm:ss")
