@@ -1276,6 +1276,9 @@ impl Props {
                 let at = items.iter().position(|s| *s == p.value).unwrap_or(usize::MAX);
                 unsafe {
                     wm::SendMessageW(combo, 0x014E /* CB_SETCURSEL */, Some(WPARAM(at)), None);
+                    // A long list - a form's every method - opens under the box with a scroll
+                    // bar, as Visual Studio's, not across the whole screen.
+                    wm::SendMessageW(combo, 0x1701 /* CB_SETMINVISIBLE */, Some(WPARAM(12)), None);
                     let _ = km::SetFocus(Some(combo));
                     wm::SendMessageW(combo, 0x014F /* CB_SHOWDROPDOWN */, Some(WPARAM(1)), None);
                 }
