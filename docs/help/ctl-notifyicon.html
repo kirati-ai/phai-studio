@@ -126,6 +126,8 @@
 <p class="muted">หน้าต่างตัวอย่างทั้งหมด: <code>notifyicon_demo.phf</code> กับ <code>notifyicon_demo.rs</code> ในโปรเจกต์ <code>docs/help-src/examples/controls</code> - รันด้วย <code>cargo run -- notifyicon</code></p>
 <h2>Method ของ NotifyIcon</h2>
 <table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
+<tr><td><code>add_again(&amp;self) -&gt; bool</code></td><td>Put in the corner again as it is now - its words, shown or not, its picture - after the taskbar came back ([`taskbar_created`]); [`add_all_again`] does every icon.</td></tr>
+<tr><td><code>set_icon(&amp;self, icon: wm::HICON)</code></td><td>Another picture in the corner - WinForms&#x27; Icon. The icon stays the program&#x27;s to free.</td></tr>
 <tr><td><code>set_text(&amp;self, text: &amp;str)</code></td><td>ข้อความที่ขึ้นเมื่อชี้เมาส์ที่ไอคอน</td></tr>
 <tr><td><code>set_visible(&amp;self, on: bool)</code></td><td>แสดงหรือซ่อนไอคอน</td></tr>
 <tr><td><code>show_balloon_tip(&amp;self, title: &amp;str, text: &amp;str)</code></td><td>ส่งข้อความแจ้งเตือนจากไอคอน: หัวข้อ, ข้อความ</td></tr>
