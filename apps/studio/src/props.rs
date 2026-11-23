@@ -167,7 +167,7 @@ fn control_rows(f: &phai_form::FormFile, c: &phai_form::Control, theme: Option<&
     if c.kind == Kind::ContextMenu {
         return [
             p(t("Design"), Key::Id, t("Id"), c.id.clone(), Ed::Text, t("The control's name in code, and its #id in CSS.")),
-            p(t("Data"), Key::Items, t("Items"), c.items.join("\n"), Ed::Dialog, t("One a line: method | label - the method runs when it is chosen; - alone a separator.")),
+            p(t("Data"), Key::Items, t("Items"), c.items.join("\n"), Ed::Dialog, t("One a line: method | label - the method runs when it is chosen - then checked, disabled, hidden or check_on_click if wanted; - alone a separator; words with lines indented under them, a menu within the menu.")),
         ]
         .into_iter()
         .map(|mut q| {

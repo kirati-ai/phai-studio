@@ -207,6 +207,51 @@ mod tests {
         assert_eq!(names(&to_show(&items, &|it: &Item| it.name != "en")), ["open", "-", "language", "-", "exit"]);
     }
 
+    /// The Windows menu itself, read back without showing it: hidden items and their separator
+    /// gone, a menu within the menu, ticks and greys as the program set them.
+    #[test]
+    fn the_menu_windows_gets_is_as_the_program_left_it() {
+        let w = HWND(7 as *mut _);
+        let lang = Item { name: "language", label: "Language", items: vec![Item { name: "en", id: 11, label: "English", checked: true, ..Default::default() }, Item { name: "th", id: 12, label: "Thai", ..Default::default() }], ..Default::default() };
+        let items = vec![Item { name: "open", id: 10, label: "Open", ..Default::default() }, Item::separator(), Item { name: "end", id: 13, label: "End session", hidden: true, ..Default::default() }, Item::separator(), lang, Item { name: "exit", id: 14, label: "Exit", key: "Ctrl+Q", ..Default::default() }];
+        let read = |m: wm::HMENU| -> Vec<(String, u32)> {
+            let n = unsafe { wm::GetMenuItemCount(Some(m)) };
+            (0..n)
+                .map(|i| {
+                    let mut buf = [0u16; 64];
+                    let len = unsafe { wm::GetMenuStringW(m, i as u32, Some(&mut buf), wm::MF_BYPOSITION) } as usize;
+                    let state = unsafe { wm::GetMenuState(m, i as u32, wm::MF_BYPOSITION) };
+                    (String::from_utf16_lossy(&buf[..len]), state)
+                })
+                .collect()
+        };
+        let m = build(w, &items);
+        let top = read(m);
+        assert_eq!(top.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>(), ["Open", "", "Language", "Exit\tCtrl+Q"], "{top:?}");
+        assert!(top[1].1 & wm::MF_SEPARATOR.0 != 0);
+        let sub = unsafe { wm::GetSubMenu(m, 2) };
+        let inner = read(sub);
+        assert!(inner[0].1 & wm::MF_CHECKED.0 != 0 && inner[1].1 & wm::MF_CHECKED.0 == 0, "{inner:?}");
+        unsafe {
+            let _ = wm::DestroyMenu(m);
+        }
+        // The program shows End session, moves the tick to Thai, greys Exit.
+        set_visible(w, "end", true);
+        set_checked(w, "en", false);
+        set_checked(w, "th", true);
+        set_enabled(w, "exit", false);
+        let m = build(w, &items);
+        let top = read(m);
+        assert_eq!(top.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>(), ["Open", "", "End session", "", "Language", "Exit\tCtrl+Q"], "{top:?}");
+        assert!(top[5].1 & wm::MF_GRAYED.0 != 0);
+        let inner = read(unsafe { wm::GetSubMenu(m, 4) });
+        assert!(inner[0].1 & wm::MF_CHECKED.0 == 0 && inner[1].1 & wm::MF_CHECKED.0 != 0, "{inner:?}");
+        unsafe {
+            let _ = wm::DestroyMenu(m);
+        }
+        forget(w);
+    }
+
     #[test]
     fn what_the_program_set_wins_over_the_form() {
         let w = HWND(42 as *mut _);

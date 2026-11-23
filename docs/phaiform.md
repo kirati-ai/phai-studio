@@ -110,7 +110,7 @@ parts = [120]
 | `tabs` + `page` | tabs / ตัวอื่น | `tabs = ["General", "Advanced"]`; control ที่มี `page = 1` ขึ้นเฉพาะแท็บที่ 2 |
 | `parts` | statusbar | ความกว้างของช่องด้านขวา |
 | `items` | combo, tree | รายการ; ของ tree เว้นหน้าบรรทัด 2 ช่องต่อหนึ่งชั้น เช่น `["Thailand", "  Bangkok"]` |
-| `context_menu` | ทุกตัว | id ของ contextmenu ที่ขึ้นเมื่อคลิกขวา; contextmenu มี `items` เป็น `"เมธอด \| ข้อความ"` (`-` คือเส้นคั่น) |
+| `context_menu` | ทุกตัว | id ของ contextmenu ที่ขึ้นเมื่อคลิกขวา; contextmenu มี `items` เป็น `"เมธอด \| ข้อความ"` (`-` คือเส้นคั่น, เมนูย่อย ติ๊ก ซ่อน: หัวข้อ "โปรแกรมในถาด") |
 | `cols` | table | จำนวนคอลัมน์ (ค่าเริ่ม 2); control ที่อยู่ในกรอบ flow/table ถูกจัดวางให้เอง |
 | `image` | picture | ไฟล์รูป PNG/JPEG/BMP/GIF จากโฟลเดอร์โปรเจกต์ (ตอนรัน: ข้างโปรแกรม หรือที่ที่รัน) หรือพาธเต็ม |
 | `value` | timer | ช่วงเวลาเป็นมิลลิวินาที (ค่าเริ่ม 1000); timer ไม่ต้องมี `bounds` - อยู่ใน component tray ใต้ฟอร์ม |
@@ -134,6 +134,7 @@ codegen และ canvas อ่านจากตารางนี้ทั้�
 border = "fixed_dialog"      # FormBorderStyle: sizable fixed_single fixed_dialog fixed_tool sizable_tool none
 accept_button = "ok"         # Enter กดปุ่มนี้; cancel_button = Esc
 maximize_box = false         # minimize_box, control_box, top_most, show_in_taskbar
+start_hidden = true          # StartHidden: สร้างแล้วไม่แสดง (โปรแกรมในถาด) - หัวข้อ "โปรแกรมในถาด"
 opacity = 95                 # %
 icon = "app.ico"             # ไฟล์ในโปรเจกต์ ฝังในโปรแกรมด้วย include_bytes!
 min_size = [300, 200]        # max_size
@@ -225,6 +226,77 @@ window       { background: linear-gradient(160deg, #ffffff, #e8f1ee); }   /* lab
 - **ย้อนทั้งหมด** คืนลุค ข้อความ Enabled/Visible ตอนเปิดตัวตรวจ
 - Phai Studio ที่เปิดฟอร์มนั้นอยู่ โหลดฟอร์มใหม่เมื่อสลับกลับมา (Undo ได้) และเขียน `_ui.rs` ใหม่ให้รอบต่อไป
 - โค้ด `.rs` ของโปรแกรมไม่ถูกแตะ; build แบบ release ไม่มีตัวตรวจ (codegen ใส่ `#[cfg(debug_assertions)] phai_ui::inspect::attach(...)`)
+
+## โปรแกรมในถาด — ฟอร์มที่เริ่มซ่อน, เมนูคลิกขวาที่เปลี่ยนตอนรัน, เมนูย่อย, คลิกข้อความแจ้ง
+
+โปรแกรมที่อยู่ในไอคอนมุมจอ (NotifyIcon) ออกแบบเป็นฟอร์มได้ทั้งหมด — ตัวอย่างเต็ม: `apps/sample/src/tray_window.phf`
+(`phai-sample --tray`)
+
+```toml
+[form]
+name = "TrayWindow"
+title = "Phai Tray"
+size = [360, 140]
+start_hidden = true          # สร้างหน้าต่าง เรียก loaded แต่ไม่แสดง: ไม่มีปุ่มบนแถบงาน ไม่กะพริบ
+
+[[control]]
+kind = "contextmenu"
+id = "tray_menu"
+items = [
+  "open_window | Open",
+  "-",
+  "my_id | My ID and password | hidden",          # ซ่อนไว้จนโค้ดสั่งแสดง
+  "end_session | End remote session | hidden",
+  "-",
+  "language | Language",                          # มีบรรทัดย่อหน้าอยู่ใต้ = เมนูย่อย (MF_POPUP)
+  "  english | English | checked",
+  "  thai | Thai",
+  "pretend | Pretend a session | check_on_click",  # คลิกแล้วติ๊กกลับไปมาเอง
+  "-",
+  "exit | Exit | Ctrl+Q",
+]
+[control.events]
+opening = "tray_menu_opening"                     # ก่อนเมนูขึ้นทุกครั้ง: ที่สำหรับซ่อน/ติ๊ก/ทำเป็นสีเทา
+
+[[control]]
+kind = "notifyicon"
+id = "tray"
+text = "Phai Tray"
+context_menu = "tray_menu"
+[control.events]
+double_click = "open_window"
+balloon_click = "notice_clicked"                  # BalloonTipClicked (NIN_BALLOONUSERCLICK)
+balloon_closed = "notice_gone"                    # BalloonTipClosed: หมดเวลา หรือกด X (NIN_BALLOONTIMEOUT)
+```
+
+- **`start_hidden`** (Properties > Window Style > StartHidden): `run`/`create`/`show` สร้างหน้าต่าง เรียก `loaded` แล้วไม่แสดง
+  โปรแกรมอยู่ใน NotifyIcon; `ui.show_window()` แสดงครั้งแรกตามฟอร์ม (`maximized` ด้วย) แล้วเรียก `shown` ครั้งเดียว
+  (event `shown` ของฟอร์มที่เริ่มซ่อนจึงมาตอนแสดงครั้งแรก ไม่ใช่ตอนสร้าง); `show_dialog`/`show_dialog_for` แสดงเอง;
+  `ui.hide()` ซ่อนอีกได้ — ปุ่มปิดให้ซ่อนแทนปิด: `closing` → `e.cancel(); ui.hide();`
+- **บรรทัดของ contextmenu** แบบเดียวกับเมนูบาร์ (`bars`): `ชื่อ | ข้อความ` แล้วต่อด้วย (ลำดับใดก็ได้) `checked`, `check_on_click`,
+  `disabled`, `hidden`, ชื่อ glyph (`SAVE`), ปุ่มลัดที่แสดงขวา (`Ctrl+Q`); `-` เส้นคั่น; บรรทัดที่มีบรรทัดย่อหน้า (2 ช่อง)
+  อยู่ใต้ = เมนูย่อย ซ้อนได้หลายชั้น — `Language` (ข้อความอย่างเดียว) หรือ `language | Language` (ตั้งชื่อไว้ให้โค้ดซ่อน/ทำสีเทาได้)
+  หัวข้อเมนูย่อยไม่ใช่เมธอด; รายการอื่น `ชื่อ` คือเมธอดที่ทำงานเมื่อเลือก และเป็นชื่อที่โค้ดใช้เรียกรายการ (snake_case)
+  designer: Properties > Items (หรือ Tasks > Edit Items) แก้เป็นข้อความ บรรทัดคงย่อหน้าไว้; Import WinForms นำ `DropDownItems`,
+  `Checked`, `CheckOnClick`, `Enabled = false`, `Visible = false` มาเป็นบรรทัดแบบนี้
+- **เปลี่ยนรายการตอนรัน** (ฟอร์มที่มี contextmenu ได้เมธอดเหล่านี้): เมนูสร้างใหม่ทุกครั้งที่เปิด (`phai_ui::popup`) หลัง
+  event `opening` — สิ่งที่ตั้งใน `opening` จึงมีผลกับเมนูที่กำลังจะขึ้น
+
+  ```rust
+  fn tray_menu_opening(&mut self, ui: &TrayWindowUi) {
+      ui.set_menu_item_visible("my_id", self.online);           // Visible
+      ui.set_menu_item_visible("end_session", self.connected);
+      ui.set_menu_item_checked("thai", phai_ui::text::is_thai()); // Checked
+      ui.set_menu_item_enabled("exit", !self.busy);              // Enabled
+  }
+  ```
+
+  `ui.menu_item_visible/checked/enabled("ชื่อ")` อ่านค่า (ที่โค้ดตั้ง หรือค่าในฟอร์ม); ค่าที่ตั้งจำไว้จนหน้าต่างปิด ใช้กับทุก
+  contextmenu ของหน้าต่างที่มีรายการชื่อนั้น — เส้นคั่นที่จะอยู่หัว/ท้ายเมนูหรือติดกันเพราะรายการข้าง ๆ ถูกซ่อนจะไม่แสดง
+  เมนูย่อยที่รายการถูกซ่อนหมดก็ไม่แสดง; บนเว็บ (phai-web) มีเมธอดชุดเดียวกัน
+  (`set_item_checked`/`set_item_enabled` ของเดิมเป็นของเมนูบาร์และ toolbar; บนเมนูบาร์ `hidden` = ไม่ใส่รายการนั้น)
+- **ข้อความแจ้งของไอคอน**: `ui.tray.show_balloon_tip("Phai Tray", "มีข้อความใหม่")` (ShowBalloonTip) — คลิกที่ข้อความ →
+  `balloon_click`, หายไปเองหรือกด X → `balloon_closed`
 
 ## การพิมพ์ — component `printdocument`
 

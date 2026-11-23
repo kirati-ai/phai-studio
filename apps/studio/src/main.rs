@@ -2018,7 +2018,8 @@ impl Studio {
                     }
                     Key::Items => match c.kind {
                         Kind::Combo | Kind::ListBox | Kind::CheckedList => c.items = list(),
-                        Kind::ContextMenu => c.items = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect(),
+                        // A context menu's lines keep their indent: a menu within the menu.
+                        Kind::ContextMenu => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
                         // A tree's lines keep their indent: it is the tree.
                         Kind::Tree => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
                         Kind::Tabs => c.tabs = list(),

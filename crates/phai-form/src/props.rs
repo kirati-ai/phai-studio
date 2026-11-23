@@ -206,6 +206,7 @@ pub const FORM: &[Spec] = &[
     spec("is_mdi_container", "IsMdiContainer", "Window Style", Ty::Bool, "false", &[], How::Code, "Other forms open inside it (show_mdi_child), cascaded or tiled."),
     spec("top_most", "TopMost", "Window Style", Ty::Bool, "false", &[], How::Code, "It stays over every other window."),
     spec("show_in_taskbar", "ShowInTaskbar", "Window Style", Ty::Bool, "true", &[], How::Code, "It has a button on the taskbar."),
+    spec("start_hidden", "StartHidden", "Window Style", Ty::Bool, "false", &[], How::Code, "Made, its Loaded raised, but not shown - a program that lives in its icon in the corner (NotifyIcon); ui.show_window() brings it up."),
     spec("opacity", "Opacity", "Window Style", Ty::Int(10, 100), "100", &[], How::Code, "How solid it is, percent; less shows what is behind."),
     spec("icon", "Icon", "Window Style", Ty::Text, "", &[], How::Code, "An .ico file of the project for its title bar and taskbar button."),
     spec("min_size", "MinimumSize", "Layout", Ty::Size, "", &[], How::Code, "The smallest its inside can be dragged, at 100% scale."),

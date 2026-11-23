@@ -12,8 +12,8 @@
 //!
 //! A line at the left starts a menu; an indented line is an item, `id | label | key` (the key is
 //! optional), and `-` a separator. After the label, in any order: a key (`Ctrl+N`), a glyph's
-//! name for a picture (`SAVE`), `checked`, `check_on_click`, `disabled`. A line of words alone,
-//! with lines indented further under it, is a menu within the menu:
+//! name for a picture (`SAVE`), `checked`, `check_on_click`, `disabled`, `hidden` (left out). A
+//! line of words alone, with lines indented further under it, is a menu within the menu:
 //!
 //! ```text
 //! &View
@@ -44,7 +44,7 @@ fn items_to_text(items: &[MenuItem], depth: usize, out: &mut String) {
         out.push_str(it.id.as_deref().unwrap_or(""));
         out.push_str(" | ");
         out.push_str(it.label.as_deref().unwrap_or(""));
-        for extra in [it.key.clone(), it.glyph.clone(), it.checked.then(|| "checked".into()), it.check_on_click.then(|| "check_on_click".into()), it.disabled.then(|| "disabled".into())].into_iter().flatten() {
+        for extra in [it.key.clone(), it.glyph.clone(), it.checked.then(|| "checked".into()), it.check_on_click.then(|| "check_on_click".into()), it.disabled.then(|| "disabled".into()), it.hidden.then(|| "hidden".into())].into_iter().flatten() {
             out.push_str(" | ");
             out.push_str(&extra);
         }
@@ -75,6 +75,7 @@ fn item_of(t: &str, line: usize) -> Result<MenuItem, String> {
             "checked" => it.checked = true,
             "check_on_click" => it.check_on_click = true,
             "disabled" => it.disabled = true,
+            "hidden" => it.hidden = true,
             g if phai_ui::icon::glyph::by_name(g).is_some() => it.glyph = Some(g.to_string()),
             k => it.key = Some(k.to_string()),
         }

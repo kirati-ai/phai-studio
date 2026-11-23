@@ -90,6 +90,8 @@ pub const CONTROL: &[EventSpec] = &[
     ev("text_changed", "TextChanged", Args::None, &[Kind::Combo], Source::Command(5), "Words typed into a drop-down that takes them."),
     ev("column_click", "ColumnClick", Args::Item, &[Kind::List, Kind::Grid], Source::Notify(-108), "A column's heading clicked - e.index, from 0."),
     ev("double_click", "MouseDoubleClick", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0203), "The icon in the corner clicked twice - as often, to show the window again."),
+    ev("balloon_click", "BalloonTipClicked", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0405), "Its notice (show_balloon_tip) clicked - to open what it told of."),
+    ev("balloon_closed", "BalloonTipClosed", Args::None, &[Kind::NotifyIcon], Source::Notify(0x0404), "Its notice gone unclicked: timed out, or closed with its X."),
     ev("position_changed", "PositionChanged", Args::None, &[Kind::BindingSource], Source::Hook(phai_ui_codes::POSITION_CHANGED), "Another row became the current one - moved to, added, taken out, or new rows given."),
     ev("paint", "Paint", Args::Paint, &[Kind::Panel, Kind::Picture], Source::Hook(phai_ui_codes::PAINT), "The program draws it - e.clear, e.fill_rect, e.draw_text, e.draw_pixels(&bgra, (w, h), e.fit(w, h)), in its own pixels; ui.x.invalidate() asks again."),
     ev("print_page", "PrintPage", Args::Print, &[Kind::PrintDocument], Source::Hook(phai_ui_codes::PRINT_PAGE), "A page to draw - e.draw_text, e.draw_line, e.margin_bounds, in hundredths of an inch; e.set_has_more_pages(true) when another follows."),

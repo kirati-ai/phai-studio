@@ -138,7 +138,7 @@ fn menu_items(w: &mut String, items: &[crate::model::MenuItem], label: &str, par
     *n += 1;
     let me = format!("m{n}");
     let _ = writeln!(w, "            let {me} = wm::CreatePopupMenu().unwrap_or_default();");
-    for it in items {
+    for it in items.iter().filter(|it| !it.hidden) {
         if it.separator {
             let _ = writeln!(w, "            let _ = wm::AppendMenuW({me}, wm::MF_SEPARATOR, 0, None);");
         } else if !it.items.is_empty() {
@@ -162,6 +162,53 @@ fn menu_items(w: &mut String, items: &[crate::model::MenuItem], label: &str, par
     }
     let _ = writeln!(w, "            let s = wide(t({}));", lit(label));
     let _ = writeln!(w, "            let _ = wm::AppendMenuW({parent}, wm::MF_POPUP, {me}.0 as usize, PCWSTR(s.as_ptr()));");
+}
+
+/// A context menu's items as `phai_ui::popup::Item` literals, its menus within it inside them.
+fn popup_items(items: &[crate::model::MenuItem]) -> String {
+    let all: Vec<String> = items
+        .iter()
+        .map(|it| {
+            if it.separator {
+                return "phai_ui::popup::Item::separator()".to_string();
+            }
+            let mut fields = Vec::new();
+            if let Some(id) = &it.id {
+                fields.push(format!("name: {}", lit(id)));
+                if it.items.is_empty() {
+                    fields.push(format!("id: {}", const_name(id)));
+                }
+            }
+            fields.push(format!("label: t({})", lit(it.label.as_deref().unwrap_or(""))));
+            if let Some(k) = &it.key {
+                fields.push(format!("key: {}", lit(k)));
+            }
+            if let Some(g) = &it.glyph {
+                fields.push(format!("glyph: phai_ui::icon::glyph::{g}"));
+            }
+            for (on, name) in [(it.checked, "checked"), (it.disabled, "disabled"), (it.hidden, "hidden")] {
+                if on {
+                    fields.push(format!("{name}: true"));
+                }
+            }
+            if !it.items.is_empty() {
+                fields.push(format!("items: {}", popup_items(&it.items)));
+            }
+            format!("phai_ui::popup::Item {{ {}, ..Default::default() }}", fields.join(", "))
+        })
+        .collect();
+    format!("vec![{}]", all.join(", "))
+}
+
+/// Every item of the form's context menus, those in menus within them too, in order.
+fn context_items(f: &FormFile) -> Vec<crate::model::MenuItem> {
+    let mut out = Vec::new();
+    for c in f.control.iter().filter(|c| c.kind == Kind::ContextMenu) {
+        for it in c.context_items() {
+            out.extend(it.all().into_iter().cloned());
+        }
+    }
+    out
 }
 
 /// The `phai_ui::ctl` type of a control of `kind` - its field's type in the generated struct.
@@ -385,6 +432,10 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// button that closed it, or `Cancel`.");
     let _ = writeln!(w, "    pub fn show_dialog<E: {events} + 'static>(owner: HWND, events: E) -> phai_ui::form::DialogResult {{");
     let _ = writeln!(w, "        let hwnd = Self::make(Some(owner), events);");
+    let starts_hidden = f.form.flag("start_hidden", false);
+    if starts_hidden {
+        let _ = writeln!(w, "        Self::first_shown(hwnd);");
+    }
     let _ = writeln!(w, "        win::modal_loop(hwnd, owner);");
     let _ = writeln!(w, "        phai_ui::form::take_result(hwnd)");
     let _ = writeln!(w, "    }}");
@@ -394,6 +445,9 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "    /// `if let (DialogResult::Ok, Some(f)) = Ui::show_dialog_for(owner, f) {{ f.answer }}`.");
     let _ = writeln!(w, "    pub fn show_dialog_for<E: {events} + 'static>(owner: HWND, events: E) -> (phai_ui::form::DialogResult, Option<E>) {{");
     let _ = writeln!(w, "        let hwnd = Self::make(Some(owner), events);");
+    if starts_hidden {
+        let _ = writeln!(w, "        Self::first_shown(hwnd);");
+    }
     let _ = writeln!(w, "        phai_ui::form::want_back(hwnd);");
     let _ = writeln!(w, "        win::modal_loop(hwnd, owner);");
     let _ = writeln!(w, "        (phai_ui::form::take_result(hwnd), phai_ui::form::take_kept::<E>(hwnd))");
@@ -537,16 +591,23 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         let _ = writeln!(w, "                win::center_on_screen(hwnd);");
     }
     let _ = writeln!(w, "            }}");
+    let hidden = f.form.flag("start_hidden", false);
     let _ = writeln!(w, "            if mdi_frame.is_some() {{");
     let _ = writeln!(w, "                win::show(hwnd, true);");
-    let _ = writeln!(w, "            }} else {{");
-    if f.form.maximized == Some(true) {
-        let _ = writeln!(w, "                win::show_maximized(hwnd);");
+    if hidden {
+        // StartHidden: made, its Loaded raised, not shown - no taskbar button, nothing on the
+        // screen; show_window brings it up, show_dialog shows it itself.
+        let _ = writeln!(w, "            }}");
     } else {
-        let _ = writeln!(w, "                win::show_top(hwnd);");
+        let _ = writeln!(w, "            }} else {{");
+        if f.form.maximized == Some(true) {
+            let _ = writeln!(w, "                win::show_maximized(hwnd);");
+        } else {
+            let _ = writeln!(w, "                win::show_top(hwnd);");
+        }
+        let _ = writeln!(w, "            }}");
     }
-    let _ = writeln!(w, "            }}");
-    if f.form.events.contains_key("shown") {
+    if f.form.events.contains_key("shown") && !hidden {
         let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(hwnd), phai_ui::events::WM_SHOWN, WPARAM(0), LPARAM(0));");
     }
     if let Some(watch) = &opts.theme_watch {
@@ -885,11 +946,64 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        win::show(self.hwnd, false);");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    /// Shown again after [`Self::hide`].");
-    let _ = writeln!(w, "    pub fn show_window(&self) {{");
-    let _ = writeln!(w, "        win::show(self.hwnd, true);");
-    let _ = writeln!(w, "    }}");
-    let _ = writeln!(w);
+    if f.form.flag("start_hidden", false) {
+        let _ = writeln!(w, "    /// Shown: the first time as the form says (maximized or not), its Shown raised; again");
+        let _ = writeln!(w, "    /// after [`Self::hide`]. The form starts hidden (`start_hidden`).");
+        let _ = writeln!(w, "    pub fn show_window(&self) {{");
+        let _ = writeln!(w, "        Self::first_shown(self.hwnd);");
+        let _ = writeln!(w, "        win::show(self.hwnd, true);");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+        let _ = writeln!(w, "    /// Its first showing, as the form says, then its Shown; later ones do nothing here.");
+        let _ = writeln!(w, "    fn first_shown(hwnd: HWND) {{");
+        let _ = writeln!(w, "        if !phai_ui::form::first_show(hwnd) {{");
+        let _ = writeln!(w, "            return;");
+        let _ = writeln!(w, "        }}");
+        if f.form.maximized == Some(true) {
+            let _ = writeln!(w, "        win::show_maximized(hwnd);");
+        } else {
+            let _ = writeln!(w, "        win::show_top(hwnd);");
+        }
+        if f.form.events.contains_key("shown") {
+            let _ = writeln!(w, "        unsafe {{");
+            let _ = writeln!(w, "            let _ = wm::PostMessageW(Some(hwnd), phai_ui::events::WM_SHOWN, WPARAM(0), LPARAM(0));");
+            let _ = writeln!(w, "        }}");
+        }
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    } else {
+        let _ = writeln!(w, "    /// Shown again after [`Self::hide`].");
+        let _ = writeln!(w, "    pub fn show_window(&self) {{");
+        let _ = writeln!(w, "        win::show(self.hwnd, true);");
+        let _ = writeln!(w, "    }}");
+        let _ = writeln!(w);
+    }
+    // Context menus' items, changed by the program before a menu opens - in its Opening, say.
+    let named: Vec<crate::model::MenuItem> = context_items(f).into_iter().filter(|it| it.id.is_some()).collect();
+    if !named.is_empty() {
+        let from_form = |pick: &dyn Fn(&crate::model::MenuItem) -> bool| {
+            let mut names: Vec<String> = named.iter().filter(|it| pick(it)).filter_map(|it| it.id.as_deref().map(lit)).collect();
+            names.dedup();
+            if names.is_empty() { "false".to_string() } else { format!("matches!(item, {})", names.join(" | ")) }
+        };
+        let methods = [
+            ("visible", "shown, or left out the next time its menu opens - Visible. A separator\n    /// left at an end of the menu, or beside another, goes too.", format!("!{}", from_form(&|it| it.hidden))),
+            ("checked", "ticked or not - Checked.", from_form(&|it| it.checked)),
+            ("enabled", "usable or greyed - Enabled.", format!("!{}", from_form(&|it| it.disabled))),
+        ];
+        for (what, doc, default) in methods {
+            let _ = writeln!(w, "    /// Context menu item `item` (its name in the form) {doc}");
+            let _ = writeln!(w, "    pub fn set_menu_item_{what}(&self, item: &str, on: bool) {{");
+            let _ = writeln!(w, "        phai_ui::popup::set_{what}(self.hwnd, item, on)");
+            let _ = writeln!(w, "    }}");
+            let _ = writeln!(w);
+            let _ = writeln!(w, "    /// Whether context menu item `item` is {what}: as the program set it, or as the form has it.");
+            let _ = writeln!(w, "    pub fn menu_item_{what}(&self, item: &str) -> bool {{");
+            let _ = writeln!(w, "        phai_ui::popup::{what}(self.hwnd, item, {default})");
+            let _ = writeln!(w, "    }}");
+            let _ = writeln!(w);
+        }
+    }
     let _ = writeln!(w, "    /// In front, taking the keys.");
     let _ = writeln!(w, "    pub fn activate(&self) {{");
     let _ = writeln!(w, "        unsafe {{");
@@ -1061,8 +1175,13 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let in_context = |h: &str| f.control.iter().filter(|c| c.kind == Kind::ContextMenu).any(|c| c.menu_items().iter().any(|(id, _)| id == h));
     let menu_item = |h: &str| f.menu.iter().flat_map(|m| m.all_items()).find(|it| it.id.as_deref() == Some(h)).cloned();
     let toggles = |h: &str| menu_item(h).is_some_and(|it| it.check_on_click) || f.toolbar.iter().any(|t| t.id == h && t.toggle);
+    let in_menus = context_items(f);
     for h in handlers.iter().filter(|h| menu_item(h).is_some() || f.toolbar.iter().any(|t| &t.id == *h) || in_context(h)) {
         let mut calls = Vec::new();
+        if let Some(it) = in_menus.iter().find(|it| it.id.as_deref() == Some(h.as_str()) && it.items.is_empty() && it.check_on_click) {
+            // A context menu's CheckOnClick item: its tick turned over, then its method.
+            calls.push(format!("phai_ui::popup::toggle(hwnd, {}, {});", lit(h), it.checked));
+        }
         if toggles(h) {
             // CheckOnClick: the tick turns over, in the menu and on the toolbar, then its method.
             let bar = if f.toolbar.is_empty() { "None".to_string() } else { "Some(ui.toolbar)".to_string() };
@@ -1197,23 +1316,13 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let menu_of = |c: &Control| f.control.iter().find(|m| m.kind == Kind::ContextMenu && Some(&m.id) == c.context_menu.as_ref());
     // A context menu at (x, y), its choices coming as WM_COMMAND.
     // `call` runs the menu's Opening first: `events` and `ui` as they are where it opens.
+    // Built as it opens (`phai_ui::popup`): as the program hid, ticked or greyed its items - in
+    // its Opening too.
     let popup = |w: &mut String, menu: &Control, pad: &str, opening: &dyn Fn(&str) -> String| {
         if let Some(h) = menu.events.get("opening") {
             let _ = writeln!(w, "{pad}{}", opening(h));
         }
-        let _ = writeln!(w, "{pad}unsafe {{");
-        let _ = writeln!(w, "{pad}    let m = wm::CreatePopupMenu().unwrap_or_default();");
-        for (id, label) in menu.menu_items() {
-            if id.is_empty() {
-                let _ = writeln!(w, "{pad}    let _ = wm::AppendMenuW(m, wm::MF_SEPARATOR, 0, None);");
-            } else {
-                let _ = writeln!(w, "{pad}    let s = wide(t({}));", lit(&label));
-                let _ = writeln!(w, "{pad}    let _ = wm::AppendMenuW(m, wm::MF_STRING, {} as usize, PCWSTR(s.as_ptr()));", const_name(&id));
-            }
-        }
-        let _ = writeln!(w, "{pad}    let _ = wm::TrackPopupMenu(m, wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, x, y, None, hwnd, None);");
-        let _ = writeln!(w, "{pad}    let _ = wm::DestroyMenu(m);");
-        let _ = writeln!(w, "{pad}}}");
+        let _ = writeln!(w, "{pad}phai_ui::popup::show(hwnd, x, y, &{});", popup_items(&menu.context_items()));
     };
     // The icon in the corner: a click, a double-click, its menu on a right-click.
     let trays: Vec<&Control> = f.control.iter().filter(|c| c.kind == Kind::NotifyIcon).collect();
@@ -1228,6 +1337,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             }
             if let Some(h) = c.events.get("double_click") {
                 let _ = writeln!(w, "                if what == wm::WM_LBUTTONDBLCLK {{ events.{h}(ui); }}");
+            }
+            if let Some(h) = c.events.get("balloon_click") {
+                let _ = writeln!(w, "                if what == phai_ui::components::NIN_BALLOONUSERCLICK {{ events.{h}(ui); }}");
+            }
+            if let Some(h) = c.events.get("balloon_closed") {
+                let _ = writeln!(w, "                if what == phai_ui::components::NIN_BALLOONTIMEOUT {{ events.{h}(ui); }}");
             }
             if let Some(menu) = menu_of(c) {
                 let _ = writeln!(w, "                if what == wm::WM_RBUTTONUP {{");
@@ -1479,6 +1594,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     for c in f.control.iter().filter(|c| c.kind == Kind::NotifyIcon) {
         let _ = writeln!(w, "            host.ui.{}.remove();", c.id);
     }
+    if f.control.iter().any(|c| c.kind == Kind::ContextMenu) {
+        let _ = writeln!(w, "            phai_ui::popup::forget(hwnd);");
+    }
+    if f.form.flag("start_hidden", false) {
+        let _ = writeln!(w, "            phai_ui::form::forget_shown(hwnd);");
+    }
     if let Some(h) = form_ev("closed") {
         let _ = writeln!(w, "            host.events.{h}(&host.ui);");
     }
@@ -1626,6 +1747,17 @@ mod tests {
         let f = FormFile::parse(FORM).unwrap();
         let fresh = generate(&f, &sample_options());
         assert!(GENERATED.replace("\r\n", "\n") == fresh, "apps/sample/src/main_window_ui.rs is stale - run the ignored `regenerate` test");
+        // The tray program beside it (`phai-sample --tray`) the same way.
+        let tray = FormFile::parse(TRAY_FORM).unwrap();
+        assert!(tray.check().is_empty(), "{:?}", tray.check());
+        assert!(TRAY_GENERATED.replace("\r\n", "\n") == generate(&tray, &tray_options()), "apps/sample/src/tray_window_ui.rs is stale - run the ignored `regenerate` test");
+    }
+
+    const TRAY_FORM: &str = include_str!("../../../apps/sample/src/tray_window.phf");
+    const TRAY_GENERATED: &str = include_str!("../../../apps/sample/src/tray_window_ui.rs");
+
+    fn tray_options() -> Options {
+        Options { form_file: Some("src/tray_window.phf".into()), ..sample_options() }
     }
 
     #[test]
@@ -1634,6 +1766,111 @@ mod tests {
         let f = FormFile::parse(FORM).unwrap();
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/sample/src/main_window_ui.rs");
         std::fs::write(path, generate(&f, &sample_options())).unwrap();
+        let tray = FormFile::parse(TRAY_FORM).unwrap();
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../apps/sample/src/tray_window_ui.rs");
+        std::fs::write(path, generate(&tray, &tray_options())).unwrap();
+    }
+
+    /// StartHidden: the window is made and its Loaded raised, but nothing shows it until
+    /// show_window (or show_dialog) - and then Shown, once. It survives saving.
+    #[test]
+    fn a_form_that_starts_hidden_is_made_but_not_shown() {
+        let mut f = FormFile::new("TrayWindow");
+        f.form.set_prop("start_hidden", Some(toml::Value::Boolean(true)));
+        f.form.events.insert("shown".into(), "first_seen".into());
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        let saved = f.to_toml();
+        assert!(saved.contains("start_hidden = true"), "{saved}");
+        assert_eq!(FormFile::parse(&saved).unwrap(), f);
+        let code = generate(&f, &Options::default());
+        let make = &code[code.find("    fn make<E").unwrap()..code.find("    fn build(").unwrap()];
+        assert!(make.contains("host.events.loaded(&host.ui);"), "{make}");
+        assert!(!make.contains("show_top") && !make.contains("show_maximized") && !make.contains("WM_SHOWN"), "{make}");
+        let first = &code[code.find("    fn first_shown(hwnd: HWND) {").unwrap()..];
+        assert!(first.contains("if !phai_ui::form::first_show(hwnd) {\n            return;\n        }\n        win::show_top(hwnd);\n        unsafe {\n            let _ = wm::PostMessageW(Some(hwnd), phai_ui::events::WM_SHOWN"), "{first}");
+        assert!(code.contains("    pub fn show_window(&self) {\n        Self::first_shown(self.hwnd);\n        win::show(self.hwnd, true);"), "{code}");
+        assert_eq!(code.matches("let hwnd = Self::make(Some(owner), events);\n        Self::first_shown(hwnd);").count(), 2, "show_dialog and show_dialog_for show it themselves");
+        assert!(code.contains("phai_ui::form::forget_shown(hwnd);"));
+        // Maximized: its first showing is.
+        f.form.maximized = Some(true);
+        assert!(generate(&f, &Options::default()).contains("return;\n        }\n        win::show_maximized(hwnd);"));
+        // Without it, shown as it is made, as before.
+        let plain = generate(&FormFile::new("TrayWindow"), &Options::default());
+        assert!(plain.contains("                win::show_top(hwnd);") && !plain.contains("first_shown"), "{plain}");
+    }
+
+    /// A context menu's items: menus within it, ticks, greyed and hidden ones - from its lines,
+    /// back to the same lines, built as it opens with what the program changed.
+    #[test]
+    fn context_menu_items_change_at_run_time_and_hold_menus_within() {
+        let lines = ["open | Open", "-", "my_id | My ID and password | hidden", "end_session | End remote session | disabled | hidden", "-", "language | Language", "  english | English | checked", "  thai | Thai", "Sort", "  by_name | By name | check_on_click", "-", "exit | Exit | Ctrl+Q"];
+        let mut menu = Control::new(Kind::ContextMenu, "tray_menu", [0, 0, 0, 0]);
+        menu.items = lines.iter().map(|s| s.to_string()).collect();
+        menu.events.insert("opening".into(), "tray_menu_opening".into());
+        let tree = menu.context_items();
+        assert_eq!(tree.len(), 9);
+        assert!(tree[2].hidden && tree[3].hidden && tree[3].disabled);
+        assert_eq!((tree[5].id.as_deref(), tree[5].label.as_deref(), tree[5].items.len()), (Some("language"), Some("Language"), 2));
+        assert!(tree[5].items[0].checked && !tree[5].items[1].checked);
+        assert_eq!((tree[6].id.as_deref(), tree[6].label.as_deref()), (None, Some("Sort")), "words alone over items: a heading");
+        assert!(tree[7].separator && tree[8].key.as_deref() == Some("Ctrl+Q"));
+        // The same lines back, as the designer saves them.
+        let mut again = menu.clone();
+        again.set_context_items(&tree);
+        assert_eq!(again.items, menu.items);
+        let mut tray = Control::new(Kind::NotifyIcon, "tray", [0, 0, 0, 0]);
+        tray.context_menu = Some("tray_menu".into());
+        let mut f = FormFile::new("TrayWindow");
+        f.control.extend([menu, tray]);
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        // The items chosen are methods; a menu within the menu is not, named or not.
+        let h = f.handlers();
+        for m in ["open", "my_id", "end_session", "english", "thai", "by_name", "exit"] {
+            assert!(h.contains(&m.to_string()), "{m}");
+        }
+        assert!(!h.contains(&"language".to_string()) && !h.iter().any(|x| x == "Sort"));
+        let code = generate(&f, &Options::default());
+        // Opening first, then the menu built as the program left it.
+        let tray_arm = &code[code.find("phai_ui::components::WM_TRAY =>").unwrap()..];
+        let opening = tray_arm.find("events.tray_menu_opening(ui);").unwrap();
+        let show = tray_arm.find("phai_ui::popup::show(hwnd, x, y, &vec![").unwrap();
+        assert!(opening < show);
+        assert!(code.contains("phai_ui::popup::Item { name: \"my_id\", id: ID_MY_ID, label: t(\"My ID and password\"), hidden: true, ..Default::default() }"), "{code}");
+        assert!(code.contains("phai_ui::popup::Item { name: \"end_session\", id: ID_END_SESSION, label: t(\"End remote session\"), disabled: true, hidden: true, ..Default::default() }"), "{code}");
+        assert!(code.contains("phai_ui::popup::Item { name: \"language\", label: t(\"Language\"), items: vec![phai_ui::popup::Item { name: \"english\", id: ID_ENGLISH, label: t(\"English\"), checked: true, ..Default::default() }, phai_ui::popup::Item { name: \"thai\", id: ID_THAI, label: t(\"Thai\"), ..Default::default() }], ..Default::default() }"), "{code}");
+        assert!(code.contains("phai_ui::popup::Item { label: t(\"Sort\"), items: vec!["), "{code}");
+        assert!(code.contains("phai_ui::popup::Item { name: \"exit\", id: ID_EXIT, label: t(\"Exit\"), key: \"Ctrl+Q\", ..Default::default() }"), "{code}");
+        assert!(code.contains("phai_ui::popup::Item::separator()"));
+        assert!(!code.contains("const ID_LANGUAGE"), "a menu within the menu has no command");
+        // Its items changed from code, by their names - the form's own as the defaults.
+        assert!(code.contains("    pub fn set_menu_item_visible(&self, item: &str, on: bool) {\n        phai_ui::popup::set_visible(self.hwnd, item, on)\n    }"), "{code}");
+        assert!(code.contains("pub fn set_menu_item_checked(&self, item: &str, on: bool)") && code.contains("pub fn set_menu_item_enabled(&self, item: &str, on: bool)"));
+        assert!(code.contains("phai_ui::popup::visible(self.hwnd, item, !matches!(item, \"my_id\" | \"end_session\"))"), "{code}");
+        assert!(code.contains("phai_ui::popup::checked(self.hwnd, item, matches!(item, \"english\"))"), "{code}");
+        assert!(code.contains("phai_ui::popup::enabled(self.hwnd, item, !matches!(item, \"end_session\"))"), "{code}");
+        // CheckOnClick: the tick turned over, then the method.
+        assert!(code.contains("ID_BY_NAME => { phai_ui::popup::toggle(hwnd, \"by_name\", false); events.by_name(ui); }"), "{code}");
+        assert!(code.contains("phai_ui::popup::forget(hwnd);"));
+        // A name that cannot be a method is caught.
+        f.control[0].items.push("Open Again | Open again".into());
+        assert!(f.check().iter().any(|(m, _)| m.contains("\"Open Again\"")), "{:?}", f.check());
+    }
+
+    /// A click on the icon's notice reaches its method, as its closing unclicked does.
+    #[test]
+    fn a_notice_clicked_reaches_its_method() {
+        let mut tray = Control::new(Kind::NotifyIcon, "tray", [0, 0, 0, 0]);
+        tray.events.insert("balloon_click".into(), "notice_clicked".into());
+        tray.events.insert("balloon_closed".into(), "notice_gone".into());
+        let mut f = FormFile::new("TrayWindow");
+        f.control.push(tray);
+        assert!(f.check().is_empty(), "{:?}", f.check());
+        assert_eq!(FormFile::parse(&f.to_toml()).unwrap(), f);
+        let code = generate(&f, &Options::default());
+        assert!(code.contains("fn notice_clicked(&mut self, ui: &TrayWindowUi) {}") && code.contains("fn notice_gone(&mut self, ui: &TrayWindowUi) {}"), "{code}");
+        assert!(code.contains("if what == phai_ui::components::NIN_BALLOONUSERCLICK { events.notice_clicked(ui); }"), "{code}");
+        assert!(code.contains("if what == phai_ui::components::NIN_BALLOONTIMEOUT { events.notice_gone(ui); }"), "{code}");
     }
 
     #[test]

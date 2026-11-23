@@ -1,0 +1,57 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "TrayWindow"
+title = "Phai Tray"
+size = [360, 140]
+theme = "../theme.css"
+border = "fixed_single"
+maximize_box = false
+start_hidden = true
+
+[form.events]
+closing = "window_closing"
+
+[[control]]
+kind = "label"
+id = "about"
+text = "Phai Tray lives in the corner of the taskbar. Right-click its icon for its menu."
+bounds = [12, 12, 336, 60]
+
+[[control]]
+kind = "button"
+id = "hide_button"
+text = "Hide"
+bounds = [260, 100, 88, 28]
+on_click = "hide_clicked"
+
+[[control]]
+kind = "contextmenu"
+id = "tray_menu"
+items = [
+  "open_window | Open Phai Tray",
+  "-",
+  "pretend_session | Pretend a remote session | check_on_click",
+  "end_session | End remote session | hidden",
+  "-",
+  "Language",
+  "  english | English | checked",
+  "  thai | Thai",
+  "show_notice | Show a notice",
+  "-",
+  "exit | Exit",
+]
+
+[control.events]
+opening = "tray_menu_opening"
+
+[[control]]
+kind = "notifyicon"
+id = "tray"
+text = "Phai Tray"
+context_menu = "tray_menu"
+
+[control.events]
+double_click = "open_window"
+balloon_click = "notice_clicked"

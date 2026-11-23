@@ -128,6 +128,10 @@ pub struct MenuItem {
     /// Ticked - Checked.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub checked: bool,
+    /// Not shown - Visible = false. In a context menu until the program shows it
+    /// (`set_menu_item_visible`); on the menu bar, left out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
     /// A click ticks it or takes the tick away - CheckOnClick.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub check_on_click: bool,
@@ -760,20 +764,97 @@ impl Control {
         self.bounds.unwrap_or([0, 0, 0, 0])
     }
 
-    /// The handler name of this control's one event, whichever field holds it.
-    /// A context menu's items: (method, label), from its `id | label` lines; `-` a separator
-    /// (an empty method).
+    /// A context menu's items that can be chosen, those of its menus within it too, in order:
+    /// (method, label).
     pub fn menu_items(&self) -> Vec<(String, String)> {
-        self.items
-            .iter()
-            .map(|l| match l.split_once('|') {
-                Some((id, label)) => (id.trim().to_string(), label.trim().to_string()),
-                None if l.trim() == "-" => (String::new(), String::new()),
-                None => (l.trim().to_string(), l.trim().to_string()),
-            })
-            .collect()
+        let tree = self.context_items();
+        tree.iter().flat_map(|it| it.all()).filter(|it| !it.separator && it.items.is_empty()).filter_map(|it| Some((it.id.clone()?, it.label.clone().unwrap_or_default()))).collect()
     }
 
+    /// A context menu's items as a tree, from its lines - the menu bar's way (`bars`):
+    /// `id | label`, then in any order `checked`, `check_on_click`, `disabled`, `hidden`, a
+    /// glyph's name, a key's words; `-` a separator; a line with lines indented further under it
+    /// a menu within the menu (`Language`, or `language | Language` to name it for the code).
+    /// The id is the method a click runs - and the item's name for `set_menu_item_visible`.
+    pub fn context_items(&self) -> Vec<MenuItem> {
+        let indent = |l: &str| l.chars().take_while(|c| c.is_whitespace()).map(|c| if c == char::from(9) { 2 } else { 1 }).sum::<usize>();
+        let lines: Vec<(usize, &str)> = self.items.iter().filter(|l| !l.trim().is_empty()).map(|l| (indent(l), l.trim())).collect();
+        fn line(t: &str) -> (MenuItem, bool) {
+            if t == "-" {
+                return (MenuItem { separator: true, ..Default::default() }, false);
+            }
+            let parts: Vec<&str> = t.split('|').map(str::trim).collect();
+            if parts.len() < 2 {
+                return (MenuItem { id: Some(t.to_string()), label: Some(t.to_string()), ..Default::default() }, false);
+            }
+            let mut it = MenuItem { id: (!parts[0].is_empty()).then(|| parts[0].to_string()), label: Some(parts[1].to_string()), ..Default::default() };
+            for p in parts[2..].iter().filter(|p| !p.is_empty()) {
+                match *p {
+                    "checked" => it.checked = true,
+                    "check_on_click" => it.check_on_click = true,
+                    "disabled" => it.disabled = true,
+                    "hidden" => it.hidden = true,
+                    g if phai_ui::icon::glyph::by_name(g).is_some() => it.glyph = Some(g.to_string()),
+                    k => it.key = Some(k.to_string()),
+                }
+            }
+            (it, true)
+        }
+        fn level(lines: &[(usize, &str)], i: &mut usize, indent: usize) -> Vec<MenuItem> {
+            let mut out = Vec::new();
+            while *i < lines.len() && lines[*i].0 >= indent {
+                let (at, t) = lines[*i];
+                *i += 1;
+                let (mut it, named) = line(t);
+                if !it.separator && *i < lines.len() && lines[*i].0 > at {
+                    it.items = level(lines, i, lines[*i].0);
+                    // Words alone over a menu within the menu: a heading, no method.
+                    if !named {
+                        it.id = None;
+                    }
+                }
+                out.push(it);
+            }
+            out
+        }
+        let mut i = 0;
+        let mut out = Vec::new();
+        while i < lines.len() {
+            out.extend(level(&lines, &mut i, 0));
+        }
+        out
+    }
+
+    /// A context menu's lines from items as a tree - [`Self::context_items`] the other way.
+    pub fn set_context_items(&mut self, items: &[MenuItem]) {
+        fn lines(items: &[MenuItem], depth: usize, out: &mut Vec<String>) {
+            let pad = "  ".repeat(depth);
+            for it in items {
+                if it.separator {
+                    out.push(format!("{pad}-"));
+                    continue;
+                }
+                let label = it.label.clone().unwrap_or_default();
+                let mut line = match &it.id {
+                    Some(id) => format!("{pad}{id} | {label}"),
+                    // A heading's words alone, with nothing after them to say.
+                    None if !it.items.is_empty() && !it.checked && !it.disabled && !it.hidden => format!("{pad}{label}"),
+                    None => format!("{pad} | {label}"),
+                };
+                for extra in [it.key.clone(), it.glyph.clone(), it.checked.then(|| "checked".into()), it.check_on_click.then(|| "check_on_click".into()), it.disabled.then(|| "disabled".into()), it.hidden.then(|| "hidden".into())].into_iter().flatten() {
+                    line.push_str(" | ");
+                    line.push_str(&extra);
+                }
+                out.push(line);
+                lines(&it.items, depth + 1, out);
+            }
+        }
+        let mut out = Vec::new();
+        lines(items, 0, &mut out);
+        self.items = out;
+    }
+
+    /// The handler name of this control's one event, whichever field holds it.
     pub fn handler(&self) -> Option<&str> {
         match self.kind.event()? {
             "on_click" => self.on_click.as_deref(),
@@ -1028,6 +1109,14 @@ impl FormFile {
                         if let Some(e) = crate::props::check(s, v) {
                             out.push((format!("{}: {e}", c.id), at.clone()));
                         }
+                    }
+                }
+            }
+            if c.kind == Kind::ContextMenu {
+                let items = c.context_items();
+                for id in items.iter().flat_map(|it| it.all()).filter_map(|it| it.id.as_ref()) {
+                    if !is_snake(id) || KEYWORDS.contains(&id.as_str()) {
+                        out.push((format!("{}: item {id:?} - its name and method: snake_case, not a Rust keyword", c.id), Some(id.clone())));
                     }
                 }
             }
@@ -1298,7 +1387,7 @@ impl FormFile {
             }
             // A context menu's items are `method | label`: the label is the words.
             if c.kind == Kind::ContextMenu {
-                c.menu_items().iter().for_each(|(_, l)| add(l));
+                c.context_items().iter().flat_map(|it| it.all()).filter_map(|it| it.label.as_deref()).for_each(&mut add);
             } else {
                 c.items.iter().for_each(|s| add(s));
             }

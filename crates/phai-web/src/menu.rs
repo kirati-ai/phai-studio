@@ -24,9 +24,35 @@ pub struct Item {
     pub checked: bool,
     pub check_on_click: bool,
     pub disabled: bool,
+    /// Not shown: on the menu bar left out; in a context menu until the program shows it
+    /// (`crate::popup::set_visible`).
+    pub hidden: bool,
     pub separator: bool,
     /// A menu of its own that opens beside it.
     pub items: Vec<Item>,
+}
+
+/// The items to show in a menu of `window`'s: none hidden (by the form, or the program for a
+/// context menu), no separator at either end or two together, no menu within left empty.
+fn to_show(window: HWND, items: &[Item]) -> Vec<&Item> {
+    let mut out: Vec<&Item> = Vec::new();
+    for it in items {
+        if it.separator {
+            if out.last().is_some_and(|l| !l.separator) {
+                out.push(it);
+            }
+            continue;
+        }
+        let shown = if it.id.is_empty() { !it.hidden } else { crate::popup::visible(window, it.id, !it.hidden) };
+        if !shown || (!it.items.is_empty() && to_show(window, &it.items).is_empty()) {
+            continue;
+        }
+        out.push(it);
+    }
+    while out.last().is_some_and(|l| l.separator) {
+        out.pop();
+    }
+    out
 }
 
 /// A menu of the bar: its words and its items.
@@ -177,7 +203,7 @@ fn open_menu(window: HWND, items: &[Item], x: f64, y: f64, depth: usize, chosen:
     let menu = make("div");
     menu.set_class_name("phai-dropdown");
     menu.set_attribute("role", "menu").ok();
-    for it in items {
+    for it in to_show(window, items) {
         if it.separator {
             let hr = make("div");
             hr.set_class_name("phai-menu-sep");
@@ -209,11 +235,13 @@ fn open_menu(window: HWND, items: &[Item], x: f64, y: f64, depth: usize, chosen:
         let _ = menu.append_child(&row);
         // The tick and the grey as the window has them now (the toolbar's button may have
         // changed them).
-        let now_checked = !it.id.is_empty() && (item_checked(window, it.id) || (it.checked && parts(window, it.id).is_empty()));
+        // What the program set for a context menu's item comes first.
+        let set = if it.id.is_empty() { crate::popup::State::default() } else { crate::popup::state(window, it.id) };
+        let now_checked = set.checked.unwrap_or(!it.id.is_empty() && (item_checked(window, it.id) || (it.checked && parts(window, it.id).is_empty())));
         if now_checked {
             row.class_list().add_1("checked").ok();
         }
-        let now_disabled = it.disabled || (!it.id.is_empty() && !enabled(window, it.id));
+        let now_disabled = set.enabled.map(|on| !on).unwrap_or(it.disabled || (!it.id.is_empty() && !enabled(window, it.id)));
         if now_disabled {
             row.class_list().add_1("disabled").ok();
         }
@@ -234,10 +262,20 @@ fn open_menu(window: HWND, items: &[Item], x: f64, y: f64, depth: usize, chosen:
             let _ = row.add_event_listener_with_callback("mouseenter", c.as_ref().unchecked_ref());
             c.forget();
         } else if !it.id.is_empty() {
-            let (id, toggles, chosen) = (it.id, it.check_on_click, chosen.clone());
+            let (id, toggles, chosen, was) = (it.id, it.check_on_click, chosen.clone(), it.checked);
             on_click(&row, move |e| {
                 e.stop_propagation();
-                choose(window, id, toggles, &chosen);
+                if now_disabled {
+                    return;
+                }
+                // A context menu's item has no place on the page to keep its tick: kept as the
+                // program's.
+                if toggles && parts(window, id).is_empty() {
+                    crate::popup::toggle(window, id, was);
+                    choose(window, id, false, &chosen);
+                } else {
+                    choose(window, id, toggles, &chosen);
+                }
             });
             let c = Closure::<dyn FnMut()>::new(move || close_from(depth + 1));
             let _ = row.add_event_listener_with_callback("mouseenter", c.as_ref().unchecked_ref());

@@ -229,7 +229,7 @@ fn items_code(items: &[crate::model::MenuItem]) -> String {
                 return "phai_ui::menu::Item { separator: true, ..Default::default() }".to_string();
             }
             format!(
-                "phai_ui::menu::Item {{ id: {}, label: t({}), key: {}, glyph: {}, checked: {}, check_on_click: {}, disabled: {}, separator: false, items: {} }}",
+                "phai_ui::menu::Item {{ id: {}, label: t({}), key: {}, glyph: {}, checked: {}, check_on_click: {}, disabled: {}, hidden: {}, separator: false, items: {} }}",
                 lit(it.id.as_deref().unwrap_or("")),
                 lit(it.label.as_deref().unwrap_or("")),
                 lit(it.key.as_deref().unwrap_or("")),
@@ -237,6 +237,7 @@ fn items_code(items: &[crate::model::MenuItem]) -> String {
                 it.checked,
                 it.check_on_click,
                 it.disabled,
+                it.hidden,
                 items_code(&it.items)
             )
         })
@@ -389,6 +390,26 @@ pub fn generate(f: &FormFile) -> String {
         let _ = writeln!(w, "        phai_ui::menu::set_item_enabled(self.hwnd, item, on)");
         let _ = writeln!(w, "    }}");
         let _ = writeln!(w);
+    }
+    let named: Vec<crate::model::MenuItem> = f.control.iter().filter(|c| c.kind == Kind::ContextMenu).flat_map(|c| c.context_items()).flat_map(|it| it.all().into_iter().cloned().collect::<Vec<_>>()).filter(|it| it.id.is_some()).collect();
+    if !named.is_empty() {
+        let from_form = |pick: &dyn Fn(&crate::model::MenuItem) -> bool| {
+            let mut names: Vec<String> = named.iter().filter(|it| pick(it)).filter_map(|it| it.id.as_deref().map(lit)).collect();
+            names.dedup();
+            if names.is_empty() { "false".to_string() } else { format!("matches!(item, {})", names.join(" | ")) }
+        };
+        for (what, default) in [("visible", format!("!{}", from_form(&|it| it.hidden))), ("checked", from_form(&|it| it.checked)), ("enabled", format!("!{}", from_form(&|it| it.disabled)))] {
+            let _ = writeln!(w, "    /// Context menu item `item` {what} or not, the next time its menu opens.");
+            let _ = writeln!(w, "    pub fn set_menu_item_{what}(&self, item: &str, on: bool) {{");
+            let _ = writeln!(w, "        phai_ui::popup::set_{what}(self.hwnd, item, on)");
+            let _ = writeln!(w, "    }}");
+            let _ = writeln!(w);
+            let _ = writeln!(w, "    /// Whether context menu item `item` is {what}.");
+            let _ = writeln!(w, "    pub fn menu_item_{what}(&self, item: &str) -> bool {{");
+            let _ = writeln!(w, "        phai_ui::popup::{what}(self.hwnd, item, {default})");
+            let _ = writeln!(w, "    }}");
+            let _ = writeln!(w);
+        }
     }
     let _ = writeln!(w, "    /// Puts the window on the page; the page runs it.");
     let _ = writeln!(w, "    pub fn run<E: {events} + 'static>(events: E) {{");
@@ -614,14 +635,9 @@ pub fn generate(f: &FormFile) -> String {
     // Context menus: a right-click (a long press on a phone) on the control that has one.
     for c in shown.iter().filter(|c| c.kind != Kind::ContextMenu) {
         let Some(menu) = c.context_menu.as_ref().and_then(|m| f.control.iter().find(|x| x.kind == Kind::ContextMenu && &x.id == m)) else { continue };
-        let items = menu
-            .menu_items()
-            .iter()
-            .map(|(id, label)| if id.is_empty() { "phai_ui::menu::Item { separator: true, ..Default::default() }".to_string() } else { format!("phai_ui::menu::Item {{ id: {}, label: t({}), ..Default::default() }}", lit(id), lit(label)) })
-            .collect::<Vec<_>>()
-            .join(", ");
+        let items = items_code(&menu.context_items());
         let opening = menu.events.get("opening").map(|h| format!("call(&me, |e: &mut E, ui: &{ui}| e.{h}(ui))")).unwrap_or_else(|| "|| {}".to_string());
-        let _ = writeln!(w, "        phai_ui::menu::context_menu(hwnd, ui.{}.hwnd(), vec![{items}], {opening}, chosen(&me));", c.id);
+        let _ = writeln!(w, "        phai_ui::menu::context_menu(hwnd, ui.{}.hwnd(), {items}, {opening}, chosen(&me));", c.id);
     }
     let _ = writeln!(w, "        let host = Rc::new(RefCell::new(Host {{ ui, events }}));");
     let _ = writeln!(w, "        let _ = me.set(Rc::downgrade(&host));");
@@ -1117,7 +1133,7 @@ dock = "bottom"
         tree.on_select = Some("folders_selected".into());
         tree.context_menu = Some("menu".into());
         let mut menu = Control::new(Kind::ContextMenu, "menu", [0, 0, 0, 0]);
-        menu.items = vec!["rename | Rename".into(), "-".into(), "remove | Remove".into()];
+        menu.items = vec!["rename | Rename".into(), "-".into(), "remove | Remove".into(), "Sort".into(), "  by_name | By name | checked".into(), "  by_size | By size | hidden".into()];
         menu.events.insert("opening".into(), "menu_opening".into());
         f.control.push(tree);
         f.control.push(menu);
@@ -1126,7 +1142,12 @@ dock = "bottom"
         assert!(code.contains("phai_ui::tree::set_lines(folders, &[\"Root\", \"  Child\"]);"), "{code}");
         assert!(code.contains("form::on(ui.folders.hwnd(), \"change\""), "{code}");
         assert!(code.contains("let menu = HWND::default();"), "{code}");
-        assert!(code.contains("phai_ui::menu::context_menu(hwnd, ui.folders.hwnd(), vec![phai_ui::menu::Item { id: \"rename\", label: t(\"Rename\"), ..Default::default() }, phai_ui::menu::Item { separator: true, ..Default::default() }"), "{code}");
+        assert!(code.contains("phai_ui::menu::context_menu(hwnd, ui.folders.hwnd(), vec![phai_ui::menu::Item { id: \"rename\", label: t(\"Rename\"), key: \"\", glyph: 0, checked: false, check_on_click: false, disabled: false, hidden: false, separator: false, items: vec![] }, phai_ui::menu::Item { separator: true, ..Default::default() }"), "{code}");
+        // A menu within it, its items' ticks and hidden ones; the same methods as on Windows.
+        assert!(code.contains("label: t(\"Sort\"), key: \"\", glyph: 0, checked: false, check_on_click: false, disabled: false, hidden: false, separator: false, items: vec![phai_ui::menu::Item { id: \"by_name\", label: t(\"By name\"), key: \"\", glyph: 0, checked: true,"), "{code}");
+        assert!(code.contains("id: \"by_size\", label: t(\"By size\"), key: \"\", glyph: 0, checked: false, check_on_click: false, disabled: false, hidden: true,"), "{code}");
+        assert!(code.contains("pub fn set_menu_item_visible(&self, item: &str, on: bool) {\n        phai_ui::popup::set_visible(self.hwnd, item, on)"), "{code}");
+        assert!(code.contains("phai_ui::popup::checked(self.hwnd, item, matches!(item, \"by_name\"))"), "{code}");
         assert!(code.contains("e.menu_opening(ui)"), "{code}");
         assert!(code.contains("\"remove\" => e.remove(ui),"), "{code}");
     }

@@ -39,6 +39,7 @@
 | P | MinimumSize, MaximumSize | `min_size`, `max_size` | ✅ |
 | P | Icon | `icon` | ✅ |
 | P | TopMost, ShowInTaskbar, Opacity | `top_most`, `show_in_taskbar`, `opacity` | ✅ |
+| P | (เริ่มซ่อน แบบ `Visible = false` ก่อน `Application.Run`) | `start_hidden` — สร้างแล้วไม่แสดง, `ui.show_window()` แสดง | ✅ |
 | P | BackColor, ForeColor | `back_color`, `fore_color` (ของหน้าต่างนี้, control วางบนสีนี้) | ✅ |
 | P | Font | `font_size` | ✅ |
 | P | KeyPreview | `key_preview` | ✅ |
@@ -195,8 +196,10 @@
 | | WinForms | Phai | สถานะ |
 |---|---|---|---|
 | P | Items | `items` (`เมธอด \| ข้อความ`) | ✅ |
+| P | DropDownItems (เมนูย่อย) | บรรทัดย่อหน้าใต้หัวข้อ | ✅ |
+| P | Item Visible, Checked, Enabled, CheckOnClick | `hidden`, `checked`, `disabled`, `check_on_click` ต่อท้ายบรรทัด; ตอนรัน `ui.set_menu_item_visible/checked/enabled("ชื่อ", ..)` | ✅ |
 | E | ItemClicked (ต่อรายการ) | เมธอดของแต่ละรายการ | ✅ |
-| E | Opening | — (เมนูสร้างตอนคลิกขวา ไม่มีขั้นก่อนเปิด) | — |
+| E | Opening | event `opening` (ก่อนเมนูขึ้น ตั้งค่ารายการที่นี่ได้) | ✅ |
 
 ## FlowLayoutPanel (`flow`) / TableLayoutPanel (`table`)
 
@@ -216,7 +219,7 @@
 | C | MaskedTextBox | `masked`: `mask` (`0 9 # L ? A a & C`, `\` literal); `value()` (ไม่รวมตัวคั่น), `mask_completed()`; `on_change` | ✅ |
 | C | MonthCalendar | `calendar`: `selection_start()`, `set_date()`; `on_change` = DateChanged; สีจาก `calendar { }` ในธีม | ✅ |
 | C | SplitContainer | `split`: `orientation` (`vertical`/`horizontal`), `splitter_distance`; control ข้างในยึด anchor กับช่องของตัวเอง; ลากเส้นแบ่งได้; `splitter_distance()`, `set_splitter_distance()`; `on_change` = SplitterMoved | ✅ |
-| C | NotifyIcon | `notifyicon`: `text`, `visible`, `context_menu`, `on_click`, `double_click`; `set_text`, `set_visible`, `show_balloon_tip`, `remove` (ทำเองตอนปิดหน้าต่าง) | ✅ |
+| C | NotifyIcon | `notifyicon`: `text`, `visible`, `context_menu`, `on_click`, `double_click`; `set_text`, `set_visible`, `show_balloon_tip`, `remove` (ทำเองตอนปิดหน้าต่าง); BalloonTipClicked / BalloonTipClosed = `balloon_click` / `balloon_closed` | ✅ |
 | C | OpenFileDialog / SaveFileDialog / FolderBrowserDialog / ColorDialog / FontDialog (component) | `openfiledialog` (`title`, `filter`, `initial_directory`, `default_ext`, `multiselect`) `show_dialog()` / `show_dialog_multi()`; `savefiledialog` `show_dialog_named()`; `folderbrowserdialog`; `colordialog` `show_dialog("#hex")`; `fontdialog` → `ChosenFont` | ✅ |
 | C | ErrorProvider | `errorprovider`: `set_error(control, "...")` (เครื่องหมายแดงข้าง control พร้อม tooltip ตามไปเมื่อ control ขยับ), `error()`, `clear()` | ✅ |
 | C | ToolTip (component) | — (เป็น property `tooltip` ของทุก control แล้ว) | — |

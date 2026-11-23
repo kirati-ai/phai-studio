@@ -1493,6 +1493,7 @@ impl<'a> Build<'a> {
                     m.checked = o.get("Checked") == Some(&E::Bool(true)) || o.get("CheckState").and_then(word) == Some("Checked");
                     m.check_on_click = o.get("CheckOnClick") == Some(&E::Bool(true));
                     m.disabled = o.get("Enabled") == Some(&E::Bool(false));
+                    m.hidden = o.get("Visible") == Some(&E::Bool(false));
                     for (ev, h) in &o.events {
                         if ev == "Click" {
                             continue;
@@ -1561,26 +1562,12 @@ impl<'a> Build<'a> {
                 c.value = Some(o.get("Interval").and_then(num).map(|n| n as i32).unwrap_or(100));
             }
             Kind::ContextMenu => {
-                for it in &o.items {
-                    let E::Path(p) = it else { continue };
-                    let k = p.join(".");
-                    let Some(m) = self.o(&k) else { continue };
-                    match m.short() {
-                        "ToolStripSeparator" => c.items.push("-".into()),
-                        "ToolStripMenuItem" => {
-                            let label = m.get("Text").and_then(text).unwrap_or_else(|| k.clone());
-                            let method = m.events.iter().find(|(e, _)| e == "Click").map(|(_, h)| ident(h)).unwrap_or_else(|| ident(&k));
-                            self.handlers.insert(method.clone(), crate::events::Args::None);
-                            if !m.drop.is_empty() {
-                                self.left_out.insert("a menu within a context menu".into());
-                            }
-                            c.items.push(format!("{method} | {label}"));
-                        }
-                        other => {
-                            self.left_out.insert(format!("{other} in a context menu"));
-                        }
-                    }
+                // As the menu bar's items: menus within it, ticks, greyed and hidden ones.
+                let items = self.menu_items(&o.items);
+                if items.iter().flat_map(|it| it.all()).any(|it| !it.events.is_empty()) {
+                    self.left_out.insert("a context menu item's events beyond its Click".into());
                 }
+                c.set_context_items(&items);
             }
             Kind::NotifyIcon => {
                 c.text = o.get("Text").and_then(text);
@@ -2219,6 +2206,58 @@ namespace Shop
     }
 }
 "#;
+
+    /// A tray program's form: its icon's menu with a menu within it, a ticked item and a hidden
+    /// one, and its notice's click - all as lines of the context menu and an event.
+    #[test]
+    fn a_tray_icon_s_menu_comes_over_with_its_menu_within() {
+        let src = r#"
+partial class TrayForm
+{
+    private void InitializeComponent()
+    {
+        components = new System.ComponentModel.Container();
+        trayMenu = new ContextMenuStrip(components);
+        openItem = new ToolStripMenuItem();
+        endItem = new ToolStripMenuItem();
+        langItem = new ToolStripMenuItem();
+        englishItem = new ToolStripMenuItem();
+        thaiItem = new ToolStripMenuItem();
+        sep = new ToolStripSeparator();
+        exitItem = new ToolStripMenuItem();
+        tray = new NotifyIcon(components);
+        trayMenu.Items.AddRange(new ToolStripItem[] { openItem, endItem, langItem, sep, exitItem });
+        openItem.Text = "Open";
+        openItem.Click += Open_Click;
+        endItem.Text = "End remote session";
+        endItem.Visible = false;
+        endItem.Click += End_Click;
+        langItem.DropDownItems.AddRange(new ToolStripItem[] { englishItem, thaiItem });
+        langItem.Text = "Language";
+        englishItem.Checked = true;
+        englishItem.Text = "English";
+        englishItem.Click += English_Click;
+        thaiItem.Text = "Thai";
+        thaiItem.Click += Thai_Click;
+        exitItem.Text = "Exit";
+        exitItem.Click += Exit_Click;
+        tray.ContextMenuStrip = trayMenu;
+        tray.Text = "Phai Tray";
+        tray.BalloonTipClicked += Tray_BalloonTipClicked;
+        ClientSize = new Size(300, 200);
+        Text = "Tray";
+    }
+}
+"#;
+        let im = import(src).unwrap();
+        let f = &im.form;
+        assert_eq!(f.check(), vec![], "{}", f.to_toml());
+        let menu = f.control.iter().find(|c| c.kind == Kind::ContextMenu).unwrap();
+        assert_eq!(menu.items, ["open_click | Open", "end_click | End remote session | hidden", "Language", "  english_click | English | checked", "  thai_click | Thai", "-", "exit_click | Exit"]);
+        let tray = f.control.iter().find(|c| c.kind == Kind::NotifyIcon).unwrap();
+        assert_eq!(tray.events.get("balloon_click").map(String::as_str), Some("tray_balloon_tip_clicked"), "{:?}", tray.events);
+        assert!(!im.warnings.iter().any(|w| w.contains("within a context menu")), "{:?}", im.warnings);
+    }
 
     #[test]
     fn a_dot_net_form_designed_at_200_percent_comes_over_at_100() {
