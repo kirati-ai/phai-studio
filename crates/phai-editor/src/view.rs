@@ -2423,7 +2423,9 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             }
             match unit {
                 0x08 => {
-                    v.model.backspace();
+                    if v.lang == Language::Text || !v.model.backspace_pair() {
+                        v.model.backspace();
+                    }
                     changed(h);
                 }
                 0x09 => {
@@ -2465,7 +2467,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         let (line, col) = v.model.buf.position(v.model.caret);
                         v.model.buf.line(line)[..col].ends_with(':')
                     };
-                    v.model.type_text(&s);
+                    // A bracket or a quote comes with its closer, as in Visual Studio Code.
+                    let paired = v.lang != Language::Text && s.chars().count() == 1 && v.model.type_paired(s.chars().next().unwrap_or(' '));
+                    if !paired {
+                        v.model.type_text(&s);
+                    }
                     changed(h);
                     // A member or a path asks for completions; typing on narrows the open list.
                     if s == "(" || s == "," {

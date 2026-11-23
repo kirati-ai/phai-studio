@@ -160,6 +160,23 @@ fn prelude_place(text: &str) -> usize {
     header
 }
 
+/// The `"` in `s` that open or close a string - not those after a backslash.
+fn unescaped_quotes(s: &str) -> usize {
+    let mut n = 0;
+    let mut escaped = false;
+    for c in s.chars() {
+        match c {
+            '\\' if !escaped => escaped = true,
+            '"' if !escaped => n += 1,
+            _ => escaped = false,
+        }
+        if c != '\\' {
+            escaped = false;
+        }
+    }
+    n
+}
+
 /// The snippets the person keeps of their own (Tools > Code Snippets), beside the built-in ones.
 static USER_SNIPPETS: std::sync::RwLock<Vec<(String, String)>> = std::sync::RwLock::new(Vec::new());
 
@@ -227,6 +244,18 @@ impl Model {
             }
             if indent.len() > col {
                 indent.truncate(col);
+            }
+            // Enter between a pair just opened - `{|}` - puts the closer on a line of its own
+            // under the opener, the caret on an indented line between, as Visual Studio does.
+            let opener = before.chars().last();
+            let closer = current[col..].chars().next();
+            if self.caret == self.anchor && matches!((opener, closer), (Some('{'), Some('}')) | (Some('('), Some(')')) | (Some('['), Some(']'))) {
+                let base: String = current.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+                let at = self.caret;
+                self.replace(&format!("\n{indent}\n{base}"), false);
+                self.caret = at + 1 + indent.len();
+                self.anchor = self.caret;
+                return;
             }
             self.replace(&format!("\n{indent}"), false);
             return;
@@ -333,6 +362,76 @@ impl Model {
         self.replace(&new, false);
         self.caret = caret.min(self.buf.len());
         self.anchor = self.caret;
+    }
+
+    /// A bracket or a quote typed in code, as Visual Studio Code pairs them: `(` makes `()` with the
+    /// caret between, a closer typed just before the same closer steps over it, a selection is
+    /// wrapped. False when `ch` is not one of them, or pairing would get in the way (in a
+    /// comment, in a string, before a word) - then it is typed as it is.
+    pub fn type_paired(&mut self, ch: char) -> bool {
+        if !self.extra.is_empty() {
+            return false;
+        }
+        let (line, col) = self.buf.position(self.caret);
+        let text = self.buf.line(line);
+        let (before, after) = (&text[..col], &text[col..]);
+        let next = after.chars().next();
+        let prev = before.chars().last();
+        let in_string = unescaped_quotes(before) % 2 == 1;
+        let in_comment = !in_string && before.contains("//");
+        if in_comment {
+            return false;
+        }
+        // A closer typed where the same closer already is: over it, nothing added.
+        if self.caret == self.anchor && matches!(ch, ')' | ']' | '}' | '"') && next == Some(ch) && (ch != '"' || in_string) {
+            self.caret += 1;
+            self.anchor = self.caret;
+            self.typing = false;
+            return true;
+        }
+        let close = match ch {
+            '(' => ')',
+            '[' => ']',
+            '{' => '}',
+            '"' => '"',
+            _ => return false,
+        };
+        // A selection wrapped: `(chosen)`, chosen still.
+        if self.caret != self.anchor {
+            let (a, b) = self.selection();
+            let inner = self.buf.slice(a, b);
+            self.replace_range(a, b, &format!("{ch}{inner}{close}"), b + 1, a + 1);
+            return true;
+        }
+        if in_string && ch != '"' {
+            return false;
+        }
+        let next_ok = next.is_none_or(|c| c.is_whitespace() || matches!(c, ')' | ']' | '}' | ';' | ',' | '.'));
+        let prev_ok = ch != '"' || prev.is_none_or(|c| !(c.is_alphanumeric() || c == '"' || c == '\\'));
+        if !next_ok || !prev_ok || in_string {
+            return false;
+        }
+        self.type_text(&format!("{ch}{close}"));
+        self.caret -= close.len_utf8();
+        self.anchor = self.caret;
+        true
+    }
+
+    /// Backspace between an empty pair - `(|)`, `""` - takes both. False elsewhere.
+    pub fn backspace_pair(&mut self) -> bool {
+        if self.caret != self.anchor || self.caret == 0 || !self.extra.is_empty() {
+            return false;
+        }
+        let (line, col) = self.buf.position(self.caret);
+        let text = self.buf.line(line);
+        let (prev, next) = (text[..col].chars().last(), text[col..].chars().next());
+        let paired = matches!((prev, next), (Some('('), Some(')')) | (Some('['), Some(']')) | (Some('{'), Some('}')) | (Some('"'), Some('"')));
+        if !paired {
+            return false;
+        }
+        let at = self.caret - 1;
+        self.replace_range(at, self.caret + 1, "", at, at);
+        true
     }
 
     pub fn backspace(&mut self) {
@@ -1480,6 +1579,60 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(m.expand_snippet());
         assert_eq!(m.buf.text(), "eprintln!(\"x\");");
         set_user_snippets(vec![]);
+    }
+
+    #[test]
+    fn brackets_and_quotes_come_in_pairs() {
+        let typed = |start: &str, keys: &str| {
+            let mut m = Model::new(start);
+            m.caret = start.len();
+            m.anchor = m.caret;
+            for c in keys.chars() {
+                if !m.type_paired(c) {
+                    m.type_text(&c.to_string());
+                }
+            }
+            let t = m.buf.text();
+            format!("{}|{}", &t[..m.caret], &t[m.caret..])
+        };
+        assert_eq!(typed("    ui.msg", "("), "    ui.msg(|)");
+        assert_eq!(typed("    ui.msg", "(\""), "    ui.msg(\"|\")");
+        assert_eq!(typed("    ui.msg", "(\"Hi\")"), "    ui.msg(\"Hi\")|", "typed over the closers");
+        assert_eq!(typed("    ui.msg", "(\"Hi\");"), "    ui.msg(\"Hi\");|");
+        assert_eq!(typed("    let v = vec!", "[1, 2]"), "    let v = vec![1, 2]|");
+        assert_eq!(typed("    // a note ", "("), "    // a note (|", "not in a comment");
+        assert_eq!(typed("    let s = \"a ", "("), "    let s = \"a (|", "not in a string");
+        assert_eq!(typed("    let s = word", "\""), "    let s = word\"|", "not after a word");
+        // Before a word: as it is.
+        let mut m = Model::new("ab");
+        assert!(!m.type_paired('('));
+        // A selection wrapped.
+        let mut m = Model::new("x = name;");
+        m.anchor = 4;
+        m.caret = 8;
+        assert!(m.type_paired('"'));
+        assert_eq!(m.buf.text(), "x = \"name\";");
+        assert_eq!(m.selected_text(), "name");
+        // Backspace in an empty pair takes both.
+        let mut m = Model::new("f()");
+        m.caret = 2;
+        m.anchor = 2;
+        assert!(m.backspace_pair());
+        assert_eq!(m.buf.text(), "f");
+        let mut m = Model::new("f(a)");
+        m.caret = 3;
+        m.anchor = 3;
+        assert!(!m.backspace_pair());
+        assert_eq!(unescaped_quotes(r#"let s = "a\"b"#), 1);
+        // Enter between braces just typed: the closer under the opener, the caret between.
+        let mut m = Model::new("    fn f() ");
+        m.caret = m.buf.len();
+        m.anchor = m.caret;
+        assert!(m.type_paired('{'));
+        m.type_text("\n");
+        let t = m.buf.text();
+        assert_eq!(t, "    fn f() {\n        \n    }");
+        assert_eq!(&t[..m.caret], "    fn f() {\n        ");
     }
 
     #[test]
