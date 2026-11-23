@@ -954,7 +954,8 @@ pub fn show_signature(h: HWND, text: Option<&str>) {
         return;
     };
     // Posted, not sent: this comes while the window above is answering the server.
-    if std::mem::take(&mut v.args_list) && v.model.at_argument() {
+    // Only at an argument the call has: past its last (`confirm("ok", |`) the wavy line says so.
+    if std::mem::take(&mut v.args_list) && v.model.at_argument() && text.contains('«') {
         v.list_at = word_before(v).0;
         post_notify(h, COMPLETE);
     }
@@ -1011,7 +1012,8 @@ fn filter_list(h: HWND) {
     let (_, typed) = word_before(v);
     let lower = typed.to_lowercase();
     let shown: Vec<crate::lsp::Completion> = v.all_items.iter().filter(|c| c.label.to_lowercase().starts_with(&lower)).take(50).cloned().collect();
-    if shown.is_empty() {
+    // Nothing left to choose: what is typed is all there is.
+    if shown.is_empty() || shown.len() == 1 && shown[0].label == typed {
         v.list = None;
         return;
     }
@@ -2678,6 +2680,8 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     }
                     let Some(v) = view(h) else { return LRESULT(0) };
                     if s == "." || s == "::" || (s == ":" && before_colon) {
+                        v.list = None;
+                        v.all_items.clear();
                         v.list_at = word_before(v).0;
                         notify(h, COMPLETE);
                     } else if v.list.is_some() {

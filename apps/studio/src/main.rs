@@ -3534,13 +3534,32 @@ impl Studio {
                 } else if LSP_TEST.load(Ordering::Relaxed) == 0 {
                     TICKS.store(1, Ordering::Relaxed);
                     phai_editor::view::go_to(h, l, c);
-                    words.encode_utf16().for_each(key);
+                    // `PHAI_ARG_SLOW=ms`: a letter every so many milliseconds, as a hand types.
+                    match std::env::var("PHAI_ARG_SLOW").ok().and_then(|n| n.parse::<u64>().ok()) {
+                        Some(ms) => {
+                            let target = h.0 as isize;
+                            std::thread::spawn(move || {
+                                for u in words.encode_utf16() {
+                                    std::thread::sleep(std::time::Duration::from_millis(ms));
+                                    unsafe {
+                                        let _ = wm::PostMessageW(Some(HWND(target as *mut _)), wm::WM_CHAR, WPARAM(u as usize), LPARAM(1));
+                                    }
+                                }
+                            });
+                        }
+                        None => words.encode_utf16().for_each(key),
+                    }
                     LSP_TEST.store(1, Ordering::Relaxed);
                 } else if wait.is_some_and(|w| ticks >= w) {
                     let (names, signing) = phai_editor::view::list_labels(h);
                     println!("after {ticks}s: list [{}], Parameter Info {signing}, wavy lines: {:?}", names.join(", "), phai_editor::view::mark_messages(h));
                     std::process::exit(0);
                 } else if wait.is_some() {
+                    if std::env::var_os("PHAI_ARG_SLOW").is_some() {
+                        let (names, signing) = phai_editor::view::list_labels(h);
+                        let line = phai_editor::view::text(h).lines().nth(l.saturating_sub(1)).unwrap_or_default().trim().to_string();
+                        println!("{ticks}s {line} | list [{}] tip {signing}", names.join(", "));
+                    }
                 } else if phai_editor::view::list_open(h) {
                     let (names, signing) = phai_editor::view::list_labels(h);
                     println!("argument list open, Parameter Info {signing}: {}", names.join(", "));
