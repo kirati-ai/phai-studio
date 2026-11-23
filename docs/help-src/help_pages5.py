@@ -81,16 +81,17 @@ fn main_window_form_closing(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;phai_u
 <pre><code>message_box(ui.hwnd, "บันทึกแล้ว", "ร้านค้า", MessageBoxButtons::Ok, MessageBoxIcon::Information);
 if message_box(ui.hwnd, "ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { /* ลบ */ }
 ui.status.set_part_text(0, &amp;tf("สวัสดี {0}", &amp;[&amp;name]));</code></pre>
-<p>หรือเรียกผ่าน <code>ui</code> ของฟอร์มก็ได้ — พิมพ์ <code>ui.</code> แล้วเลือกจากรายการ: <code>ui.msg("บันทึกแล้ว")</code> กล่องข้อความมีปุ่ม OK ใช้ชื่อหน้าต่างเป็นหัวเรื่อง, <code>ui.message_box("ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNo, MessageBoxIcon::Question)</code> แบบเลือกปุ่มเอง (พิมพ์ <code>ui::</code> ก็ได้ Studio เปลี่ยนเป็น <code>ui.</code> ให้)</p>
+<p>หรือเรียกผ่าน <code>ui</code> ของฟอร์มก็ได้ — พิมพ์ <code>ui.</code> แล้วเลือกจากรายการ: <code>ui.alert("บันทึกแล้ว")</code> กล่องข้อความมีปุ่ม OK ใช้ชื่อหน้าต่างเป็นหัวเรื่อง, <code>if ui.confirm("ลบไหม?") { ... }</code> ถามใช่/ไม่ใช่ ได้ true เมื่อตอบใช่, <code>ui.prompt("ชื่อ?", "")</code> ถามให้พิมพ์ — ชื่อเดียวกับ <code>alert</code> <code>confirm</code> <code>prompt</code> ของ JavaScript, <code>ui.message_box("ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNoCancel, MessageBoxIcon::Warning)</code> แบบเลือกปุ่มและไอคอนเอง (พิมพ์ <code>ui::</code> ก็ได้ Studio เปลี่ยนเป็น <code>ui.</code> ให้)</p>
 <p>ที่ได้มาด้วย: <code>message_box</code>, <code>MessageBoxButtons</code>, <code>MessageBoxIcon</code>, <code>DialogResult</code>, <code>t</code>, <code>tf</code> และชนิดของ <code>e</code> ในเมธอดของ event (<code>KeyEventArgs</code>, <code>MouseEventArgs</code>, <code>PaintEventArgs</code> ...) — บนเว็บก็ใช้ได้ (กล่องข้อความเป็นของเบราว์เซอร์)</p>
 
 <h2>มาจาก C# หรือ VB: เขียนอย่างนี้</h2>
 <p>ของที่ใช้ทุกวันใน C# เรียกได้สั้นพอกันใน Phai — ทั้งหมดอยู่ใน <code>ui.</code> (พิมพ์แล้วเลือกจากรายการ) หรือเรียกชื่อได้ตรง ๆ เพราะไฟล์มี <code>use phai_ui::prelude::*;</code> แล้ว</p>
 <table>
 <tr><th>C#</th><th>Phai (Rust)</th></tr>
-<tr><td><code>MessageBox.Show("บันทึกแล้ว")</code></td><td><code>ui.msg("บันทึกแล้ว")</code></td></tr>
+<tr><td><code>MessageBox.Show("บันทึกแล้ว")</code></td><td><code>ui.alert("บันทึกแล้ว")</code></td></tr>
+<tr><td><code>if (MessageBox.Show("ลบไหม?", "", MessageBoxButtons.YesNo) == DialogResult.Yes)</code></td><td><code>if ui.confirm("ลบไหม?")</code></td></tr>
 <tr><td><code>MessageBox.Show(text, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question)</code></td><td><code>ui.message_box(text, title, MessageBoxButtons::YesNo, MessageBoxIcon::Question)</code></td></tr>
-<tr><td><code>Interaction.InputBox("ชื่อ?")</code></td><td><code>ui.input_box("ชื่อ?", "")  → Option&lt;String&gt;</code></td></tr>
+<tr><td><code>Interaction.InputBox("ชื่อ?")</code></td><td><code>ui.prompt("ชื่อ?", "")  → Option&lt;String&gt;</code></td></tr>
 <tr><td><code>openFileDialog1.ShowDialog()</code></td><td><code>ui.open_file("Text files|*.txt")  → Option&lt;PathBuf&gt;</code></td></tr>
 <tr><td><code>saveFileDialog1.ShowDialog()</code></td><td><code>ui.save_file("Text files|*.txt", "notes.txt")</code></td></tr>
 <tr><td><code>folderBrowserDialog1.ShowDialog()</code></td><td><code>ui.choose_folder()</code></td></tr>
@@ -108,7 +109,7 @@ ui.status.set_part_text(0, &amp;tf("สวัสดี {0}", &amp;[&amp;name]));
 <tr><td><code>this.Invoke(...)</code></td><td><code>MainWindowUi::begin_invoke(invoker, move |me, ui| ...)  (ข้างบน)</code></td></tr>
 <tr><td><code>Debug.WriteLine(s)</code></td><td><code>println!("{s}")  (ขึ้นแท็บ Output)</code></td></tr>
 </table>
-<p>snippet ที่ช่วย: <code>msg</code>, <code>yesno</code>, <code>input</code>, <code>openfile</code>, <code>savefile</code>, <code>now</code> แล้วกด <kbd>Tab</kbd></p>
+<p>snippet ที่ช่วย: <code>alert</code>, <code>confirm</code>, <code>prompt</code>, <code>openfile</code>, <code>savefile</code>, <code>now</code> แล้วกด <kbd>Tab</kbd></p>
 
 <h2>ฟอร์มเองก็มีเมธอด</h2>
 <p><code>ui.close()</code>, <code>ui.hide()</code>, <code>ui.show_window()</code>, <code>ui.activate()</code>, <code>ui.center_to_screen()</code>, <code>ui.set_title("...")</code> เปิดฟอร์มที่สองด้วย <code>OtherFormUi::show(ui.hwnd, OtherForm::default())</code> หรือแบบรอคำตอบ <code>show_dialog</code> ที่คืน <code>DialogResult</code></p>

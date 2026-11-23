@@ -459,7 +459,7 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
     // A page asks with the browser's own box; files on the disk are not a page's.
-    let _ = writeln!(w, "    pub fn input_box(&self, prompt: &str, default: &str) -> Option<String> {{");
+    let _ = writeln!(w, "    pub fn prompt(&self, prompt: &str, default: &str) -> Option<String> {{");
     let _ = writeln!(w, "        form::input_box(prompt, default)");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
@@ -475,8 +475,12 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "        None");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
-    let _ = writeln!(w, "    pub fn msg(&self, text: &str) {{");
+    let _ = writeln!(w, "    pub fn alert(&self, text: &str) {{");
     let _ = writeln!(w, "        form::message_box(self.hwnd, text, &t({}), form::MessageBoxButtons::Ok, form::MessageBoxIcon::Information);", lit(&f.form.title));
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    pub fn confirm(&self, text: &str) -> bool {{");
+    let _ = writeln!(w, "        form::message_box(self.hwnd, text, &t({}), form::MessageBoxButtons::YesNo, form::MessageBoxIcon::Question) == form::DialogResult::Yes", lit(&f.form.title));
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
     let _ = writeln!(w, "    fn make<E: {events} + 'static>(main: bool, events: E) -> HWND {{");

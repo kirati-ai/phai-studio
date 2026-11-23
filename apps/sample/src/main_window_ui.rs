@@ -302,14 +302,21 @@ impl MainWindowUi {
         phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)
     }
 
-    /// A notice with an OK button over this window, its title the window's: `ui.msg("Saved")`.
-    pub fn msg(&self, text: &str) {
+    /// A notice with an OK button over this window, its title the window's - JavaScript's alert:
+    /// `ui.alert("Saved")`.
+    pub fn alert(&self, text: &str) {
         phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);
     }
 
-    /// Words asked for in a small window over this one - VB's InputBox; `None` for Cancel:
-    /// `if let Some(name) = ui.input_box("Your name?", "") { ... }`.
-    pub fn input_box(&self, prompt: &str, default: &str) -> Option<String> {
+    /// A question with Yes and No over this window, its title the window's - true for Yes, as
+    /// JavaScript's confirm: `if ui.confirm("Delete it?") { ... }`.
+    pub fn confirm(&self, text: &str) -> bool {
+        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes
+    }
+
+    /// Words asked for in a small window over this one - JavaScript's prompt, VB's InputBox; `None`
+    /// for Cancel: `if let Some(name) = ui.prompt("Your name?", "") { ... }`.
+    pub fn prompt(&self, prompt: &str, default: &str) -> Option<String> {
         phai_ui::dialogs::ask_fields(Some(self.hwnd), &self.title(), &[phai_ui::dialogs::Field::Text(prompt, default)]).and_then(|a| a.into_iter().next())
     }
 
