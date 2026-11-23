@@ -19,6 +19,8 @@ pub struct Popup {
     pub items: Vec<Completion>,
     pub chosen: usize,
     row_h: i32,
+    /// Its font is its own, made for it, deleted with it.
+    own_font: bool,
 }
 
 const MAX_ROWS: usize = 10;
@@ -41,8 +43,12 @@ impl Popup {
     }
 
     /// A completion list below screen point `(x, y)`.
+    /// In Windows' own letters (Segoe UI 9 pt), smaller than the code's, as Visual Studio's
+    /// IntelliSense list; `font` is the code's, for nothing but the call.
     pub fn list(owner: HWND, font: HFONT, items: Vec<Completion>, x: i32, y: i32) -> Box<Popup> {
-        let p = Popup::new(owner, font, vec![], items);
+        let _ = font;
+        let mut p = Popup::new(owner, win::font(owner, 0, false), vec![], items);
+        p.own_font = true;
         p.place(x, y);
         p
     }
@@ -50,7 +56,7 @@ impl Popup {
     fn new(owner: HWND, font: HFONT, lines: Vec<String>, items: Vec<Completion>) -> Box<Popup> {
         let hwnd = make(owner);
         let row_h = win::measure(hwnd, font, "Ag").1 + win::px(hwnd, 6);
-        let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, row_h });
+        let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, row_h, own_font: false });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Popup as isize);
         }
@@ -108,6 +114,9 @@ impl Drop for Popup {
         unsafe {
             wm::SetWindowLongPtrW(self.hwnd, wm::GWLP_USERDATA, 0);
             let _ = wm::DestroyWindow(self.hwnd);
+            if self.own_font {
+                let _ = Gdi::DeleteObject(self.font.into());
+            }
         }
     }
 }
