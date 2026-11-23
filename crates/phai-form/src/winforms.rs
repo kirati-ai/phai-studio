@@ -11,14 +11,86 @@ use crate::model::{anchor_text, Anchors, Control, Form, FormFile, HasProps, Kind
 use crate::props::{self, Ty};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-/// A form read from WinForms, and what did not come over.
+/// A form read from WinForms, the pictures it brought (paths in the project, bytes), and what did
+/// not come over.
 pub struct Imported {
     pub form: FormFile,
+    pub files: Vec<(String, Vec<u8>)>,
     pub warnings: Vec<String>,
 }
 
 /// Reads a `.Designer.cs`. An error only when it has no `InitializeComponent` to read.
 pub fn import(designer_cs: &str) -> Result<Imported, String> {
+    import_with(designer_cs, None)
+}
+
+/// The pictures and icons a `.resx` keeps as the bytes of their files: by name (`pictureBox1.Image`,
+/// `$this.Icon`). Those serialized by .NET itself (an ImageList's stream) are left out.
+pub fn resources(resx: &str) -> HashMap<String, Vec<u8>> {
+    let mut out = HashMap::new();
+    let mut rest = resx;
+    while let Some(i) = rest.find("<data ") {
+        rest = &rest[i + 6..];
+        let Some(end) = rest.find("</data>") else { break };
+        let item = &rest[..end];
+        rest = &rest[end..];
+        let attr = |name: &str| -> Option<String> {
+            let k = item.find(&format!("{name}=\""))? + name.len() + 2;
+            Some(item[k..k + item[k..].find('"')?].replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\""))
+        };
+        if attr("mimetype").as_deref() != Some("application/x-microsoft.net.object.bytearray.base64") {
+            continue;
+        }
+        let (Some(name), Some(v)) = (attr("name"), item.find("<value>")) else { continue };
+        let body = &item[v + 7..];
+        let body = &body[..body.find("</value>").unwrap_or(body.len())];
+        if let Some(bytes) = unbase64(body) {
+            out.insert(name, bytes);
+        }
+    }
+    out
+}
+
+/// Base64 to bytes, spaces and line breaks ignored; `None` when it is not base64.
+fn unbase64(s: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let (mut acc, mut bits) = (0u32, 0);
+    for c in s.bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' => break,
+            b' ' | b'\n' | b'\r' | b'\t' => continue,
+            _ => return None,
+        } as u32;
+        acc = acc << 6 | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
+/// A picture file's extension from its first bytes.
+fn picture_ext(b: &[u8]) -> &'static str {
+    match b {
+        [0x89, b'P', b'N', b'G', ..] => "png",
+        [0xFF, 0xD8, ..] => "jpg",
+        [b'G', b'I', b'F', ..] => "gif",
+        [b'B', b'M', ..] => "bmp",
+        [0, 0, 1, 0, ..] => "ico",
+        _ => "png",
+    }
+}
+
+/// Reads a `.Designer.cs` with its `.resx`: the pictures in the one go into the project, named
+/// after their controls under `images/`.
+pub fn import_with(designer_cs: &str, resx: Option<&str>) -> Result<Imported, String> {
     let toks = lex(designer_cs);
     let class = toks.windows(2).find_map(|w| match (&w[0], &w[1]) {
         (Tok::Id(c), Tok::Id(n)) if c == "class" => Some(n.clone()),
@@ -35,8 +107,9 @@ pub fn import(designer_cs: &str) -> Result<Imported, String> {
     // Microsoft Sans Serif 8.25 pt rather than Segoe UI 9.
     let framework = designer_cs.contains("this.ClientSize") || designer_cs.contains("this.AutoScaleDimensions");
     let mut b = Build::new(&r, class.as_deref().unwrap_or("Form1"), framework);
+    b.resx = resx.map(resources).unwrap_or_default();
     b.run();
-    Ok(Imported { form: b.form, warnings: b.warn })
+    Ok(Imported { form: b.form, files: b.files, warnings: b.warn })
 }
 
 // ---- reading the C# ----
@@ -861,6 +934,9 @@ struct Build<'a> {
     /// The colour of what a control lies on: WinForms gives it to the panels and labels on it that
     /// set none of their own.
     ambient: Option<String>,
+    /// The .resx's pictures by name, and the files made of those used.
+    resx: HashMap<String, Vec<u8>>,
+    files: Vec<(String, Vec<u8>)>,
 }
 
 /// Properties with nothing to carry: where WinForms keeps its own bookkeeping.
@@ -910,7 +986,23 @@ impl<'a> Build<'a> {
         if set.is_some() && (size - 9.0).abs() >= 0.5 {
             form.form.font_size = Some((size.round() as i32).clamp(6, 48));
         }
-        Build { r, form, warn: vec![], scale, form_font: size, form_family: family, ids: HashMap::new(), taken: HashSet::new(), placed: HashSet::new(), left_out: BTreeSet::new(), handlers: HashMap::new(), menu_h: 0, tool_bottom: 0, tool_delta: 0, ambient: None }
+        Build { r, form, warn: vec![], scale, form_font: size, form_family: family, ids: HashMap::new(), taken: HashSet::new(), placed: HashSet::new(), left_out: BTreeSet::new(), handlers: HashMap::new(), menu_h: 0, tool_bottom: 0, tool_delta: 0, ambient: None, resx: HashMap::new(), files: vec![] }
+    }
+
+    /// `resources.GetObject("name")`: the picture kept in the .resx under that name, written as
+    /// `images/<base>.<its type>`; its path in the project.
+    fn picture(&mut self, e: &E, base: &str) -> Option<String> {
+        let E::Call(p, a) = e else { return None };
+        if p.last().map(String::as_str) != Some("GetObject") {
+            return None;
+        }
+        let key = a.first().and_then(text)?;
+        let bytes = self.resx.get(&key)?.clone();
+        let path = format!("images/{base}.{}", picture_ext(&bytes));
+        if !self.files.iter().any(|(f, _)| *f == path) {
+            self.files.push((path.clone(), bytes));
+        }
+        Some(path)
     }
 
     fn px(&self, v: f64) -> i32 {
@@ -1064,7 +1156,20 @@ impl<'a> Build<'a> {
                         self.form.form.maximized = Some(true);
                     }
                 }
-                "Icon" => self.warn.push("The form's icon was in the .resx - set it in Properties (Icon)".into()),
+                "Icon" => {
+                    let base = ident(&self.form.form.name);
+                    match self.picture(e, &base) {
+                        Some(p) if p.ends_with(".ico") => self.form.form.set_prop("icon", Some(toml::Value::String(p))),
+                        _ => self.warn.push("The form's icon was in the .resx - set it in Properties (Icon)".into()),
+                    }
+                }
+                "BackgroundImage" => {
+                    let base = format!("{}_background", ident(&self.form.form.name));
+                    match self.picture(e, &base) {
+                        Some(p) => self.form.form.set_prop("background_image", Some(toml::Value::String(p))),
+                        None => self.warn.push("The form's background picture was in the .resx - set it in Properties".into()),
+                    }
+                }
                 "Opacity" => {
                     if let Some(n) = num(e) {
                         let v = (n * 100.0).round() as i64;
@@ -1490,8 +1595,12 @@ impl<'a> Build<'a> {
             Kind::Picture => {
                 if let Some(path) = o.get("ImageLocation").and_then(text) {
                     c.image = Some(path);
-                } else if o.get("Image").is_some() {
-                    self.warn.push(format!("{}: its picture was in the .resx - set image in Properties", c.id));
+                } else if let Some(e) = o.get("Image") {
+                    let id = c.id.clone();
+                    match self.picture(e, &id) {
+                        Some(p) => c.image = Some(p),
+                        None => self.warn.push(format!("{}: its picture was in the .resx - set image in Properties", c.id)),
+                    }
                 }
             }
             Kind::List => {
@@ -2047,6 +2156,42 @@ partial class SetupForm {
         assert_eq!(c("check").fore_color.as_deref(), Some("#0b3d20"));
         assert_eq!(c("check").word("font_family"), Some("Consolas"));
         assert!(FormFile::parse(&f.to_toml()).is_ok());
+    }
+
+    #[test]
+    fn pictures_in_the_resx_come_with_the_form() {
+        let resx = r#"<root>
+  <data name="logo.Image" type="System.Drawing.Bitmap, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+    <value>
+        iVBORw0KGgo=
+</value>
+  </data>
+  <data name="$this.Icon" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+    <value>AAABAAEA</value>
+  </data>
+  <data name="images.ImageStream" mimetype="application/x-microsoft.net.object.binary.base64"><value>AAEAAAD/////</value></data>
+</root>"#;
+        let r = resources(resx);
+        assert_eq!(r.len(), 2);
+        assert_eq!(r["logo.Image"], [0x89, b'P', b'N', b'G', 13, 10, 26, 10]);
+        let cs = r#"partial class Shop { private void InitializeComponent() {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Shop));
+            logo = new PictureBox();
+            logo.Image = (Image)resources.GetObject("logo.Image");
+            logo.Location = new Point(10, 10); logo.Size = new Size(100, 50);
+            ClientSize = new Size(300, 200); Controls.Add(logo);
+            Icon = (Icon)resources.GetObject("$this.Icon");
+            Text = "Shop"; } }"#;
+        let im = import_with(cs, Some(resx)).unwrap();
+        assert_eq!(im.form.check(), vec![]);
+        assert_eq!(im.form.control[0].image.as_deref(), Some("images/logo.png"));
+        assert_eq!(im.form.form.word("icon"), Some("images/shop.ico"));
+        let names: Vec<&str> = im.files.iter().map(|(f, _)| f.as_str()).collect();
+        assert_eq!(names, ["images/logo.png", "images/shop.ico"]);
+        assert!(im.warnings.iter().all(|w| !w.contains(".resx")), "{:?}", im.warnings);
+        // Without the .resx: said, as before.
+        let im = import(cs).unwrap();
+        assert!(im.files.is_empty() && im.warnings.iter().any(|w| w.contains(".resx")));
     }
 
     #[test]

@@ -10732,7 +10732,9 @@ fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
 /// writes from it, and what did not come over. An error to show when it cannot.
 fn import_winforms_file(dir: &Path, cs: &Path) -> Result<(PathBuf, Vec<String>), String> {
     let bytes = std::fs::read(cs).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
-    let im = phai_form::winforms::import(&String::from_utf8_lossy(&bytes)).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
+    // Its pictures and icon, kept beside it in Form1.resx.
+    let resx = cs.to_string_lossy().strip_suffix(".Designer.cs").map(|s| PathBuf::from(format!("{s}.resx"))).and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).to_string());
+    let im = phai_form::winforms::import_with(&String::from_utf8_lossy(&bytes), resx.as_deref()).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
     let mut f = im.form;
     let src = dir.join("src");
     let file = snake(&f.form.name);
@@ -10743,6 +10745,14 @@ fn import_winforms_file(dir: &Path, cs: &Path) -> Result<(PathBuf, Vec<String>),
         f.form.theme = Some("../theme.css".into());
     }
     let (path, _) = write_form(dir, &f, &[]).map_err(|e| format!("{}\n\n{e}", tf("{0} cannot be saved", &[&file])))?;
+    // A picture of the same name already there is the project's: left as it is.
+    for (rel, data) in &im.files {
+        let to = dir.join(rel);
+        if !to.exists() {
+            let _ = to.parent().map(std::fs::create_dir_all);
+            let _ = std::fs::write(&to, data);
+        }
+    }
     Ok((path, im.warnings))
 }
 
