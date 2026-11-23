@@ -296,6 +296,17 @@ impl MainWindowUi {
         }
     }
 
+    /// A notice or a question over this window - WinForms' MessageBox.Show:
+    /// `if ui.message_box("Delete it?", "Files", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`.
+    pub fn message_box(&self, text: &str, caption: &str, buttons: phai_ui::form::MessageBoxButtons, icon: phai_ui::form::MessageBoxIcon) -> phai_ui::form::DialogResult {
+        phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)
+    }
+
+    /// A notice with an OK button over this window, its title the window's: `ui.msg("Saved")`.
+    pub fn msg(&self, text: &str) {
+        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);
+    }
+
     /// Moved to the middle of the screen it is on.
     pub fn center_to_screen(&self) {
         win::center_on_screen(self.hwnd);

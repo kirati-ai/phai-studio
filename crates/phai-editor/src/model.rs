@@ -137,7 +137,7 @@ pub fn parse_snippet(body: &str) -> (String, Vec<(usize, usize, usize)>, Option<
 }
 
 /// Phai's snippets that use the prelude's short names (`message_box`, `DialogResult`, `tf`).
-const PRELUDE_SNIPPETS: [&str; 4] = ["msg", "yesno", "dialog", "status"];
+const PRELUDE_SNIPPETS: [&str; 3] = ["yesno", "dialog", "status"];
 
 /// Where `use phai_ui::prelude::*;` goes in a file: before its first `use`, else after its doc
 /// lines and inner attributes.
@@ -1028,8 +1028,8 @@ pub const SNIPPETS: &[(&str, &str)] = &[
     ("ok", "Ok($0)"),
     ("derive", "#[derive(Debug, Clone$0)]"),
     // Phai Studio's own: a window's everyday code.
-    ("msg", "message_box(ui.hwnd, \"${1:Saved}\", \"${2:Title}\", MessageBoxButtons::Ok, MessageBoxIcon::Information);$0"),
-    ("yesno", "if message_box(ui.hwnd, \"${1:Delete it?}\", \"${2:Title}\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes {\n    $0\n}"),
+    ("msg", "ui.msg(\"${1:Saved}\");$0"),
+    ("yesno", "if ui.message_box(\"${1:Delete it?}\", \"${2:Title}\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes {\n    $0\n}"),
     ("bg", "let invoker = ui.invoker();\nstd::thread::spawn(move || {\n    let ${2:result} = ${3:work()};\n    ${1:MainWindow}Ui::begin_invoke(invoker, move |me: &mut ${1:MainWindow}, ui: &${1:MainWindow}Ui| {\n        $0\n    });\n});"),
     ("show", "crate::${2:other_form}_ui::${1:OtherForm}Ui::show(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default());$0"),
     ("dialog", "if crate::${2:other_form}_ui::${1:OtherForm}Ui::show_dialog(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default()) == DialogResult::Ok {\n    $0\n}"),
@@ -1460,14 +1460,14 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(!m.next_snippet_field());
         // A Phai snippet in a file without the prelude: its line put in at the top, the snippet
         // filled in where it was typed.
-        let mut m = Model::new("//! x\nuse crate::a;\n\nfn f() {\n    msg\n}");
-        m.caret = m.buf.text().find("msg").unwrap() + 3;
+        let mut m = Model::new("//! x\nuse crate::a;\n\nfn f() {\n    yesno\n}");
+        m.caret = m.buf.text().find("yesno").unwrap() + 5;
         m.anchor = m.caret;
         assert!(m.expand_snippet());
-        assert_eq!(m.selected_text(), "Saved");
+        assert_eq!(m.selected_text(), "Delete it?");
         let t = m.buf.text();
         assert!(t.starts_with("//! x\nuse phai_ui::prelude::*;\nuse crate::a;\n"), "{t}");
-        assert!(t.contains("    message_box(ui.hwnd, \"Saved\", \"Title\", MessageBoxButtons::Ok, MessageBoxIcon::Information);"), "{t}");
+        assert!(t.contains("    if ui.message_box(\"Delete it?\", \"Title\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes {"), "{t}");
         // A snippet of the person's own, in place of a built-in.
         set_user_snippets(vec![("pln".into(), "eprintln!(\"${1:x}\");".into())]);
         let mut m = Model::new("pln");

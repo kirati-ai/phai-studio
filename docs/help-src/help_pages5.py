@@ -81,6 +81,7 @@ fn main_window_form_closing(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;phai_u
 <pre><code>message_box(ui.hwnd, "บันทึกแล้ว", "ร้านค้า", MessageBoxButtons::Ok, MessageBoxIcon::Information);
 if message_box(ui.hwnd, "ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { /* ลบ */ }
 ui.status.set_part_text(0, &amp;tf("สวัสดี {0}", &amp;[&amp;name]));</code></pre>
+<p>หรือเรียกผ่าน <code>ui</code> ของฟอร์มก็ได้ — พิมพ์ <code>ui.</code> แล้วเลือกจากรายการ: <code>ui.msg("บันทึกแล้ว")</code> กล่องข้อความมีปุ่ม OK ใช้ชื่อหน้าต่างเป็นหัวเรื่อง, <code>ui.message_box("ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNo, MessageBoxIcon::Question)</code> แบบเลือกปุ่มเอง (พิมพ์ <code>ui::</code> ก็ได้ Studio เปลี่ยนเป็น <code>ui.</code> ให้)</p>
 <p>ที่ได้มาด้วย: <code>message_box</code>, <code>MessageBoxButtons</code>, <code>MessageBoxIcon</code>, <code>DialogResult</code>, <code>t</code>, <code>tf</code> และชนิดของ <code>e</code> ในเมธอดของ event (<code>KeyEventArgs</code>, <code>MouseEventArgs</code>, <code>PaintEventArgs</code> ...) — บนเว็บก็ใช้ได้ (กล่องข้อความเป็นของเบราว์เซอร์)</p>
 
 <h2>ฟอร์มเองก็มีเมธอด</h2>

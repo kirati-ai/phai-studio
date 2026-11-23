@@ -1011,6 +1011,17 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
     let _ = writeln!(w, "        }}");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    let _ = writeln!(w, "    /// A notice or a question over this window - WinForms' MessageBox.Show:");
+    let _ = writeln!(w, "    /// `if ui.message_box(\"Delete it?\", \"Files\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes`.");
+    let _ = writeln!(w, "    pub fn message_box(&self, text: &str, caption: &str, buttons: phai_ui::form::MessageBoxButtons, icon: phai_ui::form::MessageBoxIcon) -> phai_ui::form::DialogResult {{");
+    let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, caption, buttons, icon)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    /// A notice with an OK button over this window, its title the window's: `ui.msg(\"Saved\")`.");
+    let _ = writeln!(w, "    pub fn msg(&self, text: &str) {{");
+    let _ = writeln!(w, "        phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
     let _ = writeln!(w, "    /// Moved to the middle of the screen it is on.");
     let _ = writeln!(w, "    pub fn center_to_screen(&self) {{");
     let _ = writeln!(w, "        win::center_on_screen(self.hwnd);");

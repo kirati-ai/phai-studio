@@ -453,6 +453,15 @@ pub fn generate(f: &FormFile) -> String {
     let _ = writeln!(w, "        form::close(self.hwnd);");
     let _ = writeln!(w, "    }}");
     let _ = writeln!(w);
+    // As on Windows: the browser's own box.
+    let _ = writeln!(w, "    pub fn message_box(&self, text: &str, caption: &str, buttons: form::MessageBoxButtons, icon: form::MessageBoxIcon) -> form::DialogResult {{");
+    let _ = writeln!(w, "        form::message_box(self.hwnd, text, caption, buttons, icon)");
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "    pub fn msg(&self, text: &str) {{");
+    let _ = writeln!(w, "        form::message_box(self.hwnd, text, &t({}), form::MessageBoxButtons::Ok, form::MessageBoxIcon::Information);", lit(&f.form.title));
+    let _ = writeln!(w, "    }}");
+    let _ = writeln!(w);
     let _ = writeln!(w, "    fn make<E: {events} + 'static>(main: bool, events: E) -> HWND {{");
     let _ = writeln!(w, "        form::start();");
     let _ = writeln!(w, "        let (hwnd, area) = form::window({}, t({}), ({}, {}), main);", lit(name), lit(&f.form.title), f.form.size[0], f.form.size[1]);
