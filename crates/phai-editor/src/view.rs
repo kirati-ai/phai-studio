@@ -2455,7 +2455,12 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     }
                 }
                 u => {
-                    let s = String::from_utf16_lossy(&[u]);
+                    let mut s = String::from_utf16_lossy(&[u]);
+                    // `ui::` is `ui.`: the first `:` taken back, a `.` typed instead.
+                    if s == ":" && v.lang == Language::Rust && v.model.caret == v.model.anchor && v.model.colon_after_variable() {
+                        v.model.backspace();
+                        s = ".".to_string();
+                    }
                     let before_colon = {
                         let (line, col) = v.model.buf.position(v.model.caret);
                         v.model.buf.line(line)[..col].ends_with(':')

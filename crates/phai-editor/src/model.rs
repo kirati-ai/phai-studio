@@ -768,6 +768,23 @@ impl Model {
         true
     }
 
+    /// A second `:` typed after an event method's `ui` or `e` - `ui::`, which Rust does not take
+    /// for a variable, though VB and C++ hands type it: true when the `:` before the caret follows
+    /// one of those names standing alone, outside a comment or a string. The second `:` is then
+    /// a `.`: `ui.`, and the list of what `ui` has.
+    pub fn colon_after_variable(&self) -> bool {
+        let (line, col) = self.buf.position(self.caret);
+        let text = self.buf.line(line);
+        let before = &text[..col];
+        let Some(rest) = before.strip_suffix(':') else { return false };
+        if before.contains("//") || before.matches('"').count() % 2 == 1 {
+            return false;
+        }
+        ["ui", "e"].iter().any(|name| {
+            rest.strip_suffix(name).is_some_and(|lead| !lead.ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == ':'))
+        })
+    }
+
     /// The lines the selection (or the caret) is on: a selection ending at a line's start leaves
     /// that line out.
     fn chosen_lines(&self) -> (usize, usize) {
@@ -1459,6 +1476,25 @@ fn main() {", "broken at the start, the brace was not before the caret");
         assert!(m.expand_snippet());
         assert_eq!(m.buf.text(), "eprintln!(\"x\");");
         set_user_snippets(vec![]);
+    }
+
+    #[test]
+    fn ui_colon_colon_is_ui_dot() {
+        let at_end = |t: &str| {
+            let mut m = Model::new(t);
+            m.caret = t.len();
+            m.anchor = m.caret;
+            m.colon_after_variable()
+        };
+        assert!(at_end("        ui:"));
+        assert!(at_end("    let x = e:"));
+        assert!(at_end("(ui:"));
+        assert!(!at_end("        phai_ui:"), "a path's own name");
+        assert!(!at_end("        gui:"));
+        assert!(!at_end("        ui"), "no colon yet");
+        assert!(!at_end("    // ui:"), "in a comment");
+        assert!(!at_end("    let s = \"ui:"), "in a string");
+        assert!(!at_end("    crate::ui:"), "a module's");
     }
 
     #[test]
