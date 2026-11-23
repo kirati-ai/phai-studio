@@ -1550,8 +1550,27 @@ pub fn add_handler(user_src: &str, form_name: &str, handler: &str) -> Option<Str
 }
 
 /// [`add_handler`] for an event whose method is given `param` (`phai_ui::events::KeyEventArgs`).
+/// What an event's arguments hold, as a line of comment in a new method - the parameter's type
+/// alone does not say.
+pub fn args_hint(param: &str) -> Option<&'static str> {
+    Some(match param.rsplit("::").next()? {
+        "KeyEventArgs" => "// _e.key: the key's code (0x0D Enter, 0x1B Esc, 0x41 A...); _e.ctrl, _e.shift, _e.alt; _e.set_handled() - the control does not get it",
+        "KeyPressEventArgs" => "// _e.ch: the letter typed; _e.set_handled() - it is not typed in",
+        "MouseEventArgs" => "// _e.x, _e.y: where, in the control; _e.button: phai_ui::events::MouseButton::Left, Right, Middle; _e.ctrl, _e.shift; _e.delta: the wheel, 120 a notch",
+        "ClosingEventArgs" => "// _e.cancel() - the window stays open",
+        "ItemEventArgs" => "// _e.index: the item, from 0",
+        "FileDropEventArgs" => "// _e.files: the files dropped; _e.text: words dragged from another control",
+        "FileOkEventArgs" => "// _e.file(): the file chosen; _e.cancel() - the dialog stays open",
+        "PaintEventArgs" => "// _e.clear(\"white\"); _e.fill_rect(x, y, w, h, \"#12855f\"); _e.draw_line(x1, y1, x2, y2, \"gray\"); _e.draw_text(\"Hello\", x, y, \"black\"); _e.width, _e.height",
+        "PrintPageEventArgs" => "// _e.margin_bounds: where to print; _e.set_font(\"Leelawadee UI\", 12, false, false); _e.draw_text(\"...\", x, y); _e.page; _e.set_has_more_pages(true) - another page follows",
+        _ => return None,
+    })
+}
+
 pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: Option<&str>) -> Option<String> {
     let extra = param.map(|p| format!(", _e: &{p}")).unwrap_or_default();
+    // What its arguments hold, on the first line; the caret's line under it.
+    let hint = param.and_then(args_hint).map(|h| format!("{h}\n        ")).unwrap_or_default();
     if user_src.contains(&format!("fn {handler}(")) {
         return None;
     }
@@ -1560,7 +1579,7 @@ pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: O
     // The impl's closing brace: the first `}` at the start of a line after it.
     let at = start + user_src[start..].find("\n}")?;
     // An empty line inside, indented, for the caret to land on and the code to start from.
-    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui{extra}) {{\n        \n    }}{}", &user_src[..at], &user_src[at..]))
+    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui{extra}) {{\n        {hint}\n    }}{}", &user_src[..at], &user_src[at..]))
 }
 
 #[cfg(test)]
@@ -1614,6 +1633,12 @@ mod tests {
         assert!(more.contains("    fn print(&mut self, _ui: &MainWindowUi) {\n        \n    }\n}"), "{more}");
         assert!(add_handler(&more, "MainWindow", "print").is_none());
         assert!(add_handler("struct X;", "MainWindow", "print").is_none(), "nowhere to put it");
+        // An event with arguments: their type, and what they hold, on the first line.
+        let keyed = add_handler_with(&stub, "MainWindow", "name_key_down", Some("phai_ui::events::KeyEventArgs")).unwrap();
+        assert!(keyed.contains("fn name_key_down(&mut self, _ui: &MainWindowUi, _e: &phai_ui::events::KeyEventArgs) {\n        // _e.key: the key's code"), "{keyed}");
+        for a in [crate::events::Args::Key, crate::events::Args::KeyPress, crate::events::Args::Mouse, crate::events::Args::Closing, crate::events::Args::Item, crate::events::Args::Files, crate::events::Args::Print, crate::events::Args::FileOk, crate::events::Args::Paint] {
+            assert!(a.param().and_then(args_hint).is_some(), "{a:?} has its hint");
+        }
     }
 
     /// A grid's columns' own properties are kept in the file as written and given to the grid by
