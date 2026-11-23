@@ -69,7 +69,12 @@ impl Popup {
     pub fn place(&self, x: i32, y: i32) {
         let rows = self.rows();
         let pad = win::px(self.hwnd, 8);
-        let w = rows.iter().map(|r| win::measure(self.hwnd, self.font, r).0).max().unwrap_or(0) + 2 * pad + if self.items.is_empty() { 0 } else { win::px(self.hwnd, 160) };
+        let label_w = rows.iter().map(|r| win::measure(self.hwnd, self.font, r).0).max().unwrap_or(0);
+        // Room for the longest detail beside the longest name, up to a reasonable width; what is
+        // longer still is cut with ... rather than drawn over the name.
+        let detail_w = self.items.iter().take(MAX_ROWS).map(|c| win::measure(self.hwnd, self.font, &detail_of(c)).0).max().unwrap_or(0);
+        let gap = if detail_w > 0 { win::px(self.hwnd, 24) } else { 0 };
+        let w = (label_w + gap + detail_w + 2 * pad).min(win::px(self.hwnd, 760)).max(label_w + 2 * pad);
         let h = rows.len().max(1) as i32 * self.row_h + pad;
         unsafe {
             let mon = Gdi::MonitorFromPoint(windows::Win32::Foundation::POINT { x, y }, Gdi::MONITOR_DEFAULTTONEAREST);
@@ -107,6 +112,12 @@ impl Drop for Popup {
     }
 }
 
+/// A completion's detail as the list shows it: up to 60 letters.
+fn detail_of(c: &Completion) -> String {
+    let n = c.detail.chars().count();
+    if n > 60 { format!("{}...", c.detail.chars().take(57).collect::<String>()) } else { c.detail.clone() }
+}
+
 extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     let p = unsafe { (wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA) as *const Popup).as_ref() };
     match (msg, p) {
@@ -131,6 +142,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                     win::fill(dc, &line, chosen_bg);
                 }
                 let mut tr = RECT { left: pad, ..line };
+                let label_w = win::measure(h, p.font, row).0;
                 let mut words: Vec<u16> = row.encode_utf16().collect();
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(win::window_text().colorref()));
                 if !words.is_empty() {
@@ -139,8 +151,12 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 // A completion's detail, muted, at the right.
                 if let Some(c) = p.items.get(i) {
                     if !c.detail.is_empty() {
-                        let mut d: Vec<u16> = c.detail.chars().take(40).collect::<String>().encode_utf16().collect();
-                        let mut dr = RECT { right: r.right - pad, ..line };
+                        let mut d: Vec<u16> = detail_of(c).encode_utf16().collect();
+                        // After the name, never over it.
+                        let mut dr = RECT { left: pad + label_w + win::px(h, 24), right: r.right - pad, ..line };
+                        if dr.right <= dr.left {
+                            continue;
+                        }
                         Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
                         phai_ui::win::draw_text_w(dc, &mut d, &mut dr, Gdi::DT_RIGHT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX | Gdi::DT_END_ELLIPSIS);
                     }
