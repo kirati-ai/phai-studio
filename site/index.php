@@ -231,6 +231,13 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.11', '24 พ.ย. 2569', [
+            'กล่องคำแนะนำข้างรายการเติมคำ: เรียกอย่างไร ทำอะไร พร้อมตัวอย่าง สำหรับเมธอดของ control ฟอร์ม และฟังก์ชันที่ใช้บ่อย เป็นภาษาไทยเมื่อตั้ง Studio เป็นไทย',
+            'เขียนโค้ดง่ายขึ้น: หลัง ( และ , มีรายการให้เลือกเอง ชื่อผิดหรือชนิดผิดมีเส้นหยักทันทีที่หยุดพิมพ์ พิมพ์ MessageBoxButtons. แล้วกลายเป็น :: ให้เอง วงเล็บและเครื่องหมายคำพูดมาเป็นคู่ และอักษรไทยในโค้ดตัวใหญ่เท่าโค้ด',
+            'คำสั่งสั้นที่ใช้บ่อย: ui.alert, ui.confirm, ui.prompt, ui.open_file, ui.save_file, ui.choose_folder, to_int, to_float และ now().format("dd/MM/bbbb") ที่ได้ปี พ.ศ.',
+            'โปรแกรมที่อยู่ในถาดไอคอนออกแบบเป็นฟอร์มได้ทั้งหมด: เริ่มแบบซ่อน เมนูคลิกขวาซ้อนเมนูย่อย ติ๊กถูก ซ่อน หรือทำเป็นสีจาง และไอคอนกลับมาเองเมื่อ Explorer เริ่มใหม่',
+            'หน้าออกแบบเลื่อนได้เมื่อฟอร์มใหญ่กว่าที่ว่าง และแท็บ Events คลิกเลือก ดับเบิลคลิกเขียนเมธอดแล้วไปที่โค้ดนั้น',
+        ]],
         ['0.2.10', '23 พ.ย. 2569', [
             'ผู้ช่วย AI (View > AI Assistant): คุยกับ Claude เรื่องโปรเจกต์ โหมด ลงมือ ให้ Claude แก้โค้ดและฟอร์ม build แก้ error รันเทสต์ และดูภาพหน้าจอโปรแกรมเอง ทุกการแก้ไฟล์ให้กดรับหรือไม่รับก่อน (ใช้คีย์ API ของคุณเอง)',
             'นำเข้าฟอร์มจาก WinForms (Project > Import WinForms Form): เปิดฟอร์มที่ทำใน Visual Studio ทั้ง C# และ VB.NET หน้าตาเหมือนเดิม พร้อมเมนู event รูปและไอคอน แล้วแก้ต่อด้วยลากวาง',
@@ -458,6 +465,13 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.11', '24 Nov 2026', [
+            'A guide beside the completion list: how the chosen item is called, what it does and an example, for the methods of every control and of the form, and the everyday functions - in Thai when Phai Studio is',
+            'Easier code: choices open by themselves after ( and , - a wrong name or type gets its wavy line as soon as typing rests - MessageBoxButtons. becomes :: as typed - brackets and quotes come in pairs - Thai in the code as large as the code',
+            'Short everyday calls: ui.alert, ui.confirm, ui.prompt, ui.open_file, ui.save_file, ui.choose_folder, to_int, to_float and now().format("dd/MM/bbbb") with the Buddhist year',
+            'A tray program designed entirely as a form: it starts hidden, its context menu nests and its items are ticked, hidden or greyed, and its icon comes back when Explorer restarts',
+            'The designer scrolls a form larger than the room; the Events tab chooses with a click and writes the method with a double-click, going to it',
+        ]],
         ['0.2.10', '23 Nov 2026', [
             'An AI assistant (View > AI Assistant): talk to Claude about the project; in Act mode Claude edits code and forms, builds and fixes errors, runs the tests and looks at the running program - every change to a file is yours to accept or decline (your own API key)',
             'Import WinForms forms (Project > Import WinForms Form): a form made in Visual Studio, C# or VB.NET, opens looking as it did, with its menus, events, pictures and icon, to go on with by drag and drop',
