@@ -759,11 +759,10 @@ impl Props {
                 }
                 None => {
                     let mut v = vec![p(t("Behavior"), Key::Event, "Load", "loaded".into(), Ed::ReadOnly, t("Runs once the window is made, before it shows."))];
+                    // The form's own events only: its controls', menus' and toolbar's methods are
+                    // theirs, shown when they are chosen.
                     for e in phai_form::events::FORM {
                         v.push(row(Key::FormOn(e.name), e.label, e.help, f.form.events.get(e.name)));
-                    }
-                    for h in f.handlers() {
-                        v.push(p(t("Menus and toolbars"), Key::Event, Box::leak(h.clone().into_boxed_str()), h, Ed::ReadOnly, t("A menu item, toolbar button or control runs this method.")));
                     }
                     v
                 }
