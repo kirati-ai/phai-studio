@@ -2658,9 +2658,7 @@ impl Studio {
         }
         // Then to it, as Visual Studio goes to the handler it writes.
         let src = std::fs::read_to_string(&user).unwrap_or_default();
-        // The caret under the line that says what the arguments hold, when there is one.
-        let below = param.and_then(codegen::args_hint).map_or(0, |_| 1);
-        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1 + below);
+        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
         self.open_code_at(&user, line);
     }
 
@@ -2774,7 +2772,9 @@ impl Studio {
             }
         }
         let src = std::fs::read_to_string(&user).unwrap_or_default();
-        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1);
+        // The caret under the line that says what the arguments hold, when there is one.
+        let below = param.and_then(codegen::args_hint).map_or(0, |_| 1);
+        let line = src.lines().position(|l| l.trim_start().starts_with(&format!("fn {name}("))).map(|i| i + 1 + below);
         self.open_code_at(&user, line);
     }
 
