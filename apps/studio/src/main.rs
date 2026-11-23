@@ -8861,7 +8861,7 @@ ui.${1:status}.set_part_text(0, "${2:Hello}");$0"""
 [[snippet]]
 word = "row"
 body = """
-ui.${1:grid}.add_row(&[${2:"a", "b"}]);$0"""
+ui.${1:grid}.rows_add(&[${2:"a", "b"}]);$0"""
 "#;
 
 /// Reads the person's snippets into the editor; how many, or what is wrong with the file.
