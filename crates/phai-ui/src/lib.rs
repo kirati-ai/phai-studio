@@ -46,6 +46,7 @@ pub mod mdi;
 pub mod picture;
 pub mod paint;
 pub mod popup;
+pub mod prelude;
 pub mod print;
 pub mod props;
 pub mod report;

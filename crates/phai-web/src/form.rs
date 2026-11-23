@@ -25,6 +25,46 @@ pub enum DialogResult {
     Ignore,
 }
 
+/// The buttons of a [`message_box`] - WinForms' MessageBoxButtons, as on Windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageBoxButtons {
+    Ok,
+    OkCancel,
+    YesNo,
+    YesNoCancel,
+    RetryCancel,
+    AbortRetryIgnore,
+}
+
+/// The picture of a [`message_box`]; a browser's box has none, so it is not shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageBoxIcon {
+    None,
+    Information,
+    Warning,
+    Error,
+    Question,
+}
+
+/// A notice or a question, as on Windows - the browser's own box: OK alone is `alert`, a choice
+/// is `confirm`, its OK the first answer (Yes, OK, Retry, Abort) and its Cancel the last.
+pub fn message_box<O>(_owner: O, text: &str, caption: &str, buttons: MessageBoxButtons, _icon: MessageBoxIcon) -> DialogResult {
+    let Some(w) = web_sys::window() else { return DialogResult::None };
+    let words = if caption.is_empty() { text.to_string() } else { format!("{caption}\n\n{text}") };
+    let (first, last) = match buttons {
+        MessageBoxButtons::Ok => {
+            let _ = w.alert_with_message(&words);
+            return DialogResult::Ok;
+        }
+        MessageBoxButtons::OkCancel => (DialogResult::Ok, DialogResult::Cancel),
+        MessageBoxButtons::YesNo => (DialogResult::Yes, DialogResult::No),
+        MessageBoxButtons::YesNoCancel => (DialogResult::Yes, DialogResult::Cancel),
+        MessageBoxButtons::RetryCancel => (DialogResult::Retry, DialogResult::Cancel),
+        MessageBoxButtons::AbortRetryIgnore => (DialogResult::Abort, DialogResult::Ignore),
+    };
+    if w.confirm_with_message(&words).unwrap_or(false) { first } else { last }
+}
+
 /// Where a control goes in its window, in the designer's pixels, and what it holds on to.
 #[derive(Clone, Copy, Debug)]
 pub struct Place {

@@ -1637,12 +1637,63 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
 /// The first `<name>.rs`: the programmer's from then on. Phai Studio writes it once.
 /// What the programmer's file says once at its top: an event's method is given the window (`ui`)
 /// and what happened (`e`), and need not use them - the names stay plain, with no warning.
-pub const ALLOW_UNUSED: &str = "#![allow(unused_variables)] // an event's method need not use all it is given (ui, e)";
+pub const ALLOW_UNUSED: &str = "#![allow(unused_variables, unused_imports)] // an event's method need not use all it is given (ui, e), nor the file all the prelude brings";
+
+/// The line that brings what a form's code uses most - `message_box`, `tf`, `KeyEventArgs`...
+pub const PRELUDE: &str = "use phai_ui::prelude::*;";
+
+/// An event argument's type as the code file writes it: by its short name, which the prelude
+/// brings (`phai_ui::events::KeyEventArgs` -> `KeyEventArgs`).
+pub fn short_type(param: &str) -> &str {
+    match param.rsplit_once("::") {
+        Some(("phai_ui::events" | "phai_ui::paint" | "phai_ui::print", name)) => name,
+        _ => param,
+    }
+}
+
+/// The file with [`PRELUDE`] before its first `use`, when it has not got it.
+pub fn with_prelude(src: &str) -> String {
+    if src.contains("phai_ui::prelude::*") {
+        return src.to_string();
+    }
+    let nl = if src.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut at = None;
+    let mut pos = 0;
+    for line in src.split_inclusive('\n') {
+        if line.starts_with("use ") {
+            at = Some(pos);
+            break;
+        }
+        pos += line.len();
+    }
+    match at {
+        Some(i) => format!("{}{PRELUDE}{nl}{}", &src[..i], &src[i..]),
+        // No `use` yet: after the doc lines and inner attributes.
+        None => {
+            let mut i = 0;
+            for line in src.split_inclusive('\n') {
+                let l = line.trim_start();
+                if l.starts_with("//!") || l.starts_with("#![") {
+                    i += line.len();
+                } else {
+                    break;
+                }
+            }
+            format!("{}{PRELUDE}{nl}{}", &src[..i], &src[i..])
+        }
+    }
+}
 
 /// The file with [`ALLOW_UNUSED`] after its `//!` lines, when it has not got it.
 pub fn with_allow_unused(src: &str) -> String {
-    if src.contains("#![allow(unused_variables)]") {
+    if src.contains(ALLOW_UNUSED.split(']').next().unwrap_or(ALLOW_UNUSED)) {
         return src.to_string();
+    }
+    // The line of 0.2.10's days, which said only the first: said whole now.
+    if let Some(i) = src.find("#![allow(unused_variables)]") {
+        let end = src[i..].find('\n').map(|n| i + n).unwrap_or(src.len());
+        let end = if src[..end].ends_with('\r') { end - 1 } else { end };
+        return format!("{}{ALLOW_UNUSED}{}", &src[..i], &src[end..]);
     }
     // After the leading doc lines - inner attributes go before any item.
     let mut at = 0;
@@ -1668,6 +1719,7 @@ pub fn user_stub(f: &FormFile) -> String {
     let _ = writeln!(w, "{ALLOW_UNUSED}");
     let _ = writeln!(w);
     let _ = writeln!(w, "use crate::{file}_ui::{{{name}Events, {name}Ui}};");
+    let _ = writeln!(w, "{PRELUDE}");
     let _ = writeln!(w);
     let _ = writeln!(w, "#[derive(Default)]");
     let _ = writeln!(w, "pub struct {name} {{}}");
@@ -1687,7 +1739,7 @@ pub fn user_stub(f: &FormFile) -> String {
     let plain = f.handlers();
     for (h, a) in f.event_methods().into_iter().filter(|(h, _)| !plain.contains(h)) {
         let _ = writeln!(w);
-        let _ = writeln!(w, "    fn {h}(&mut self, ui: &{name}Ui{}) {{}}", a.param().map(|p| format!(", e: &{p}")).unwrap_or_default());
+        let _ = writeln!(w, "    fn {h}(&mut self, ui: &{name}Ui{}) {{}}", a.param().map(|p| format!(", e: &{}", short_type(p))).unwrap_or_default());
     }
     let _ = writeln!(w, "}}");
     o
@@ -1707,7 +1759,7 @@ pub fn args_hint(param: &str) -> Option<&'static str> {
     Some(match param.rsplit("::").next()? {
         "KeyEventArgs" => "// e.key: the key's code (0x0D Enter, 0x1B Esc, 0x41 A...); e.ctrl, e.shift, e.alt; e.set_handled() - the control does not get it",
         "KeyPressEventArgs" => "// e.ch: the letter typed; e.set_handled() - it is not typed in",
-        "MouseEventArgs" => "// e.x, e.y: where, in the control; e.button: phai_ui::events::MouseButton::Left, Right, Middle; e.ctrl, e.shift; e.delta: the wheel, 120 a notch",
+        "MouseEventArgs" => "// e.x, e.y: where, in the control; e.button: MouseButton::Left, Right, Middle; e.ctrl, e.shift; e.delta: the wheel, 120 a notch",
         "ClosingEventArgs" => "// e.cancel() - the window stays open",
         "ItemEventArgs" => "// e.index: the item, from 0",
         "FileDropEventArgs" => "// e.files: the files dropped; e.text: words dragged from another control",
@@ -1719,7 +1771,7 @@ pub fn args_hint(param: &str) -> Option<&'static str> {
 }
 
 pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: Option<&str>) -> Option<String> {
-    let extra = param.map(|p| format!(", e: &{p}")).unwrap_or_default();
+    let extra = param.map(|p| format!(", e: &{}", short_type(p))).unwrap_or_default();
     // What its arguments hold, on the first line; the caret's line under it.
     let hint = param.and_then(args_hint).map(|h| format!("{h}\n        ")).unwrap_or_default();
     if user_src.contains(&format!("fn {handler}(")) {
@@ -1731,7 +1783,7 @@ pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: O
     let at = start + user_src[start..].find("\n}")?;
     // An empty line inside, indented, for the caret to land on and the code to start from.
     let more = format!("{}\n\n    fn {handler}(&mut self, ui: &{form_name}Ui{extra}) {{\n        {hint}\n    }}{}", &user_src[..at], &user_src[at..]);
-    Some(with_allow_unused(&more))
+    Some(with_allow_unused(&with_prelude(&more)))
 }
 
 #[cfg(test)]
@@ -1921,8 +1973,15 @@ mod tests {
         assert!(add_handler("struct X;", "MainWindow", "print").is_none(), "nowhere to put it");
         // An event with arguments: their type, and what they hold, on the first line.
         let keyed = add_handler_with(&stub, "MainWindow", "name_key_down", Some("phai_ui::events::KeyEventArgs")).unwrap();
-        assert!(keyed.contains("fn name_key_down(&mut self, ui: &MainWindowUi, e: &phai_ui::events::KeyEventArgs) {\n        // e.key: the key's code"), "{keyed}");
-        assert_eq!(keyed.matches("#![allow(unused_variables)]").count(), 1, "said once, at the top: {keyed}");
+        assert!(keyed.contains("fn name_key_down(&mut self, ui: &MainWindowUi, e: &KeyEventArgs) {\n        // e.key: the key's code"), "{keyed}");
+        assert_eq!(keyed.matches("use phai_ui::prelude::*;").count(), 1, "the prelude, once: {keyed}");
+        assert!(keyed.find("use phai_ui::prelude::*;").unwrap() < keyed.find("impl ").unwrap());
+        assert_eq!(with_prelude("//! A\nuse x;\nfn f() {}\n"), "//! A\nuse phai_ui::prelude::*;\nuse x;\nfn f() {}\n");
+        assert_eq!(with_prelude("//! A\nfn f() {}\n"), "//! A\nuse phai_ui::prelude::*;\nfn f() {}\n");
+        assert_eq!(short_type("phai_ui::paint::PaintEventArgs"), "PaintEventArgs");
+        assert_eq!(short_type("crate::Other"), "crate::Other");
+        assert_eq!(keyed.matches("#![allow(").count(), 1, "said once, at the top: {keyed}");
+        assert_eq!(with_allow_unused("//! A\n#![allow(unused_variables)] // old\nuse x;\n"), format!("//! A\n{ALLOW_UNUSED}\nuse x;\n"), "the older line made whole");
         assert!(keyed.find("#![allow").unwrap() < keyed.find("use ").unwrap());
         assert_eq!(with_allow_unused("//! A\r\n//! B\r\nuse x;\r\n"), format!("//! A\r\n//! B\r\n{ALLOW_UNUSED}\r\nuse x;\r\n"));
         assert_eq!(with_allow_unused(&keyed), keyed, "once");

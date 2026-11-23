@@ -177,6 +177,13 @@ fn main_window_form_closing(&amp;mut self, ui: &amp;MainWindowUi, e: &amp;phai_u
   <li>หน้าต่างปิดไปแล้ว งานที่ส่งมาทีหลังจะถูกข้ามไปเอง</li>
 </ul>
 
+<h2>พิมพ์น้อยลง: <code>use phai_ui::prelude::*;</code></h2>
+<p>ไฟล์โค้ดของทุกฟอร์มมีบรรทัด <code>use phai_ui::prelude::*;</code> อยู่แล้ว (Studio ใส่ให้) ของที่ใช้บ่อยจึงเรียกชื่อสั้นได้เลย ไม่ต้องพิมพ์ <code>phai_ui::form::</code> นำหน้า:</p>
+<pre><code>message_box(ui.hwnd, "บันทึกแล้ว", "ร้านค้า", MessageBoxButtons::Ok, MessageBoxIcon::Information);
+if message_box(ui.hwnd, "ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes { /* ลบ */ }
+ui.status.set_part_text(0, &amp;tf("สวัสดี {0}", &amp;[&amp;name]));</code></pre>
+<p>ที่ได้มาด้วย: <code>message_box</code>, <code>MessageBoxButtons</code>, <code>MessageBoxIcon</code>, <code>DialogResult</code>, <code>t</code>, <code>tf</code> และชนิดของ <code>e</code> ในเมธอดของ event (<code>KeyEventArgs</code>, <code>MouseEventArgs</code>, <code>PaintEventArgs</code> ...) — บนเว็บก็ใช้ได้ (กล่องข้อความเป็นของเบราว์เซอร์)</p>
+
 <h2>ฟอร์มเองก็มีเมธอด</h2>
 <p><code>ui.close()</code>, <code>ui.hide()</code>, <code>ui.show_window()</code>, <code>ui.activate()</code>, <code>ui.center_to_screen()</code>, <code>ui.set_title("...")</code> เปิดฟอร์มที่สองด้วย <code>OtherFormUi::show(ui.hwnd, OtherForm::default())</code> หรือแบบรอคำตอบ <code>show_dialog</code> ที่คืน <code>DialogResult</code></p>
 <div class="pager"><a href="database.html">← ทำงานกับฐานข้อมูล</a><a href="winforms.html">control และความสามารถเพิ่มเติม →</a></div>

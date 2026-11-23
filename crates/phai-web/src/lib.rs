@@ -15,6 +15,7 @@ pub mod form;
 pub mod menu;
 pub mod paint;
 pub mod popup;
+pub mod prelude;
 #[path = "../../phai-ui/src/text.rs"]
 pub mod text;
 pub mod tree;

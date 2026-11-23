@@ -380,7 +380,7 @@ const MAIN_WINDOW_RS: &str = r#"//! MainWindow: what its controls do. Phai Studi
 //! The window itself is in main_window_ui.rs, which Phai Studio writes from main_window.phf.
 
 use crate::main_window_ui::{MainWindowEvents, MainWindowUi};
-use phai_ui::text::tf;
+use phai_ui::prelude::*;
 
 #[derive(Default)]
 pub struct MainWindow {

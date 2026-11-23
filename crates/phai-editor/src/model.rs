@@ -136,6 +136,30 @@ pub fn parse_snippet(body: &str) -> (String, Vec<(usize, usize, usize)>, Option<
     (text, fields, zero)
 }
 
+/// Phai's snippets that use the prelude's short names (`message_box`, `DialogResult`, `tf`).
+const PRELUDE_SNIPPETS: [&str; 4] = ["msg", "yesno", "dialog", "status"];
+
+/// Where `use phai_ui::prelude::*;` goes in a file: before its first `use`, else after its doc
+/// lines and inner attributes.
+fn prelude_place(text: &str) -> usize {
+    let mut pos = 0;
+    let mut header = 0;
+    let mut in_header = true;
+    for line in text.split_inclusive('\n') {
+        if line.starts_with("use ") {
+            return pos;
+        }
+        let l = line.trim_start();
+        if in_header && (l.starts_with("//!") || l.starts_with("#![")) {
+            header = pos + line.len();
+        } else {
+            in_header = false;
+        }
+        pos += line.len();
+    }
+    header
+}
+
 /// The snippets the person keeps of their own (Tools > Code Snippets), beside the built-in ones.
 static USER_SNIPPETS: std::sync::RwLock<Vec<(String, String)>> = std::sync::RwLock::new(Vec::new());
 
@@ -649,7 +673,22 @@ impl Model {
         let Some((_, body)) = all_snippets().into_iter().find(|(k, _)| k == word) else { return false };
         let indent: String = text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
         let (body, fields, zero) = parse_snippet(&body.replace('\n', &format!("\n{indent}")));
-        let from = self.buf.line_start(line) + start;
+        let mut from = self.buf.line_start(line) + start;
+        // Phai's own snippets speak the prelude's short names: its line put in when the file has
+        // not got it, before the snippet - which moves down by as much.
+        if PRELUDE_SNIPPETS.contains(&word) && !self.buf.text().contains("phai_ui::prelude::*") {
+            let at = prelude_place(&self.buf.text());
+            if at <= from {
+                let line = "use phai_ui::prelude::*;\n";
+                let word_end = self.caret;
+                self.anchor = at;
+                self.caret = at;
+                self.insert(line);
+                from += line.len();
+                // Back to the end of the snippet's word, now that far down.
+                self.caret = word_end + line.len();
+            }
+        }
         self.anchor = from;
         self.insert(&body);
         let end = from + zero.unwrap_or(body.len());
@@ -972,11 +1011,11 @@ pub const SNIPPETS: &[(&str, &str)] = &[
     ("ok", "Ok($0)"),
     ("derive", "#[derive(Debug, Clone$0)]"),
     // Phai Studio's own: a window's everyday code.
-    ("msg", "phai_ui::form::message_box(ui.hwnd, \"${1:Saved}\", \"${2:Title}\", phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);$0"),
-    ("yesno", "if phai_ui::form::message_box(ui.hwnd, \"${1:Delete it?}\", \"${2:Title}\", phai_ui::form::MessageBoxButtons::YesNo, phai_ui::form::MessageBoxIcon::Question) == phai_ui::form::DialogResult::Yes {\n    $0\n}"),
+    ("msg", "message_box(ui.hwnd, \"${1:Saved}\", \"${2:Title}\", MessageBoxButtons::Ok, MessageBoxIcon::Information);$0"),
+    ("yesno", "if message_box(ui.hwnd, \"${1:Delete it?}\", \"${2:Title}\", MessageBoxButtons::YesNo, MessageBoxIcon::Question) == DialogResult::Yes {\n    $0\n}"),
     ("bg", "let invoker = ui.invoker();\nstd::thread::spawn(move || {\n    let ${2:result} = ${3:work()};\n    ${1:MainWindow}Ui::begin_invoke(invoker, move |me: &mut ${1:MainWindow}, ui: &${1:MainWindow}Ui| {\n        $0\n    });\n});"),
     ("show", "crate::${2:other_form}_ui::${1:OtherForm}Ui::show(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default());$0"),
-    ("dialog", "if crate::${2:other_form}_ui::${1:OtherForm}Ui::show_dialog(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default()) == phai_ui::form::DialogResult::Ok {\n    $0\n}"),
+    ("dialog", "if crate::${2:other_form}_ui::${1:OtherForm}Ui::show_dialog(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default()) == DialogResult::Ok {\n    $0\n}"),
     ("status", "ui.${1:status}.set_part_text(0, &tf(\"${2:Ready}\", &[]));$0"),
 ];
 
@@ -1402,6 +1441,16 @@ fn main() {", "broken at the start, the brace was not before the caret");
         m.caret = 0;
         m.anchor = 0;
         assert!(!m.next_snippet_field());
+        // A Phai snippet in a file without the prelude: its line put in at the top, the snippet
+        // filled in where it was typed.
+        let mut m = Model::new("//! x\nuse crate::a;\n\nfn f() {\n    msg\n}");
+        m.caret = m.buf.text().find("msg").unwrap() + 3;
+        m.anchor = m.caret;
+        assert!(m.expand_snippet());
+        assert_eq!(m.selected_text(), "Saved");
+        let t = m.buf.text();
+        assert!(t.starts_with("//! x\nuse phai_ui::prelude::*;\nuse crate::a;\n"), "{t}");
+        assert!(t.contains("    message_box(ui.hwnd, \"Saved\", \"Title\", MessageBoxButtons::Ok, MessageBoxIcon::Information);"), "{t}");
         // A snippet of the person's own, in place of a built-in.
         set_user_snippets(vec![("pln".into(), "eprintln!(\"${1:x}\");".into())]);
         let mut m = Model::new("pln");
