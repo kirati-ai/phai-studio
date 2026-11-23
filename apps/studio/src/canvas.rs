@@ -149,9 +149,44 @@ fn paint_chips(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, width: i32) {
     }
 }
 
+/// How far the canvas is scrolled, design pixels: a form larger than the room the canvas has
+/// is scrolled to, as Visual Studio's designer is.
+static SCROLL_X: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static SCROLL_Y: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// The scroll, design pixels.
+pub fn scrolled() -> (i32, i32) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (SCROLL_X.load(Relaxed), SCROLL_Y.load(Relaxed))
+}
+
+/// Back to the top-left corner - another document shown.
+pub fn scroll_home() {
+    SCROLL_X.store(0, std::sync::atomic::Ordering::Relaxed);
+    SCROLL_Y.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Where the frame drawn round the form starts on the canvas, design pixels - its title bar's
+/// top-left corner, scrolled.
+pub fn top_left() -> (i32, i32) {
+    let (sx, sy) = scrolled();
+    (MARGIN - sx, MARGIN - sy)
+}
+
 /// Where the form's client area starts on the canvas, design pixels.
 pub fn origin(f: &phai_form::FormFile) -> (i32, i32) {
-    (MARGIN, MARGIN + chrome(f))
+    let (x, y) = top_left();
+    (x, y + chrome(f))
+}
+
+/// The room the form with its frame and margins needs on the canvas, design pixels.
+pub fn content_size(f: &phai_form::FormFile, size: [i32; 2]) -> (i32, i32) {
+    (MARGIN * 2 + size[0] + HANDLE, MARGIN * 2 + chrome(f) + size[1] + HANDLE)
+}
+
+/// The scroll there can be: how far the content passes the view, never below 0.
+pub fn scroll_room(content: (i32, i32), view: (i32, i32)) -> (i32, i32) {
+    ((content.0 - view.0).max(0), (content.1 - view.1).max(0))
 }
 /// Positions snap to this many design pixels - Tools > Options > Form Designer.
 static GRID_SIZE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(4);
@@ -242,7 +277,7 @@ impl Canvas {
     pub fn new(parent: HWND, id: i32) -> Canvas {
         let (canvas_class, surface_class, _) = register_classes();
         let hwnd = unsafe {
-            wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
+            wm::CreateWindowExW(Default::default(), PCWSTR(canvas_class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS | wm::WS_HSCROLL | wm::WS_VSCROLL, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default()
         };
         let surface = create_child(&surface_class, hwnd, WINDOW_EX_STYLE(0));
         let tray_class = win::register_with(win::ClassStyle::DoubleClicks, "PhaiStudioTray", Some(tray_proc), None);
@@ -270,6 +305,12 @@ impl Canvas {
                 let _ = wm::DestroyWindow(h);
             }
         }
+        // `PHAI_CANVAS_SCROLL=x,y`: the first form scrolled so, to photograph.
+        static FIRST: std::sync::Once = std::sync::Once::new();
+        FIRST.call_once(|| if let Some((x, y)) = std::env::var("PHAI_CANVAS_SCROLL").ok().and_then(|v| v.split_once(',').and_then(|(a, b)| Some((a.trim().parse::<i32>().ok()?, b.trim().parse::<i32>().ok()?)))) {
+            SCROLL_X.store(x, std::sync::atomic::Ordering::Relaxed);
+            SCROLL_Y.store(y, std::sync::atomic::Ordering::Relaxed);
+        });
         let f = &s.doc.form;
         let (w, h) = (win::px(self.hwnd, f.form.size[0]), win::px(self.hwnd, f.form.size[1]));
         let (ox, oy) = origin(f);
@@ -328,6 +369,7 @@ impl Canvas {
         }
         self.place_handles();
         self.show_numbers();
+        self.update_scroll();
     }
 
     /// Tab order mode on or off: as Visual Studio's View > Tab Order, each control shows its place
@@ -408,6 +450,128 @@ impl Canvas {
 
     /// The tray along the bottom when the form has something to put in it - over the form, as
     /// Visual Studio's - and nowhere while code is shown.
+    /// The scroll bars as the form and the room ask: shown when the form with its frame is larger
+    /// than the canvas, the scroll kept inside what there is to see. None over a code file.
+    pub fn update_scroll(&self) {
+        use std::sync::atomic::Ordering::Relaxed;
+        // Showing a bar changes the room, which asks again: once at a time.
+        static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if BUSY.swap(true, Relaxed) {
+            return;
+        }
+        let Some(s) = studio() else {
+            BUSY.store(false, Relaxed);
+            return;
+        };
+        let code = s.doc.code.is_some() || s.nothing;
+        let dpi = win::dpi(self.hwnd);
+        let size = self.shown_size().unwrap_or(s.doc.form.form.size);
+        let content = content_size(&s.doc.form, size);
+        let mut moved = false;
+        for _ in 0..3 {
+            let mut r = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(self.hwnd, &mut r);
+            }
+            let tray = if self.tray_shown() { tray_height() } else { 0 };
+            let view = (unscale(r.right, dpi), unscale(r.bottom, dpi) - tray);
+            let room = if code { (0, 0) } else { scroll_room(content, view) };
+            let (sx, sy) = scrolled();
+            let (nx, ny) = (sx.clamp(0, room.0), sy.clamp(0, room.1));
+            if (nx, ny) != (sx, sy) {
+                SCROLL_X.store(nx, Relaxed);
+                SCROLL_Y.store(ny, Relaxed);
+                moved = true;
+            }
+            let set = |bar: wm::SCROLLBAR_CONSTANTS, total: i32, page: i32, pos: i32| unsafe {
+                let info = wm::SCROLLINFO { cbSize: std::mem::size_of::<wm::SCROLLINFO>() as u32, fMask: wm::SIF_RANGE | wm::SIF_PAGE | wm::SIF_POS, nMin: 0, nMax: scale(total, dpi) - 1, nPage: scale(page.max(1), dpi) as u32, nPos: scale(pos, dpi), nTrackPos: 0 };
+                windows::Win32::UI::Controls::SetScrollInfo(self.hwnd, bar, &info, true);
+            };
+            if code {
+                set(wm::SB_HORZ, 1, 1, 0);
+                set(wm::SB_VERT, 1, 1, 0);
+            } else {
+                set(wm::SB_HORZ, content.0, view.0, nx);
+                set(wm::SB_VERT, content.1, view.1, ny);
+            }
+            // A bar shown or hidden made the room another size: once more with that.
+            let mut r2 = RECT::default();
+            unsafe {
+                let _ = wm::GetClientRect(self.hwnd, &mut r2);
+            }
+            if (r2.right, r2.bottom) == (r.right, r.bottom) {
+                break;
+            }
+            self.place_tray();
+        }
+        BUSY.store(false, Relaxed);
+        if moved {
+            self.reposition();
+        }
+    }
+
+    fn tray_shown(&self) -> bool {
+        unsafe { wm::IsWindowVisible(self.tray) }.as_bool()
+    }
+
+    /// Scrolled to `(x, y)` design pixels, kept inside what there is to see.
+    pub fn scroll_to(&self, x: i32, y: i32) {
+        use std::sync::atomic::Ordering::Relaxed;
+        SCROLL_X.store(x.max(0), Relaxed);
+        SCROLL_Y.store(y.max(0), Relaxed);
+        self.update_scroll();
+        self.reposition();
+    }
+
+    /// The form where the scroll puts it: its surface, its handles, the frame round it drawn again.
+    fn reposition(&self) {
+        let Some(s) = studio() else { return };
+        if s.doc.code.is_some() {
+            return;
+        }
+        let dpi = win::dpi(self.hwnd);
+        let size = self.shown_size().unwrap_or(s.doc.form.form.size);
+        let (ox, oy) = origin(&s.doc.form);
+        win::move_to(self.surface, scale(ox, dpi), scale(oy, dpi), scale(size[0], dpi), scale(size[1], dpi));
+        self.place_handles();
+        unsafe {
+            let _ = Gdi::InvalidateRect(Some(self.hwnd), None, true);
+        }
+    }
+
+    /// A scroll bar's message: a line, a page, the thumb dragged.
+    fn scrolled_by(&self, across: bool, code: u32) {
+        let dpi = win::dpi(self.hwnd);
+        let bar = if across { wm::SB_HORZ } else { wm::SB_VERT };
+        let mut info = wm::SCROLLINFO { cbSize: std::mem::size_of::<wm::SCROLLINFO>() as u32, fMask: wm::SIF_ALL, ..Default::default() };
+        unsafe {
+            let _ = wm::GetScrollInfo(self.hwnd, bar, &mut info);
+        }
+        let page = unscale(info.nPage as i32, dpi);
+        let (sx, sy) = scrolled();
+        let now = if across { sx } else { sy };
+        let to = match code {
+            0 => now - 40,
+            1 => now + 40,
+            2 => now - page,
+            3 => now + page,
+            4 | 5 => unscale(info.nTrackPos, dpi),
+            6 => 0,
+            7 => i32::MAX / 2,
+            _ => return,
+        };
+        if across { self.scroll_to(to, sy) } else { self.scroll_to(sx, to) }
+    }
+
+    /// The mouse wheel over the designer: up and down, with Shift across.
+    pub fn wheel(&self, w: WPARAM) {
+        let delta = (win::hiword(w.0) as i16) as i32;
+        let across = unsafe { km::GetKeyState(0x10) } < 0;
+        let step = -delta * 3 * 16 / 120;
+        let (sx, sy) = scrolled();
+        if across { self.scroll_to(sx + step, sy) } else { self.scroll_to(sx, sy + step) }
+    }
+
     pub fn place_tray(&self) {
         let Some(s) = studio() else { return };
         let mut r = RECT::default();
@@ -534,7 +698,8 @@ impl Canvas {
         unsafe {
             let _ = Gdi::ClientToScreen(self.hwnd, &mut o);
         }
-        let bar = RECT { left: o.x + p(ox), top: o.y + p(MARGIN + TITLE), right: o.x + p(ox + width), bottom: o.y + p(MARGIN + TITLE + MENU) };
+        let ty = top_left().1;
+        let bar = RECT { left: o.x + p(ox), top: o.y + p(ty + TITLE), right: o.x + p(ox + width), bottom: o.y + p(ty + TITLE + MENU) };
         let font = win::font(self.hwnd, 0, false);
         let mut x = ox + 8;
         let mut tops = Vec::new();
@@ -943,7 +1108,8 @@ impl Canvas {
             let _ = km::SetFocus(Some(self.surface));
         }
         // The frame above the form: its menu bar opens the menus to edit, its title bar chooses the form.
-        let inside_x = p.0 >= MARGIN && p.0 < MARGIN + size[0];
+        let (lx, ly) = top_left();
+        let inside_x = p.0 >= lx && p.0 < lx + size[0];
         // The form's toolbar: designed on it, the button clicked chosen.
         if inside_x && !s.doc.form.toolbar.is_empty() && p.1 >= top && p.1 < top + win::TOOLBAR_HEIGHT {
             s.select(None);
@@ -956,7 +1122,7 @@ impl Canvas {
             crate::tooldesign::open(at);
             return;
         }
-        if inside_x && p.1 >= MARGIN + TITLE && p.1 < top {
+        if inside_x && p.1 >= ly + TITLE && p.1 < top {
             s.select(None);
             self.place_handles();
             // The menu clicked dropped down to design, as Visual Studio's MenuStrip.
@@ -1142,7 +1308,7 @@ fn paint_frame(dc: Gdi::HDC, h: HWND, f: &phai_form::FormFile, size: [i32; 2]) {
     let dpi = win::dpi(h);
     let p = |v: i32| scale(v, dpi);
     let (ox, _) = origin(f);
-    let top = MARGIN;
+    let top = top_left().1;
     let width = size[0];
     let bottom = origin(f).1 + size[1];
     let window = win::window_background();
@@ -1493,6 +1659,19 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             if let Some(c) = canvas_of(h) {
                 c.place_tray();
+                c.update_scroll();
+            }
+            LRESULT(0)
+        }
+        wm::WM_HSCROLL | wm::WM_VSCROLL => {
+            if let Some(c) = canvas_of(h) {
+                c.scrolled_by(msg == wm::WM_HSCROLL, win::loword(w.0) as u32);
+            }
+            LRESULT(0)
+        }
+        wm::WM_MOUSEWHEEL | wm::WM_MOUSEHWHEEL => {
+            if let Some(c) = canvas_of(h) {
+                c.wheel(w);
             }
             LRESULT(0)
         }
@@ -1525,6 +1704,13 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
 
 extern "system" fn surface_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
+        // The wheel over the form scrolls the designer.
+        wm::WM_MOUSEWHEEL => {
+            if let Some(c) = canvas_of(unsafe { wm::GetParent(h) }.unwrap_or_default()) {
+                c.wheel(w);
+            }
+            LRESULT(0)
+        }
         wm::WM_LBUTTONDOWN => {
             if let Some(c) = canvas_of(h) {
                 c.down(l);
@@ -1708,5 +1894,20 @@ extern "system" fn handle_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             LRESULT(0)
         },
         _ => win::def(h, msg, w, l),
+    }
+}
+
+#[cfg(test)]
+mod scroll_tests {
+    use super::*;
+
+    #[test]
+    fn a_form_larger_than_the_room_scrolls_as_far_as_it_passes() {
+        let f = phai_form::FormFile::new("Main");
+        // 480 x 320, no menu: the margins, the title bar and the handle round it.
+        assert_eq!(content_size(&f, [480, 320]), (16 * 2 + 480 + HANDLE, 16 * 2 + TITLE + 320 + HANDLE));
+        assert_eq!(scroll_room((800, 500), (600, 600)), (200, 0));
+        assert_eq!(scroll_room((400, 300), (600, 600)), (0, 0));
+        assert_eq!(top_left(), (MARGIN, MARGIN), "not scrolled to begin with");
     }
 }

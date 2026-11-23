@@ -4449,6 +4449,16 @@ impl Studio {
 
     /// Everything that shows the active form, again.
     fn after_switch(&mut self) {
+        // Another document: its top-left corner first, then scroll bars if it is larger than the
+        // room; none over a code file.
+        canvas::scroll_home();
+        self.after_switch_inner();
+        if let Some(c) = self.canvas.as_ref() {
+            c.update_scroll();
+        }
+    }
+
+    fn after_switch_inner(&mut self) {
         if self.nothing {
             return self.show_nothing();
         }
@@ -7074,7 +7084,15 @@ impl Studio {
 
     /// The text of a file as it is open in an editor here, unsaved changes and all.
     pub fn open_text_of(&self, path: &Path) -> Option<String> {
-        self.editor_of(path).map(phai_editor::view::text)
+        if let Some(h) = self.editor_of(path) {
+            return Some(phai_editor::view::text(h));
+        }
+        // A form changed in the designer and not saved yet: as the designer has it.
+        let same = |p: &Option<PathBuf>| p.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+        if same(&self.doc.path) && self.doc.code.is_none() && self.doc.dirty {
+            return Some(self.doc.form.to_toml());
+        }
+        self.tabs.iter().find(|t| same(&t.doc.path) && t.doc.code.is_none() && t.doc.dirty).map(|t| t.doc.form.to_toml())
     }
 
     /// A file the AI assistant wrote: its open editor shows the new text, an open form is read
@@ -7089,10 +7107,23 @@ impl Studio {
         if phai_form::is_form(path) {
             if let Ok(f) = FormFile::parse(text) {
                 let same = |p: &Option<PathBuf>| p.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+                // The change was made to the form as it was here, unsaved changes and all, and the
+                // person accepted it: loaded without asking, one step for Undo to take back.
+                if let Ok(stamp) = std::fs::metadata(path).and_then(|m| m.modified()) {
+                    FORMS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(std::collections::HashMap::new).insert(path.to_path_buf(), stamp);
+                }
                 if same(&self.doc.path) && self.doc.code.is_none() {
-                    self.check_form_on_disk();
+                    if f != self.doc.form {
+                        self.edit(|form| *form = f.clone());
+                    }
+                    self.doc.dirty = false;
+                    self.say_title();
+                    self.refresh_tabs();
+                    self.rebuild();
+                    self.refresh_props();
                 } else if let Some(t) = self.tabs.iter_mut().find(|t| same(&t.doc.path) && t.doc.code.is_none()) {
                     t.doc.form = f.clone();
+                    t.doc.dirty = false;
                 }
                 let file = snake(&f.form.name);
                 let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
