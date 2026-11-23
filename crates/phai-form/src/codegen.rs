@@ -1508,6 +1508,28 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
 }
 
 /// The first `<name>.rs`: the programmer's from then on. Phai Studio writes it once.
+/// What the programmer's file says once at its top: an event's method is given the window (`ui`)
+/// and what happened (`e`), and need not use them - the names stay plain, with no warning.
+pub const ALLOW_UNUSED: &str = "#![allow(unused_variables)] // an event's method need not use all it is given (ui, e)";
+
+/// The file with [`ALLOW_UNUSED`] after its `//!` lines, when it has not got it.
+pub fn with_allow_unused(src: &str) -> String {
+    if src.contains("#![allow(unused_variables)]") {
+        return src.to_string();
+    }
+    // After the leading doc lines - inner attributes go before any item.
+    let mut at = 0;
+    for line in src.split_inclusive('\n') {
+        if line.trim_start().starts_with("//!") {
+            at += line.len();
+        } else {
+            break;
+        }
+    }
+    let nl = if src.contains("\r\n") { "\r\n" } else { "\n" };
+    format!("{}{ALLOW_UNUSED}{nl}{}", &src[..at], &src[at..])
+}
+
 pub fn user_stub(f: &FormFile) -> String {
     let name = &f.form.name;
     let file = snake(name);
@@ -1515,6 +1537,8 @@ pub fn user_stub(f: &FormFile) -> String {
     let w = &mut o;
     let _ = writeln!(w, "//! {name}: what its controls do. Phai Studio made this file once; it is yours.");
     let _ = writeln!(w, "//! The window itself is in {file}_ui.rs, which Phai Studio writes from {file}.phf.");
+    let _ = writeln!(w);
+    let _ = writeln!(w, "{ALLOW_UNUSED}");
     let _ = writeln!(w);
     let _ = writeln!(w, "use crate::{file}_ui::{{{name}Events, {name}Ui}};");
     let _ = writeln!(w);
@@ -1525,18 +1549,18 @@ pub fn user_stub(f: &FormFile) -> String {
     if f.handlers().is_empty() && f.event_methods().is_empty() {
         // A form with no events yet: the one every window has, so there is a place to start.
         let _ = writeln!(w, "    /// The window is made and about to show.");
-        let _ = writeln!(w, "    fn loaded(&mut self, _ui: &{name}Ui) {{}}");
+        let _ = writeln!(w, "    fn loaded(&mut self, ui: &{name}Ui) {{}}");
     }
     for (i, h) in f.handlers().iter().enumerate() {
         if i > 0 {
             let _ = writeln!(w);
         }
-        let _ = writeln!(w, "    fn {h}(&mut self, _ui: &{name}Ui) {{}}");
+        let _ = writeln!(w, "    fn {h}(&mut self, ui: &{name}Ui) {{}}");
     }
     let plain = f.handlers();
     for (h, a) in f.event_methods().into_iter().filter(|(h, _)| !plain.contains(h)) {
         let _ = writeln!(w);
-        let _ = writeln!(w, "    fn {h}(&mut self, _ui: &{name}Ui{}) {{}}", a.param().map(|p| format!(", _e: &{p}")).unwrap_or_default());
+        let _ = writeln!(w, "    fn {h}(&mut self, ui: &{name}Ui{}) {{}}", a.param().map(|p| format!(", e: &{p}")).unwrap_or_default());
     }
     let _ = writeln!(w, "}}");
     o
@@ -1554,21 +1578,21 @@ pub fn add_handler(user_src: &str, form_name: &str, handler: &str) -> Option<Str
 /// alone does not say.
 pub fn args_hint(param: &str) -> Option<&'static str> {
     Some(match param.rsplit("::").next()? {
-        "KeyEventArgs" => "// _e.key: the key's code (0x0D Enter, 0x1B Esc, 0x41 A...); _e.ctrl, _e.shift, _e.alt; _e.set_handled() - the control does not get it",
-        "KeyPressEventArgs" => "// _e.ch: the letter typed; _e.set_handled() - it is not typed in",
-        "MouseEventArgs" => "// _e.x, _e.y: where, in the control; _e.button: phai_ui::events::MouseButton::Left, Right, Middle; _e.ctrl, _e.shift; _e.delta: the wheel, 120 a notch",
-        "ClosingEventArgs" => "// _e.cancel() - the window stays open",
-        "ItemEventArgs" => "// _e.index: the item, from 0",
-        "FileDropEventArgs" => "// _e.files: the files dropped; _e.text: words dragged from another control",
-        "FileOkEventArgs" => "// _e.file(): the file chosen; _e.cancel() - the dialog stays open",
-        "PaintEventArgs" => "// _e.clear(\"white\"); _e.fill_rect(x, y, w, h, \"#12855f\"); _e.draw_line(x1, y1, x2, y2, \"gray\"); _e.draw_text(\"Hello\", x, y, \"black\"); _e.width, _e.height",
-        "PrintPageEventArgs" => "// _e.margin_bounds: where to print; _e.set_font(\"Leelawadee UI\", 12, false, false); _e.draw_text(\"...\", x, y); _e.page; _e.set_has_more_pages(true) - another page follows",
+        "KeyEventArgs" => "// e.key: the key's code (0x0D Enter, 0x1B Esc, 0x41 A...); e.ctrl, e.shift, e.alt; e.set_handled() - the control does not get it",
+        "KeyPressEventArgs" => "// e.ch: the letter typed; e.set_handled() - it is not typed in",
+        "MouseEventArgs" => "// e.x, e.y: where, in the control; e.button: phai_ui::events::MouseButton::Left, Right, Middle; e.ctrl, e.shift; e.delta: the wheel, 120 a notch",
+        "ClosingEventArgs" => "// e.cancel() - the window stays open",
+        "ItemEventArgs" => "// e.index: the item, from 0",
+        "FileDropEventArgs" => "// e.files: the files dropped; e.text: words dragged from another control",
+        "FileOkEventArgs" => "// e.file(): the file chosen; e.cancel() - the dialog stays open",
+        "PaintEventArgs" => "// e.clear(\"white\"); e.fill_rect(x, y, w, h, \"#12855f\"); e.draw_line(x1, y1, x2, y2, \"gray\"); e.draw_text(\"Hello\", x, y, \"black\"); e.width, e.height",
+        "PrintPageEventArgs" => "// e.margin_bounds: where to print; e.set_font(\"Leelawadee UI\", 12, false, false); e.draw_text(\"...\", x, y); e.page; e.set_has_more_pages(true) - another page follows",
         _ => return None,
     })
 }
 
 pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: Option<&str>) -> Option<String> {
-    let extra = param.map(|p| format!(", _e: &{p}")).unwrap_or_default();
+    let extra = param.map(|p| format!(", e: &{p}")).unwrap_or_default();
     // What its arguments hold, on the first line; the caret's line under it.
     let hint = param.and_then(args_hint).map(|h| format!("{h}\n        ")).unwrap_or_default();
     if user_src.contains(&format!("fn {handler}(")) {
@@ -1579,7 +1603,8 @@ pub fn add_handler_with(user_src: &str, form_name: &str, handler: &str, param: O
     // The impl's closing brace: the first `}` at the start of a line after it.
     let at = start + user_src[start..].find("\n}")?;
     // An empty line inside, indented, for the caret to land on and the code to start from.
-    Some(format!("{}\n\n    fn {handler}(&mut self, _ui: &{form_name}Ui{extra}) {{\n        {hint}\n    }}{}", &user_src[..at], &user_src[at..]))
+    let more = format!("{}\n\n    fn {handler}(&mut self, ui: &{form_name}Ui{extra}) {{\n        {hint}\n    }}{}", &user_src[..at], &user_src[at..]);
+    Some(with_allow_unused(&more))
 }
 
 #[cfg(test)]
@@ -1630,12 +1655,16 @@ mod tests {
         let stub = user_stub(&f);
         assert!(add_handler(&stub, "MainWindow", "save").is_none(), "already there");
         let more = add_handler(&stub, "MainWindow", "print").unwrap();
-        assert!(more.contains("    fn print(&mut self, _ui: &MainWindowUi) {\n        \n    }\n}"), "{more}");
+        assert!(more.contains("    fn print(&mut self, ui: &MainWindowUi) {\n        \n    }\n}"), "{more}");
         assert!(add_handler(&more, "MainWindow", "print").is_none());
         assert!(add_handler("struct X;", "MainWindow", "print").is_none(), "nowhere to put it");
         // An event with arguments: their type, and what they hold, on the first line.
         let keyed = add_handler_with(&stub, "MainWindow", "name_key_down", Some("phai_ui::events::KeyEventArgs")).unwrap();
-        assert!(keyed.contains("fn name_key_down(&mut self, _ui: &MainWindowUi, _e: &phai_ui::events::KeyEventArgs) {\n        // _e.key: the key's code"), "{keyed}");
+        assert!(keyed.contains("fn name_key_down(&mut self, ui: &MainWindowUi, e: &phai_ui::events::KeyEventArgs) {\n        // e.key: the key's code"), "{keyed}");
+        assert_eq!(keyed.matches("#![allow(unused_variables)]").count(), 1, "said once, at the top: {keyed}");
+        assert!(keyed.find("#![allow").unwrap() < keyed.find("use ").unwrap());
+        assert_eq!(with_allow_unused("//! A\r\n//! B\r\nuse x;\r\n"), format!("//! A\r\n//! B\r\n{ALLOW_UNUSED}\r\nuse x;\r\n"));
+        assert_eq!(with_allow_unused(&keyed), keyed, "once");
         for a in [crate::events::Args::Key, crate::events::Args::KeyPress, crate::events::Args::Mouse, crate::events::Args::Closing, crate::events::Args::Item, crate::events::Args::Files, crate::events::Args::Print, crate::events::Args::FileOk, crate::events::Args::Paint] {
             assert!(a.param().and_then(args_hint).is_some(), "{a:?} has its hint");
         }
