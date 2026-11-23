@@ -27,9 +27,11 @@
 //! A program needs Common Controls 6 in its manifest, or Windows hands it the old controls:
 //! see `apps/gallery/build.rs`.
 
+pub mod app;
 pub mod binding;
 pub mod components;
 pub mod controls;
+pub mod convert;
 pub mod ctl;
 pub mod dialogs;
 pub mod drag;

@@ -84,6 +84,32 @@ ui.status.set_part_text(0, &amp;tf("สวัสดี {0}", &amp;[&amp;name]));
 <p>หรือเรียกผ่าน <code>ui</code> ของฟอร์มก็ได้ — พิมพ์ <code>ui.</code> แล้วเลือกจากรายการ: <code>ui.msg("บันทึกแล้ว")</code> กล่องข้อความมีปุ่ม OK ใช้ชื่อหน้าต่างเป็นหัวเรื่อง, <code>ui.message_box("ลบไหม?", "ร้านค้า", MessageBoxButtons::YesNo, MessageBoxIcon::Question)</code> แบบเลือกปุ่มเอง (พิมพ์ <code>ui::</code> ก็ได้ Studio เปลี่ยนเป็น <code>ui.</code> ให้)</p>
 <p>ที่ได้มาด้วย: <code>message_box</code>, <code>MessageBoxButtons</code>, <code>MessageBoxIcon</code>, <code>DialogResult</code>, <code>t</code>, <code>tf</code> และชนิดของ <code>e</code> ในเมธอดของ event (<code>KeyEventArgs</code>, <code>MouseEventArgs</code>, <code>PaintEventArgs</code> ...) — บนเว็บก็ใช้ได้ (กล่องข้อความเป็นของเบราว์เซอร์)</p>
 
+<h2>มาจาก C# หรือ VB: เขียนอย่างนี้</h2>
+<p>ของที่ใช้ทุกวันใน C# เรียกได้สั้นพอกันใน Phai — ทั้งหมดอยู่ใน <code>ui.</code> (พิมพ์แล้วเลือกจากรายการ) หรือเรียกชื่อได้ตรง ๆ เพราะไฟล์มี <code>use phai_ui::prelude::*;</code> แล้ว</p>
+<table>
+<tr><th>C#</th><th>Phai (Rust)</th></tr>
+<tr><td><code>MessageBox.Show("บันทึกแล้ว")</code></td><td><code>ui.msg("บันทึกแล้ว")</code></td></tr>
+<tr><td><code>MessageBox.Show(text, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question)</code></td><td><code>ui.message_box(text, title, MessageBoxButtons::YesNo, MessageBoxIcon::Question)</code></td></tr>
+<tr><td><code>Interaction.InputBox("ชื่อ?")</code></td><td><code>ui.input_box("ชื่อ?", "")  → Option&lt;String&gt;</code></td></tr>
+<tr><td><code>openFileDialog1.ShowDialog()</code></td><td><code>ui.open_file("Text files|*.txt")  → Option&lt;PathBuf&gt;</code></td></tr>
+<tr><td><code>saveFileDialog1.ShowDialog()</code></td><td><code>ui.save_file("Text files|*.txt", "notes.txt")</code></td></tr>
+<tr><td><code>folderBrowserDialog1.ShowDialog()</code></td><td><code>ui.choose_folder()</code></td></tr>
+<tr><td><code>this.Close()</code></td><td><code>ui.close()</code></td></tr>
+<tr><td><code>this.Text = "ร้านค้า"</code></td><td><code>ui.set_title("ร้านค้า")</code></td></tr>
+<tr><td><code>textBox1.Text</code></td><td><code>ui.text_box1.text()  /  ui.text_box1.set_text("...")</code></td></tr>
+<tr><td><code>int.Parse(textBox1.Text)</code></td><td><code>to_int(&amp;ui.text_box1.text())  (คำที่ไม่ใช่ตัวเลข = 0)</code></td></tr>
+<tr><td><code>double.Parse(s)</code></td><td><code>to_float(&amp;s)</code></td></tr>
+<tr><td><code>DateTime.Now.ToString("dd/MM/yyyy HH:mm")</code></td><td><code>now().format("dd/MM/yyyy HH:mm")  (bbbb = ปี พ.ศ.)</code></td></tr>
+<tr><td><code>string.Format("สวัสดี {0}", name)</code></td><td><code>tf("สวัสดี {0}", &amp;[&amp;name])  หรือ  format!("สวัสดี {name}")</code></td></tr>
+<tr><td><code>Clipboard.SetText(s) / Clipboard.GetText()</code></td><td><code>set_clipboard_text(&amp;s) / clipboard_text()</code></td></tr>
+<tr><td><code>Process.Start("https://...")</code></td><td><code>open_with_windows("https://...")</code></td></tr>
+<tr><td><code>Application.StartupPath</code></td><td><code>app_folder()</code></td></tr>
+<tr><td><code>Application.Exit()</code></td><td><code>exit_app()</code></td></tr>
+<tr><td><code>this.Invoke(...)</code></td><td><code>MainWindowUi::begin_invoke(invoker, move |me, ui| ...)  (ข้างบน)</code></td></tr>
+<tr><td><code>Debug.WriteLine(s)</code></td><td><code>println!("{s}")  (ขึ้นแท็บ Output)</code></td></tr>
+</table>
+<p>snippet ที่ช่วย: <code>msg</code>, <code>yesno</code>, <code>input</code>, <code>openfile</code>, <code>savefile</code>, <code>now</code> แล้วกด <kbd>Tab</kbd></p>
+
 <h2>ฟอร์มเองก็มีเมธอด</h2>
 <p><code>ui.close()</code>, <code>ui.hide()</code>, <code>ui.show_window()</code>, <code>ui.activate()</code>, <code>ui.center_to_screen()</code>, <code>ui.set_title("...")</code> เปิดฟอร์มที่สองด้วย <code>OtherFormUi::show(ui.hwnd, OtherForm::default())</code> หรือแบบรอคำตอบ <code>show_dialog</code> ที่คืน <code>DialogResult</code></p>
 '''

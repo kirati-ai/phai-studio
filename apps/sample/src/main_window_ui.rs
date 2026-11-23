@@ -307,6 +307,28 @@ impl MainWindowUi {
         phai_ui::form::message_box(self.hwnd, text, &self.title(), phai_ui::form::MessageBoxButtons::Ok, phai_ui::form::MessageBoxIcon::Information);
     }
 
+    /// Words asked for in a small window over this one - VB's InputBox; `None` for Cancel:
+    /// `if let Some(name) = ui.input_box("Your name?", "") { ... }`.
+    pub fn input_box(&self, prompt: &str, default: &str) -> Option<String> {
+        phai_ui::dialogs::ask_fields(Some(self.hwnd), &self.title(), &[phai_ui::dialogs::Field::Text(prompt, default)]).and_then(|a| a.into_iter().next())
+    }
+
+    /// A file to open, chosen - OpenFileDialog; `None` for Cancel. The filter as WinForms writes it,
+    /// empty for every file: `ui.open_file("Text files|*.txt")`.
+    pub fn open_file(&self, filter: &str) -> Option<std::path::PathBuf> {
+        phai_ui::components::OpenFileDialog::new(self.hwnd, "", filter, "", "", false).show_dialog()
+    }
+
+    /// A file to save to, chosen - SaveFileDialog; `None` for Cancel: `ui.save_file("Text files|*.txt", "notes.txt")`.
+    pub fn save_file(&self, filter: &str, name: &str) -> Option<std::path::PathBuf> {
+        phai_ui::components::SaveFileDialog::new(self.hwnd, "", filter, "", "").show_dialog_named(name)
+    }
+
+    /// A folder, chosen - FolderBrowserDialog; `None` for Cancel.
+    pub fn choose_folder(&self) -> Option<std::path::PathBuf> {
+        phai_ui::components::FolderBrowserDialog::new(self.hwnd, "", "").show_dialog()
+    }
+
     /// Moved to the middle of the screen it is on.
     pub fn center_to_screen(&self) {
         win::center_on_screen(self.hwnd);

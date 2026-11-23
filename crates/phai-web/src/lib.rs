@@ -8,6 +8,9 @@
 //! their paths - is not here; a program that uses it does not build for the web, and Phai Studio
 //! says which control or call is the reason.
 
+pub mod app;
+#[path = "../../phai-ui/src/convert.rs"]
+pub mod convert;
 pub mod ctl;
 pub mod data;
 pub mod events;

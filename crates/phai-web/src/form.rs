@@ -65,6 +65,11 @@ pub fn message_box<O>(_owner: O, text: &str, caption: &str, buttons: MessageBoxB
     if w.confirm_with_message(&words).unwrap_or(false) { first } else { last }
 }
 
+/// Words asked for with the browser's own box - VB's InputBox; `None` for Cancel.
+pub fn input_box(prompt: &str, default: &str) -> Option<String> {
+    web_sys::window()?.prompt_with_message_and_default(prompt, default).ok().flatten()
+}
+
 /// Where a control goes in its window, in the designer's pixels, and what it holds on to.
 #[derive(Clone, Copy, Debug)]
 pub struct Place {

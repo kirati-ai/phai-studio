@@ -919,6 +919,29 @@ unsafe extern "system" fn find_proc(e: HWND, msg: u32, w: WPARAM, l: LPARAM, _: 
     }
 }
 
+/// Words put on the clipboard for the program (`app::set_clipboard_text`): owned by one of its
+/// windows - the active one, else a small hidden one made for the moment, as Windows wants an
+/// owner for what is put there.
+pub(crate) fn put_on_clipboard(text: &str) {
+    unsafe {
+        let active = windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow();
+        if !active.is_invalid() {
+            set_clipboard(active, text);
+            return;
+        }
+        let class = windows::core::w!("STATIC");
+        if let Ok(h) = wm::CreateWindowExW(Default::default(), class, windows::core::PCWSTR::null(), Default::default(), 0, 0, 0, 0, Some(wm::HWND_MESSAGE), None, None, None) {
+            set_clipboard(h, text);
+            let _ = wm::DestroyWindow(h);
+        }
+    }
+}
+
+/// The clipboard's words, for the program (`app::clipboard_text`).
+pub(crate) fn clipboard_words() -> Option<String> {
+    get_clipboard(unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow() })
+}
+
 fn set_clipboard(h: HWND, text: &str) {
     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData};
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};

@@ -137,7 +137,7 @@ pub fn parse_snippet(body: &str) -> (String, Vec<(usize, usize, usize)>, Option<
 }
 
 /// Phai's snippets that use the prelude's short names (`message_box`, `DialogResult`, `tf`).
-const PRELUDE_SNIPPETS: [&str; 3] = ["yesno", "dialog", "status"];
+const PRELUDE_SNIPPETS: [&str; 4] = ["yesno", "dialog", "status", "now"];
 
 /// Where `use phai_ui::prelude::*;` goes in a file: before its first `use`, else after its doc
 /// lines and inner attributes.
@@ -1034,6 +1034,10 @@ pub const SNIPPETS: &[(&str, &str)] = &[
     ("show", "crate::${2:other_form}_ui::${1:OtherForm}Ui::show(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default());$0"),
     ("dialog", "if crate::${2:other_form}_ui::${1:OtherForm}Ui::show_dialog(ui.hwnd, crate::${2:other_form}::${1:OtherForm}::default()) == DialogResult::Ok {\n    $0\n}"),
     ("status", "ui.${1:status}.set_part_text(0, &tf(\"${2:Ready}\", &[]));$0"),
+    ("input", "if let Some(${1:name}) = ui.input_box(\"${2:Your name?}\", \"\") {\n    $0\n}"),
+    ("openfile", "if let Some(${1:path}) = ui.open_file(\"${2:Text files|*.txt}\") {\n    $0\n}"),
+    ("savefile", "if let Some(${1:path}) = ui.save_file(\"${2:Text files|*.txt}\", \"${3:notes.txt}\") {\n    $0\n}"),
+    ("now", "now().format(\"${1:dd/MM/yyyy HH:mm}\")$0"),
 ];
 
 /// The find bar's choices.
