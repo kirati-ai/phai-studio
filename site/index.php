@@ -231,6 +231,12 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.10', '23 พ.ย. 2569', [
+            'ผู้ช่วย AI (View > AI Assistant): คุยกับ Claude เรื่องโปรเจกต์ โหมด ลงมือ ให้ Claude แก้โค้ดและฟอร์ม build แก้ error รันเทสต์ และดูภาพหน้าจอโปรแกรมเอง ทุกการแก้ไฟล์ให้กดรับหรือไม่รับก่อน (ใช้คีย์ API ของคุณเอง)',
+            'นำเข้าฟอร์มจาก WinForms (Project > Import WinForms Form): เปิดฟอร์มที่ทำใน Visual Studio ทั้ง C# และ VB.NET หน้าตาเหมือนเดิม พร้อมเมนู event รูปและไอคอน แล้วแก้ต่อด้วยลากวาง',
+            'Snippet แบบมีช่องกรอก: กด Tab ไปช่องถัดไป มี snippet ของ Phai เช่น msg yesno bg และเพิ่ม snippet ของคุณเองได้',
+            'วาง control บน panel ที่มีสีพื้นแล้วไม่หายไปใต้ panel อีก',
+        ]],
         ['0.2.9', '23 พ.ย. 2569', [
             'หน้าต่าง About ใหม่: ไอคอน ชื่อและรุ่น ลิงก์เว็บไซต์ ข้อตกลงสัญญาอนุญาต ซอร์สโค้ด และแจ้งปัญหา',
             'About บอกรุ่นของเครื่องมือที่ใช้ร่วมกัน (Rust, Cargo, rust-analyzer, Git, Windows) และปุ่มคัดลอกข้อมูลไว้แนบตอนแจ้งปัญหา',
@@ -452,6 +458,12 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.10', '23 Nov 2026', [
+            'An AI assistant (View > AI Assistant): talk to Claude about the project; in Act mode Claude edits code and forms, builds and fixes errors, runs the tests and looks at the running program - every change to a file is yours to accept or decline (your own API key)',
+            'Import WinForms forms (Project > Import WinForms Form): a form made in Visual Studio, C# or VB.NET, opens looking as it did, with its menus, events, pictures and icon, to go on with by drag and drop',
+            'Snippets with fields to fill in: Tab to the next; Phai\'s own such as msg, yesno, bg, and snippets of your own',
+            'A control put on a coloured panel no longer disappears under it',
+        ]],
         ['0.2.9', '23 Nov 2026', [
             'A new About window: icon, name and version, links to the website, the license terms, the source code and the issues',
             'About lists the versions of the tools Phai Studio works with (Rust, Cargo, rust-analyzer, Git, Windows), copied in one click for a problem report',
