@@ -1135,6 +1135,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("Add User Control", "เพิ่ม User Control"),
     ("Import WinForms Form...", "นำเข้าฟอร์ม WinForms..."),
     ("AI Assistant", "ผู้ช่วย AI"),
+    ("Double-click to write its method.", "ดับเบิลคลิกเพื่อเขียนเมธอดของมัน"),
+    ("The method that runs when this happens. Double-click here, or the control, to write it.", "เมธอดที่ทำงานเมื่อเกิดเรื่องนี้ ดับเบิลคลิกที่นี่หรือที่ control เพื่อเขียน"),
     ("Code Snippets...", "Snippet ของฉัน..."),
     ("Code Snippets", "Snippet ของฉัน"),
     ("Your snippets: save the file and they are ready - type the word, then Tab", "snippet ของคุณ: บันทึกไฟล์แล้วใช้ได้ทันที - พิมพ์คำแล้วกด Tab"),

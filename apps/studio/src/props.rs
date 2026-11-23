@@ -738,7 +738,7 @@ impl Props {
                     Key::On(n) | Key::FormOn(n) => n,
                     _ => "",
                 };
-                Prop { category: event_category(ev_name), key, name, value: value.cloned().unwrap_or_default(), ed: Ed::Choice(methods.clone(), true), help: t(help).into(), parent: None, set: value.is_some() }
+                Prop { category: event_category(ev_name), key, name, value: value.cloned().unwrap_or_default(), ed: Ed::Choice(methods.clone(), true), help: format!("{} {}", t(help), t("Double-click to write its method.")).into(), parent: None, set: value.is_some() }
             };
             return match sel.and_then(|i| f.control.get(i)) {
                 Some(c) => {
@@ -750,7 +750,7 @@ impl Props {
                             "on_tick" => t("Tick"),
                             _ => t("Select"),
                         };
-                        v.push(p(t("Action"), Key::Event, name, c.handler().unwrap_or_default().to_string(), Ed::Choice(methods.clone(), true), t("The method that runs when this happens. Double-click the control to write it.")));
+                        v.push(p(t("Action"), Key::Event, name, c.handler().unwrap_or_default().to_string(), Ed::Choice(methods.clone(), true), t("The method that runs when this happens. Double-click here, or the control, to write it.")));
                     }
                     for e in phai_form::events::of_kind(c.kind) {
                         v.push(row(Key::On(e.name), e.label, e.help, c.events.get(e.name)));
@@ -1221,7 +1221,14 @@ impl Props {
                 self.arrange();
                 self.update_scroll();
             }
-            Line::Prop(i) if double && x < self.split() && matches!(self.props[i].key, Key::On(_) | Key::FormOn(_) | Key::Event | Key::BarOn(_) | Key::Bar("click")) => {
+            // The Events tab: a click chooses the event (its help below), a double-click - on its
+            // name or its method - writes the method and goes to it to be written, as Visual
+            // Studio does. No list of the form's other methods.
+            Line::Prop(i) if self.mode == 1 && !double && matches!(self.props[i].key, Key::On(_) | Key::FormOn(_) | Key::Event | Key::BarOn(_) | Key::Bar("click")) => {
+                self.chosen = Some(k);
+                self.say_help();
+            }
+            Line::Prop(i) if double && (x < self.split() || self.mode == 1) && matches!(self.props[i].key, Key::On(_) | Key::FormOn(_) | Key::Event | Key::BarOn(_) | Key::Bar("click")) => {
                 // As Visual Studio: a double-click on an event writes its method and goes to it.
                 self.chosen = Some(k);
                 let key = self.props[i].key;

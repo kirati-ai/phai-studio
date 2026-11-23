@@ -413,8 +413,14 @@ impl ErrorProvider {
 // --- NotifyIcon ----------------------------------------------------------------------------------
 
 /// What a NotifyIcon tells its window: `WPARAM` its id, `LPARAM`'s low word the mouse message
-/// (`WM_LBUTTONUP`, `WM_LBUTTONDBLCLK`, `WM_RBUTTONUP`).
+/// (`WM_LBUTTONUP`, `WM_LBUTTONDBLCLK`, `WM_RBUTTONUP`) or what became of its notice
+/// ([`NIN_BALLOONUSERCLICK`], [`NIN_BALLOONTIMEOUT`]).
 pub const WM_TRAY: u32 = wm::WM_APP + 0x3E5;
+
+/// Its notice ([`NotifyIcon::show_balloon_tip`]) clicked - WinForms' BalloonTipClicked.
+pub const NIN_BALLOONUSERCLICK: u32 = wm::WM_USER + 5;
+/// Its notice gone unclicked: timed out, or closed with its X - BalloonTipClosed.
+pub const NIN_BALLOONTIMEOUT: u32 = wm::WM_USER + 4;
 
 /// WinForms' NotifyIcon: the program's icon in the corner of the taskbar, its words when the mouse
 /// rests on it.

@@ -243,6 +243,21 @@ pub fn set_icon(hwnd: HWND, ico: &[u8]) {
     }
 }
 
+/// True the first time it is asked for window `h`, false after: a form that starts hidden
+/// (`start_hidden`) raises its Shown when it is first shown, not when it is made.
+pub fn first_show(h: HWND) -> bool {
+    SHOWN.with(|s| s.borrow_mut().insert(h.0 as isize))
+}
+
+/// Window `h` gone: [`first_show`] forgets it, for a window that gets its handle later.
+pub fn forget_shown(h: HWND) {
+    SHOWN.with(|s| s.borrow_mut().remove(&(h.0 as isize)));
+}
+
+thread_local! {
+    static SHOWN: std::cell::RefCell<std::collections::HashSet<isize>> = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
 /// Whether menu item `id` of window `h`'s menu bar is ticked.
 pub fn menu_checked(h: HWND, id: i32) -> bool {
     unsafe { wm::GetMenuState(wm::GetMenu(h), id as u32, wm::MF_BYCOMMAND) & wm::MF_CHECKED.0 != 0 }

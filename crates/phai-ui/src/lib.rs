@@ -12,6 +12,7 @@
 //! | [`mdi`] | MDI: forms inside a form, cascaded or tiled |
 //! | [`drag`] | words dragged from one control to another (DoDragDrop) |
 //! | [`extra`] | ListBox, CheckedListBox, LinkLabel, MaskedTextBox, MonthCalendar |
+//! | [`popup`] | context menus built as they open: items hidden, ticked, greyed by the program, menus within |
 //! | [`controls`] | group frame, tabs, status bar - drawn whole by the library |
 //! | [`theme`] | themes as CSS; the built-in light and dark ones |
 //! | [`layout`] | dock and anchor |
@@ -44,6 +45,7 @@ pub mod layout;
 pub mod mdi;
 pub mod picture;
 pub mod paint;
+pub mod popup;
 pub mod print;
 pub mod props;
 pub mod report;
