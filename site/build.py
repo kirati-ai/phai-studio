@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -36,7 +37,8 @@ def release():
         "file": asset["name"],
         "size": asset["size"],
         "sha256": (asset.get("digest") or "").removeprefix("sha256:"),
-        "date": r["publishedAt"][:10],
+        # The day in Thailand (UTC+7), where the site's readers are: a release at 23:22 UTC is the next day there.
+        "date": (datetime.fromisoformat(r["publishedAt"].replace("Z", "+00:00")) + timedelta(hours=7)).strftime("%Y-%m-%d"),
     }
 
 
