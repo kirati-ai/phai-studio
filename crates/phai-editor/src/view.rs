@@ -329,6 +329,10 @@ struct View {
     model: Model,
     lang: Language,
     font: HFONT,
+    /// Thai's own letters, as large as the code's: a fixed-width font has no Thai, and the one
+    /// Windows lends draws it small. Its words are moved down by `thai_dy` to share the baseline.
+    thai: HFONT,
+    thai_dy: i32,
     line_h: i32,
     char_w: i32,
     /// The first line shown.
@@ -441,12 +445,39 @@ impl View {
             return 0;
         }
         // A tab as the spaces it stands for (Options > Text Editor > Tabs).
-        let w = wide_of(&s.replace('\t', &crate::prefs::tab_spaces()));
+        let s = s.replace('\t', &crate::prefs::tab_spaces());
+        script_runs(&s).into_iter().map(|(thai, piece)| self.run_width(dc, thai, piece)).sum()
+    }
+
+    /// One run's width: Thai in Thai's font, the rest in the font the DC has.
+    fn run_width(&self, dc: HDC, thai: bool, piece: &str) -> i32 {
+        let w = wide_of(piece);
         let mut size = SIZE::default();
         unsafe {
+            let old = if thai { Some(Gdi::SelectObject(dc, self.thai.into())) } else { None };
             let _ = Gdi::GetTextExtentPoint32W(dc, &w, &mut size);
+            if let Some(o) = old {
+                Gdi::SelectObject(dc, o);
+            }
         }
         size.cx
+    }
+
+    /// Code's words at `(x, y)`: Thai in Thai's font, on the same baseline; tabs as spaces.
+    fn text_out(&self, dc: HDC, x: i32, y: i32, s: &str) {
+        let s = s.replace('\t', &crate::prefs::tab_spaces());
+        let mut x = x;
+        for (thai, piece) in script_runs(&s) {
+            let w = wide_of(piece);
+            unsafe {
+                let old = if thai { Some(Gdi::SelectObject(dc, self.thai.into())) } else { None };
+                let _ = Gdi::ExtTextOutW(dc, x, y + if thai { self.thai_dy } else { 0 }, Gdi::ETO_OPTIONS(0), None, PCWSTR(w.as_ptr()), w.len() as u32, None);
+                if let Some(o) = old {
+                    Gdi::SelectObject(dc, o);
+                }
+            }
+            x += self.run_width(dc, thai, piece);
+        }
     }
 
     fn gutter(&self) -> i32 {
@@ -648,7 +679,8 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_VSCROLL | wm::WS_HSCROLL | wm::WS_TABSTOP | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU(id as isize as *mut _)), Some(win::instance()), None).unwrap_or_default();
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
+        let (thai, thai_dy, line_h) = thai_font(h, font, line_h);
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -664,6 +696,57 @@ fn code_font(h: HWND) -> HFONT {
         lf.lfFaceName[i] = u;
     }
     unsafe { Gdi::CreateFontIndirectW(&lf) }
+}
+
+/// Thai's font beside the code's - Leelawadee UI, Windows' own Thai, a little larger so its
+/// letters stand as tall as the code's small letters - how far down its words go to share the
+/// code's baseline, and the line's height with room for Thai's marks above and below.
+fn thai_font(h: HWND, code: HFONT, line_h: i32) -> (HFONT, i32, i32) {
+    let mut lf = Gdi::LOGFONTW { lfHeight: -(font_size() * win::dpi(h) * 118 / 100 / 72), lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
+    for (i, u) in "Leelawadee UI".encode_utf16().enumerate() {
+        lf.lfFaceName[i] = u;
+    }
+    let thai = unsafe { Gdi::CreateFontIndirectW(&lf) };
+    let ascent = |f: HFONT| unsafe {
+        let dc = Gdi::GetDC(Some(h));
+        let old = Gdi::SelectObject(dc, f.into());
+        let mut tm = Gdi::TEXTMETRICW::default();
+        let _ = Gdi::GetTextMetricsW(dc, &mut tm);
+        Gdi::SelectObject(dc, old);
+        Gdi::ReleaseDC(Some(h), dc);
+        (tm.tmAscent, tm.tmHeight)
+    };
+    let (code_up, _) = ascent(code);
+    let (thai_up, thai_h) = ascent(thai);
+    (thai, code_up - thai_up, line_h.max(thai_h + win::px(h, 2)))
+}
+
+/// Whether a letter is Thai's - its own font draws it.
+fn is_thai(c: char) -> bool {
+    ('\u{0E00}'..='\u{0E7F}').contains(&c)
+}
+
+/// A line cut where Thai begins and ends: (Thai or not, the piece).
+fn script_runs(s: &str) -> Vec<(bool, &str)> {
+    let mut out: Vec<(bool, &str)> = Vec::new();
+    let mut start = 0;
+    let mut thai = None;
+    for (i, c) in s.char_indices() {
+        let t = is_thai(c);
+        match thai {
+            Some(was) if was != t => {
+                out.push((was, &s[start..i]));
+                start = i;
+                thai = Some(t);
+            }
+            None => thai = Some(t),
+            _ => {}
+        }
+    }
+    if start < s.len() {
+        out.push((thai.unwrap_or(false), &s[start..]));
+    }
+    out
 }
 
 fn metrics(h: HWND, font: HFONT) -> (i32, i32) {
@@ -1600,9 +1683,11 @@ fn refont(h: HWND, v: &mut View) {
     v.face = face;
     unsafe {
         let _ = Gdi::DeleteObject(v.font.into());
+        let _ = Gdi::DeleteObject(v.thai.into());
     }
     v.font = code_font(h);
     (v.line_h, v.char_w) = metrics(h, v.font);
+    (v.thai, v.thai_dy, v.line_h) = thai_font(h, v.font, v.line_h);
     v.pt = font_size();
     unsafe {
         let _ = wm::DestroyCaret();
@@ -1656,7 +1741,6 @@ fn paint(h: HWND, v: &mut View) {
         let caret_line = v.model.buf.position(v.model.caret).0;
         // The bracket by the caret and its match, boxed as Visual Studio shows them.
         let prefs = crate::prefs::get();
-        let tab = crate::prefs::tab_spaces();
         let braces = if sa == sb && prefs.braces { crate::model::matching_brace(&v.model.buf.text(), v.model.caret) } else { None };
         let brace_bg = theme::current().var_color("--brace").unwrap_or(if dark { Color::rgb(0x3e, 0x52, 0x6b) } else { Color::rgb(0xdb, 0xe0, 0xe6) });
         Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
@@ -1750,8 +1834,7 @@ fn paint(h: HWND, v: &mut View) {
                 let pw = v.width_of(dc, piece);
                 if x + pw >= gutter && x < w {
                     Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(colour(t, dark).colorref()));
-                    let text = wide_of(&piece.replace('\t', &tab));
-                    let _ = Gdi::ExtTextOutW(dc, x, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
+                    v.text_out(dc, x, y + win::px(h, 2), piece);
                 }
                 x += pw;
             }
@@ -2003,8 +2086,7 @@ fn paint(h: HWND, v: &mut View) {
                 win::fill(dc, &RECT { left: 0, top: y, right: w, bottom: y + v.line_h }, shade);
                 let s = v.model.buf.line(*l);
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(text_colour.colorref()));
-                let text = wide_of(&s.replace('\t', &tab));
-                let _ = Gdi::ExtTextOutW(dc, gutter - v.left, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
+                v.text_out(dc, gutter - v.left, y + win::px(h, 2), &s);
                 win::fill(dc, &RECT { left: 0, top: y, right: gutter - v.char_w / 2, bottom: y + v.line_h }, shade);
                 if prefs.line_numbers {
                     Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
@@ -2730,6 +2812,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             if let Some(v) = unsafe { win::take_state::<View>(h) } {
                 unsafe {
                     let _ = Gdi::DeleteObject(v.font.into());
+                    let _ = Gdi::DeleteObject(v.thai.into());
                 }
             }
             win::forget_kind(h);
@@ -2754,5 +2837,12 @@ mod wrap_tests {
         assert_eq!(wrap_points("นนน", 2, 4), vec![0, 6]);
         // A Thai mark sits on its letter: no column of its own.
         assert_eq!(wrap_points("น้น้น้", 2, 4), vec![0, 12]);
+    }
+
+    #[test]
+    fn thai_is_cut_from_the_rest_to_draw_in_its_own_font() {
+        assert_eq!(super::script_runs("ui.msg(\"ลบไหม?\")"), vec![(false, "ui.msg(\""), (true, "ลบไหม"), (false, "?\")")]);
+        assert_eq!(super::script_runs("น้ำ"), vec![(true, "น้ำ")], "a mark stays with its letter");
+        assert_eq!(super::script_runs(""), vec![]);
     }
 }
