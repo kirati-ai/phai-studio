@@ -555,7 +555,7 @@ BODY['winforms.html'] = r'''
 <p>ตั้ง <code>IsMdiContainer</code> ของฟอร์มหลัก แล้วเปิดฟอร์มอื่นข้างในด้วย <code>EditorUi::show_mdi_child(ui.hwnd, editor::Editor::default())</code> จัดเรียงด้วย <code>ui.layout_mdi("cascade")</code> (หรือ <code>tile_horizontal</code>, <code>tile_vertical</code>) ใช้ <kbd>Ctrl</kbd>+<kbd>Tab</kbd> สลับ และ <kbd>Ctrl</kbd>+<kbd>F4</kbd> ปิดฟอร์มลูก</p>
 
 <h2>นำฟอร์มจาก WinForms เข้ามา</h2>
-<p>มีโปรแกรมเก่าที่ทำด้วย C# หรือ VB.NET ใน Visual Studio? เปิดฟอร์มของโปรเจกต์ใน Phai Studio แล้วเลือก <b>Project &gt; Import WinForms Form...</b> เลือกไฟล์ <code>Form1.Designer.cs</code> ของฟอร์มนั้น ฟอร์มจะเข้ามาเป็นฟอร์มใหม่ของโปรเจกต์ (<code>form1.phf</code> กับ <code>form1.rs</code>) หน้าตาเหมือนเดิม แล้วแก้ต่อด้วยการลากวางได้ทันที</p>
+<p>มีโปรแกรมเก่าที่ทำด้วย C# หรือ VB.NET ใน Visual Studio? เปิดฟอร์มของโปรเจกต์ใน Phai Studio แล้วเลือก <b>Project &gt; Import WinForms Form...</b> เลือกไฟล์ <code>Form1.Designer.cs</code> (หรือ <code>Form1.Designer.vb</code> ของ VB.NET — event ที่เขียนด้วย <code>Handles</code> ใน <code>Form1.vb</code> มาด้วย) ของฟอร์มนั้น ฟอร์มจะเข้ามาเป็นฟอร์มใหม่ของโปรเจกต์ (<code>form1.phf</code> กับ <code>form1.rs</code>) หน้าตาเหมือนเดิม แล้วแก้ต่อด้วยการลากวางได้ทันที</p>
 <figure><img class="shot" src="img/winforms-import.png" alt="ฟอร์มตั้งค่าจากโปรแกรม C# เดิม เปิดในตัวออกแบบของ Phai Studio" width="520"><figcaption>ฟอร์มที่ทำใน Visual Studio ที่ 200% เข้ามาในขนาดปกติ พร้อมสี ตัวอักษร และกลุ่มเดิม</figcaption></figure>
 <ul>
   <li><b>สิ่งที่มาด้วย</b>: control ทุกตัวที่ Phai มี (ปุ่ม ช่องกรอก รายการ ตาราง แท็บ กลุ่ม panel split และอื่น ๆ) ตำแหน่ง ขนาด anchor dock สี ตัวอักษร ข้อความ เมนู แถบเครื่องมือ แถบสถานะ เมนูคลิกขวา timer และ dialog</li>

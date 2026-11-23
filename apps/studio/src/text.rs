@@ -1178,7 +1178,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Decline", "ไม่รับ"),
     ("Import WinForms Form", "นำเข้าฟอร์ม WinForms"),
     ("Open a form of the project first, so the imported form can join it.", "เปิดฟอร์มของโปรเจกต์ก่อน ฟอร์มที่นำเข้าจะได้เข้าไปอยู่ในโปรเจกต์นั้น"),
-    ("WinForms designer files (*.Designer.cs)", "ไฟล์ออกแบบของ WinForms (*.Designer.cs)"),
+    ("WinForms designer files (*.Designer.cs, *.Designer.vb)", "ไฟล์ออกแบบของ WinForms (*.Designer.cs, *.Designer.vb)"),
     ("{0} came over from WinForms. Its C# stays behind: its events are empty methods in {1}.rs to write in Rust.", "นำ {0} มาจาก WinForms แล้ว โค้ด C# ไม่ได้มาด้วย: event ของมันเป็นเมธอดว่างใน {1}.rs ให้เขียนด้วย Rust"),
     ("Its words have no Thai yet - the project's test lists them; add them to src/text.rs.", "ข้อความในฟอร์มยังไม่มีภาษาไทย - เทสต์ของโปรเจกต์จะบอกว่าคำไหน ให้เพิ่มใน src/text.rs"),
     ("What did not come over:", "สิ่งที่ไม่ได้มาด้วย:"),

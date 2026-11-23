@@ -91,21 +91,203 @@ fn picture_ext(b: &[u8]) -> &'static str {
 /// Reads a `.Designer.cs` with its `.resx`: the pictures in the one go into the project, named
 /// after their controls under `images/`.
 pub fn import_with(designer_cs: &str, resx: Option<&str>) -> Result<Imported, String> {
-    let toks = lex(designer_cs);
+    read_tokens(lex(designer_cs), resx, &[], designer_cs.contains("this.ClientSize") || designer_cs.contains("this.AutoScaleDimensions"))
+}
+
+/// Reads a VB.NET `Form1.Designer.vb`, with its `.resx` and its code file `Form1.vb` when there
+/// are - VB names a method's events in the code, `Handles OkButton.Click`, not in the designer.
+pub fn import_vb(designer_vb: &str, resx: Option<&str>, code_vb: Option<&str>) -> Result<Imported, String> {
+    let handles = code_vb.map(vb_handles).unwrap_or_default();
+    // Visual Basic before .NET Core: Microsoft Sans Serif 8.25 pt, as C# then.
+    let framework = !designer_vb.contains("AutoScaleDimensions = New System.Drawing.SizeF(7") && !designer_vb.contains("AutoScaleDimensions = New SizeF(7");
+    read_tokens(lex_vb(designer_vb), resx, &handles, framework)
+}
+
+/// The `Handles` of a VB code file: (method, control, event) - `Sub Ok_Click(...) Handles Ok.Click`.
+pub fn vb_handles(code: &str) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    for line in code.lines() {
+        let l = line.trim();
+        let lower = l.to_ascii_lowercase();
+        let (Some(sub), Some(h)) = (lower.find("sub "), lower.rfind(" handles ")) else { continue };
+        if sub > h {
+            continue;
+        }
+        let name: String = l[sub + 4..].chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        for target in l[h + 9..].split(',') {
+            let t = target.trim().trim_start_matches("Me.").trim_start_matches("me.");
+            if let Some((obj, ev)) = t.rsplit_once('.') {
+                out.push((name.clone(), obj.trim().to_string(), ev.trim().to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// VB's words as C#'s tokens, so one reader reads both: `Me` is `this`, `Or` is `|`, a line is a
+/// statement unless it goes on (`_`, an open bracket, a trailing comma or operator), `CType(x, T)`
+/// is `x`, `AddHandler a.Click, AddressOf b` is `a.Click += b`, the body of `Sub InitializeComponent`
+/// is wrapped in braces.
+fn lex_vb(src: &str) -> Vec<Tok> {
+    let mut out: Vec<Tok> = Vec::new();
+    let mut depth = 0i32;
+    let mut in_init = false;
+    for raw in src.lines() {
+        // A comment: ' outside a string.
+        let mut line = String::new();
+        let mut quoted = false;
+        for c in raw.chars() {
+            if c == '"' {
+                quoted = !quoted;
+            }
+            if c == '\'' && !quoted {
+                break;
+            }
+            line.push(c);
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.to_ascii_lowercase().starts_with("rem ") || trimmed.starts_with('#') {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if !in_init && lower.contains("sub initializecomponent") {
+            in_init = true;
+            out.extend([Tok::Id("InitializeComponent".into()), Tok::P("("), Tok::P(")"), Tok::P("{")]);
+            continue;
+        }
+        if in_init && (lower == "end sub" || lower.starts_with("end sub ")) {
+            in_init = false;
+            out.push(Tok::P("}"));
+            continue;
+        }
+        if !in_init {
+            // The class's name is all that matters outside the method.
+            let words: Vec<&str> = trimmed.split_whitespace().collect();
+            if let Some(i) = words.iter().position(|w| w.eq_ignore_ascii_case("class")) {
+                if let Some(n) = words.get(i + 1) {
+                    out.extend([Tok::Id("class".into()), Tok::Id(n.to_string())]);
+                }
+            }
+            continue;
+        }
+        let (body, goes_on) = match trimmed.strip_suffix(" _") {
+            Some(b) => (b, true),
+            None => (trimmed, false),
+        };
+        let toks = vb_tokens(body);
+        for t in &toks {
+            match t {
+                Tok::P("(" | "{") => depth += 1,
+                Tok::P(")" | "}") => depth -= 1,
+                _ => {}
+            }
+        }
+        let trailing = matches!(toks.last(), Some(Tok::P("," | "|" | "=" | "+" | "-" | "&")));
+        out.extend(toks);
+        if !goes_on && !trailing && depth <= 0 {
+            depth = 0;
+            out.push(Tok::P(";"));
+        }
+    }
+    out
+}
+
+/// One VB line's tokens, as [`lex`] makes C#'s.
+fn vb_tokens(line: &str) -> Vec<Tok> {
+    // VB's strings: "" is a quote, nothing else escapes; "x"c is a letter.
+    let mut cs = String::new();
+    let mut chars = line.chars().peekable();
+    let mut text = String::new();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            text.clear();
+            loop {
+                match chars.next() {
+                    Some('"') if chars.peek() == Some(&'"') => {
+                        chars.next();
+                        text.push('"');
+                    }
+                    Some('"') | None => break,
+                    Some(x) => text.push(x),
+                }
+            }
+            if matches!(chars.peek(), Some('c' | 'C')) {
+                chars.next();
+            }
+            // As C# writes it, for lex.
+            cs.push('@');
+            cs.push('"');
+            cs.push_str(&text.replace('"', "\"\""));
+            cs.push('"');
+        } else if c == '&' && matches!(chars.peek(), Some('H' | 'h')) {
+            chars.next();
+            cs.push_str("0x");
+        } else if c == '!' || c == '#' && cs.ends_with(|d: char| d.is_ascii_digit()) {
+            // 9.0! - a Single; 1.5# - a Double.
+        } else {
+            cs.push(c);
+        }
+    }
+    let mut out = Vec::new();
+    let toks = lex(&cs);
+    let mut i = 0;
+    while i < toks.len() {
+        let t = toks[i].clone();
+        i += 1;
+        let Tok::Id(w) = &t else {
+            out.push(t);
+            continue;
+        };
+        match w.to_ascii_lowercase().as_str() {
+            "me" | "mybase" => out.push(Tok::Id("this".into())),
+            "new" => out.push(Tok::Id("new".into())),
+            "or" | "orelse" => out.push(Tok::P("|")),
+            "true" => out.push(Tok::Id("true".into())),
+            "false" => out.push(Tok::Id("false".into())),
+            "nothing" => out.push(Tok::Id("null".into())),
+            "addressof" => {}
+            "ctype" | "directcast" | "trycast" => out.push(Tok::Id("__cast".into())),
+            // `Integer() {` in `New Integer() {...}`: as C#'s `int[] {`.
+            "addhandler" => out.push(Tok::Id("__addhandler".into())),
+            _ => out.push(t),
+        }
+    }
+    // `AddHandler a.b.Click, x` -> `a.b.Click += x`.
+    if out.first() == Some(&Tok::Id("__addhandler".into())) {
+        out.remove(0);
+        if let Some(i) = out.iter().position(|t| *t == Tok::P(",")) {
+            out[i] = Tok::P("+=");
+        }
+    }
+    out
+}
+
+fn read_tokens(toks: Vec<Tok>, resx: Option<&str>, handles: &[(String, String, String)], framework: bool) -> Result<Imported, String> {
     let class = toks.windows(2).find_map(|w| match (&w[0], &w[1]) {
-        (Tok::Id(c), Tok::Id(n)) if c == "class" => Some(n.clone()),
+        (Tok::Id(c), Tok::Id(n)) if c.eq_ignore_ascii_case("class") => Some(n.clone()),
         _ => None,
     });
-    let body = init_body(&toks).ok_or("no InitializeComponent() in it - is it a .Designer.cs of a form?")?;
+    let body = init_body(&toks).ok_or("no InitializeComponent() in it - is it the designer file of a form?")?;
     let mut r = Reader::default();
     for st in split_statements(body) {
         if let Some(s) = statement(st) {
             r.take(s);
         }
     }
-    // Visual Studio before .NET Core wrote `this.` everywhere, and its forms' letters were
-    // Microsoft Sans Serif 8.25 pt rather than Segoe UI 9.
-    let framework = designer_cs.contains("this.ClientSize") || designer_cs.contains("this.AutoScaleDimensions");
+    // VB's Handles: each control's events, named in the code file.
+    for (method, obj, ev) in handles {
+        let key = r.objs.keys().find(|k| k.eq_ignore_ascii_case(obj)).cloned();
+        let target = match key {
+            Some(k) => r.objs.get_mut(&k),
+            None if obj.eq_ignore_ascii_case("me") || obj.eq_ignore_ascii_case("mybase") => Some(&mut r.form),
+            None => None,
+        };
+        if let Some(o) = target {
+            if !o.events.iter().any(|(e, _)| e.eq_ignore_ascii_case(ev)) {
+                o.events.push((ev.clone(), method.clone()));
+            }
+        }
+    }
     let mut b = Build::new(&r, class.as_deref().unwrap_or("Form1"), framework);
     b.resx = resx.map(resources).unwrap_or_default();
     b.run();
@@ -469,6 +651,11 @@ impl P<'_> {
                     "false" => E::Bool(false),
                     "null" => E::Other,
                     "this" | "base" => E::Path(vec![]),
+                    "__cast" if self.at("(") => {
+                        self.i += 1;
+                        let args = self.args(")");
+                        args.into_iter().next().unwrap_or(E::Other)
+                    }
                     "new" => {
                         let ty = self.type_name().unwrap_or_default();
                         let args = if self.eat("(") { self.args(")") } else { vec![] };
@@ -2192,6 +2379,94 @@ partial class SetupForm {
         // Without the .resx: said, as before.
         let im = import(cs).unwrap();
         assert!(im.files.is_empty() && im.warnings.iter().any(|w| w.contains(".resx")));
+    }
+
+    #[test]
+    fn a_vb_form_comes_over_with_the_events_its_code_handles() {
+        let designer = r#"<Global.Microsoft.VisualBasic.CompilerServices.DesignerGenerated()> _
+Partial Class Form1
+    Inherits System.Windows.Forms.Form
+
+    'Required by the Windows Form Designer
+    <System.Diagnostics.DebuggerStepThrough()> _
+    Private Sub InitializeComponent()
+        Dim resources As System.ComponentModel.ComponentResourceManager = New System.ComponentModel.ComponentResourceManager(GetType(Form1))
+        Me.btnSave = New System.Windows.Forms.Button()
+        Me.txtName = New System.Windows.Forms.TextBox()
+        Me.cboKind = New System.Windows.Forms.ComboBox()
+        Me.nudCount = New System.Windows.Forms.NumericUpDown()
+        CType(Me.nudCount, System.ComponentModel.ISupportInitialize).BeginInit()
+        Me.SuspendLayout()
+        '
+        'btnSave
+        '
+        Me.btnSave.Anchor = CType((System.Windows.Forms.AnchorStyles.Bottom Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
+        Me.btnSave.Location = New System.Drawing.Point(197, 227)
+        Me.btnSave.Name = "btnSave"
+        Me.btnSave.Size = New System.Drawing.Size(75, 23)
+        Me.btnSave.Text = "บันทึก ""ทั้งหมด"""
+        Me.btnSave.UseVisualStyleBackColor = True
+        '
+        Me.txtName.Font = New System.Drawing.Font("Tahoma", 10.0!, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, CType(222, Byte))
+        Me.txtName.ForeColor = System.Drawing.Color.FromArgb(CType(CType(11, Byte), Integer), CType(CType(61, Byte), Integer), CType(CType(32, Byte), Integer))
+        Me.txtName.Location = New System.Drawing.Point(12, 12)
+        Me.txtName.Size = New System.Drawing.Size(260, 23)
+        Me.cboKind.Items.AddRange(New Object() {"ร้าน", "โทรศัพท์"})
+        Me.cboKind.Location = New System.Drawing.Point(12, 41)
+        Me.cboKind.Size = New System.Drawing.Size(121, 21)
+        Me.nudCount.Location = New System.Drawing.Point(12, 70)
+        Me.nudCount.Maximum = New Decimal(New Integer() {500, 0, 0, 0})
+        Me.nudCount.Size = New System.Drawing.Size(80, 20)
+        AddHandler Me.nudCount.ValueChanged, AddressOf Me.Count_Changed
+        '
+        'Form1
+        '
+        Me.AutoScaleDimensions = New System.Drawing.SizeF(6.0!, 13.0!)
+        Me.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font
+        Me.ClientSize = New System.Drawing.Size(284, 262)
+        Me.Controls.Add(Me.nudCount)
+        Me.Controls.Add(Me.cboKind)
+        Me.Controls.Add(Me.txtName)
+        Me.Controls.Add(Me.btnSave)
+        Me.Name = "Form1"
+        Me.Text = "ร้านค้า"
+        CType(Me.nudCount, System.ComponentModel.ISupportInitialize).EndInit()
+        Me.ResumeLayout(False)
+        Me.PerformLayout()
+
+    End Sub
+    Friend WithEvents btnSave As System.Windows.Forms.Button
+End Class
+"#;
+        let code = r#"Public Class Form1
+    Private Sub btnSave_Click(sender As Object, e As EventArgs) Handles btnSave.Click
+    End Sub
+    Private Sub Name_Changed(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles txtName.TextChanged, cboKind.SelectedIndexChanged
+    End Sub
+    Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+    End Sub
+End Class
+"#;
+        let im = import_vb(designer, None, Some(code)).unwrap();
+        let f = &im.form;
+        assert_eq!(f.check(), vec![], "{}", f.to_toml());
+        assert_eq!((f.form.name.as_str(), f.form.title.as_str(), f.form.size), ("Form1", "ร้านค้า", [284, 262]));
+        let c = |id: &str| f.control.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("{id} in {}", f.to_toml()));
+        assert_eq!(c("btn_save").text.as_deref(), Some("บันทึก \"ทั้งหมด\""));
+        assert_eq!(c("btn_save").anchor.as_deref(), Some("right bottom"));
+        assert_eq!(c("btn_save").bounds, Some([197, 227, 75, 23]));
+        assert_eq!(c("btn_save").on_click.as_deref(), Some("btn_save_click"));
+        assert_eq!(c("txt_name").on_change.as_deref(), Some("name_changed"));
+        assert_eq!(c("cbo_kind").on_change.as_deref(), Some("name_changed"));
+        assert_eq!(c("txt_name").font_size, Some(10));
+        assert_eq!(c("txt_name").bold, Some(true));
+        assert_eq!(c("txt_name").word("font_family"), Some("Tahoma"));
+        assert_eq!(c("txt_name").fore_color.as_deref(), Some("#0b3d20"));
+        assert_eq!(c("cbo_kind").items, ["ร้าน", "โทรศัพท์"]);
+        assert_eq!(c("nud_count").max, Some(500));
+        assert_eq!(c("nud_count").on_change.as_deref(), Some("count_changed"));
+        assert!(FormFile::parse(&f.to_toml()).is_ok());
+        assert_eq!(vb_handles("Private Sub A(s, e) Handles Me.Resize, b.Click"), vec![("A".into(), "Resize".into(), "".into()), ("A".into(), "b".into(), "Click".into())].into_iter().filter(|(_, _, e): &(String, String, String)| !e.is_empty()).collect::<Vec<_>>());
     }
 
     #[test]

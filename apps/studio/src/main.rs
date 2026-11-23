@@ -5279,7 +5279,7 @@ impl Studio {
             win::message(Some(self.hwnd), t("Open a form of the project first, so the imported form can join it."), caption, wm::MB_ICONINFORMATION);
             return;
         };
-        let Some(cs) = file_dialog(self.hwnd, false, t("WinForms designer files (*.Designer.cs)"), "*.Designer.cs;*.cs", "") else { return };
+        let Some(cs) = file_dialog(self.hwnd, false, t("WinForms designer files (*.Designer.cs, *.Designer.vb)"), "*.Designer.cs;*.Designer.vb;*.cs;*.vb", "") else { return };
         let (path, warnings) = match import_winforms_file(&dir, &cs) {
             Ok(r) => r,
             Err(e) => {
@@ -10732,9 +10732,21 @@ fn write_new_form(dir: &Path, name: &str) -> std::io::Result<(PathBuf, bool)> {
 /// writes from it, and what did not come over. An error to show when it cannot.
 fn import_winforms_file(dir: &Path, cs: &Path) -> Result<(PathBuf, Vec<String>), String> {
     let bytes = std::fs::read(cs).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
-    // Its pictures and icon, kept beside it in Form1.resx.
-    let resx = cs.to_string_lossy().strip_suffix(".Designer.cs").map(|s| PathBuf::from(format!("{s}.resx"))).and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).to_string());
-    let im = phai_form::winforms::import_with(&String::from_utf8_lossy(&bytes), resx.as_deref()).map_err(|e| format!("{}\n\n{e}", cs.display()))?;
+    // Its pictures and icon, kept beside it in Form1.resx; for Visual Basic, its code in Form1.vb,
+    // whose Handles name the events.
+    let name = cs.to_string_lossy().to_string();
+    let lower = name.to_lowercase();
+    let vb = lower.ends_with(".vb");
+    let stem = [".designer.cs", ".designer.vb", ".cs", ".vb"].iter().find(|e| lower.ends_with(*e)).map(|e| &name[..name.len() - e.len()]).unwrap_or(&name).to_string();
+    let read = |p: String| std::fs::read(p).ok().map(|b| String::from_utf8_lossy(&b).to_string());
+    let resx = read(format!("{stem}.resx"));
+    let text = String::from_utf8_lossy(&bytes);
+    let im = if vb {
+        phai_form::winforms::import_vb(&text, resx.as_deref(), read(format!("{stem}.vb")).as_deref())
+    } else {
+        phai_form::winforms::import_with(&text, resx.as_deref())
+    }
+    .map_err(|e| format!("{}\n\n{e}", cs.display()))?;
     let mut f = im.form;
     let src = dir.join("src");
     let file = snake(&f.form.name);
