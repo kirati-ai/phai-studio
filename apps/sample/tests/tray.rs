@@ -1,11 +1,13 @@
 //! `phai-sample --tray` run for real, told what to do by messages only - no mouse, no keys:
-//! its window starts hidden, the icon's double-click and a click on its notice bring it up, the
-//! close box only hides it, Exit ends it.
+//! its window starts hidden, its icon comes back after Explorer's TaskbarCreated, the icon's
+//! double-click and a click on its notice bring the window up, the close box only hides it, Exit
+//! ends it.
 //! `cargo test -p phai-sample --test tray -- --ignored`
 
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::UI::Shell as shell;
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
 /// The program's window of class `class`, once it is there.
@@ -45,6 +47,15 @@ fn post(h: HWND, msg: u32, w: usize, l: isize) {
     std::thread::sleep(Duration::from_millis(400));
 }
 
+/// Whether window `h`'s icon `id` is in the corner: Windows changes only one that is there.
+fn icon_there(h: HWND, id: u32) -> bool {
+    let mut d = shell::NOTIFYICONDATAW { cbSize: std::mem::size_of::<shell::NOTIFYICONDATAW>() as u32, hWnd: h, uID: id, uFlags: shell::NIF_TIP, ..Default::default() };
+    for (i, c) in "Phai Tray".encode_utf16().enumerate() {
+        d.szTip[i] = c;
+    }
+    unsafe { shell::Shell_NotifyIconW(shell::NIM_MODIFY, &d).as_bool() }
+}
+
 fn visible(h: HWND) -> bool {
     unsafe { wm::IsWindowVisible(h).as_bool() }
 }
@@ -57,6 +68,15 @@ fn the_tray_program_starts_hidden_and_answers_its_icon() {
     std::thread::sleep(Duration::from_millis(500));
     let ok = std::panic::catch_unwind(|| {
         assert!(!visible(h), "start_hidden: nothing on the screen");
+        // Explorer restarted: its icons gone, then TaskbarCreated - the hidden window puts its
+        // icon back.
+        assert!(icon_there(h, 2003), "its icon is in the corner");
+        let d = shell::NOTIFYICONDATAW { cbSize: std::mem::size_of::<shell::NOTIFYICONDATAW>() as u32, hWnd: h, uID: 2003, ..Default::default() };
+        assert!(unsafe { shell::Shell_NotifyIconW(shell::NIM_DELETE, &d).as_bool() });
+        assert!(!icon_there(h, 2003), "gone, as when Explorer stops");
+        let created = unsafe { wm::RegisterWindowMessageW(windows::core::w!("TaskbarCreated")) };
+        post(h, created, 0, 0);
+        assert!(icon_there(h, 2003), "back after TaskbarCreated");
         // The ids its tray_window_ui.rs gives: the icon, Exit.
         let (tray, exit) = (2003, 1007);
         let wm_tray = wm::WM_APP + 0x3E5;

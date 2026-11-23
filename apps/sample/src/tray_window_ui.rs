@@ -345,6 +345,10 @@ extern "system" fn proc_<E: TrayWindowEvents + 'static>(hwnd: HWND, msg: u32, w:
             }
             LRESULT(0)
         }
+        m if m == phai_ui::components::taskbar_created() => {
+            phai_ui::components::add_all_again();
+            LRESULT(0)
+        }
         wm::WM_CLOSE => {
             let e = phai_ui::events::ClosingEventArgs::default();
             host.events.window_closing(&host.ui, &e);

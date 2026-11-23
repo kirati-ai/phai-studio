@@ -1356,6 +1356,12 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
         }
         let _ = writeln!(w, "            LRESULT(0)");
         let _ = writeln!(w, "        }}");
+        // Explorer started again (after a crash, say): the icons in the corner are gone, put back
+        // as they are now. A broadcast: a top-level window hears it, hidden or owned.
+        let _ = writeln!(w, "        m if m == phai_ui::components::taskbar_created() => {{");
+        let _ = writeln!(w, "            phai_ui::components::add_all_again();");
+        let _ = writeln!(w, "            LRESULT(0)");
+        let _ = writeln!(w, "        }}");
     }
     let with_menu: Vec<&Control> = f.control.iter().filter(|c| c.context_menu.is_some() && c.kind != Kind::NotifyIcon).collect();
     if !with_menu.is_empty() {
@@ -1871,6 +1877,24 @@ mod tests {
         assert!(code.contains("fn notice_clicked(&mut self, ui: &TrayWindowUi) {}") && code.contains("fn notice_gone(&mut self, ui: &TrayWindowUi) {}"), "{code}");
         assert!(code.contains("if what == phai_ui::components::NIN_BALLOONUSERCLICK { events.notice_clicked(ui); }"), "{code}");
         assert!(code.contains("if what == phai_ui::components::NIN_BALLOONTIMEOUT { events.notice_gone(ui); }"), "{code}");
+    }
+
+    /// Explorer started again: a form with an icon in the corner puts it (every one) back - one
+    /// that starts hidden too, as Windows broadcasts TaskbarCreated to hidden windows. A form
+    /// with none listens for nothing.
+    #[test]
+    fn the_icons_come_back_when_explorer_does() {
+        let mut f = FormFile::new("TrayWindow");
+        f.form.set_prop("start_hidden", Some(toml::Value::Boolean(true)));
+        f.control.push(Control::new(Kind::NotifyIcon, "tray", [0, 0, 0, 0]));
+        let code = generate(&f, &Options::default());
+        assert!(code.contains("        m if m == phai_ui::components::taskbar_created() => {\n            phai_ui::components::add_all_again();\n            LRESULT(0)\n        }"), "{code}");
+        // Before the arm that catches the rest.
+        let arm = code.find("m if m == phai_ui::components::taskbar_created()").unwrap();
+        let proc_ = code.find("extern \"system\" fn proc_").unwrap();
+        let rest = proc_ + code[proc_..].find("        _ => win::def(hwnd, msg, w, l),").unwrap();
+        assert!(proc_ < arm && arm < rest, "{code}");
+        assert!(!generate(&FormFile::new("Plain"), &Options::default()).contains("taskbar_created"));
     }
 
     #[test]

@@ -422,12 +422,44 @@ pub const NIN_BALLOONUSERCLICK: u32 = wm::WM_USER + 5;
 /// Its notice gone unclicked: timed out, or closed with its X - BalloonTipClosed.
 pub const NIN_BALLOONTIMEOUT: u32 = wm::WM_USER + 4;
 
+/// Explorer's "TaskbarCreated": broadcast when the taskbar comes back (Explorer restarted, or
+/// crashed and started again) - every icon in the corner is gone then, and each program adds
+/// its own again ([`add_all_again`]; the generated code of a form with a NotifyIcon does).
+/// A broadcast reaches top-level windows only, hidden or owned ones too (a form that starts
+/// hidden, one not on the taskbar) - not a child window (an MDI child form, a user control).
+pub fn taskbar_created() -> u32 {
+    static MSG: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *MSG.get_or_init(|| unsafe { wm::RegisterWindowMessageW(windows::core::w!("TaskbarCreated")) })
+}
+
 /// WinForms' NotifyIcon: the program's icon in the corner of the taskbar, its words when the mouse
 /// rests on it.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NotifyIcon {
     pub owner: HWND,
     pub id: u32,
+}
+
+/// What each icon shows now - its words, whether it shows, its picture - to add it again as it
+/// was when the taskbar comes back. By owner and id.
+struct Kept {
+    text: String,
+    visible: bool,
+    icon: isize,
+}
+
+static KEPT: std::sync::Mutex<Option<HashMap<(isize, u32), Kept>>> = std::sync::Mutex::new(None);
+
+fn kept<R>(f: impl FnOnce(&mut HashMap<(isize, u32), Kept>) -> R) -> R {
+    let mut k = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    f(k.get_or_insert_with(HashMap::new))
+}
+
+/// Every icon the program has in the corner put there again, as it is now - after Explorer's
+/// [`taskbar_created`]. One already there is let be. How many were added.
+pub fn add_all_again() -> usize {
+    let all: Vec<(NotifyIcon, String, bool, isize)> = kept(|k| k.iter().map(|((o, id), v)| (NotifyIcon { owner: HWND(*o as *mut _), id: *id }, v.text.clone(), v.visible, v.icon)).collect());
+    all.into_iter().filter(|(n, text, visible, icon)| n.add(text, *visible, wm::HICON(*icon as *mut _))).count()
 }
 
 fn tray_data(owner: HWND, id: u32) -> shell::NOTIFYICONDATAW {
@@ -441,24 +473,62 @@ fn copy_into(dst: &mut [u16], s: &str) {
 }
 
 impl NotifyIcon {
-    /// Shown now when `visible`.
+    /// Shown now when `visible`; the program's own icon (the exe's), Windows' when it has none.
     pub fn new(owner: HWND, id: u32, text: &str, visible: bool) -> NotifyIcon {
         let n = NotifyIcon { owner, id };
-        let mut d = tray_data(owner, id);
+        let icon = crate::icon::app_icon(win::px(owner, 16)).unwrap_or_else(|| unsafe { wm::LoadIconW(None, wm::IDI_APPLICATION) }.unwrap_or_default());
+        kept(|k| k.insert((owner.0 as isize, id), Kept { text: text.to_string(), visible, icon: icon.0 as isize }));
+        // A program running with more rights than Explorer (as administrator, as LocalSystem)
+        // hears its TaskbarCreated only when it lets it through.
+        unsafe {
+            let _ = wm::ChangeWindowMessageFilterEx(owner, taskbar_created(), wm::MSGFLT_ALLOW, None);
+        }
+        n.add(text, visible, icon);
+        n
+    }
+
+    /// Into the corner: NIM_ADD, as it is. False when Windows did not (it is there already, or
+    /// there is no taskbar).
+    fn add(&self, text: &str, visible: bool, icon: wm::HICON) -> bool {
+        let mut d = tray_data(self.owner, self.id);
         d.uFlags = shell::NIF_ICON | shell::NIF_MESSAGE | shell::NIF_TIP | shell::NIF_STATE;
         d.uCallbackMessage = WM_TRAY;
-        d.hIcon = crate::icon::app_icon(win::px(owner, 16)).unwrap_or_else(|| unsafe { wm::LoadIconW(None, wm::IDI_APPLICATION) }.unwrap_or_default());
+        d.hIcon = icon;
         copy_into(&mut d.szTip, text);
         d.dwStateMask = shell::NIS_HIDDEN;
         d.dwState = if visible { shell::NOTIFY_ICON_STATE(0) } else { shell::NIS_HIDDEN };
+        unsafe { shell::Shell_NotifyIconW(shell::NIM_ADD, &d).as_bool() }
+    }
+
+    /// Put in the corner again as it is now - its words, shown or not, its picture - after the
+    /// taskbar came back ([`taskbar_created`]); [`add_all_again`] does every icon.
+    pub fn add_again(&self) -> bool {
+        let Some((text, visible, icon)) = kept(|k| k.get(&(self.owner.0 as isize, self.id)).map(|v| (v.text.clone(), v.visible, v.icon))) else { return false };
+        self.add(&text, visible, wm::HICON(icon as *mut _))
+    }
+
+    /// Another picture in the corner - WinForms' Icon. The icon stays the program's to free.
+    pub fn set_icon(&self, icon: wm::HICON) {
+        kept(|k| {
+            if let Some(v) = k.get_mut(&(self.owner.0 as isize, self.id)) {
+                v.icon = icon.0 as isize;
+            }
+        });
+        let mut d = tray_data(self.owner, self.id);
+        d.uFlags = shell::NIF_ICON;
+        d.hIcon = icon;
         unsafe {
-            let _ = shell::Shell_NotifyIconW(shell::NIM_ADD, &d);
+            let _ = shell::Shell_NotifyIconW(shell::NIM_MODIFY, &d);
         }
-        n
     }
 
     /// The words shown when the mouse rests on it.
     pub fn set_text(&self, text: &str) {
+        kept(|k| {
+            if let Some(v) = k.get_mut(&(self.owner.0 as isize, self.id)) {
+                v.text = text.to_string();
+            }
+        });
         let mut d = tray_data(self.owner, self.id);
         d.uFlags = shell::NIF_TIP;
         copy_into(&mut d.szTip, text);
@@ -468,6 +538,11 @@ impl NotifyIcon {
     }
 
     pub fn set_visible(&self, on: bool) {
+        kept(|k| {
+            if let Some(v) = k.get_mut(&(self.owner.0 as isize, self.id)) {
+                v.visible = on;
+            }
+        });
         let mut d = tray_data(self.owner, self.id);
         d.uFlags = shell::NIF_STATE;
         d.dwStateMask = shell::NIS_HIDDEN;
@@ -491,6 +566,7 @@ impl NotifyIcon {
 
     /// Out of the corner for good - the generated code does it as the window closes (Dispose).
     pub fn remove(&self) {
+        kept(|k| k.remove(&(self.owner.0 as isize, self.id)));
         let d = tray_data(self.owner, self.id);
         unsafe {
             let _ = shell::Shell_NotifyIconW(shell::NIM_DELETE, &d);
@@ -501,6 +577,63 @@ impl NotifyIcon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Which hidden windows a broadcast reaches, as Explorer's TaskbarCreated is broadcast: a
+    /// form that starts hidden, one owned by another (ShowInTaskbar = false, or shown over its
+    /// owner), the hidden owner itself. The message is one only this test knows, so every other
+    /// program's windows let it be.
+    #[test]
+    #[ignore = "broadcasts a message no other program knows to every window on the desktop"]
+    fn a_broadcast_reaches_hidden_and_owned_windows() {
+        use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+        static PROBE: AtomicU32 = AtomicU32::new(0);
+        static GOT: [AtomicUsize; 3] = [AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0)];
+        extern "system" fn hear(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+            if msg != 0 && msg == PROBE.load(Ordering::SeqCst) {
+                let which = unsafe { wm::GetWindowLongPtrW(h, wm::GWLP_USERDATA) } as usize;
+                GOT[which].fetch_add(1, Ordering::SeqCst);
+                return LRESULT(0);
+            }
+            win::def(h, msg, w, l)
+        }
+        win::init();
+        let name = wide(&format!("PhaiStudio.BroadcastProbe.{}", std::process::id()));
+        PROBE.store(unsafe { wm::RegisterWindowMessageW(PCWSTR(name.as_ptr())) }, Ordering::SeqCst);
+        let class = win::register("PhaiBroadcastProbe", Some(hear), None);
+        let make = |ex: wm::WINDOW_EX_STYLE, style: wm::WINDOW_STYLE, owner: Option<HWND>, which: isize| unsafe {
+            let h = wm::CreateWindowExW(ex, PCWSTR(class.as_ptr()), PCWSTR::null(), style, 0, 0, 100, 100, owner, None, Some(win::instance()), None).unwrap();
+            wm::SetWindowLongPtrW(h, wm::GWLP_USERDATA, which);
+            h
+        };
+        // A form that starts hidden: never shown, unowned.
+        let form = make(Default::default(), wm::WS_OVERLAPPEDWINDOW, None, 0);
+        // The hidden owner a form not on the taskbar gets (`form::hidden_owner`'s kind), and that form.
+        let owner = make(wm::WS_EX_TOOLWINDOW, wm::WS_POPUP, None, 1);
+        let owned = make(Default::default(), wm::WS_OVERLAPPEDWINDOW, Some(owner), 2);
+        unsafe {
+            assert!(!wm::IsWindowVisible(form).as_bool() && !wm::IsWindowVisible(owned).as_bool());
+            wm::SendNotifyMessageW(wm::HWND_BROADCAST, PROBE.load(Ordering::SeqCst), WPARAM(0), LPARAM(0)).unwrap();
+            let start = std::time::Instant::now();
+            let mut m = wm::MSG::default();
+            while start.elapsed() < std::time::Duration::from_millis(500) {
+                while wm::PeekMessageW(&mut m, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    let _ = wm::TranslateMessage(&m);
+                    wm::DispatchMessageW(&m);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        let got: Vec<usize> = GOT.iter().map(|g| g.load(Ordering::SeqCst)).collect();
+        unsafe {
+            let _ = wm::DestroyWindow(owned);
+            let _ = wm::DestroyWindow(owner);
+            let _ = wm::DestroyWindow(form);
+        }
+        println!("hidden form {}, hidden owner {}, hidden owned form {}", got[0], got[1], got[2]);
+        assert_eq!(got[0], 1, "a form that starts hidden hears it");
+        assert_eq!(got[1], 1, "the hidden owner hears it");
+        assert_eq!(got[2], 1, "a hidden form owned by another hears it");
+    }
 
     /// FileOk cancelled: the dialog is shown again on the file chosen; let be, the choice stands.
     #[test]

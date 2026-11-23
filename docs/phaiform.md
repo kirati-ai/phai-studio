@@ -297,6 +297,12 @@ balloon_closed = "notice_gone"                    # BalloonTipClosed: หมด�
   (`set_item_checked`/`set_item_enabled` ของเดิมเป็นของเมนูบาร์และ toolbar; บนเมนูบาร์ `hidden` = ไม่ใส่รายการนั้น)
 - **ข้อความแจ้งของไอคอน**: `ui.tray.show_balloon_tip("Phai Tray", "มีข้อความใหม่")` (ShowBalloonTip) — คลิกที่ข้อความ →
   `balloon_click`, หายไปเองหรือกด X → `balloon_closed`
+- **Explorer เริ่มใหม่** (ล่มแล้วขึ้นใหม่ หรือถูกปิดเปิด): ไอคอนมุมจอของทุกโปรแกรมหายหมด — ฟอร์มที่มี notifyicon ฟัง
+  `TaskbarCreated` (`phai_ui::components::taskbar_created()`) แล้วใส่ไอคอนทุกตัวของโปรแกรมกลับ (`add_all_again`) ด้วยข้อความ
+  แสดง/ซ่อน และรูปตอนนั้น (`set_text`, `set_visible`, `set_icon` จำค่าไว้); Windows ส่งข้อความนี้ถึงหน้าต่างชั้นบนทุกบาน
+  รวมที่ซ่อนอยู่ (`start_hidden`) และที่มีเจ้าของ (`show_in_taskbar = false`) — **ไม่ถึงหน้าต่างลูก**: notifyicon บนฟอร์ม MDI child
+  หรือ user control จะกลับมาก็ต่อเมื่อมีฟอร์มชั้นบนที่มี notifyicon อยู่ในโปรแกรมด้วย; โปรแกรมที่สิทธิ์สูงกว่า Explorer
+  (administrator, LocalSystem) ได้ยินเพราะ `NotifyIcon::new` เปิดทางให้ข้อความนี้ (`ChangeWindowMessageFilterEx`)
 
 ## การพิมพ์ — component `printdocument`
 
