@@ -383,7 +383,9 @@ pub fn ask_fields(owner: Option<HWND>, title: &str, fields: &[Field]) -> Option<
         win::show_top(hwnd);
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(first));
         let mut msg = wm::MSG::default();
-        // `PHAI_ASK_SHOT=<file.png>`: the window photographed for the guide, then cancelled.
+        // `PHAI_ASK_SHOT=<file.png>`: the window photographed for the guide, then cancelled -
+        // with the `shot` feature, which takes pictures.
+        #[cfg(feature = "shot")]
         if let Some(to) = std::env::var_os("PHAI_ASK_SHOT") {
             for _ in 0..30 {
                 while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {

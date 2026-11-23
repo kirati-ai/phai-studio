@@ -7,7 +7,9 @@
 //! window that shows the pages before anything is printed ([`PrintDocument::print_preview`]).
 
 use std::cell::{Cell, RefCell};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(feature = "shot")]
+use std::path::PathBuf;
 
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{COLORREF, HGLOBAL, HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -901,18 +903,22 @@ extern "system" fn preview_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRES
         }
         wm::WM_TIMER if w.0 == TIMER_SHOT => unsafe {
             let _ = wm::KillTimer(Some(h), TIMER_SHOT);
-            if let Some(path) = std::env::var_os("PHAI_PREVIEW_SHOT") {
-                let _ = crate::shot::save(h, &PathBuf::from(path));
-            }
-            // A second page in the picture too, when there is one: `<name>-2.png`.
-            if let Some(path) = std::env::var_os("PHAI_PREVIEW_SHOT") {
-                let more = PREVIEW.with(|p| p.borrow().as_ref().is_some_and(|p| p.pages.len() > 1));
-                if more {
-                    turn(h, 1);
-                    let _ = Gdi::UpdateWindow(h);
-                    let p = PathBuf::from(path);
-                    let second = p.with_file_name(format!("{}-2.png", p.file_stem().unwrap_or_default().to_string_lossy()));
-                    let _ = crate::shot::save(h, &second);
+            // The picture, with the `shot` feature, which takes pictures.
+            #[cfg(feature = "shot")]
+            {
+                if let Some(path) = std::env::var_os("PHAI_PREVIEW_SHOT") {
+                    let _ = crate::shot::save(h, &PathBuf::from(path));
+                }
+                // A second page in the picture too, when there is one: `<name>-2.png`.
+                if let Some(path) = std::env::var_os("PHAI_PREVIEW_SHOT") {
+                    let more = PREVIEW.with(|p| p.borrow().as_ref().is_some_and(|p| p.pages.len() > 1));
+                    if more {
+                        turn(h, 1);
+                        let _ = Gdi::UpdateWindow(h);
+                        let p = PathBuf::from(path);
+                        let second = p.with_file_name(format!("{}-2.png", p.file_stem().unwrap_or_default().to_string_lossy()));
+                        let _ = crate::shot::save(h, &second);
+                    }
                 }
             }
             let _ = wm::DestroyWindow(h);

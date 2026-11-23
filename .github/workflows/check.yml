@@ -1,0 +1,29 @@
+# Checks what a program built on phai-ui may choose: phai-ui without its default features
+# (`shot`, which photographs windows to PNG) still builds, warning-free. PhaiDesk builds it so.
+
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phai-ui-without-default-features:
+    runs-on: windows-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: phai-ui without its default features
+        run: cargo check --locked -p phai-ui --no-default-features --all-targets

@@ -16,6 +16,11 @@ default = ["shot"]
 # Photographs a window to PNG (PrintWindow): bugs in how a window looks do not show in code.
 shot = ["dep:png"]
 
+[[example]]
+name = "grid_demo"
+# It photographs its window for PHAI_SHOT.
+required-features = ["shot"]
+
 [dependencies]
 png = { workspace = true, optional = true }
 windows = { workspace = true, features = [
