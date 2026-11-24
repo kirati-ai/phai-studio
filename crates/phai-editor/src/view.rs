@@ -783,6 +783,13 @@ pub fn set_diagnostics(h: HWND, diags: &[crate::lsp::Diagnostic]) {
         .iter()
         .map(|d| {
             let (from, mut to) = (offset(d.start), offset(d.end));
+            // One spanning many lines - a whole function, a whole file - is underlined on its
+            // first line only: every line wavy says nothing of where to look.
+            let line = (d.start.0 as usize).min(v.model.buf.line_count() - 1);
+            let line_end = v.model.buf.line_start(line) + v.model.buf.line(line).len();
+            if d.end.0 > d.start.0 && line_end > from {
+                to = to.min(line_end);
+            }
             if to <= from {
                 to = (from + 1).min(v.model.buf.len());
             }

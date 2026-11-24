@@ -407,8 +407,11 @@ pub fn pulled_diagnostics(result: &Value) -> Option<Vec<Diagnostic>> {
 
 fn diagnostic_list(list: &[Value]) -> Vec<Diagnostic> {
     let pos = |v: &Value| (v["line"].as_u64().unwrap_or(0) as u32, v["character"].as_u64().unwrap_or(0) as u32);
+    // Hints (severity 4) are the server's asides - "expected `()` because of default return
+    // type", code a #[cfg] leaves out: other editors draw no line under them, nor count them.
     let out = list
         .iter()
+        .filter(|d| d["severity"].as_u64() != Some(4))
         .map(|d| Diagnostic {
             start: pos(&d["range"]["start"]),
             end: pos(&d["range"]["end"]),
@@ -815,10 +818,11 @@ mod tests {
     fn diagnostics_hover_and_completions_are_read() {
         let msg = json!({"method": "textDocument/publishDiagnostics", "params": {"uri": "file:///d%3A/p/main.rs", "diagnostics": [
             {"range": {"start": {"line": 3, "character": 4}, "end": {"line": 3, "character": 9}}, "severity": 1, "message": "mismatched types"},
-            {"range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 2}}, "severity": 2, "message": "unused"}]}});
+            {"range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 2}}, "severity": 2, "message": "unused"},
+            {"range": {"start": {"line": 5, "character": 0}, "end": {"line": 5, "character": 0}}, "severity": 4, "message": "expected `()` because of default return type"}]}});
         let (path, d) = diagnostics_of(&msg).unwrap();
         assert!(same_path(&path, Path::new(r"D:\p\main.rs")));
-        assert_eq!(d.len(), 2);
+        assert_eq!(d.len(), 2, "a hint is not shown");
         assert!(d[0].error && !d[1].error);
         assert_eq!(hover_text(&json!({"contents": {"kind": "markdown", "value": "```rust\nfn go() -> u32\n```\nGoes."}})).as_deref(), Some("fn go() -> u32\nGoes."));
         let c = completions_of(&json!({"items": [
