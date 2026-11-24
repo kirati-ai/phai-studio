@@ -653,6 +653,8 @@ pub struct Studio {
     bp_filling: bool,
     /// rust-analyzer still loading: its diagnostics held until it is quiet, the last of each file's.
     lsp_loading: bool,
+    /// The Rename box is open.
+    renaming: bool,
     held_diagnostics: std::collections::HashMap<PathBuf, Vec<phai_editor::lsp::Diagnostic>>,
     /// Each file's findings as the server pushed them (syntax, `cargo check`) and as asked for
     /// (its own: names it does not know, wrong types) - shown together; the last ask of each file.
@@ -1024,6 +1026,11 @@ fn stub_with_icon(stub: &[u8], ico: &[u8]) -> Result<Vec<u8>, String> {
 static PUBLISH_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// `--debugtest`: 0 off, then how many stops so far plus one.
 static DEBUG_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// The name `--lsptest` renames to: `PHAI_RENAME_TO`, or `renamed`.
+fn lsp_test_rename_to() -> String {
+    std::env::var("PHAI_RENAME_TO").unwrap_or_else(|_| "renamed".into())
+}
+
 /// How far `--lsptest` has come: 0-1 the definition, 2 the references, 3 the rename, 4 done.
 static LSP_TEST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static STUDIO: AtomicPtr<Studio> = AtomicPtr::new(std::ptr::null_mut());
@@ -3785,9 +3792,29 @@ impl Studio {
                     controls::status_text(self.status, 0, error.as_deref().unwrap_or(t("This cannot be renamed")));
                     return;
                 };
-                // `--lsptest` names it without the box.
-                let test = std::env::var("PHAI_RENAME_TO").ok();
-                let Some(new) = test.or_else(|| phai_ui::dialogs::ask(Some(self.hwnd), t("Rename"), &tf("New name for {0}, in every file that uses it:", &[&old]), &old, false)) else { return };
+                // One box at a time: the box's own message loop runs the rest of Studio, and
+                // another answer to F2 coming in there would open a box over it - again and
+                // again, as `--lsptest` asking each second did until the stack ran out.
+                if self.renaming {
+                    return;
+                }
+                // `--lsptest` names it without the box - unless the box is to be photographed
+                // (`PHAI_ASK_SHOT`), which then ends the test.
+                let photographed = std::env::var_os("PHAI_ASK_SHOT").is_some();
+                let test = (LSP_TEST.load(Ordering::Relaxed) > 0 && !photographed).then(lsp_test_rename_to);
+                let new = match test {
+                    Some(name) => name,
+                    None => {
+                        self.renaming = true;
+                        let asked = phai_ui::dialogs::ask(Some(self.hwnd), t("Rename"), &tf("New name for {0}, in every file that uses it:", &[&old]), &old, false);
+                        self.renaming = false;
+                        if photographed && LSP_TEST.load(Ordering::Relaxed) > 0 {
+                            std::process::exit(0);
+                        }
+                        let Some(name) = asked else { return };
+                        name
+                    }
+                };
                 let new = new.trim().to_string();
                 if new.is_empty() || new == old {
                     return;
@@ -3859,7 +3886,7 @@ impl Studio {
     /// not done yet is asked again each second, while rust-analyzer loads.
     fn lsp_test_step(&mut self) {
         let Some(h) = self.doc.code else { std::process::exit(3) };
-        let to = std::env::var("PHAI_RENAME_TO").unwrap_or_else(|_| "renamed".into());
+        let to = lsp_test_rename_to();
         let on_call = |h: HWND| {
             let text = phai_editor::view::text(h);
             let second = text.lines().nth(1).unwrap_or_default();
@@ -3998,6 +4025,8 @@ impl Studio {
                     std::process::exit(0);
                 }
             }
+            // Asked already: its answer awaited, not asked again over it.
+            3 if self.asked.values().any(|(_, a)| matches!(a, Ask::PrepareRename(..) | Ask::Rename { .. })) => {}
             3 => {
                 on_call(h);
                 self.lsp_rename(h);
@@ -10351,11 +10380,83 @@ fn report_crashes() {
         let rec = unsafe { &*(*info).ExceptionRecord };
         let code = rec.ExceptionCode.0 as u32;
         // Access violations, stack overflows and the like; not the exceptions Windows uses itself.
-        if matches!(code, 0xC0000005 | 0xC00000FD | 0xC0000409 | 0xC000001D) {
+        if code == 0xC00000FD {
+            // No stack is left to take a backtrace on: the frames are walked here, and named on
+            // a thread of its own.
+            eprintln!("crash {code:#x} at {:?}", rec.ExceptionAddress);
+            unsafe { overflowed_frames((*info).ContextRecord) };
+        } else if matches!(code, 0xC0000005 | 0xC0000409 | 0xC000001D) {
             eprintln!("crash {code:#x} at {:?}
 {}", rec.ExceptionAddress, std::backtrace::Backtrace::force_capture());
         }
         0 // EXCEPTION_CONTINUE_SEARCH
+    }
+    /// A stack overflow's frames, each with what it took of the stack: a call going round shows
+    /// as the same few names over and over, a frame too big for the stack as one large number.
+    unsafe fn overflowed_frames(context: *const windows::Win32::System::Diagnostics::Debug::CONTEXT) {
+        use windows::Win32::System::Diagnostics::Debug::*;
+        const MOST: usize = 8192;
+        // Kept off the stack, which has no room left.
+        static mut CONTEXT_COPY: std::mem::MaybeUninit<CONTEXT> = std::mem::MaybeUninit::uninit();
+        static mut FRAMES: [(u64, u64); MOST] = [(0, 0); MOST];
+        static mut COUNT: usize = 0;
+        unsafe {
+            let c = std::ptr::addr_of_mut!(CONTEXT_COPY) as *mut CONTEXT;
+            std::ptr::copy_nonoverlapping(context, c, 1);
+            let frames = std::ptr::addr_of_mut!(FRAMES) as *mut (u64, u64);
+            let mut n = 0;
+            while n < MOST && (*c).Rip != 0 {
+                *frames.add(n) = ((*c).Rip, (*c).Rsp);
+                n += 1;
+                let mut base = 0u64;
+                let entry = RtlLookupFunctionEntry((*c).Rip, &mut base, None);
+                if entry.is_null() {
+                    // A leaf function: its return address is at the top of the stack.
+                    (*c).Rip = *((*c).Rsp as *const u64);
+                    (*c).Rsp += 8;
+                    continue;
+                }
+                let mut data = std::ptr::null_mut();
+                let mut frame = 0u64;
+                RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, (*c).Rip, entry, c, &mut data, &mut frame, None);
+            }
+            COUNT = n;
+        }
+        let named = std::thread::spawn(|| unsafe {
+            let process = windows::Win32::System::Threading::GetCurrentProcess();
+            SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+            // The .pdb sits beside the .exe.
+            let beside = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| wide(&d.to_string_lossy())));
+            let _ = SymInitializeW(process, beside.as_ref().map_or(PCWSTR::null(), |w| PCWSTR(w.as_ptr())), true);
+            #[repr(C)]
+            struct Named {
+                info: SYMBOL_INFOW,
+                rest: [u16; 512],
+            }
+            let frames = std::ptr::addr_of!(FRAMES) as *const (u64, u64);
+            // The top, where it overflowed, and the bottom, where it began: a call going round
+            // shows its circle in the top ones.
+            for i in (0..COUNT).filter(|i| *i < 40 || *i + 40 >= COUNT) {
+                if i + 40 == COUNT && COUNT > 80 {
+                    eprintln!("     ... {} frames ...", COUNT - 80);
+                }
+                let (rip, rsp) = *frames.add(i);
+                let took = if i + 1 < COUNT { (*frames.add(i + 1)).1.saturating_sub(rsp) } else { 0 };
+                let mut named: Named = std::mem::zeroed();
+                named.info.SizeOfStruct = std::mem::size_of::<SYMBOL_INFOW>() as u32;
+                named.info.MaxNameLen = 512;
+                let name = match SymFromAddrW(process, rip, None, &mut named.info) {
+                    Ok(()) => {
+                        // The name runs on past `Name`, into `rest`.
+                        let at = (std::ptr::addr_of!(named) as *const u8).add(std::mem::offset_of!(SYMBOL_INFOW, Name)) as *const u16;
+                        String::from_utf16_lossy(std::slice::from_raw_parts(at, (named.info.NameLen as usize).min(512)))
+                    }
+                    Err(_) => format!("{rip:#x}"),
+                };
+                eprintln!("{i:>4} {took:>8} bytes  {name}");
+            }
+        });
+        let _ = named.join();
     }
     unsafe {
         AddVectoredExceptionHandler(1, Some(handler));
@@ -10560,6 +10661,7 @@ fn main() {
             memory_at: String::new(),
             coverage: vec![],
             lsp_loading: false,
+            renaming: false,
             held_diagnostics: Default::default(),
             pushed_diagnostics: Default::default(),
             pulled_diagnostics: Default::default(),

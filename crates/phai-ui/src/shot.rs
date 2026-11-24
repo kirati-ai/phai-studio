@@ -31,6 +31,11 @@ pub fn capture(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
 /// The window as the screen shows it: its visible bounds (without the invisible resize border
 /// GetWindowRect counts) copied from the screen, the window brought to the front first.
 fn from_screen(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
+    from_screen_around(hwnd, 0)
+}
+
+/// [`from_screen`], with `m` pixels more of the screen on each side.
+fn from_screen_around(hwnd: HWND, m: i32) -> Option<(Vec<u8>, u32, u32)> {
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     unsafe {
         let _ = wm::SetForegroundWindow(hwnd);
@@ -38,6 +43,7 @@ fn from_screen(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
         std::thread::sleep(std::time::Duration::from_millis(300));
         let mut r = RECT::default();
         DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut RECT as *mut _, std::mem::size_of::<RECT>() as u32).ok()?;
+        let r = RECT { left: r.left - m, top: r.top - m, right: r.right + m, bottom: r.bottom + m };
         let (w, h) = (r.right - r.left, r.bottom - r.top);
         if w <= 0 || h <= 0 {
             return None;
@@ -125,9 +131,15 @@ fn capture_with(hwnd: HWND, flags: u32) -> Option<(Vec<u8>, u32, u32)> {
     }
 }
 
-/// Saves the window as a PNG at `path`.
+/// Saves the window as a PNG at `path`. `PHAI_SHOT_AROUND=<px>`: the screen around it as well,
+/// that far on each side - the shadow Windows draws outside a window is not in the window.
 pub fn save(hwnd: HWND, path: &Path) -> std::io::Result<()> {
-    let (px, w, h) = capture(hwnd).ok_or_else(|| std::io::Error::other("PrintWindow could not photograph the window"))?;
+    let around = std::env::var("PHAI_SHOT_AROUND").ok().and_then(|n| n.parse::<i32>().ok()).filter(|n| *n > 0);
+    let taken = match around {
+        Some(m) => from_screen_around(hwnd, m),
+        None => capture(hwnd),
+    };
+    let (px, w, h) = taken.ok_or_else(|| std::io::Error::other("PrintWindow could not photograph the window"))?;
     let file = std::io::BufWriter::new(std::fs::File::create(path)?);
     let mut enc = png::Encoder::new(file, w, h);
     enc.set_color(png::ColorType::Rgba);

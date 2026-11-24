@@ -195,6 +195,28 @@ fn modal(owner: Option<HWND>, hwnd: HWND, focus: HWND) -> Option<String> {
         win::show_top(hwnd);
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(if focus.is_invalid() { hwnd } else { focus }));
         let mut msg = wm::MSG::default();
+        // `PHAI_ASK_SHOT=<file.png>`: photographed, then cancelled - after `PHAI_ASK_WAIT`
+        // milliseconds of the rest of the program running (300 if not given).
+        #[cfg(feature = "shot")]
+        if let Some(to) = std::env::var_os("PHAI_ASK_SHOT") {
+            let wait = std::env::var("PHAI_ASK_WAIT").ok().and_then(|n| n.parse::<u64>().ok()).unwrap_or(300);
+            let until = std::time::Instant::now() + std::time::Duration::from_millis(wait);
+            while std::time::Instant::now() < until {
+                while wm::PeekMessageW(&mut msg, None, 0, 0, wm::PM_REMOVE).as_bool() {
+                    if !wm::IsDialogMessageW(hwnd, &msg).as_bool() {
+                        let _ = wm::TranslateMessage(&msg);
+                        wm::DispatchMessageW(&msg);
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            if let Err(e) = crate::shot::save(hwnd, std::path::Path::new(&to)) {
+                eprintln!("PHAI_ASK_SHOT: {e}");
+            }
+            if let Some(s) = win::state::<Ask>(hwnd) {
+                s.done = true;
+            }
+        }
         loop {
             if win::state::<Ask>(hwnd).is_none_or(|s| s.done) {
                 break;
