@@ -1,20 +1,12 @@
-//! The AI assistant: a pane beside Project and Properties where Claude answers questions about the
-//! project and - in Act mode - changes it: reads and searches its files, edits code and forms
-//! (each change shown side by side to accept or not), builds and runs its tests until they pass,
-//! and photographs the running program to see what it made. In Ask mode it changes nothing.
-//!
-//! Beside Claude (Anthropic, with its own API key) the pane offers GitHub Copilot: the agent of
-//! GitHub's Copilot Language Server, spoken to over ACP (`acp.rs`) with the person's GitHub
-//! sign-in, its models (GPT, Claude, Gemini... whatever the account offers) in the model box. Its
-//! changes to files are shown side by side to accept or not, as Claude's are.
-//!
-//! The conversation is kept as the API gave it and only ever added to, so Claude's thinking stays
-//! valid from one turn to the next and the prompt cache keeps hitting. The tools are the same in
-//! both modes - which mode is in force is said in each message - for the same reason.
+//! The AI assistant: a pane beside Project and Properties where GitHub Copilot answers questions
+//! about the project and - in Act mode - changes it. It is the agent of GitHub's Copilot Language
+//! Server, spoken to over ACP (`acp.rs`) with the person's GitHub sign-in; its models (GPT, Claude,
+//! Gemini... whatever the account offers) are in the model box. The agent reads the project and
+//! uses its own tools; each change it wants to make to a file is shown side by side to accept or
+//! not, anything else it wants to run is asked first, and in Ask mode it changes nothing.
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::sync::mpsc;
 
 use phai_ui::text::{t, tf};
 use phai_ui::win;
@@ -25,7 +17,6 @@ use windows::Win32::Graphics::Gdi::HFONT;
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
 use crate::acp;
-use crate::claude;
 use crate::copilot;
 use crate::explorer;
 use crate::studio;
@@ -36,33 +27,8 @@ const ID_SEND: i32 = 12;
 const ID_MODE: i32 = 13;
 const ID_MODEL: i32 = 14;
 const ID_NEW: i32 = 15;
-const ID_KEY: i32 = 16;
+const ID_SIGN_IN: i32 = 16;
 const ID_STATUS: i32 = 17;
-const ID_PROVIDER: i32 = 18;
-
-/// What the worker tells the pane: its LPARAM is a boxed [`Note`].
-const WM_AI: u32 = wm::WM_APP + 0x0E40;
-
-/// Effort: medium is Claude Opus 5.5's own default, and the level its makers start agentic coding at.
-const EFFORT: &str = "medium";
-/// Room for the thinking as well as the answer of a long coding turn.
-const MAX_TOKENS: u32 = 64_000;
-/// Turns of tool use in one answer before the assistant stops to let the person look.
-const MAX_STEPS: usize = 60;
-
-/// What the worker thread sends the pane.
-enum Note {
-    Text(String),
-    Thinking(String),
-    Block(String),
-    Line(String),
-    Status(String),
-    /// Something to do on the window's thread (the open editors, the designer, a dialog), and
-    /// where its answer goes.
-    Run(Box<dyn FnOnce() -> Value + Send>, mpsc::Sender<Value>),
-    /// The answer is over: the conversation as it now stands, and why it ended early, if it did.
-    Done(Vec<Value>, Option<String>),
-}
 
 /// A change of Copilot's shown side by side (its window waits for the answer, messages still
 /// coming): the agent's next requests wait for it, here - outside the pane, which the window's
@@ -92,28 +58,23 @@ enum AcpAsk {
 }
 
 struct Pane {
-    provider: HWND,
     transcript: HWND,
     input: HWND,
     send: HWND,
     mode: HWND,
     model: HWND,
     new_chat: HWND,
-    key: HWND,
+    sign_in: HWND,
     status: HWND,
-    /// The conversation, as sent and received - only added to.
-    messages: Vec<Value>,
-    /// This conversation's system prompt and project, fixed when it began.
-    system: String,
+    /// The project the conversation is about.
     root: Option<PathBuf>,
-    busy: Option<claude::Cancel>,
+    /// An answer is coming: Send is Stop.
+    busy: bool,
     /// Accept All was chosen: the rest of this conversation's changes go in without asking.
     accept_all: bool,
     /// The last block shown: a new kind starts a new paragraph.
     last_block: String,
-    // GitHub Copilot, when it is the one chosen.
-    copilot: bool,
-    /// The models the model box offers for Copilot: (id, name).
+    /// The models the model box offers: (id, name).
     cmodels: Vec<(String, String)>,
     acp: Option<acp::Acp>,
     acp_ready: bool,
@@ -137,35 +98,27 @@ pub fn create(parent: HWND, font: HFONT) -> HWND {
         let input = win::textarea_with(h, "", ID_INPUT, font, true, "vertical");
         let send = win::button(h, t("Send"), ID_SEND, font, true);
         let mode = win::combo(h, ID_MODE, font, &[t("Ask"), t("Act")]);
-        // `PHAI_AI_PROVIDER=copilot`: Copilot chosen - for tests and the guide's picture.
-        let copilot = std::env::var("PHAI_AI_PROVIDER").ok().or_else(|| crate::setting_pub("ai_provider")).as_deref() == Some("copilot");
-        let provider = win::combo(h, ID_PROVIDER, font, &["Claude (Anthropic)", "GitHub Copilot"]);
-        let _ = wm::SendMessageW(provider, 0x014E /* CB_SETCURSEL */, Some(WPARAM(copilot as usize)), None);
         let model = win::combo(h, ID_MODEL, font, &[]);
         let act = crate::setting_pub("ai_mode").as_deref() == Some("act");
-        let _ = wm::SendMessageW(mode, 0x014E, Some(WPARAM(act as usize)), None);
+        let _ = wm::SendMessageW(mode, 0x014E /* CB_SETCURSEL */, Some(WPARAM(act as usize)), None);
         let new_chat = win::button(h, t("New chat"), ID_NEW, font, false);
-        let key = win::button(h, t("API key..."), ID_KEY, font, false);
+        let sign_in = win::button(h, t("Sign in..."), ID_SIGN_IN, font, false);
         let status = win::label(h, "", ID_STATUS, font);
         win::set_state(
             h,
             Box::new(Pane {
-                provider,
                 transcript,
                 input,
                 send,
                 mode,
                 model,
                 new_chat,
-                key,
+                sign_in,
                 status,
-                messages: vec![],
-                system: String::new(),
                 root: None,
-                busy: None,
+                busy: false,
                 accept_all: false,
                 last_block: String::new(),
-                copilot,
                 cmodels: vec![],
                 acp: None,
                 acp_ready: false,
@@ -180,7 +133,7 @@ pub fn create(parent: HWND, font: HFONT) -> HWND {
         p.fill_models(h);
         p.greet();
         // `PHAI_AI_ASK=<words>`: asked by itself a moment after Studio opens - for tests and the
-        // guide's picture, with `PHAI_CLAUDE_URL` pointing at a test's own server.
+        // guide's picture, with `PHAI_COPILOT_SERVER=fake` standing in for Copilot.
         if std::env::var_os("PHAI_AI_ASK").is_some() {
             wm::SetTimer(Some(h), 1, 1500, None);
         }
@@ -194,14 +147,10 @@ fn state(h: HWND) -> Option<&'static mut Pane> {
 
 impl Pane {
     fn greet(&mut self) {
-        let words = if self.copilot && !crate::copilot_on_pub() {
+        let words = if !crate::copilot_on_pub() {
             t("GitHub Copilot is off: turn it on in Tools > Options > GitHub Copilot, then sign in with your GitHub account (Copilot Free is enough).")
-        } else if self.copilot {
-            t("Ask GitHub Copilot about your project, or switch to Act and say what to change. Copilot reads the files it needs; in Act mode each change is shown to you first. What it uses counts against your Copilot plan.")
-        } else if claude::api_key().is_some() {
-            t("Ask about your project, or switch to Act and say what to change. Claude reads the files it needs; in Act mode each change is shown to you first.")
         } else {
-            t("Claude needs an API key from console.anthropic.com - click API key... The key stays in Windows' Credential Manager; what Claude costs, Anthropic bills you.")
+            t("Ask GitHub Copilot about your project, or switch to Act and say what to change. Copilot reads the files it needs; in Act mode each change is shown to you first. What it uses counts against your Copilot plan.")
         };
         win::set_text(self.transcript, &format!("{words}\r\n\r\n"));
     }
@@ -226,12 +175,10 @@ impl Pane {
         let (w, ht) = (r.right, r.bottom);
         let row = px(26);
         let m = px(6);
-        // The bar: the mode, who answers, and the model.
-        let pw = px(140).min((w - m * 4 - px(76) - px(80)).max(px(90)));
+        // The bar: the mode and the model.
         win::move_to(self.mode, m, m, px(76), px(240));
-        win::move_to(self.provider, m * 2 + px(76), m, pw, px(240));
-        win::move_to(self.model, m * 3 + px(76) + pw, m, (w - m * 4 - px(76) - pw).max(px(80)), px(240));
-        // Below: the box to write in, Send, New chat and the key beside it.
+        win::move_to(self.model, m * 2 + px(76), m, (w - m * 3 - px(76)).max(px(80)), px(240));
+        // Below: the box to write in, Send, New chat and Sign in beside it.
         let bw = px(84);
         let input_h = row * 3 + px(8);
         let top = m * 2 + row;
@@ -242,74 +189,48 @@ impl Pane {
         win::move_to(self.input, m, y, (w - m * 3 - bw).max(px(60)), input_h);
         win::move_to(self.send, w - m - bw, y, bw, row);
         win::move_to(self.new_chat, w - m - bw, y + row + px(4), bw, row);
-        win::move_to(self.key, w - m - bw, y + (row + px(4)) * 2, bw, row);
+        win::move_to(self.sign_in, w - m - bw, y + (row + px(4)) * 2, bw, row);
     }
 
     fn act(&self) -> bool {
         win::combo_selected(self.mode) == 1
     }
 
-    fn model_id(&self) -> &'static str {
-        claude::MODELS.get(win::combo_selected(self.model).max(0) as usize).map(|(id, _)| *id).unwrap_or(claude::MODELS[0].0)
-    }
-
-    /// The Copilot model chosen in the model box, if the account has offered any.
+    /// The model chosen in the model box, if the account has offered any.
     fn copilot_model(&self) -> Option<String> {
         self.cmodels.get(win::combo_selected(self.model).max(0) as usize).map(|(id, _)| id.clone())
     }
 
-    /// The model box filled for the one chosen: Claude's models, or the ones Copilot offers - asked
-    /// of the Copilot server when not yet known.
+    /// The model box filled with the models Copilot offers - asked of the server when not yet known.
     fn fill_models(&mut self, h: HWND) {
-        let (names, chosen): (Vec<String>, usize) = if self.copilot {
-            let saved = crate::setting_pub("copilot_model");
-            (self.cmodels.iter().map(|(_, n)| n.clone()).collect(), saved.and_then(|m| self.cmodels.iter().position(|(id, _)| *id == m)).unwrap_or(0))
-        } else {
-            (claude::MODELS.iter().map(|(_, n)| n.to_string()).collect(), crate::setting_pub("ai_model").and_then(|m| claude::MODELS.iter().position(|(id, _)| *id == m)).unwrap_or(0))
-        };
+        let saved = crate::setting_pub("copilot_model");
+        let chosen = saved.and_then(|m| self.cmodels.iter().position(|(id, _)| *id == m)).unwrap_or(0);
         unsafe {
             let _ = wm::SendMessageW(self.model, 0x014B /* CB_RESETCONTENT */, None, None);
-            for n in &names {
+            for (_, n) in &self.cmodels {
                 let w = win::wide(n);
                 let _ = wm::SendMessageW(self.model, 0x0143 /* CB_ADDSTRING */, None, Some(LPARAM(w.as_ptr() as isize)));
             }
             let _ = wm::SendMessageW(self.model, 0x014E /* CB_SETCURSEL */, Some(WPARAM(chosen)), None);
         }
-        win::set_text(self.key, if self.copilot { t("Sign in...") } else { t("API key...") });
-        if self.copilot && self.cmodels.is_empty() && crate::copilot_on_pub() {
+        if self.cmodels.is_empty() && crate::copilot_on_pub() {
             if let Some(s) = studio() {
                 s.copilot_models_for(h);
             }
         }
     }
 
-    /// Claude or Copilot chosen: a new conversation with it.
-    fn provider_changed(&mut self, h: HWND) {
-        let copilot = win::combo_selected(self.provider) == 1;
-        if copilot == self.copilot {
-            return;
-        }
-        self.new_chat();
-        self.copilot = copilot;
-        crate::remember_setting_pub("ai_provider", if copilot { "copilot" } else { "anthropic" });
-        self.fill_models(h);
-        self.greet();
-    }
-
     fn new_chat(&mut self) {
-        if let Some(c) = self.busy.take() {
-            c.stop();
+        if std::mem::take(&mut self.busy) {
             if let (Some(a), Some(sid)) = (self.acp.as_ref(), self.session.as_ref()) {
                 a.notify("session/cancel", json!({ "sessionId": sid }));
             }
         }
-        // Copilot's next words start a session of their own.
+        // The next words start a session of their own.
         self.session = None;
         self.session_model = None;
         self.waiting = None;
         self.calls.clear();
-        self.messages.clear();
-        self.system.clear();
         self.root = None;
         self.accept_all = false;
         self.last_block.clear();
@@ -318,119 +239,18 @@ impl Pane {
         self.greet();
     }
 
-    fn ask_key(&mut self, h: HWND) {
-        let owner = studio().map(|s| s.hwnd).unwrap_or(h);
-        if self.copilot {
-            if let Some(s) = studio() {
-                s.copilot_sign_in();
-            }
-            return;
-        }
-        let Some(a) = phai_ui::dialogs::ask_fields(Some(owner), t("Claude API key"), &[phai_ui::dialogs::Field::Password(t("API key from console.anthropic.com (empty: forget it)"), "")]) else { return };
-        match claude::save_key(Some(&a[0]).filter(|k| !k.trim().is_empty()).map(String::as_str)) {
-            Ok(()) => {
-                let words = if a[0].trim().is_empty() { t("The API key is forgotten.") } else { t("The API key is kept in Windows' Credential Manager.") };
-                win::set_text(self.status, words);
-            }
-            Err(e) => {
-                win::message(Some(owner), &e, t("Claude API key"), wm::MB_ICONWARNING);
-            }
-        }
-    }
-
     fn send(&mut self, h: HWND) {
-        if let Some(c) = self.busy.take() {
-            c.stop();
+        if self.busy {
             win::set_text(self.status, t("Stopping..."));
-            if self.copilot {
-                match (self.acp.as_ref(), self.session.as_ref()) {
-                    (Some(a), Some(sid)) => a.notify("session/cancel", json!({ "sessionId": sid })),
-                    _ => self.copilot_done(Some(t("Stopped").to_string())),
-                }
+            match (self.acp.as_ref(), self.session.as_ref()) {
+                (Some(a), Some(sid)) => a.notify("session/cancel", json!({ "sessionId": sid })),
+                _ => self.copilot_done(Some(t("Stopped").to_string())),
             }
             return;
         }
         let words = win::text_of(self.input).trim().to_string();
-        if words.is_empty() {
-            return;
-        }
-        if self.copilot {
-            return self.send_copilot(h, words);
-        }
-        if claude::api_key().is_none() {
-            self.ask_key(h);
-        }
-        let Some(key) = claude::api_key() else { return };
-        let Some(root) = studio().and_then(|s| s.project_dir_pub()) else {
-            win::set_text(self.status, t("Open a project first: Claude works in the project of the open file."));
-            return;
-        };
-        if self.root.as_deref() != Some(root.as_path()) {
-            if !self.messages.is_empty() {
-                self.new_chat();
-            }
-            self.root = Some(root.clone());
-            self.system = system_prompt(&root);
-        }
-        let act = self.act();
-        crate::remember_setting_pub("ai_mode", if act { "act" } else { "ask" });
-        crate::remember_setting_pub("ai_model", self.model_id());
-        let mode = if act { "Act: you may change the project's files, each change is shown to the person to accept." } else { "Ask: answer only - do not change any file (write_file and edit_file will refuse)." };
-        self.messages.push(json!({"role": "user", "content": [
-            {"type": "text", "text": words},
-            {"type": "text", "text": format!("<studio>Mode: {mode}</studio>")}
-        ]}));
-        win::set_text(self.input, "");
-        self.append(&format!("{} {words}\n\n", t("You:")));
-        self.last_block.clear();
-        let cancel = claude::Cancel::default();
-        self.busy = Some(cancel.clone());
-        win::set_text(self.send, t("Stop"));
-        win::set_text(self.status, t("Claude is thinking..."));
-        let job = Job { key, model: self.model_id().to_string(), system: self.system.clone(), messages: self.messages.clone(), root, act, cancel, pane: h.0 as isize };
-        std::thread::spawn(move || job.run());
-    }
-
-    fn note(&mut self, h: HWND, n: Note) {
-        match n {
-            Note::Block(kind) => {
-                if kind != self.last_block && (kind == "text" || kind == "thinking") {
-                    if self.last_block.is_empty() {
-                        self.append(&format!("{}\n", if self.copilot { t("Copilot:") } else { t("Claude:") }));
-                    } else {
-                        self.append("\n");
-                    }
-                    if kind == "thinking" {
-                        self.append("› ");
-                    }
-                }
-                self.last_block = kind;
-            }
-            Note::Text(s) => self.append(&s),
-            Note::Thinking(s) => self.append(&s),
-            Note::Line(s) => {
-                self.append(&format!("\n⚙ {s}\n"));
-                self.last_block = "tool".into();
-            }
-            Note::Status(s) => win::set_text(self.status, &s),
-            Note::Run(f, back) => {
-                let _ = back.send(f());
-            }
-            Note::Done(messages, err) => {
-                // Only what this answer added to the conversation it was given.
-                if messages.len() >= self.messages.len() {
-                    self.messages = messages;
-                }
-                self.busy = None;
-                win::set_text(self.send, t("Send"));
-                win::set_text(self.status, &err.clone().unwrap_or_default());
-                if let Some(e) = err {
-                    self.append(&format!("\n[{e}]\n"));
-                }
-                self.append("\n\n");
-                self.last_block.clear();
-                let _ = h;
-            }
+        if !words.is_empty() {
+            self.send_copilot(h, words);
         }
     }
 }
@@ -479,7 +299,7 @@ impl Pane {
         win::set_text(self.input, "");
         self.append(&format!("{} {words}\n\n", t("You:")));
         self.last_block.clear();
-        self.busy = Some(claude::Cancel::default());
+        self.busy = true;
         win::set_text(self.send, t("Stop"));
         win::set_text(self.status, t("Copilot is thinking..."));
         self.acp_go(h);
@@ -530,7 +350,7 @@ impl Pane {
 
     /// The answer is over.
     fn copilot_done(&mut self, err: Option<String>) {
-        self.busy = None;
+        self.busy = false;
         self.waiting = None;
         win::set_text(self.send, t("Send"));
         win::set_text(self.status, &err.clone().unwrap_or_default());
@@ -562,7 +382,7 @@ impl Pane {
             self.acp = None;
             self.acp_ready = false;
             self.session = None;
-            if self.busy.is_some() {
+            if self.busy {
                 self.copilot_done(Some(t("Copilot's agent ended.").to_string()));
             }
             return;
@@ -620,7 +440,7 @@ impl Pane {
                         (None, Some("cancelled")) => Some(t("Stopped").to_string()),
                         (None, Some("refusal")) => Some(t("Copilot declined this request.").to_string()),
                         (None, Some("max_tokens")) => Some(t("The answer was cut off - it was too long.").to_string()),
-                        (None, Some("max_turn_requests")) => Some(tf("Stopped after {0} steps - say go on to continue.", &[&MAX_STEPS])),
+                        (None, Some("max_turn_requests")) => Some(t("Copilot stopped after many steps - say go on to continue.").to_string()),
                         _ => None,
                     };
                     self.copilot_done(ended);
@@ -768,7 +588,7 @@ impl Pane {
                     let rel = inside(&root, &path, true).map(|f| f.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or(path.clone()));
                     rel.and_then(|rel| {
                         set_reviewing(true);
-                        let r = change_file(h, &root, &json!({ "path": rel, "contents": p["content"] }), false, "Copilot");
+                        let r = change_file(h, &root, &json!({ "path": rel, "contents": p["content"] }), false);
                         set_reviewing(false);
                         r
                     })
@@ -862,18 +682,16 @@ pub fn copilot_models(pane: HWND, list: Vec<(String, String)>, note: Option<&str
     if !list.is_empty() {
         p.cmodels = list;
     }
-    if p.copilot {
-        p.fill_models(pane);
-        if let Some(n) = note {
-            win::set_text(p.status, n);
-        }
+    p.fill_models(pane);
+    if let Some(n) = note {
+        win::set_text(p.status, n);
     }
 }
 
 /// Copilot was turned on or off, or signed in: the pane says so.
 pub fn copilot_changed(pane: HWND) {
     if let Some(p) = state(pane) {
-        if p.copilot && p.busy.is_none() && p.messages.is_empty() && p.session.is_none() {
+        if !p.busy && p.session.is_none() {
             p.greet();
             if p.cmodels.is_empty() {
                 p.fill_models(pane);
@@ -907,8 +725,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             match win::loword(w.0) as i32 {
                 ID_SEND => p.send(h),
                 ID_NEW => p.new_chat(),
-                ID_KEY => p.ask_key(h),
-                ID_PROVIDER if win::hiword(w.0) == 1 /* CBN_SELCHANGE */ => p.provider_changed(h),
+                ID_SIGN_IN => {
+                    if let Some(s) = studio() {
+                        s.copilot_sign_in();
+                    }
+                }
                 _ => {}
             }
             LRESULT(0)
@@ -929,13 +750,6 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 let _ = unsafe { wm::SendMessageW(p.mode, 0x014E /* CB_SETCURSEL */, Some(WPARAM(act as usize)), None) };
                 win::set_text(p.input, &words);
                 p.send(h);
-            }
-            LRESULT(0)
-        }
-        WM_AI => {
-            let n = unsafe { Box::from_raw(l.0 as *mut Note) };
-            if let Some(p) = state(h) {
-                p.note(h, *n);
             }
             LRESULT(0)
         }
@@ -961,283 +775,6 @@ pub fn send_from_key(pane: HWND) {
     if let Some(p) = state(pane) {
         p.send(pane);
     }
-}
-
-/// What this conversation tells Claude about where it is - the same for every turn of it.
-fn system_prompt(root: &Path) -> String {
-    let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    format!(
-        "You are the AI assistant inside Phai Studio, a RAD IDE for Windows programs written in Rust. \
-The person is working on the project \"{name}\"; your tools work inside its folder, with paths relative to it.\n\n\
-A Phai Studio project: Cargo.toml; src/main.rs; each window is a form - `<name>.phf` (TOML that the visual designer \
-reads and writes: controls, their bounds, properties, events), `<name>_ui.rs` (Rust that Phai Studio generates from \
-the .phf - never edit it, it is written again on every save and build), and `<name>.rs` (the person's code: \
-`impl <Name>Events for <Name>` with a method for each event the .phf names). The controls are phai-ui's \
-(a WinForms-like library on Win32); `ui.<id>` reaches a control. src/text.rs holds the Thai for every English \
-sentence the program shows; theme.css styles the controls.\n\n\
-Before you write or change a .phf, read the reference with phai_reference: Phai Studio refuses a form file it cannot read. \
-After changing code or forms, build; fix what the compiler says and build again until it builds. Run the tests \
-when there are tests for what you changed. A screenshot of the running program shows what a form looks like.\n\n\
-Each message says the mode. In Ask mode, answer and explain without changing files. In Act mode, change what the \
-request needs and nothing more; the person sees each change side by side and accepts it or not - a declined \
-change is their decision, so do not try it again unasked.\n\n\
-Before your first tool call, say in one line what you are going to do. When you are done, say in a few lines \
-what you changed and what you checked. Answer in the language the person writes in - often Thai."
-    )
-}
-
-/// The tools: the same in both modes, so the conversation's beginning never changes.
-fn tools() -> Value {
-    let path = json!({"type": "string", "description": "A path relative to the project folder, with / between folders"});
-    json!([
-        {"name": "list_files", "description": "Lists the project's files and folders (not target/ or .git/), folders ending in /. Give a folder to list only it.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {"path": path}, "required": []}},
-        {"name": "read_file", "description": "Reads a text file of the project, each line numbered. An open file is read as the editor has it, unsaved changes included. Long files come in parts: give offset (the first line, from 1) and limit (how many lines).",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {"path": path, "offset": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["path"]}},
-        {"name": "search", "description": "Finds the lines of the project's text files (.rs .phf .toml .css .md ...) that contain the words, ignoring case. Up to 200 lines, as path:line: text.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {"text": {"type": "string"}, "path": {"type": "string", "description": "Only in this folder"}}, "required": ["text"]}},
-        {"name": "write_file", "description": "Writes a whole file, new or replacing what it has. Act mode only; the person accepts or declines the change. For a small change to a big file, edit_file is better.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {"path": path, "contents": {"type": "string"}}, "required": ["path", "contents"]}},
-        {"name": "edit_file", "description": "Replaces old_text with new_text in a file - old_text exactly as the file has it (see read_file, without the line numbers) and found once, unless replace_all. Act mode only; the person accepts or declines the change.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {"path": path, "old_text": {"type": "string"}, "new_text": {"type": "string"}, "replace_all": {"type": "boolean"}}, "required": ["path", "old_text", "new_text"]}},
-        {"name": "build", "description": "Saves the open files, writes the forms' generated code, and builds the project with cargo. Returns whether it built, with the compiler's errors and warnings.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {}, "required": []}},
-        {"name": "run_tests", "description": "Runs the project's tests (cargo test), only those whose names have filter when given. Returns the end of what cargo said.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {"filter": {"type": "string"}}, "required": []}},
-        {"name": "screenshot", "description": "Builds the project, runs it and photographs its first window as it opens (the program is closed again at once, nothing is clicked). Returns the picture.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {}, "required": []}},
-        {"name": "phai_reference", "description": "The reference of Phai Studio's form file (.phf): every field of a form and its controls, the WinForms-like properties and events, examples. Read it before writing or changing a .phf.",
-         "eager_input_streaming": true,
-         "input_schema": {"type": "object", "properties": {}, "required": []}}
-    ])
-}
-
-/// One answer of Claude's, tools and all, on a thread of its own.
-struct Job {
-    key: String,
-    model: String,
-    system: String,
-    messages: Vec<Value>,
-    root: PathBuf,
-    act: bool,
-    cancel: claude::Cancel,
-    pane: isize,
-}
-
-impl Job {
-    fn tell(&self, n: Note) {
-        let b = Box::into_raw(Box::new(n));
-        unsafe {
-            if wm::PostMessageW(Some(HWND(self.pane as *mut _)), WM_AI, WPARAM(0), LPARAM(b as isize)).is_err() {
-                drop(Box::from_raw(b));
-            }
-        }
-    }
-
-    /// Runs `f` on the window's thread and waits for what it returns.
-    fn on_ui(&self, f: impl FnOnce() -> Value + Send + 'static) -> Value {
-        let (tx, rx) = mpsc::channel();
-        self.tell(Note::Run(Box::new(f), tx));
-        rx.recv().unwrap_or(Value::Null)
-    }
-
-    fn run(mut self) {
-        let tools = tools();
-        let mut fallbacks = true;
-        let mut tries = 0;
-        let mut steps = 0;
-        let ended = loop {
-            if self.cancel.stopped() {
-                break Some(t("Stopped").to_string());
-            }
-            let mut body = json!({
-                "model": self.model,
-                "max_tokens": MAX_TOKENS,
-                "stream": true,
-                "system": [{"type": "text", "text": self.system}],
-                "tools": tools,
-                "messages": self.messages,
-                "thinking": {"type": "adaptive", "display": "summarized"},
-                "output_config": {"effort": EFFORT},
-                "cache_control": {"type": "ephemeral"}
-            });
-            // A safety classifier's false alarm answered by the model Anthropic recommends,
-            // rather than a stop - where the account and model allow it.
-            let mut betas = vec![];
-            if fallbacks && self.model != "claude-haiku-5-5" {
-                body["fallbacks"] = json!("default");
-                betas.push("server-side-fallback-2026-07-01");
-            }
-            let pane = self.pane;
-            let tell = |n: Note| {
-                let b = Box::into_raw(Box::new(n));
-                unsafe {
-                    if wm::PostMessageW(Some(HWND(pane as *mut _)), WM_AI, WPARAM(0), LPARAM(b as isize)).is_err() {
-                        drop(Box::from_raw(b));
-                    }
-                }
-            };
-            let mut on = |e: claude::Event| match e {
-                claude::Event::Text(s) => tell(Note::Text(s)),
-                claude::Event::Thinking(s) => tell(Note::Thinking(s)),
-                claude::Event::Block(kind, name) => {
-                    if let Some(n) = name {
-                        tell(Note::Status(tf("Claude is preparing {0}...", &[&n])));
-                    } else if kind == "text" {
-                        tell(Note::Status(t("Claude is writing...").into()));
-                    }
-                    tell(Note::Block(kind));
-                }
-            };
-            let reply = match claude::post(&self.key, &betas, &body.to_string(), &self.cancel, &mut on) {
-                Ok(r) => r,
-                Err(f) => {
-                    if self.cancel.stopped() {
-                        break Some(t("Stopped").to_string());
-                    }
-                    if f.status == 400 && fallbacks && f.message.to_lowercase().contains("fallback") {
-                        fallbacks = false;
-                        continue;
-                    }
-                    // Busy or overloaded: wait and try again, a few times.
-                    if (f.status == 429 || f.status == 529 || f.status >= 500 || f.status == 0) && tries < 3 {
-                        tries += 1;
-                        self.tell(Note::Status(tf("{0} - trying again in {1} s", &[&f.to_string(), &(2u64 << tries)])));
-                        std::thread::sleep(std::time::Duration::from_secs(2 << tries));
-                        continue;
-                    }
-                    break Some(match f.status {
-                        401 => t("The API key was refused - click API key... to give another.").to_string(),
-                        _ => f.to_string(),
-                    });
-                }
-            };
-            tries = 0;
-            if !reply.content.is_empty() {
-                self.messages.push(json!({"role": "assistant", "content": reply.content}));
-            }
-            match reply.stop_reason.as_str() {
-                "refusal" => break Some(t("Claude declined this request.").to_string()),
-                "pause_turn" => continue,
-                "tool_use" | "max_tokens" => {
-                    let calls: Vec<Value> = reply.content.iter().filter(|b| b["type"] == "tool_use").cloned().collect();
-                    if calls.is_empty() {
-                        break (reply.stop_reason == "max_tokens").then(|| t("The answer was cut off - it was too long.").to_string());
-                    }
-                    let mut results = Vec::new();
-                    for c in &calls {
-                        let id = c["id"].as_str().unwrap_or("").to_string();
-                        let result = if self.cancel.stopped() {
-                            error_result(&id, "The person stopped the assistant.")
-                        } else if reply.stop_reason == "max_tokens" {
-                            error_result(&id, "The answer was cut off at max_tokens before this call was complete - it was not run. Write smaller pieces (edit_file rather than a whole file).")
-                        } else if let Some((_, raw)) = reply.bad_inputs.iter().find(|(b, _)| *b == id) {
-                            error_result(&id, &json!({"INVALID_JSON": raw}).to_string())
-                        } else {
-                            self.call(&id, c["name"].as_str().unwrap_or(""), &c["input"])
-                        };
-                        results.push(result);
-                    }
-                    self.messages.push(json!({"role": "user", "content": results}));
-                    steps += 1;
-                    if steps >= MAX_STEPS {
-                        break Some(tf("Stopped after {0} steps - say go on to continue.", &[&MAX_STEPS]));
-                    }
-                }
-                _ => break None,
-            }
-        };
-        let messages = std::mem::take(&mut self.messages);
-        self.tell(Note::Done(messages, ended));
-    }
-
-    /// Runs one tool; its result block.
-    fn call(&self, id: &str, name: &str, input: &Value) -> Value {
-        let path = input["path"].as_str().unwrap_or("").to_string();
-        self.tell(Note::Line(match name {
-            "list_files" => format!("{} {}", t("List files"), if path.is_empty() { "." } else { &path }),
-            "read_file" => format!("{} {path}", t("Read")),
-            "search" => format!("{} \"{}\"", t("Search"), input["text"].as_str().unwrap_or("")),
-            "write_file" => format!("{} {path}", t("Write")),
-            "edit_file" => format!("{} {path}", t("Edit")),
-            "build" => t("Build").to_string(),
-            "run_tests" => t("Run tests").to_string(),
-            "screenshot" => t("Screenshot of the program").to_string(),
-            "phai_reference" => t("Read the form file reference").to_string(),
-            other => other.to_string(),
-        }));
-        let root = self.root.clone();
-        let input = input.clone();
-        let done = |r: Result<String, String>| match r {
-            Ok(s) => json!({"type": "tool_result", "tool_use_id": id, "content": s}),
-            Err(e) => error_result(id, &e),
-        };
-        match name {
-            "list_files" => done(list_files(&root, &path)),
-            "search" => done(search(&root, input["text"].as_str().unwrap_or(""), input["path"].as_str().unwrap_or(""))),
-            "phai_reference" => done(Ok(include_str!("../../../docs/phaiform.md").to_string())),
-            "read_file" => {
-                let r = self.on_ui(move || json!(read_file(&root, &input).map_err(|e| format!("\u{1}{e}")).unwrap_or_else(|e| e)));
-                let s = r.as_str().unwrap_or("").to_string();
-                done(match s.strip_prefix('\u{1}') {
-                    Some(e) => Err(e.to_string()),
-                    None => Ok(s),
-                })
-            }
-            "write_file" | "edit_file" => {
-                if !self.act {
-                    return done(Err("Ask mode: no file is changed. Explain the change instead; the person can switch to Act to have it made.".into()));
-                }
-                let edit = name == "edit_file";
-                let pane = self.pane;
-                let r = self.on_ui(move || json!(change_file(HWND(pane as *mut _), &root, &input, edit, "Claude").map_err(|e| format!("\u{1}{e}")).unwrap_or_else(|e| e)));
-                let s = r.as_str().unwrap_or("").to_string();
-                done(match s.strip_prefix('\u{1}') {
-                    Some(e) => Err(e.to_string()),
-                    None => Ok(s),
-                })
-            }
-            "build" => {
-                self.tell(Note::Status(t("Building...").into()));
-                self.on_ui(prepare_build);
-                done(cargo(&root, &["build", "--color", "never", "--message-format", "short"], &self.cancel))
-            }
-            "run_tests" => {
-                self.tell(Note::Status(t("Running the tests...").into()));
-                self.on_ui(prepare_build);
-                let filter = input["filter"].as_str().unwrap_or("").to_string();
-                let mut args = vec!["test", "--color", "never"];
-                if !filter.is_empty() {
-                    args.push(&filter);
-                }
-                done(cargo(&root, &args, &self.cancel))
-            }
-            "screenshot" => {
-                self.tell(Note::Status(t("Building and running the program...").into()));
-                self.on_ui(prepare_build);
-                match screenshot(&root, &self.cancel) {
-                    Ok(png) => json!({"type": "tool_result", "tool_use_id": id, "content": [
-                        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": claude::base64(&png)}},
-                        {"type": "text", "text": "The program's first window as it opened."}
-                    ]}),
-                    Err(e) => error_result(id, &e),
-                }
-            }
-            other => error_result(id, &format!("There is no tool called {other}.")),
-        }
-    }
-}
-
-fn error_result(id: &str, message: &str) -> Value {
-    json!({"type": "tool_result", "tool_use_id": id, "is_error": true, "content": message})
 }
 
 /// A path the model gave, inside the project - never outside it, never into target/ or .git/
@@ -1278,114 +815,9 @@ pub fn inside(root: &Path, rel: &str, writing: bool) -> Result<PathBuf, String> 
     Ok(parts.iter().fold(root.to_path_buf(), |p, s| p.join(s)))
 }
 
-fn skipped(name: &str) -> bool {
-    matches!(name, "target" | ".git" | "node_modules" | "publish")
-}
-
-/// The project's files under `rel` ("" all), folders with a trailing `/`.
-pub fn list_files(root: &Path, rel: &str) -> Result<String, String> {
-    let start = if rel.trim().is_empty() || rel.trim() == "." { root.to_path_buf() } else { inside(root, rel, false)? };
-    let mut out = Vec::new();
-    let mut stack = vec![start.clone()];
-    while let Some(d) = stack.pop() {
-        let Ok(list) = std::fs::read_dir(&d) else { continue };
-        let mut entries: Vec<_> = list.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for e in entries.into_iter().rev() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if skipped(&name) {
-                continue;
-            }
-            let p = e.path();
-            let shown = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().replace('\\', "/");
-            if p.is_dir() {
-                out.push(format!("{shown}/"));
-                stack.push(p);
-            } else {
-                out.push(shown);
-            }
-        }
-        if out.len() > 2000 {
-            break;
-        }
-    }
-    out.sort();
-    if out.is_empty() {
-        return Ok("(nothing there)".into());
-    }
-    Ok(out.join("\n"))
-}
-
-fn texty(p: &Path) -> bool {
-    p.extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_lowercase().as_str(), "rs" | "phf" | "phaiform" | "toml" | "css" | "md" | "txt" | "json" | "html" | "js" | "sql" | "csv" | "ron" | "yaml" | "yml"))
-}
-
-/// Lines of the project's text files that have `text`, ignoring case.
-pub fn search(root: &Path, text: &str, rel: &str) -> Result<String, String> {
-    if text.trim().is_empty() {
-        return Err("Nothing to search for.".into());
-    }
-    let start = if rel.trim().is_empty() { root.to_path_buf() } else { inside(root, rel, false)? };
-    let needle = text.to_lowercase();
-    let mut out = Vec::new();
-    let mut stack = vec![start];
-    while let Some(d) = stack.pop() {
-        let Ok(list) = std::fs::read_dir(&d) else { continue };
-        for e in list.flatten() {
-            let p = e.path();
-            if skipped(&e.file_name().to_string_lossy()) {
-                continue;
-            }
-            if p.is_dir() {
-                stack.push(p);
-                continue;
-            }
-            if !texty(&p) || e.metadata().map(|m| m.len()).unwrap_or(0) > 2_000_000 {
-                continue;
-            }
-            let Ok(body) = std::fs::read_to_string(&p) else { continue };
-            let shown = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().replace('\\', "/");
-            for (i, line) in body.lines().enumerate() {
-                if line.to_lowercase().contains(&needle) {
-                    out.push(format!("{shown}:{}: {}", i + 1, line.trim_end().chars().take(240).collect::<String>()));
-                    if out.len() >= 200 {
-                        out.sort();
-                        return Ok(out.join("\n") + "\n(more not shown)");
-                    }
-                }
-            }
-        }
-    }
-    out.sort();
-    Ok(if out.is_empty() { format!("No line has \"{text}\".") } else { out.join("\n") })
-}
-
 /// A file's text as the person sees it: the open editor's, unsaved changes and all, else the disk's.
 fn current_text(path: &Path) -> Option<String> {
     studio().and_then(|s| s.open_text_of(path)).or_else(|| std::fs::read_to_string(path).ok()).map(|t| t.replace("\r\n", "\n"))
-}
-
-/// Lines of a file, numbered from 1.
-pub fn numbered(text: &str, offset: usize, limit: usize) -> String {
-    let lines: Vec<&str> = text.lines().collect();
-    let from = offset.max(1) - 1;
-    let to = (from + limit).min(lines.len());
-    let mut out: String = (from..to).map(|i| format!("{:>5}\t{}\n", i + 1, lines[i])).collect();
-    if to < lines.len() {
-        out.push_str(&format!("(lines {}-{} of {}; more with offset {})\n", from + 1, to, lines.len(), to + 1));
-    }
-    if lines.is_empty() {
-        out.push_str("(the file is empty)\n");
-    }
-    out
-}
-
-fn read_file(root: &Path, input: &Value) -> Result<String, String> {
-    let p = inside(root, input["path"].as_str().unwrap_or(""), false)?;
-    let text = current_text(&p).ok_or_else(|| format!("{} cannot be read - is it there? list_files shows what is.", input["path"].as_str().unwrap_or("")))?;
-    let offset = input["offset"].as_u64().unwrap_or(1) as usize;
-    let limit = input["limit"].as_u64().unwrap_or(1500).clamp(1, 5000) as usize;
-    Ok(numbered(&text, offset, limit))
 }
 
 /// What a write or edit makes of a file's text, or why it cannot.
@@ -1408,7 +840,7 @@ pub fn changed_text(old: Option<&str>, input: &Value, edit: bool) -> Result<Stri
 }
 
 /// A write or an edit, shown to the person and made if they accept - on the window's thread.
-fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool, who: &str) -> Result<String, String> {
+fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool) -> Result<String, String> {
     let rel = input["path"].as_str().unwrap_or("").to_string();
     let p = inside(root, &rel, true)?;
     let old = current_text(&p);
@@ -1422,7 +854,7 @@ fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool, who: &str) ->
     }
     let accept_all = state(pane).is_some_and(|s| s.accept_all);
     if !accept_all {
-        let title = if who == "Copilot" { tf("Copilot wants to change {0}", &[&rel]) } else { tf("Claude wants to change {0}", &[&rel]) };
+        let title = tf("Copilot wants to change {0}", &[&rel]);
         match review(pane, &title, &rel, old.as_deref().unwrap_or(""), &new) {
             Review::Accept => {}
             Review::AcceptAll => {
@@ -1444,89 +876,6 @@ fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool, who: &str) ->
     }
     let lines = new.lines().count();
     Ok(if old.is_none() { format!("Made {rel} ({lines} lines).") } else { format!("Changed {rel} ({lines} lines now).") })
-}
-
-/// Before cargo runs: the open files saved, the forms' code written.
-fn prepare_build() -> Value {
-    if let Some(s) = studio() {
-        s.save_all_pub();
-    }
-    Value::Null
-}
-
-/// Runs cargo in the project; what it said, cut to the end that matters.
-fn cargo(root: &Path, args: &[&str], cancel: &claude::Cancel) -> Result<String, String> {
-    use std::os::windows::process::CommandExt;
-    let exe = crate::cargo::find_cargo().ok_or("cargo was not found - is Rust installed?")?;
-    let child = std::process::Command::new(exe)
-        .args(args)
-        .current_dir(root)
-        .env("CARGO_TERM_COLOR", "never")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .creation_flags(0x0800_0000)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    let pid = child.id();
-    let out = std::thread::scope(|sc| {
-        let waiter = sc.spawn(|| child.wait_with_output());
-        while !waiter.is_finished() {
-            if cancel.stopped() {
-                let _ = std::process::Command::new("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).creation_flags(0x0800_0000).output();
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        waiter.join().ok()
-    });
-    let out = out.and_then(|r| r.ok()).ok_or("cargo did not finish")?;
-    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-    // The compiler's own lines; the list of crates it compiled says nothing.
-    let kept: Vec<&str> = text.lines().filter(|l| !l.trim_start().starts_with("Compiling ") && !l.trim_start().starts_with("Downloaded ") && !l.trim_start().starts_with("Downloading ")).collect();
-    let tail: Vec<&str> = kept.iter().rev().take(200).rev().copied().collect();
-    let said = tail.join("\n");
-    if out.status.success() {
-        Ok(format!("cargo {} succeeded.\n{said}", args[0]))
-    } else {
-        Err(format!("cargo {} failed.\n{said}", args[0]))
-    }
-}
-
-/// The project's package name from its Cargo.toml.
-fn package_name(root: &Path) -> Option<String> {
-    let toml = std::fs::read_to_string(root.join("Cargo.toml")).ok()?;
-    let mut in_package = false;
-    for line in toml.lines() {
-        let l = line.trim();
-        if l.starts_with('[') {
-            in_package = l == "[package]";
-        } else if in_package {
-            if let Some(v) = l.strip_prefix("name").map(str::trim).and_then(|r| r.strip_prefix('=')) {
-                return Some(v.trim().trim_matches('"').to_string());
-            }
-        }
-    }
-    None
-}
-
-/// Builds and runs the program, photographed as its first window opens (`PHAI_SHOT`).
-fn screenshot(root: &Path, cancel: &claude::Cancel) -> Result<Vec<u8>, String> {
-    use std::os::windows::process::CommandExt;
-    cargo(root, &["build", "--color", "never", "--message-format", "short"], cancel)?;
-    let name = package_name(root).ok_or("Cargo.toml has no package name")?;
-    let exe = root.join("target").join("debug").join(format!("{name}.exe"));
-    let shot = std::env::temp_dir().join(format!("phai-ai-shot-{}.png", std::process::id()));
-    let _ = std::fs::remove_file(&shot);
-    let mut child = std::process::Command::new(&exe).current_dir(root).env("PHAI_SHOT", &shot).creation_flags(0x0800_0000).spawn().map_err(|e| format!("{} cannot run: {e}", exe.display()))?;
-    for _ in 0..300 {
-        if child.try_wait().ok().flatten().is_some() || cancel.stopped() {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    let _ = child.kill();
-    let png = std::fs::read(&shot).map_err(|_| "The program did not open a window to photograph within 30 seconds.".to_string())?;
-    let _ = std::fs::remove_file(&shot);
-    Ok(png)
 }
 
 /// What the person said to a change.
@@ -1683,31 +1032,13 @@ mod tests {
     }
 
     #[test]
-    fn files_are_numbered_listed_and_searched() {
-        assert_eq!(numbered("a\nb\nc", 2, 1), "    2\tb\n(lines 2-2 of 3; more with offset 3)\n");
-        assert_eq!(numbered("a\nb", 1, 10), "    1\ta\n    2\tb\n");
-        let dir = std::env::temp_dir().join(format!("phai-ai-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::create_dir_all(dir.join("target")).unwrap();
-        std::fs::write(dir.join("src").join("main.rs"), "fn main() {\n    println!(\"Hello\");\n}\n").unwrap();
-        std::fs::write(dir.join("target").join("junk.rs"), "Hello").unwrap();
-        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"shop\"\n").unwrap();
-        assert_eq!(list_files(&dir, "").unwrap(), "Cargo.toml\nsrc/\nsrc/main.rs");
-        assert_eq!(search(&dir, "hello", "").unwrap(), "src/main.rs:2:     println!(\"Hello\");");
-        assert_eq!(package_name(&dir).as_deref(), Some("shop"));
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_tools_are_well_formed() {
-        let tools = tools();
-        let names: Vec<&str> = tools.as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["list_files", "read_file", "search", "write_file", "edit_file", "build", "run_tests", "screenshot", "phai_reference"]);
-        for t in tools.as_array().unwrap() {
-            assert_eq!(t["input_schema"]["type"], "object");
-            assert!(t["description"].as_str().unwrap().len() > 30);
-        }
-        assert!(system_prompt(Path::new(r"C:\x\shop")).contains("\"shop\""));
+    fn the_agent_is_told_where_it_is_and_its_errors_said_plainly() {
+        let c = copilot_context(Path::new(r"C:\x\shop"));
+        assert!(c.contains("\"shop\"") && c.contains(".phf") && c.contains("_ui.rs"));
+        assert_eq!(plain_agent_error("Not authorized: token expired"), t("Sign in to GitHub Copilot first: Sign in... below, or Copilot on the status bar."));
+        assert_eq!(plain_agent_error("You have exceeded your monthly quota"), t("This month's Copilot use is spent - it comes back next month, or with a paid plan."));
+        assert_eq!(plain_agent_error("something else"), "something else");
+        assert!(lsp_same_start(Path::new(r"c:\Work\Shop\src\a.rs"), Path::new(r"C:\work\shop")));
+        assert!(!lsp_same_start(Path::new(r"C:\other\a.rs"), Path::new(r"C:\work\shop")));
     }
 }

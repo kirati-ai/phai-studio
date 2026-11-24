@@ -932,7 +932,7 @@ mod tests {
             let dir = project("agent", "fn main() {\n}\n");
             let ask = if act { "act:change main.rs" } else { "change main.rs" };
             let shot = dir.join("pane.png");
-            let _ = studio(&dir).env("PHAI_AI_PROVIDER", "copilot").env("PHAI_AI_ASK", ask).env("PHAI_AI_REVIEW", "accept").env("PHAI_SHOT", &shot).env("PHAI_SHOT_DELAY", "12000").status().unwrap();
+            let _ = studio(&dir).env("PHAI_AI_ASK", ask).env("PHAI_AI_REVIEW", "accept").env("PHAI_SHOT", &shot).env("PHAI_SHOT_DELAY", "12000").status().unwrap();
             let text = std::fs::read_to_string(dir.join("src").join("main.rs")).unwrap();
             assert_eq!(text.starts_with("// Changed by Copilot\n"), changed, "act {act}: {text}");
             assert!(shot.is_file());

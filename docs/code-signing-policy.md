@@ -52,10 +52,14 @@ What Phai Studio sends, and only when the person asks for it:
 - **Code Coverage** installs Rust's `llvm-tools` with rustup, after asking.
 - **Help > Check for Updates** (and the button in About) asks GitHub for the newest release, and
   downloads its setup from GitHub Releases when the person says yes.
-- **The AI assistant** (View > AI Assistant) sends what the person writes to it, with the parts of
-  the open project Claude asks to read (files, search results, build output, a picture of the
-  program's window), to Anthropic's API - only when the person has given their own API key and
-  presses Send. The key is kept in Windows' Credential Manager, not in a file of Phai Studio's.
+- **GitHub Copilot** is off until the person turns it on (Tools > Options > GitHub Copilot). Then
+  Phai Studio downloads GitHub's Copilot Language Server from GitHub Releases once, after asking,
+  checked against the SHA-256 GitHub gives for it, and signs in with GitHub's device flow (the
+  sign-in is kept by GitHub's server, not in a file of Phai Studio's). While it is on, that server
+  sends to GitHub's Copilot service, under the person's own GitHub account and GitHub's terms: the
+  open files (for suggestions as they type), what they write in the AI Assistant (View > AI
+  Assistant), and the parts of the project its agent asks to read. GitHub's server may send its own
+  usage data to GitHub under those terms; Phai Studio adds none.
 - Links in the guide, the start window and About open in the browser when clicked.
 
 Phai Studio collects no usage data and has no telemetry. rust-analyzer, which Phai Studio uses for

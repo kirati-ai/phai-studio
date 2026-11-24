@@ -58,7 +58,6 @@ mod dbgwin;
 mod vsextra;
 mod update;
 mod about;
-mod claude;
 mod ai;
 mod acp;
 mod copilot;
