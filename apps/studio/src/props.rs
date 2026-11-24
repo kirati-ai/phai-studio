@@ -1194,6 +1194,11 @@ impl Props {
             let rule = phai_ui::theme::style("group", State::default()).border_or(Color::rgb(0xe5, 0xe5, 0xe5));
             let tint = phai_ui::theme::style("list", State { selected: true, ..Default::default() }).background_or(Color::rgb(0xe7, 0xf3, 0xef));
             let head_bg = phai_ui::theme::style("tabs", State::default()).background_or(bg);
+            // The margin and the headings a shade off the page when the theme gives them its own
+            // colour, so where the names begin shows; and lines between the cells dark enough to
+            // follow across, in light and dark alike.
+            let head_bg = if head_bg == bg { bg.mix(win::window_text(), 0.05) } else { head_bg };
+            let cell_line = bg.mix(win::window_text(), 0.18);
             let muted = phai_ui::theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
             let split = self.split();
             let pad = win::px(h, 8);
@@ -1263,10 +1268,15 @@ impl Props {
                             _ => draw(dc, &p.value, &mut vr, win::window_text(), Gdi::DT_LEFT),
                         }
                         Gdi::SelectObject(dc, old);
-                        win::fill(dc, &RECT { left: split, right: split + 1, ..lr }, rule);
+                        win::fill(dc, &RECT { left: split, right: split + 1, ..lr }, cell_line);
                     }
                 }
-                win::fill(dc, &RECT { left: gutter, top: lr.bottom - 1, ..lr }, rule);
+                win::fill(dc, &RECT { left: gutter, top: lr.bottom - 1, ..lr }, cell_line);
+            }
+            // The margin's edge, and a frame round the whole grid.
+            win::fill(dc, &RECT { left: gutter - 1, right: gutter, ..r }, cell_line);
+            for edge in [RECT { bottom: r.top + 1, ..r }, RECT { top: r.bottom - 1, ..r }, RECT { right: r.left + 1, ..r }, RECT { left: r.right - 1, ..r }] {
+                win::fill(dc, &edge, cell_line);
             }
             let _ = Gdi::BitBlt(screen, 0, 0, r.right, r.bottom, Some(dc), 0, 0, Gdi::SRCCOPY);
             Gdi::SelectObject(dc, old_bmp);

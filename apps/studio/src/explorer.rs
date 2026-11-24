@@ -406,7 +406,8 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             let _ = wm::GetClientRect(h, &mut r);
             let base = theme::style("tabs", State::default());
             win::fill(dc, &r, base.background_or(win::window_background()));
-            let rule = base.border_or(Color::rgb(229, 229, 229));
+            // Lines dark enough to see where each tab begins and ends, as the Properties grid's.
+            let rule = win::window_background().mix(win::window_text(), 0.18);
             win::fill(dc, &RECT { bottom: r.top + 1, ..r }, rule);
             let accent = theme::current().var_color("--accent").unwrap_or(Color::rgb(0x12, 0x85, 0x5f));
             let muted = theme::current().var_color("--muted").unwrap_or(Color::rgb(0x5f, 0x5f, 0x5f));
@@ -422,6 +423,9 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                         win::fill(dc, &tr, win::window_background());
                         win::fill(dc, &RECT { top: tr.bottom - win::px(h, 2), ..tr }, accent);
                     }
+                    // A line down each side of every tab.
+                    win::fill(dc, &RECT { right: tr.left + 1, ..tr }, rule);
+                    win::fill(dc, &RECT { left: tr.right - 1, ..tr }, rule);
                     Gdi::SetTextColor(dc, COLORREF(if on { accent } else { muted }.colorref()));
                     let mut text: Vec<u16> = tab_name(k).encode_utf16().collect();
                     phai_ui::win::draw_text_w(dc, &mut text, &mut tr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);
