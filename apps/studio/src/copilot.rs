@@ -1,5 +1,6 @@
 //! GitHub Copilot, through GitHub's own Copilot Language Server: grey suggestions as you type
-//! (`textDocument/inlineCompletion`) and the sign-in to GitHub.
+//! (`textDocument/inlineCompletion`), the sign-in to GitHub, and the models the account offers -
+//! the AI Assistant's Copilot side talks to the same server's agent (ACP, see `acp.rs`).
 //!
 //! The server is GitHub's (MIT, from github.com/github/copilot-language-server-release); its use
 //! of Copilot is under GitHub's terms for the person's own account. Phai Studio does not ship it:
@@ -89,9 +90,10 @@ fn node() -> Option<PathBuf> {
     std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join("node.exe")).find(|p| p.is_file())
 }
 
-/// The command that runs the server as a language server (`--stdio`), in `dir`.
-pub fn command(l: &Launch, dir: &Path) -> Command {
-    let mode = "--stdio";
+/// The command that runs the server, its language server (`acp` false, `--stdio`) or its agent
+/// (`--acp`), in `dir`.
+pub fn command(l: &Launch, acp: bool, dir: &Path) -> Command {
+    let mode = if acp { "--acp" } else { "--stdio" };
     let mut c = match l {
         Launch::Exe(p) => {
             let mut c = Command::new(p);
@@ -236,6 +238,7 @@ enum Ask {
     FinishSignIn,
     SignOut,
     Inline { editor: isize, version: i64, at: (u32, u32) },
+    Models(isize),
     Other,
 }
 
@@ -251,6 +254,8 @@ pub enum Said {
     Suggestion { editor: HWND, version: i64, at: (u32, u32), item: Value },
     /// The device code to show, with what finishes the sign-in once it is entered.
     SignInCode { code: String, uri: String },
+    /// The models for a pane of the AI Assistant: (id, name).
+    Models { pane: HWND, list: Vec<(String, String)> },
 }
 
 /// The Copilot server as Phai Studio runs it.
@@ -291,7 +296,7 @@ pub fn language_of(path: &Path) -> &'static str {
 impl Copilot {
     /// Starts the server for the folder `root`; what it says goes to `window`.
     pub fn start(launch: &Launch, root: &Path, window: HWND) -> Option<Copilot> {
-        let lsp = Lsp::spawn(command(launch, root), root, window, WM_COPILOT)?;
+        let lsp = Lsp::spawn(command(launch, false, root), root, window, WM_COPILOT)?;
         let mut c = Copilot { lsp, asked: HashMap::new(), state: State::Starting, ready: false, plan: String::new(), opened: HashMap::new(), focused: None, last_inline: 0, finish: None };
         let version = env!("CARGO_PKG_VERSION");
         let id = c.lsp.request(
@@ -349,6 +354,11 @@ impl Copilot {
 
     pub fn sign_out(&mut self) {
         self.ask("signOut", json!({}), Ask::SignOut);
+    }
+
+    /// The models the account offers for chat and the agent.
+    pub fn models(&mut self, pane: HWND) {
+        self.ask("copilot/models", json!({}), Ask::Models(pane.0 as isize));
     }
 
     pub fn is_open(&self, path: &Path) -> bool {
@@ -585,6 +595,7 @@ impl Copilot {
                     None => Said::Nothing,
                 }
             }
+            Ask::Models(pane) => Said::Models { pane: HWND(pane as *mut _), list: if error.is_some() { vec![] } else { chat_models(&result) } },
             Ask::Other => Said::Nothing,
         }
     }
@@ -598,6 +609,25 @@ pub fn item_parts(item: &Value, at: (u32, u32)) -> ((u32, u32), (u32, u32), Stri
         Some(r) if r.is_object() => (pos(&r["start"]), pos(&r["end"]), text),
         _ => (at, at, text),
     }
+}
+
+/// The models of a `copilot/models` answer that chat and the agent may use: (id, name), the
+/// account's default first.
+pub fn chat_models(result: &Value) -> Vec<(String, String)> {
+    let mut v: Vec<(bool, String, String)> = result
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|m| m["scopes"].as_array().is_some_and(|s| s.iter().any(|x| x == "agent-panel" || x == "chat-panel")))
+        .filter_map(|m| {
+            let id = m["id"].as_str()?.to_string();
+            let name = m["modelName"].as_str().or(m["name"].as_str()).unwrap_or(&id).to_string();
+            Some((!(m["isChatDefault"].as_bool().unwrap_or(false) || id == "auto"), id, name))
+        })
+        .collect();
+    v.sort_by_key(|(later, _, _)| *later);
+    v.dedup_by(|a, b| a.1 == b.1);
+    v.into_iter().map(|(_, id, name)| (id, name)).collect()
 }
 
 /// What the server said went wrong, in a few words a person can act on.
@@ -631,15 +661,20 @@ pub fn open_page(uri: &str) -> bool {
 
 // --- a stand-in server, for tests --------------------------------------------------------------
 
-/// `phai-studio --fake-copilot --stdio`: a server that speaks as Copilot's does, with no GitHub
-/// behind it - signed in as `tester`, a suggestion for every ask.
+/// `phai-studio --fake-copilot --stdio|--acp`: a server that speaks as Copilot's does, with no
+/// GitHub behind it - signed in as `tester`, a suggestion for every ask, and an agent that answers
+/// in pieces and changes the first `.rs` file it is asked about (after asking, as Copilot's does).
 pub mod fake {
     use std::io::{BufRead, BufReader, Write};
 
     use serde_json::{json, Value};
 
-    pub fn serve() -> ! {
-        lsp_serve()
+    pub fn serve(acp: bool) -> ! {
+        if acp {
+            acp_serve()
+        } else {
+            lsp_serve()
+        }
     }
 
     fn read_lsp(r: &mut impl BufRead) -> Option<Value> {
@@ -699,6 +734,13 @@ pub mod fake {
                         answer(Value::Null)
                     }
                 }
+                "copilot/models" => answer(json!([
+                    {"id": "gpt-41-copilot", "modelName": "GPT-4.1 Copilot", "scopes": ["completion"]},
+                    {"id": "auto", "modelName": "Auto", "scopes": ["inline", "chat-panel", "agent-panel"]},
+                    {"id": "gpt-5", "modelName": "GPT-5", "scopes": ["chat-panel", "agent-panel"]},
+                    {"id": "claude-sonnet-4.5", "modelName": "Claude Sonnet 4.5", "scopes": ["chat-panel", "agent-panel"]},
+                    {"id": "gemini-2.5-pro", "modelName": "Gemini 2.5 Pro", "scopes": ["chat-panel", "agent-panel"]}
+                ])),
                 "textDocument/didOpen" => {
                     texts.insert(m["params"]["textDocument"]["uri"].as_str().unwrap_or("").to_string(), m["params"]["textDocument"]["text"].as_str().unwrap_or("").to_string());
                 }
@@ -731,6 +773,84 @@ pub mod fake {
         std::process::exit(0)
     }
 
+    fn write_acp(v: &Value) {
+        let mut o = std::io::stdout().lock();
+        let _ = writeln!(o, "{v}");
+        let _ = o.flush();
+    }
+
+    fn acp_serve() -> ! {
+        let mut lines = BufReader::new(std::io::stdin().lock()).lines();
+        let mut next = 1000;
+        let mut cwd = String::new();
+        let mut model = "auto".to_string();
+        while let Some(Ok(line)) = lines.next() {
+            let Ok(m) = serde_json::from_str::<Value>(&line) else { continue };
+            let method = m["method"].as_str().unwrap_or("").to_string();
+            let id = m.get("id").cloned().unwrap_or(Value::Null);
+            let answer = |result: Value| write_acp(&json!({"jsonrpc": "2.0", "id": id, "result": result}));
+            match method.as_str() {
+                "initialize" => answer(json!({"protocolVersion": 1, "agentCapabilities": {"loadSession": true}, "agentInfo": {"name": "fake copilot", "version": "0"}, "authMethods": []})),
+                "session/new" => {
+                    cwd = m["params"]["cwd"].as_str().unwrap_or("").to_string();
+                    answer(json!({"sessionId": "s1", "modes": {"availableModes": [], "currentModeId": "agent"}}))
+                }
+                "session/set_model" => {
+                    model = m["params"]["modelId"].as_str().unwrap_or("auto").to_string();
+                    answer(json!({}))
+                }
+                "session/prompt" => {
+                    let sid = m["params"]["sessionId"].clone();
+                    let words: String = m["params"]["prompt"].as_array().into_iter().flatten().filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join(" ");
+                    let update = |u: Value| write_acp(&json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid, "update": u}}));
+                    for piece in [format!("({model}) "), "I will ".into(), "look at ".into(), "the code.".into()] {
+                        update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": piece}}));
+                    }
+                    // A file to change: the main.rs under the folder it works in.
+                    let file = std::path::Path::new(&cwd).join("src").join("main.rs");
+                    let wants_edit = words.to_lowercase().contains("change") || words.to_lowercase().contains("แก้");
+                    if wants_edit && file.is_file() {
+                        let old = std::fs::read_to_string(&file).unwrap_or_default().replace("\r\n", "\n");
+                        let first = old.lines().next().unwrap_or("").to_string();
+                        let new_first = format!("// Changed by Copilot\n{first}");
+                        let new = old.replacen(&first, &new_first, 1);
+                        let diff = format!("\ndiff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,2 @@\n+// Changed by Copilot\n {first}\n");
+                        let path = file.to_string_lossy().to_string();
+                        update(json!({"sessionUpdate": "tool_call", "toolCallId": "c1", "title": "apply_patch", "kind": "edit", "status": "pending"}));
+                        next += 1;
+                        write_acp(&json!({"jsonrpc": "2.0", "id": next, "method": "session/request_permission", "params": {"sessionId": sid, "toolCall": {"toolCallId": "c1", "kind": "edit", "title": "Update file", "locations": [{"path": path}], "rawInput": {"fileName": path, "diff": diff}},
+                            "options": [{"optionId": "allow_once", "name": "Allow once", "kind": "allow_once"}, {"optionId": "allow_always", "name": "Always allow", "kind": "allow_always"}, {"optionId": "reject_once", "name": "Deny", "kind": "reject_once"}]}}));
+                        // Its answer.
+                        let mut allowed = false;
+                        for l in lines.by_ref() {
+                            let Ok(l) = l else { break };
+                            let Ok(a) = serde_json::from_str::<Value>(&l) else { continue };
+                            if a["id"] == json!(next) && a.get("method").is_none() {
+                                allowed = a["result"]["outcome"]["optionId"].as_str().is_some_and(|o| o.starts_with("allow"));
+                                break;
+                            }
+                        }
+                        if allowed {
+                            let _ = std::fs::write(&file, &new);
+                            update(json!({"sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "completed", "content": [{"type": "diff", "path": path, "oldText": old, "newText": new}]}));
+                            update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "\nI added a line at the top of src/main.rs."}}));
+                        } else {
+                            update(json!({"sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "failed"}));
+                            update(json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "\nThe change was declined."}}));
+                        }
+                    }
+                    answer(json!({"stopReason": "end_turn"}))
+                }
+                "session/cancel" => {}
+                _ => {
+                    if !id.is_null() {
+                        answer(Value::Null)
+                    }
+                }
+            }
+        }
+        std::process::exit(0)
+    }
 }
 
 #[cfg(test)]
@@ -803,6 +923,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The AI Assistant with Copilot chosen and the stand-in agent: in Act mode its change is made
+    /// (accepted), in Ask mode not.
+    #[test]
+    #[ignore]
+    fn copilot_s_agent_changes_a_file_only_in_act_mode() {
+        for (act, changed) in [(true, true), (false, false)] {
+            let dir = project("agent", "fn main() {\n}\n");
+            let ask = if act { "act:change main.rs" } else { "change main.rs" };
+            let shot = dir.join("pane.png");
+            let _ = studio(&dir).env("PHAI_AI_ASK", ask).env("PHAI_AI_REVIEW", "accept").env("PHAI_SHOT", &shot).env("PHAI_SHOT_DELAY", "12000").status().unwrap();
+            let text = std::fs::read_to_string(dir.join("src").join("main.rs")).unwrap();
+            assert_eq!(text.starts_with("// Changed by Copilot\n"), changed, "act {act}: {text}");
+            assert!(shot.is_file());
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
     #[test]
     fn the_newest_download_is_run() {
         let dir = std::env::temp_dir().join(format!("phai-copilot-{}", std::process::id()));
@@ -817,7 +954,13 @@ mod tests {
     }
 
     #[test]
-    fn suggestions_are_read() {
+    fn models_and_suggestions_are_read() {
+        let m = json!([
+            {"id": "gpt-41-copilot", "modelName": "GPT-4.1 Copilot", "scopes": ["completion"]},
+            {"id": "gpt-5", "modelName": "GPT-5", "scopes": ["chat-panel", "agent-panel"]},
+            {"id": "auto", "modelName": "Auto", "scopes": ["inline", "chat-panel", "agent-panel"]}
+        ]);
+        assert_eq!(chat_models(&m), vec![("auto".to_string(), "Auto".to_string()), ("gpt-5".to_string(), "GPT-5".to_string())]);
         let item = json!({"insertText": "    b", "range": {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 4}}});
         assert_eq!(item_parts(&item, (2, 4)), ((2, 0), (2, 4), "    b".to_string()));
         assert_eq!(item_parts(&json!({"insertText": "x"}), (1, 3)), ((1, 3), (1, 3), "x".to_string()));

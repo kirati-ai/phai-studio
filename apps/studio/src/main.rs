@@ -58,6 +58,8 @@ mod dbgwin;
 mod vsextra;
 mod update;
 mod about;
+mod ai;
+mod acp;
 mod copilot;
 
 use std::path::{Path, PathBuf};
@@ -221,6 +223,7 @@ const ID_ADD_FORM: i32 = 291;
 /// Project > Add User Control: a control of the project's own, made as a form.
 const ID_ADD_USER_CONTROL: i32 = 293;
 const ID_IMPORT_WINFORMS: i32 = 2903;
+const ID_VIEW_AI: i32 = 2904;
 const ID_USER_SNIPPETS: i32 = 2905;
 /// Project > Add Report: a printed report of the project's, designed in the Report Designer.
 const ID_ADD_REPORT: i32 = 292;
@@ -607,6 +610,10 @@ pub struct Studio {
     copilot_item: Option<(HWND, serde_json::Value)>,
     /// Copilot's server being downloaded.
     copilot_getting: bool,
+    /// AI Assistant panes waiting for Copilot's models.
+    copilot_models_wanted: Vec<HWND>,
+    /// The AI Assistant's pane.
+    ai_pane: HWND,
     /// Requests sent to it, by id: which editor asked, and what for.
     asked: std::collections::HashMap<i64, (HWND, Ask)>,
     pub canvas: Option<Canvas>,
@@ -1363,6 +1370,7 @@ fn build_menu() -> HMENU {
         add(view, ID_VIEW_OUTPUT, t("Errors and output"), "");
         add(view, ID_VIEW_SERVERS, t("Server Explorer"), "Ctrl+Alt+S");
         add(view, ID_VIEW_OUTLINE, t("Document Outline"), "Ctrl+Alt+T");
+        add(view, ID_VIEW_AI, t("AI Assistant"), "Ctrl+Alt+A");
         add(view, ID_VIEW_TERMINAL, t("Terminal"), "Ctrl+`");
         // Every tab of the panel below, each one closable on its own, opened again from here.
         let other = wm::CreatePopupMenu().unwrap_or_default();
@@ -1382,6 +1390,9 @@ fn build_menu() -> HMENU {
         }
         if studio().is_some_and(|s| explorer::outline_shown(s.side)) {
             wm::CheckMenuItem(view, ID_VIEW_OUTLINE as u32, wm::MF_CHECKED.0);
+        }
+        if studio().is_some_and(|s| explorer::ai_shown(s.side)) {
+            wm::CheckMenuItem(view, ID_VIEW_AI as u32, wm::MF_CHECKED.0);
         }
         if let Some(s) = studio() {
             let (e, p) = explorer::side_panes(s.side);
@@ -3209,11 +3220,13 @@ impl Studio {
                 if copilot::find().is_none() {
                     self.copilot_get_server(true);
                 }
-                    }
+                ai::copilot_changed(self.ai_pane);
+            }
             OFF => {
                 remember_setting("copilot", "0");
                 self.copilot_stop();
-                    }
+                ai::copilot_changed(self.ai_pane);
+            }
             GET => self.copilot_get_server(false),
             SIGN_IN => self.copilot_sign_in(),
             SIGN_OUT => {
@@ -3242,6 +3255,20 @@ impl Studio {
             Some(c) if c.ready => c.sign_in(),
             Some(_) => self.say_status(t("Copilot is still starting - try again in a moment.")),
             None => self.copilot_get_server(true),
+        }
+    }
+
+    /// The AI Assistant wants Copilot's models for its model box.
+    pub fn copilot_models_for(&mut self, pane: HWND) {
+        self.copilot_start();
+        match self.copilot.as_mut() {
+            Some(c) if c.ready => c.models(pane),
+            Some(_) => {
+                if !self.copilot_models_wanted.contains(&pane) {
+                    self.copilot_models_wanted.push(pane);
+                }
+            }
+            None => ai::copilot_models(pane, vec![], Some(t("GitHub Copilot's server is not here yet - turn Copilot on in Tools > Options to get it."))),
         }
     }
 
@@ -3289,7 +3316,8 @@ impl Studio {
                     self.copilot_start();
                 }
             }
-                return;
+            ai::copilot_changed(self.ai_pane);
+            return;
         }
         let Some(c) = self.copilot.as_mut() else { return };
         match c.message(msg) {
@@ -3306,7 +3334,15 @@ impl Studio {
             }
             copilot::Said::Status => {
                 self.copilot_status();
+                ai::copilot_changed(self.ai_pane);
+                if let Some(c) = self.copilot.as_mut() {
+                    if c.ready {
+                        for pane in std::mem::take(&mut self.copilot_models_wanted) {
+                            c.models(pane);
+                        }
                     }
+                }
+            }
             copilot::Said::Suggestion { editor, version, at, item } => {
                 // Still where it was asked: the same file, unchanged, the caret not moved.
                 if Some(editor) != self.doc.code || phai_editor::view::version(editor) != version || phai_editor::view::caret_lsp(editor) != at || !phai_editor::view::ghost_place(editor) {
@@ -3333,6 +3369,10 @@ impl Studio {
                     }
                 }
                 self.copilot_status();
+            }
+            copilot::Said::Models { pane, list } => {
+                let none = list.is_empty();
+                ai::copilot_models(pane, list, none.then(|| t("Copilot offered no models - is the account signed in?")));
             }
         }
     }
@@ -6004,6 +6044,7 @@ impl Studio {
             self.copilot_stop();
         }
         self.copilot_status();
+        ai::copilot_changed(self.ai_pane);
         if v.blame != self.blame_on {
             self.blame_on = v.blame;
             self.refresh_blame();
@@ -7615,6 +7656,73 @@ impl Studio {
     }
 
     /// File > Save all: every tab with changes, the one in front last shown again.
+    /// Save All, for the AI assistant before it builds.
+    pub fn save_all_pub(&mut self) {
+        self.save_all();
+    }
+
+    /// The text of a file as it is open in an editor here, unsaved changes and all.
+    pub fn open_text_of(&self, path: &Path) -> Option<String> {
+        if let Some(h) = self.editor_of(path) {
+            return Some(phai_editor::view::text(h));
+        }
+        // A form changed in the designer and not saved yet: as the designer has it.
+        let same = |p: &Option<PathBuf>| p.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+        if same(&self.doc.path) && self.doc.code.is_none() && self.doc.dirty {
+            return Some(self.doc.form.to_toml());
+        }
+        self.tabs.iter().find(|t| same(&t.doc.path) && t.doc.code.is_none() && t.doc.dirty).map(|t| t.doc.form.to_toml())
+    }
+
+    /// A file the AI assistant wrote: its open editor shows the new text, an open form is read
+    /// again, a form's generated code is written - and a new form gets its own code file and its
+    /// place in main.rs, as Add Form gives it.
+    pub fn file_changed_by_assistant(&mut self, path: &Path, text: &str) {
+        if let Some(h) = self.editor_of(path) {
+            if phai_editor::view::text(h).replace("\r\n", "\n") != text {
+                phai_editor::view::replace_whole(h, text);
+            }
+        }
+        if phai_form::is_form(path) {
+            if let Ok(f) = FormFile::parse(text) {
+                let same = |p: &Option<PathBuf>| p.as_deref().is_some_and(|q| phai_editor::lsp::same_path(q, path));
+                // The change was made to the form as it was here, unsaved changes and all, and the
+                // person accepted it: loaded without asking, one step for Undo to take back.
+                if let Ok(stamp) = std::fs::metadata(path).and_then(|m| m.modified()) {
+                    FORMS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(std::collections::HashMap::new).insert(path.to_path_buf(), stamp);
+                }
+                if same(&self.doc.path) && self.doc.code.is_none() {
+                    if f != self.doc.form {
+                        self.edit(|form| *form = f.clone());
+                    }
+                    self.doc.dirty = false;
+                    self.say_title();
+                    self.refresh_tabs();
+                    self.rebuild();
+                    self.refresh_props();
+                } else if let Some(t) = self.tabs.iter_mut().find(|t| same(&t.doc.path) && t.doc.code.is_none()) {
+                    t.doc.form = f.clone();
+                    t.doc.dirty = false;
+                }
+                let file = snake(&f.form.name);
+                let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+                let opts = theme_options(path, f.form.theme.as_deref());
+                let _ = std::fs::write(dir.join(format!("{file}_ui.rs")), codegen::generate(&f, &opts));
+                let user = dir.join(format!("{file}.rs"));
+                if !user.exists() {
+                    let _ = std::fs::write(&user, codegen::user_stub(&f));
+                    let main_rs = dir.join("main.rs");
+                    if let Ok(m) = std::fs::read_to_string(&main_rs) {
+                        let _ = std::fs::write(&main_rs, declare_form(&m, &f.form.name));
+                    }
+                }
+            }
+        }
+        if let Some(e) = self.explorer.as_mut() {
+            e.show_project_of(Some(path));
+        }
+    }
+
     fn save_all(&mut self) {
         // Nothing unsaved: nothing to do - the tabs are left as they are.
         if !self.doc.dirty && !self.tabs.iter().enumerate().any(|(i, t)| i != self.active && t.doc.dirty) {
@@ -8879,6 +8987,15 @@ impl Studio {
                     win::message(Some(self.hwnd), t("There is no folder for Phai Studio's settings."), t("Code Snippets"), wm::MB_ICONWARNING);
                 }
             },
+            ID_VIEW_AI => {
+                let on = !explorer::ai_shown(self.side);
+                if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
+                    self.show_pane(Pane::Explorer, true);
+                }
+                explorer::show_ai(self.side, on);
+                self.refresh_side();
+                self.rebuild_menu();
+            }
             ID_VIEW_OUTLINE => {
                 let on = !explorer::outline_shown(self.side);
                 if on && !explorer::side_panes(self.side).0 && !explorer::side_panes(self.side).1 {
@@ -9441,20 +9558,13 @@ fn copilot_on() -> bool {
     std::env::var("PHAI_COPILOT").ok().or_else(|| setting("copilot")).as_deref() == Some("1")
 }
 
+pub fn copilot_on_pub() -> bool {
+    copilot_on()
+}
+
 fn setting(name: &str) -> Option<String> {
     let text = std::fs::read_to_string(settings_dir()?.join("settings.txt")).ok()?;
     text.lines().find_map(|l| l.strip_prefix(&format!("{name}=")).map(str::to_string))
-}
-
-/// Settings no longer used taken out of `settings.txt` - the AI Assistant pane's, now it is gone.
-fn forget_old_settings() {
-    const OLD: [&str; 5] = ["ai_mode", "ai_model", "ai_provider", "copilot_model", "claude_model"];
-    let Some(path) = settings_dir().map(|d| d.join("settings.txt")) else { return };
-    let Ok(text) = std::fs::read_to_string(&path) else { return };
-    let kept: Vec<&str> = text.lines().filter(|l| !OLD.iter().any(|k| l.starts_with(&format!("{k}=")))).collect();
-    if kept.len() != text.lines().count() {
-        let _ = std::fs::write(&path, kept.join("\n"));
-    }
 }
 
 fn remember_setting(name: &str, value: &str) {
@@ -10164,6 +10274,7 @@ fn shortcut(msg: &wm::MSG) -> Option<i32> {
             0x53 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_SERVERS),
             0x47 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_GIT_CHANGES),
             0x54 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_OUTLINE),
+            0x41 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_VIEW_AI),
             0x49 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_IMMEDIATE),
             0x71 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_DIAG_TOOLS),
             0x50 if ctrl && unsafe { km::GetKeyState(0x12) } < 0 => return Some(ID_ATTACH),
@@ -10309,9 +10420,9 @@ fn main() {
     #[cfg(debug_assertions)]
     report_crashes();
     let args: Vec<String> = std::env::args().collect();
-    // `--fake-copilot --stdio`: standing in for GitHub Copilot's server, for tests.
+    // `--fake-copilot --stdio|--acp`: standing in for GitHub Copilot's server, for tests.
     if args.get(1).map(String::as_str) == Some("--fake-copilot") {
-        copilot::fake::serve();
+        copilot::fake::serve(args.get(2).map(String::as_str) == Some("--acp"));
     }
     words::add(text::THAI);
     phai_form::live::set_translate(false);
@@ -10319,7 +10430,6 @@ fn main() {
         phai_editor::view::set_font_size(pt);
     }
     // The look and language Tools > Options chose; `--thai` and `--dark` say so for a test.
-    forget_old_settings();
     let chosen = options::Values::load(setting);
     phai_editor::prefs::set(chosen.editor());
     apply_view_options();
@@ -10419,6 +10529,8 @@ fn main() {
             copilot: None,
             copilot_item: None,
             copilot_getting: false,
+            copilot_models_wanted: vec![],
+            ai_pane: HWND::default(),
             asked: std::collections::HashMap::new(),
             canvas: None,
             side: HWND::default(),
@@ -10516,7 +10628,9 @@ fn main() {
         let props = Props::new(side, ID_PROPS, font);
         let servers = servers::Servers::new(side, font);
         let outline = outline::Outline::new(side, font);
-        explorer::set_side_parts(side, &explorer, props.hwnd, servers.tree, outline.tree, font);
+        let ai = ai::create(side, font);
+        s.ai_pane = ai;
+        explorer::set_side_parts(side, &explorer, props.hwnd, servers.tree, outline.tree, ai, font);
         s.copilot_status();
         if copilot_on() {
             s.copilot_start();
@@ -11324,6 +11438,13 @@ fn main() {
             // mouse elsewhere must not reach it. Tests send theirs straight to the window, past this queue.
             if quiet && ((wm::WM_KEYFIRST..=wm::WM_KEYLAST).contains(&msg.message) || (wm::WM_MOUSEFIRST..=wm::WM_MOUSELAST).contains(&msg.message)) {
                 continue;
+            }
+            // Ctrl+Enter in the AI assistant's box sends it.
+            if msg.message == wm::WM_KEYDOWN {
+                if let Some(pane) = ai::is_send_key(km::GetFocus(), msg.wParam.0, km::GetKeyState(0x11) < 0) {
+                    ai::send_from_key(pane);
+                    continue;
+                }
             }
             if let Some(cmd) = shortcut(&msg) {
                 if let Some(s) = studio() {

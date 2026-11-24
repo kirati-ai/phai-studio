@@ -222,15 +222,28 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <p>ลากตารางจาก Server Explorer ไปวางบนฟอร์ม ได้ตารางที่ผูกกับตารางนั้นพร้อมโหลดและบันทึก (เหมือนคลิกขวา &gt; <b>Add to Form</b>)</p>
 <p>อ่านละเอียดที่ <a href="database.html">ทำงานกับฐานข้อมูล</a></p>
 
-<h2 id="copilot">GitHub Copilot: แนะนำโค้ดขณะพิมพ์</h2>
-<p>Phai Studio ใช้ GitHub Copilot แนะนำโค้ดขณะพิมพ์ได้ ด้วยบัญชี GitHub ของคุณเอง (Copilot Free ก็พอ เปิดได้ที่ <code>github.com/settings/copilot</code>)</p>
+<h2 id="ai">ผู้ช่วย AI (GitHub Copilot)</h2>
+<p>ผู้ช่วย AI ของ Phai Studio คือ GitHub Copilot ใช้บัญชี GitHub ของคุณเอง (Copilot Free ก็พอ เปิดได้ที่ <code>github.com/settings/copilot</code>) ไม่ต้องมีคีย์ API</p>
 <ol>
   <li><b>Tools &gt; Options &gt; GitHub Copilot</b> ติ๊ก <b>เปิด GitHub Copilot</b> ครั้งแรก Phai Studio จะขอดาวน์โหลด Copilot Language Server ของ GitHub (ราว 110 MB จาก github.com/github/copilot-language-server-release ตรวจกับ SHA-256 ที่ GitHub ให้) เก็บไว้ใน AppData ไม่ต้องติดตั้ง Node.js</li>
-  <li>คลิก <b>Copilot</b> ที่มุมขวาของแถบสถานะ &gt; <b>เข้าสู่ระบบ GitHub...</b> จะได้รหัส 8 ตัว คัดลอกไว้ให้แล้ว เบราว์เซอร์เปิด github.com/login/device วางรหัส กดอนุญาต กลับมาแถบสถานะจะขึ้นชื่อบัญชี การเข้าสู่ระบบเก็บไว้ที่เซิร์ฟเวอร์ของ GitHub ไม่อยู่ในไฟล์ของ Phai Studio</li>
+  <li>คลิก <b>Copilot</b> ที่มุมขวาของแถบสถานะ &gt; <b>เข้าสู่ระบบ GitHub...</b> (หรือปุ่ม <b>เข้าสู่ระบบ...</b> ในแผง AI) จะได้รหัส 8 ตัว คัดลอกไว้ให้แล้ว เบราว์เซอร์เปิด github.com/login/device วางรหัส กดอนุญาต กลับมาแถบสถานะจะขึ้นชื่อบัญชี การเข้าสู่ระบบเก็บไว้ที่เซิร์ฟเวอร์ของ GitHub ไม่อยู่ในไฟล์ของ Phai Studio</li>
 </ol>
-<p>พิมพ์แล้วหยุดสักครู่ Copilot จะเสนอโค้ดต่อเป็นตัวหนังสือสีเทาหลังเคอร์เซอร์ กด <kbd>Tab</kbd> รับทั้งหมด <kbd>Ctrl+→</kbd> รับทีละคำ <kbd>Esc</kbd> หรือพิมพ์ต่อเพื่อทิ้ง ปิดเฉพาะคำแนะนำได้จากเมนู Copilot บนแถบสถานะ</p>
+
+<h3 id="copilot">แนะนำโค้ดขณะพิมพ์</h3>
+<p>พิมพ์แล้วหยุดสักครู่ Copilot จะเสนอโค้ดต่อเป็นตัวหนังสือสีเทาหลังเคอร์เซอร์ กด <kbd>Tab</kbd> รับทั้งหมด <kbd>Ctrl+→</kbd> รับทีละคำ <kbd>Esc</kbd> หรือพิมพ์ต่อเพื่อทิ้ง ปิดได้จากเมนู Copilot บนแถบสถานะ</p>
 <figure><img class="shot" src="img/copilot-ghost.png" alt="คำแนะนำของ Copilot เป็นตัวหนังสือสีเทาหลังเคอร์เซอร์" width="460"><figcaption>พิมพ์ fn add แล้ว Copilot เสนอที่เหลือเป็นสีเทา</figcaption></figure>
-<p>คำแนะนำนับรวมในโควตาของแผน Copilot ของคุณ ตามเงื่อนไขของ GitHub — ไฟล์ที่เปิดอยู่จะถูกส่งให้ GitHub เพื่อใช้แนะนำโค้ด</p>
+
+<h3>แผง AI: ถามและสั่งแก้</h3>
+<p><b>View &gt; AI Assistant</b> (<kbd>Ctrl+Alt+A</kbd>) เปิดแผง <b>AI</b> ข้าง Project และ Properties คุยกับ Copilot เรื่องโปรเจกต์ที่เปิดอยู่ได้เลย พิมพ์แล้วกด <b>ส่ง</b> หรือ <kbd>Ctrl+Enter</kbd></p>
+<figure><img class="shot" src="img/copilot-pane.png" alt="แผงผู้ช่วย AI คุยกับ GitHub Copilot" width="300"><figcaption>Copilot แก้ไฟล์ให้หลังกดรับ</figcaption></figure>
+<ul>
+  <li><b>ถาม</b> — ตอบและอธิบายอย่างเดียว ไม่แก้ไฟล์ใด ๆ เช่น "ปุ่ม OK ทำอะไร" "ทำไม build ไม่ผ่าน"</li>
+  <li><b>ลงมือ</b> — บอกสิ่งที่ต้องการ เช่น "เพิ่มช่องกรอกอีเมลใต้ชื่อ แล้วตรวจว่ามี @" Copilot อ่านไฟล์ที่ต้องใช้แล้วแก้โค้ดและฟอร์ม (.phf) ไฟล์ที่เปิดอยู่จะถูกบันทึกก่อนส่ง เพื่อให้ Copilot เห็นเหมือนที่คุณเห็น</li>
+  <li><b>ทุกการแก้ไฟล์ขึ้นหน้าต่างเทียบ</b> ซ้ายคือไฟล์ตอนนี้ ขวาคือที่จะเป็น กด <b>รับ</b>, <b>รับทั้งหมดในแชตนี้</b> หรือ <b>ไม่รับ</b> — ไม่มีอะไรถูกเขียนลงไฟล์ถ้าไม่รับ ส่วนคำสั่งอื่นที่ Copilot ขอทำ (เช่น รันคำสั่งในเครื่อง) จะถามก่อนทุกครั้ง</li>
+  <li>ช่องขวาบนคือโมเดลที่บัญชีของคุณใช้ได้: Copilot Free มี Auto ส่วนแผนเสียเงินเลือก GPT, Claude, Gemini และอื่น ๆ ได้ — <b>เริ่มใหม่</b> ล้างแชต</li>
+</ul>
+<figure><img class="shot" src="img/copilot-review.png" alt="หน้าต่างเทียบการแก้ไฟล์ของ Copilot" width="560"><figcaption>Copilot ขอแก้ src/main.rs: บรรทัดใหม่มีแถบเขียว</figcaption></figure>
+<p>การใช้ Copilot นับรวมในโควตาของแผน Copilot ของคุณ ตามเงื่อนไขของ GitHub — ส่งข้อมูลไปให้ GitHub: ไฟล์ที่เปิดอยู่ (เพื่อแนะนำโค้ด) สิ่งที่พิมพ์ในแชต และไฟล์ที่ Copilot ขออ่าน</p>
 
 <h2>ปุ่มลัดที่ใช้บ่อย</h2>
 <table>
@@ -243,7 +256,7 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td><kbd>Alt+F7</kbd></td><td>ตั้งค่าโปรเจกต์</td><td><kbd>Ctrl+Shift+B</kbd></td><td>Build ทั้ง solution</td></tr>
   <tr><td><kbd>Ctrl+Q</kbd></td><td>ค้นหาคำสั่ง ค่าตั้ง ไฟล์</td><td><kbd>Shift+F4</kbd></td><td>ดูฟอร์มบนมือถือ/แท็บเล็ต</td></tr>
   <tr><td><kbd>Ctrl+Alt+1</kbd>…<kbd>0</kbd></td><td>เรียกการจัดหน้าต่างที่บันทึกไว้</td><td><kbd>Ctrl+`</kbd></td><td>Terminal</td></tr>
-  <tr><td><kbd>Tab</kbd></td><td>รับคำแนะนำของ Copilot</td><td><kbd>Ctrl+→</kbd></td><td>รับคำแนะนำทีละคำ</td></tr>
+  <tr><td><kbd>Ctrl+Alt+A</kbd></td><td>ผู้ช่วย AI</td><td><kbd>Ctrl+Enter</kbd></td><td>ส่งข้อความถึง Copilot</td></tr>
 </table>
 '''
 

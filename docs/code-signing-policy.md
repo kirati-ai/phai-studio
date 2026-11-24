@@ -56,9 +56,10 @@ What Phai Studio sends, and only when the person asks for it:
   Phai Studio downloads GitHub's Copilot Language Server from GitHub Releases once, after asking,
   checked against the SHA-256 GitHub gives for it, and signs in with GitHub's device flow (the
   sign-in is kept by GitHub's server, not in a file of Phai Studio's). While it is on, that server
-  sends the open files to GitHub's Copilot service for suggestions as the person types, under
-  their own GitHub account and GitHub's terms. GitHub's server may send its own usage data to
-  GitHub under those terms; Phai Studio adds none.
+  sends to GitHub's Copilot service, under the person's own GitHub account and GitHub's terms: the
+  open files (for suggestions as they type), what they write in the AI Assistant (View > AI
+  Assistant), and the parts of the project its agent asks to read. GitHub's server may send its own
+  usage data to GitHub under those terms; Phai Studio adds none.
 - Links in the guide, the start window and About open in the browser when clicked.
 
 Phai Studio collects no usage data and has no telemetry. rust-analyzer, which Phai Studio uses for
