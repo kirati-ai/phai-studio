@@ -19,6 +19,12 @@
       "name": "site",
       "runtimeExecutable": "D:/DesktopServer/php82/php.exe",
       "runtimeArgs": [
+        "-d",
+        "extension_dir=D:/DesktopServer/php82/ext",
+        "-d",
+        "extension=pdo_sqlite",
+        "-d",
+        "extension=mbstring",
         "-S",
         "localhost:8790",
         "-t",
