@@ -231,6 +231,10 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.13', '24 พ.ย. 2569', [
+            'ช่องใน Properties แก้ตามชนิดของค่า: True/False เลือกจากรายการแทนการเปลี่ยนเมื่อคลิก Icon, BackgroundImage และ Image เปิดหน้าต่างเลือกไฟล์ (ไฟล์นอกโปรเจกต์คัดลอกเข้ามาให้) Font เปิดหน้าต่างเลือกฟอนต์ และ FontFamily, Mask, CustomFormat, Filter มีรายการให้เลือก',
+            'กด F5 ครั้งแรกเร็วขึ้นมาก: โปรเจกต์ใหม่ build ไว้ให้เบื้องหลังตั้งแต่เปิดฟอร์ม F5 แรกจากราว 27 วินาทีเหลือราว 1 วินาที และโปรเจกต์ใหม่ build ตัวจริง (Release) เร็วขึ้นราวสองเท่า',
+        ]],
         ['0.2.12', '24 พ.ย. 2569', [
             'ไม่กะพริบอีก: Studio และ control ของ Phai วาดเสร็จทั้งภาพก่อนแล้วค่อยขึ้นจอทีเดียว - ตาราง Properties เวลาเลื่อน หน้าออกแบบเวลาแก้หรือย้าย control ปุ่ม แท็บ และพื้นหลังของฟอร์ม รวมถึงโปรแกรมที่สร้างด้วย Phai',
         ]],
@@ -468,6 +472,10 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.13', '24 Nov 2026', [
+            'Each property edited as its value wants: True and False chosen from a list rather than flipped by a click - Icon, BackgroundImage and Image chosen with the Open box, a file from outside the project copied in - Font from the Font dialog - lists for FontFamily, Mask, CustomFormat and Filter',
+            'A much faster first F5: a new project is built in the background as soon as its form opens, so the first run takes about a second rather than about 27 - and a new project builds for release in about half the time',
+        ]],
         ['0.2.12', '24 Nov 2026', [
             'No more flicker: Phai Studio and Phai\'s controls draw the whole picture first and put it on the screen at once - the Properties grid as it scrolls, the designer as controls are changed or moved, buttons, tabs and a form\'s background, in the programs made with Phai too',
         ]],
