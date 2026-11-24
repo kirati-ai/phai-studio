@@ -1,0 +1,66 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "My documents"
+size = [720, 480]
+theme = "../theme.css"
+is_mdi_container = true
+min_size = [400, 300]
+
+[form.events]
+shown = "first_shown"
+
+[[menu]]
+label = "&File"
+
+[[menu.items]]
+id = "new_document"
+label = "New"
+key = "Ctrl+N"
+
+[[menu.items]]
+id = "close_document"
+label = "Close"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "exit"
+label = "Exit"
+
+[[menu]]
+label = "&Window"
+
+[[menu.items]]
+id = "cascade"
+label = "Cascade"
+
+[[menu.items]]
+id = "tile_horizontally"
+label = "Tile Horizontally"
+
+[[menu.items]]
+id = "tile_vertically"
+label = "Tile Vertically"
+
+[[menu.items]]
+id = "arrange_icons"
+label = "Arrange Icons"
+
+[[menu]]
+label = "&Help"
+
+[[menu.items]]
+id = "about"
+label = "About"
+key = "F1"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "No documents open"
+bounds = [0, 0, 0, 26]
+dock = "bottom"

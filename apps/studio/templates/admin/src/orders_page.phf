@@ -1,0 +1,86 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "OrdersPage"
+title = "Orders"
+size = [990, 675]
+font_size = 10
+user_control = true
+
+[[control]]
+kind = "label"
+id = "heading"
+text = "Orders"
+bounds = [24, 20, 500, 30]
+class = "heading"
+
+[[control]]
+kind = "label"
+id = "note"
+text = "Every order of the last few days. Click a heading to sort."
+bounds = [24, 50, 560, 22]
+class = "muted"
+
+[[control]]
+kind = "label"
+id = "show_label"
+text = "Show"
+bounds = [740, 38, 50, 22]
+anchor = "top right"
+class = "muted"
+text_align = "right"
+
+[[control]]
+kind = "combo"
+id = "status_filter"
+bounds = [800, 34, 166, 30]
+anchor = "top right"
+items = ["All orders", "Paid", "Pending", "Shipped", "Cancelled"]
+on_change = "status_filter_changed"
+
+[[control]]
+kind = "panel"
+id = "card"
+bounds = [24, 88, 942, 563]
+anchor = "all"
+back_color = "#ffffff"
+
+[[control]]
+kind = "grid"
+id = "list"
+bounds = [40, 104, 910, 495]
+anchor = "all"
+columns = [["Order", 100], ["Date", 120], ["Customer", 220], ["Items", 80], ["Total", 140], ["Status", 130]]
+alternate_row_color = "#f8fafc"
+header_back_color = "#f8fafc"
+header_fore_color = "#475569"
+read_only = true
+row_height = 30
+show_footer = true
+
+[[control.column_props]]
+summary = "count"
+
+[[control.column_props]]
+
+[[control.column_props]]
+
+[[control.column_props]]
+align = "right"
+
+[[control.column_props]]
+align = "right"
+format = "c0"
+summary = "sum"
+
+[[control.column_props]]
+
+[[control]]
+kind = "label"
+id = "count"
+text = ""
+bounds = [40, 612, 600, 22]
+anchor = "left bottom"
+class = "muted"
+back_color = "#ffffff"

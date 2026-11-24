@@ -1,0 +1,80 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Explorer"
+size = [760, 480]
+theme = "../theme.css"
+min_size = [480, 300]
+
+[[menu]]
+label = "&File"
+
+[[menu.items]]
+id = "open_item"
+label = "Open"
+
+[[menu.items]]
+id = "refresh"
+label = "Refresh"
+key = "F5"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "exit"
+label = "Exit"
+
+[[menu]]
+label = "&View"
+
+[[menu.items]]
+id = "go_up"
+label = "Up one level"
+key = "Alt+Up"
+
+[[toolbar]]
+id = "go_up"
+label = "Up one level"
+glyph = "UP"
+
+[[toolbar]]
+id = "refresh"
+label = "Refresh"
+glyph = "REFRESH"
+
+[[control]]
+kind = "split"
+id = "panes"
+bounds = [0, 0, 760, 454]
+dock = "fill"
+splitter_distance = 240
+
+[[control]]
+kind = "tree"
+id = "folders"
+bounds = [0, 0, 240, 454]
+anchor = "all"
+on_select = "folder_chosen"
+icon_color = "#d9a520"
+
+[[control]]
+kind = "list"
+id = "files"
+bounds = [244, 0, 516, 454]
+anchor = "all"
+columns = [["Name", 260], ["Size", 90], ["Date modified", 140]]
+column_align = "left, right, left"
+icons = "FOLDER #d9a520, DOCUMENT #5f6b7a"
+
+[control.events]
+double_click = "open_item"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "Ready"
+bounds = [0, 0, 0, 26]
+dock = "bottom"

@@ -1,0 +1,179 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Phai Admin"
+size = [1200, 740]
+theme = "../theme.css"
+font_size = 10
+start = "center"
+min_size = [1000, 600]
+
+[[control]]
+kind = "panel"
+id = "side"
+bounds = [0, 0, 210, 740]
+anchor = "left top bottom"
+back_color = "#0f172a"
+
+[[control]]
+kind = "label"
+id = "brand"
+text = "Phai Admin"
+bounds = [24, 22, 170, 30]
+class = "brand"
+back_color = "#0f172a"
+
+[[control]]
+kind = "label"
+id = "brand_note"
+text = "Back office"
+bounds = [24, 52, 170, 20]
+class = "side-muted"
+back_color = "#0f172a"
+
+[[control]]
+kind = "label"
+id = "menu_heading"
+text = "MENU"
+bounds = [24, 96, 170, 20]
+class = "side-heading"
+back_color = "#0f172a"
+
+[[control]]
+kind = "button"
+id = "nav_dashboard"
+text = "Dashboard"
+bounds = [12, 122, 186, 40]
+class = "nav current"
+on_click = "nav_dashboard_clicked"
+text_align = "left"
+
+[[control]]
+kind = "button"
+id = "nav_users"
+text = "Users"
+bounds = [12, 166, 186, 40]
+class = "nav"
+on_click = "nav_users_clicked"
+text_align = "left"
+
+[[control]]
+kind = "button"
+id = "nav_orders"
+text = "Orders"
+bounds = [12, 210, 186, 40]
+class = "nav"
+on_click = "nav_orders_clicked"
+text_align = "left"
+
+[[control]]
+kind = "button"
+id = "nav_settings"
+text = "Settings"
+bounds = [12, 254, 186, 40]
+class = "nav"
+on_click = "nav_settings_clicked"
+text_align = "left"
+
+[[control]]
+kind = "button"
+id = "sign_out"
+text = "Sign out"
+bounds = [12, 680, 186, 36]
+anchor = "left bottom"
+class = "nav"
+on_click = "sign_out_clicked"
+text_align = "left"
+
+[[control]]
+kind = "panel"
+id = "header"
+bounds = [210, 0, 990, 64]
+anchor = "left top right"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "page_title"
+text = "Dashboard"
+bounds = [234, 18, 260, 30]
+class = "page-title"
+back_color = "#ffffff"
+
+[[control]]
+kind = "edit"
+id = "search"
+bounds = [560, 17, 300, 30]
+anchor = "top right"
+on_change = "search_changed"
+placeholder = "Search users and orders..."
+
+[[control]]
+kind = "label"
+id = "user_name"
+text = "Somchai K."
+bounds = [880, 13, 220, 20]
+anchor = "top right"
+class = "strong"
+back_color = "#ffffff"
+text_align = "right"
+
+[[control]]
+kind = "label"
+id = "user_role"
+text = "Administrator"
+bounds = [880, 33, 220, 18]
+anchor = "top right"
+class = "muted small"
+back_color = "#ffffff"
+text_align = "right"
+
+[[control]]
+kind = "button"
+id = "avatar"
+text = "SK"
+bounds = [1112, 14, 36, 36]
+anchor = "top right"
+class = "avatar"
+on_click = "avatar_clicked"
+
+[[control]]
+kind = "panel"
+id = "header_line"
+bounds = [210, 64, 990, 1]
+anchor = "left top right"
+back_color = "#e2e8f0"
+
+[[control]]
+kind = "usercontrol"
+id = "dashboard"
+bounds = [210, 65, 990, 675]
+anchor = "all"
+control_type = "DashboardPage"
+
+[[control]]
+kind = "usercontrol"
+id = "users"
+bounds = [210, 65, 990, 675]
+anchor = "all"
+visible = false
+control_type = "UsersPage"
+
+[[control]]
+kind = "usercontrol"
+id = "orders"
+bounds = [210, 65, 990, 675]
+anchor = "all"
+visible = false
+control_type = "OrdersPage"
+
+[[control]]
+kind = "usercontrol"
+id = "settings"
+bounds = [210, 65, 990, 675]
+anchor = "all"
+visible = false
+on_change = "settings_saved"
+control_type = "SettingsPage"

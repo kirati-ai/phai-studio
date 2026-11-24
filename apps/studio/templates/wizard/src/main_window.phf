@@ -1,0 +1,203 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Setup wizard"
+size = [560, 380]
+theme = "../theme.css"
+start = "center"
+accept_button = "next"
+border = "fixed_dialog"
+cancel_button = "cancel"
+maximize_box = false
+
+[form.events]
+closing = "closing"
+
+[[control]]
+kind = "label"
+id = "heading"
+text = "Welcome"
+bounds = [24, 18, 512, 30]
+font_size = 14
+bold = true
+
+[[control]]
+kind = "label"
+id = "subheading"
+text = "This wizard takes you through a few short steps."
+bounds = [24, 52, 512, 22]
+class = "muted"
+
+[[control]]
+kind = "panel"
+id = "top_line"
+bounds = [0, 86, 560, 1]
+back_color = "#e5e5e5"
+
+[[control]]
+kind = "tabs"
+id = "pages"
+bounds = [24, 96, 512, 30]
+visible = false
+tabs = ["Welcome", "Options", "Details", "Summary"]
+on_change = "page_changed"
+
+[[control]]
+kind = "label"
+id = "welcome_line1"
+text = "Click Next to begin."
+bounds = [24, 108, 512, 24]
+page = 0
+
+[[control]]
+kind = "label"
+id = "welcome_line2"
+text = "You can go Back at any step to change an answer."
+bounds = [24, 136, 512, 24]
+page = 0
+
+[[control]]
+kind = "label"
+id = "welcome_line3"
+text = "Nothing is kept until you click Finish."
+bounds = [24, 164, 512, 24]
+page = 0
+
+[[control]]
+kind = "label"
+id = "usage_label"
+text = "Who will use it?"
+bounds = [24, 106, 512, 22]
+page = 1
+
+[[control]]
+kind = "radio"
+id = "just_me"
+text = "Just me"
+bounds = [40, 134, 300, 24]
+group = 1
+page = 1
+on_click = "usage_clicked"
+
+[[control]]
+kind = "radio"
+id = "my_team"
+text = "My team at work"
+bounds = [40, 162, 300, 24]
+group = 1
+page = 1
+on_click = "usage_clicked"
+
+[[control]]
+kind = "radio"
+id = "my_school"
+text = "A class at school"
+bounds = [40, 190, 300, 24]
+group = 1
+page = 1
+on_click = "usage_clicked"
+
+[[control]]
+kind = "checkbox"
+id = "shortcut"
+text = "Put a shortcut on the desktop"
+bounds = [24, 236, 400, 24]
+checked = true
+page = 1
+
+[[control]]
+kind = "checkbox"
+id = "updates"
+text = "Look for updates by itself"
+bounds = [24, 264, 400, 24]
+checked = true
+page = 1
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Your name"
+bounds = [24, 110, 120, 23]
+page = 2
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [150, 108, 300, 25]
+page = 2
+on_change = "details_changed"
+
+[[control]]
+kind = "label"
+id = "email_label"
+text = "E-mail"
+bounds = [24, 150, 120, 23]
+page = 2
+
+[[control]]
+kind = "edit"
+id = "email"
+bounds = [150, 148, 300, 25]
+page = 2
+on_change = "details_changed"
+placeholder = "name@example.com"
+
+[[control]]
+kind = "label"
+id = "details_hint"
+text = "Both are needed to go on."
+bounds = [150, 182, 300, 22]
+class = "muted"
+page = 2
+
+[[control]]
+kind = "list"
+id = "summary"
+bounds = [24, 106, 512, 190]
+columns = [["Question", 220], ["Answer", 270]]
+page = 3
+
+[[control]]
+kind = "panel"
+id = "bottom_line"
+bounds = [0, 318, 560, 1]
+back_color = "#e5e5e5"
+
+[[control]]
+kind = "label"
+id = "step"
+text = ""
+bounds = [24, 340, 150, 22]
+class = "muted"
+
+[[control]]
+kind = "button"
+id = "back"
+text = "< Back"
+bounds = [192, 334, 80, 30]
+on_click = "back_clicked"
+
+[[control]]
+kind = "button"
+id = "next"
+text = "Next >"
+bounds = [280, 334, 80, 30]
+class = "primary"
+on_click = "next_clicked"
+
+[[control]]
+kind = "button"
+id = "finish"
+text = "Finish"
+bounds = [368, 334, 80, 30]
+class = "primary"
+on_click = "finish_clicked"
+
+[[control]]
+kind = "button"
+id = "cancel"
+text = "Cancel"
+bounds = [456, 334, 80, 30]
+on_click = "cancel_clicked"

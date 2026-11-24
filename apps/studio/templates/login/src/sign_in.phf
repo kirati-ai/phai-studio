@@ -1,0 +1,76 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "SignIn"
+title = "Sign in"
+size = [360, 214]
+theme = "../theme.css"
+start = "center"
+accept_button = "sign_in"
+border = "fixed_dialog"
+cancel_button = "cancel"
+maximize_box = false
+minimize_box = false
+
+[form.events]
+shown = "shown"
+
+[[control]]
+kind = "label"
+id = "heading"
+text = "Please sign in to continue."
+bounds = [20, 16, 320, 24]
+bold = true
+
+[[control]]
+kind = "label"
+id = "user_label"
+text = "User name:"
+bounds = [20, 55, 96, 20]
+
+[[control]]
+kind = "edit"
+id = "user_name"
+bounds = [120, 52, 220, 24]
+
+[[control]]
+kind = "label"
+id = "password_label"
+text = "Password:"
+bounds = [20, 89, 96, 20]
+
+[[control]]
+kind = "edit"
+id = "password"
+bounds = [120, 86, 220, 24]
+password = true
+
+[[control]]
+kind = "label"
+id = "hint"
+text = "Try admin and 1234."
+bounds = [120, 116, 220, 20]
+class = "muted"
+
+[[control]]
+kind = "label"
+id = "message"
+text = ""
+bounds = [20, 140, 320, 20]
+fore_color = "#b91c1c"
+
+[[control]]
+kind = "button"
+id = "sign_in"
+text = "Sign in"
+bounds = [152, 170, 92, 30]
+class = "primary"
+on_click = "sign_in_clicked"
+
+[[control]]
+kind = "button"
+id = "cancel"
+text = "Cancel"
+bounds = [252, 170, 88, 30]
+dialog_result = "cancel"

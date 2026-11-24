@@ -1,0 +1,97 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Catch the Ball"
+size = [640, 520]
+theme = "../theme.css"
+font_size = 10
+start = "center"
+min_size = [480, 400]
+
+[form.events]
+shown = "shown"
+
+[[control]]
+kind = "label"
+id = "score_caption"
+text = "Score"
+bounds = [16, 10, 120, 20]
+class = "muted"
+
+[[control]]
+kind = "label"
+id = "score"
+text = "0"
+bounds = [16, 28, 120, 36]
+class = "big"
+
+[[control]]
+kind = "label"
+id = "time_caption"
+text = "Time left"
+bounds = [150, 10, 120, 20]
+class = "muted"
+
+[[control]]
+kind = "label"
+id = "time_left"
+text = "30"
+bounds = [150, 28, 120, 36]
+class = "big"
+
+[[control]]
+kind = "label"
+id = "misses_caption"
+text = "Misses"
+bounds = [284, 10, 120, 20]
+class = "muted"
+
+[[control]]
+kind = "label"
+id = "misses"
+text = "0"
+bounds = [284, 28, 120, 36]
+class = "big"
+
+[[control]]
+kind = "button"
+id = "start_stop"
+text = "Start"
+bounds = [504, 22, 120, 36]
+anchor = "top right"
+class = "primary"
+on_click = "start_stop_clicked"
+
+[[control]]
+kind = "panel"
+id = "board"
+bounds = [16, 72, 608, 414]
+anchor = "all"
+cursor = "hand"
+
+[control.events]
+mouse_down = "board_mouse_down"
+paint = "board_paint"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "Press Start, then click the ball."
+bounds = [0, 0, 0, 26]
+dock = "bottom"
+
+[[control]]
+kind = "timer"
+id = "mover"
+enabled = false
+on_tick = "mover_tick"
+value = 20
+
+[[control]]
+kind = "timer"
+id = "clock"
+enabled = false
+on_tick = "clock_tick"
+value = 1000

@@ -1,0 +1,155 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Customers"
+size = [820, 470]
+theme = "../theme.css"
+start = "center"
+min_size = [700, 400]
+
+[form.events]
+closing = "main_window_closing"
+
+[[control]]
+kind = "label"
+id = "search_label"
+text = "Search:"
+bounds = [12, 15, 56, 20]
+
+[[control]]
+kind = "edit"
+id = "search"
+bounds = [70, 12, 330, 24]
+on_change = "search_changed"
+placeholder = "Name, phone or email"
+
+[[control]]
+kind = "grid"
+id = "list"
+bounds = [12, 44, 440, 392]
+anchor = "all"
+columns = [["ID", 44], ["Name", 150], ["Phone", 100], ["Email", 136]]
+multi_select = false
+read_only = true
+
+[control.events]
+selection_changed = "row_chosen"
+
+[[control]]
+kind = "group"
+id = "details"
+text = "Customer"
+bounds = [464, 40, 344, 180]
+anchor = "top right"
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name:"
+bounds = [480, 70, 70, 20]
+anchor = "top right"
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [556, 67, 236, 24]
+anchor = "top right"
+data_binding = "customers.name"
+
+[[control]]
+kind = "label"
+id = "phone_label"
+text = "Phone:"
+bounds = [480, 104, 70, 20]
+anchor = "top right"
+
+[[control]]
+kind = "edit"
+id = "phone"
+bounds = [556, 101, 236, 24]
+anchor = "top right"
+data_binding = "customers.phone"
+
+[[control]]
+kind = "label"
+id = "email_label"
+text = "Email:"
+bounds = [480, 138, 70, 20]
+anchor = "top right"
+
+[[control]]
+kind = "edit"
+id = "email"
+bounds = [556, 135, 236, 24]
+anchor = "top right"
+data_binding = "customers.email"
+
+[[control]]
+kind = "label"
+id = "note_label"
+text = "Note:"
+bounds = [480, 172, 70, 20]
+anchor = "top right"
+
+[[control]]
+kind = "edit"
+id = "note"
+bounds = [556, 169, 236, 24]
+anchor = "top right"
+data_binding = "customers.note"
+
+[[control]]
+kind = "button"
+id = "new_row"
+text = "New"
+bounds = [464, 232, 108, 30]
+anchor = "top right"
+on_click = "new_clicked"
+
+[[control]]
+kind = "button"
+id = "save"
+text = "Save"
+bounds = [582, 232, 108, 30]
+anchor = "top right"
+class = "primary"
+on_click = "save_clicked"
+
+[[control]]
+kind = "button"
+id = "delete"
+text = "Delete"
+bounds = [700, 232, 108, 30]
+anchor = "top right"
+on_click = "delete_clicked"
+
+[[control]]
+kind = "label"
+id = "hint"
+text = "Save writes every change to the file at once."
+bounds = [464, 274, 344, 22]
+anchor = "top right"
+class = "muted"
+
+[[control]]
+kind = "bindingsource"
+id = "customers"
+
+[control.bind]
+database = "main"
+table = "customers"
+columns = ["id", "name", "phone", "email", "note"]
+keys = ["id"]
+
+[control.events]
+position_changed = "customer_moved"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "Ready"
+bounds = [0, 0, 0, 26]
+dock = "bottom"
+parts = [160]

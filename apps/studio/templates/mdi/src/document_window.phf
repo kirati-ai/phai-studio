@@ -1,0 +1,17 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "DocumentWindow"
+title = "Document"
+size = [400, 260]
+theme = "../theme.css"
+
+[form.events]
+closed = "document_closed"
+
+[[control]]
+kind = "textarea"
+id = "page"
+bounds = [0, 0, 400, 260]
+dock = "fill"

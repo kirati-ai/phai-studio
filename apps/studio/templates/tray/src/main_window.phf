@@ -1,0 +1,57 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "My tray program"
+size = [360, 156]
+theme = "../theme.css"
+border = "fixed_single"
+maximize_box = false
+start_hidden = true
+
+[form.events]
+closing = "window_closing"
+
+[[control]]
+kind = "label"
+id = "about"
+text = "This program lives in its icon by the clock."
+bounds = [16, 16, 328, 24]
+
+[[control]]
+kind = "label"
+id = "about_menu"
+text = "Right-click the icon there for its menu."
+bounds = [16, 40, 328, 24]
+
+[[control]]
+kind = "label"
+id = "startup_state"
+text = "Does not start with Windows."
+bounds = [16, 72, 328, 24]
+class = "muted"
+
+[[control]]
+kind = "button"
+id = "hide_button"
+text = "Hide"
+bounds = [256, 112, 88, 30]
+on_click = "hide_clicked"
+
+[[control]]
+kind = "contextmenu"
+id = "tray_menu"
+items = ["open_window | Open", "-", "start_with_windows | Start with Windows", "-", "exit | Exit"]
+
+[control.events]
+opening = "tray_menu_opening"
+
+[[control]]
+kind = "notifyicon"
+id = "tray"
+text = "My tray program"
+context_menu = "tray_menu"
+
+[control.events]
+double_click = "open_window"

@@ -53,6 +53,7 @@ mod winlayout;
 mod changes;
 mod keymap;
 mod newproj;
+mod templates;
 mod switcher;
 mod dbgwin;
 mod vsextra;
@@ -6492,13 +6493,13 @@ impl Studio {
     }
 
     fn new_project(&mut self) {
-        // Which kind first, as Visual Studio's New Project: a Windows program or a phone app.
+        // Which kind first, as Visual Studio's New Project: a template from the list.
         let Some(template) = newproj::choose(self.hwnd) else { return };
         let Some(dir) = project::pick_folder(self.hwnd, t("Choose an empty folder for the new project")) else { return };
-        match project::create_with(&dir, template == 1) {
+        match templates::create(&dir, template) {
             Ok(form) => {
                 self.open_path(&form);
-                if template == 1 {
+                if template == "phone" {
                     // A phone app: its form shown on a phone at once.
                     devices::open(self.hwnd, &self.doc.form);
                 }
@@ -11740,7 +11741,9 @@ fn main() {
         }
         // `--new-project DIR`: a new project made there, as File > New project does; its path printed.
         if let Some(d) = args.iter().position(|a| a == "--new-project").and_then(|i| args.get(i + 1)) {
-            match project::create(Path::new(d)) {
+            // `PHAI_TEMPLATE=<key>`: that template's project rather than a Windows program's.
+            let key = std::env::var("PHAI_TEMPLATE").unwrap_or_else(|_| "windows".into());
+            match templates::create(Path::new(d), &key) {
                 Ok(form) => println!("project {} with phai-ui at {}", form.display(), project::phai_ui_path().display()),
                 Err(e) => println!("new project failed: {e}"),
             }

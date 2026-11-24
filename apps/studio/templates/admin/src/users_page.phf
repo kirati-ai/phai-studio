@@ -1,0 +1,80 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "UsersPage"
+title = "Users"
+size = [990, 675]
+font_size = 10
+user_control = true
+
+[[control]]
+kind = "label"
+id = "heading"
+text = "Users"
+bounds = [24, 20, 500, 30]
+class = "heading"
+
+[[control]]
+kind = "label"
+id = "note"
+text = "Everyone who can sign in to the back office."
+bounds = [24, 50, 500, 22]
+class = "muted"
+
+[[control]]
+kind = "button"
+id = "add"
+text = "Add user"
+bounds = [646, 32, 120, 34]
+anchor = "top right"
+class = "primary"
+on_click = "add_clicked"
+
+[[control]]
+kind = "button"
+id = "edit"
+text = "Edit"
+bounds = [776, 32, 90, 34]
+anchor = "top right"
+on_click = "edit_clicked"
+
+[[control]]
+kind = "button"
+id = "delete"
+text = "Delete"
+bounds = [876, 32, 90, 34]
+anchor = "top right"
+class = "danger"
+on_click = "delete_clicked"
+
+[[control]]
+kind = "panel"
+id = "card"
+bounds = [24, 88, 942, 563]
+anchor = "all"
+back_color = "#ffffff"
+
+[[control]]
+kind = "grid"
+id = "people"
+bounds = [40, 104, 910, 495]
+anchor = "all"
+columns = [["ID", 60], ["Name", 190], ["Email", 240], ["Role", 140], ["Status", 110], ["Last sign-in", 150]]
+alternate_row_color = "#f8fafc"
+header_back_color = "#f8fafc"
+header_fore_color = "#475569"
+read_only = true
+row_height = 30
+
+[control.events]
+double_click = "edit_clicked"
+
+[[control]]
+kind = "label"
+id = "count"
+text = ""
+bounds = [40, 612, 600, 22]
+anchor = "left bottom"
+class = "muted"
+back_color = "#ffffff"

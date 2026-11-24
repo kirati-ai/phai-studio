@@ -1,0 +1,73 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Sales report"
+size = [760, 460]
+theme = "../theme.css"
+start = "center"
+min_size = [560, 320]
+
+[[control]]
+kind = "button"
+id = "preview"
+text = "Print Preview"
+bounds = [12, 12, 130, 30]
+class = "primary"
+on_click = "preview_clicked"
+
+[[control]]
+kind = "button"
+id = "print"
+text = "Print..."
+bounds = [150, 12, 110, 30]
+on_click = "print_clicked"
+
+[[control]]
+kind = "button"
+id = "export_pdf"
+text = "Export PDF..."
+bounds = [268, 12, 130, 30]
+on_click = "export_pdf_clicked"
+
+[[control]]
+kind = "label"
+id = "hint"
+text = "The report prints the rows below, by branch. Change a row and preview again."
+bounds = [12, 50, 736, 20]
+anchor = "left top right"
+class = "muted"
+
+[[control]]
+kind = "grid"
+id = "sales"
+bounds = [12, 74, 736, 352]
+anchor = "all"
+columns = [["Date", 90], ["Branch", 130], ["Product", 200], ["Qty", 60], ["Price", 90], ["Amount", 110]]
+show_footer = true
+
+[[control.column_props]]
+
+[[control.column_props]]
+
+[[control.column_props]]
+
+[[control.column_props]]
+align = "right"
+
+[[control.column_props]]
+align = "right"
+format = "n2"
+
+[[control.column_props]]
+align = "right"
+format = "n2"
+summary = "sum"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "Ready"
+bounds = [0, 0, 0, 26]
+dock = "bottom"

@@ -198,6 +198,17 @@ pub fn first_form() -> FormFile {
     f
 }
 
+/// A new project's Cargo.toml naming, beside phai-ui, the Phai `libraries` a template needs
+/// (`phai-data`, `phai-web`) as this Phai Studio has them.
+pub fn cargo_toml_with(name: &str, wanted: &[&str]) -> String {
+    let mut toml = cargo_toml(name);
+    let extra: String = libraries().iter().filter(|(n, _)| wanted.contains(n)).map(|(n, local)| format!("{n} = {}\n", library_dependency(local))).collect();
+    if let Some(at) = toml.find("\nwindows = ") {
+        toml.insert_str(at + 1, &extra);
+    }
+    toml
+}
+
 fn cargo_toml(name: &str) -> String {
     format!(
         r#"[package]
@@ -422,6 +433,8 @@ pub fn phone_form() -> FormFile {
 }
 
 /// Writes a new project into `dir`; returns its first form's path. `dir` must have no Cargo.toml.
+/// (New Project goes through `templates::create`; the tests make their projects with this.)
+#[cfg(test)]
 pub fn create(dir: &Path) -> std::io::Result<PathBuf> {
     create_with(dir, false)
 }

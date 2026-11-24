@@ -1,0 +1,77 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "UserForm"
+title = "User"
+size = [400, 268]
+theme = "../theme.css"
+font_size = 10
+start = "center"
+accept_button = "save"
+border = "fixed_dialog"
+cancel_button = "cancel"
+maximize_box = false
+minimize_box = false
+
+[form.events]
+closed = "closed"
+
+[[control]]
+kind = "label"
+id = "name_label"
+text = "Name"
+bounds = [20, 20, 360, 20]
+class = "muted"
+
+[[control]]
+kind = "edit"
+id = "name"
+bounds = [20, 42, 360, 28]
+
+[[control]]
+kind = "label"
+id = "email_label"
+text = "Email"
+bounds = [20, 80, 360, 20]
+class = "muted"
+
+[[control]]
+kind = "edit"
+id = "email"
+bounds = [20, 102, 360, 28]
+
+[[control]]
+kind = "label"
+id = "role_label"
+text = "Role"
+bounds = [20, 140, 170, 20]
+class = "muted"
+
+[[control]]
+kind = "combo"
+id = "role"
+bounds = [20, 162, 170, 28]
+items = ["Administrator", "Manager", "Staff"]
+
+[[control]]
+kind = "checkbox"
+id = "active"
+text = "May sign in"
+bounds = [210, 164, 170, 24]
+checked = true
+
+[[control]]
+kind = "button"
+id = "save"
+text = "Save"
+bounds = [190, 216, 92, 32]
+class = "primary"
+dialog_result = "ok"
+
+[[control]]
+kind = "button"
+id = "cancel"
+text = "Cancel"
+bounds = [288, 216, 92, 32]
+dialog_result = "cancel"

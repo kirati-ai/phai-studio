@@ -1,0 +1,126 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Text editor"
+size = [640, 440]
+theme = "../theme.css"
+min_size = [320, 200]
+
+[form.events]
+closing = "closing"
+
+[[menu]]
+label = "&File"
+
+[[menu.items]]
+id = "file_new"
+label = "New"
+key = "Ctrl+N"
+
+[[menu.items]]
+id = "file_open"
+label = "Open..."
+key = "Ctrl+O"
+
+[[menu.items]]
+id = "file_save"
+label = "Save"
+key = "Ctrl+S"
+
+[[menu.items]]
+id = "file_save_as"
+label = "Save As..."
+key = "Ctrl+Shift+S"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "exit"
+label = "Exit"
+
+[[menu]]
+label = "&Edit"
+
+[[menu.items]]
+id = "undo"
+label = "Undo"
+key = "Ctrl+Z"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "cut"
+label = "Cut"
+key = "Ctrl+X"
+
+[[menu.items]]
+id = "copy"
+label = "Copy"
+key = "Ctrl+C"
+
+[[menu.items]]
+id = "paste"
+label = "Paste"
+key = "Ctrl+V"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "select_all"
+label = "Select All"
+key = "Ctrl+A"
+
+[[menu.items]]
+id = "find"
+label = "Find..."
+key = "Ctrl+F"
+
+[[menu.items]]
+id = "find_next"
+label = "Find Next"
+key = "F3"
+
+[menu.events]
+drop_down_opening = "edit_menu_opening"
+
+[[menu]]
+label = "F&ormat"
+
+[[menu.items]]
+id = "word_wrap"
+label = "Word Wrap"
+checked = true
+check_on_click = true
+
+[[menu.items]]
+id = "choose_font"
+label = "Font..."
+
+[[control]]
+kind = "richtext"
+id = "editor"
+bounds = [0, 0, 640, 440]
+dock = "fill"
+on_change = "editor_changed"
+font_size = 11
+font_family = "Consolas"
+
+[[control]]
+kind = "openfiledialog"
+id = "open_dialog"
+filter = "Text files|*.txt|All files|*.*"
+
+[[control]]
+kind = "savefiledialog"
+id = "save_dialog"
+default_ext = "txt"
+filter = "Text files|*.txt|All files|*.*"
+
+[[control]]
+kind = "fontdialog"
+id = "font_dialog"

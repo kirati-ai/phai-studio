@@ -1,0 +1,65 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "Unit Converter"
+size = [360, 214]
+theme = "../theme.css"
+accept_button = "convert"
+border = "fixed_single"
+maximize_box = false
+
+[[control]]
+kind = "label"
+id = "amount_label"
+text = "Length"
+bounds = [16, 16, 80, 24]
+
+[[control]]
+kind = "edit"
+id = "amount"
+text = "1"
+bounds = [104, 16, 240, 24]
+
+[[control]]
+kind = "label"
+id = "from_label"
+text = "From"
+bounds = [16, 52, 80, 24]
+
+[[control]]
+kind = "combo"
+id = "from_unit"
+bounds = [104, 52, 240, 24]
+items = ["Millimetres", "Centimetres", "Metres", "Kilometres", "Inches", "Feet", "Yards", "Miles"]
+selected_index = 2
+
+[[control]]
+kind = "label"
+id = "to_label"
+text = "To"
+bounds = [16, 88, 80, 24]
+
+[[control]]
+kind = "combo"
+id = "to_unit"
+bounds = [104, 88, 240, 24]
+items = ["Millimetres", "Centimetres", "Metres", "Kilometres", "Inches", "Feet", "Yards", "Miles"]
+selected_index = 5
+
+[[control]]
+kind = "button"
+id = "convert"
+text = "Convert"
+bounds = [244, 126, 100, 30]
+class = "primary"
+on_click = "convert_clicked"
+
+[[control]]
+kind = "label"
+id = "result"
+text = "Type a length and press Convert."
+bounds = [16, 170, 328, 28]
+font_size = 12
+bold = true

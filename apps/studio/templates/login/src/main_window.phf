@@ -1,0 +1,55 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "MainWindow"
+title = "My program"
+size = [640, 400]
+theme = "../theme.css"
+start = "center"
+start_hidden = true
+
+[[menu]]
+label = "&File"
+
+[[menu.items]]
+id = "sign_out"
+label = "Sign out"
+
+[[menu.items]]
+separator = true
+
+[[menu.items]]
+id = "exit"
+label = "Exit"
+
+[[control]]
+kind = "label"
+id = "welcome"
+text = "Welcome"
+bounds = [24, 24, 592, 36]
+anchor = "left top right"
+font_size = 16
+bold = true
+
+[[control]]
+kind = "label"
+id = "signed_in_at"
+text = ""
+bounds = [24, 66, 592, 24]
+anchor = "left top right"
+class = "muted"
+
+[[control]]
+kind = "label"
+id = "about"
+text = "Put the program's work here. File > Sign out goes back to the sign-in form."
+bounds = [24, 110, 592, 24]
+anchor = "left top right"
+
+[[control]]
+kind = "statusbar"
+id = "status"
+text = "Ready"
+bounds = [0, 0, 0, 26]
+dock = "bottom"

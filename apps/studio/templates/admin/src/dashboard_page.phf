@@ -1,0 +1,335 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "DashboardPage"
+title = "Dashboard"
+size = [990, 675]
+font_size = 10
+user_control = true
+
+[[control]]
+kind = "label"
+id = "welcome"
+text = "Welcome back, Somchai"
+bounds = [24, 20, 600, 30]
+class = "heading"
+
+[[control]]
+kind = "label"
+id = "welcome_note"
+text = "Here is how the shop is doing today."
+bounds = [24, 50, 600, 22]
+class = "muted"
+
+[[control]]
+kind = "panel"
+id = "sales_card"
+bounds = [24, 88, 222, 112]
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "sales_strip"
+bounds = [24, 88, 5, 112]
+back_color = "#12855f"
+
+[[control]]
+kind = "label"
+id = "sales_caption"
+text = "Sales today"
+bounds = [44, 102, 190, 20]
+class = "muted"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "sales_value"
+text = "0"
+bounds = [44, 124, 190, 40]
+class = "big"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "sales_note"
+text = ""
+bounds = [44, 168, 190, 20]
+class = "up small"
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "orders_card"
+bounds = [262, 88, 222, 112]
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "orders_strip"
+bounds = [262, 88, 5, 112]
+back_color = "#2563eb"
+
+[[control]]
+kind = "label"
+id = "orders_caption"
+text = "Orders today"
+bounds = [282, 102, 190, 20]
+class = "muted"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "orders_value"
+text = "0"
+bounds = [282, 124, 190, 40]
+class = "big"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "orders_note"
+text = ""
+bounds = [282, 168, 190, 20]
+class = "muted small"
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "customers_card"
+bounds = [500, 88, 222, 112]
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "customers_strip"
+bounds = [500, 88, 5, 112]
+back_color = "#7c3aed"
+
+[[control]]
+kind = "label"
+id = "customers_caption"
+text = "Customers"
+bounds = [520, 102, 190, 20]
+class = "muted"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "customers_value"
+text = "0"
+bounds = [520, 124, 190, 40]
+class = "big"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "customers_note"
+text = ""
+bounds = [520, 168, 190, 20]
+class = "up small"
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "stock_card"
+bounds = [738, 88, 228, 112]
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "stock_strip"
+bounds = [738, 88, 5, 112]
+back_color = "#ea580c"
+
+[[control]]
+kind = "label"
+id = "stock_caption"
+text = "Low in stock"
+bounds = [758, 102, 196, 20]
+class = "muted"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "stock_value"
+text = "0"
+bounds = [758, 124, 196, 40]
+class = "big"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "stock_note"
+text = ""
+bounds = [758, 168, 196, 20]
+class = "down small"
+back_color = "#ffffff"
+
+[[control]]
+kind = "panel"
+id = "recent_box"
+bounds = [24, 216, 616, 435]
+anchor = "all"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "recent_title"
+text = "Recent orders"
+bounds = [44, 232, 300, 24]
+class = "strong"
+back_color = "#ffffff"
+
+[[control]]
+kind = "grid"
+id = "recent"
+bounds = [44, 266, 576, 365]
+anchor = "all"
+columns = [["Order", 90], ["Customer", 170], ["Total", 110], ["Status", 110], ["Time", 80]]
+allow_filter = false
+alternate_row_color = "#f8fafc"
+header_back_color = "#f8fafc"
+header_fore_color = "#475569"
+read_only = true
+row_height = 30
+
+[[control.column_props]]
+
+[[control.column_props]]
+
+[[control.column_props]]
+align = "right"
+format = "c0"
+
+[[control.column_props]]
+
+[[control.column_props]]
+align = "right"
+
+[[control]]
+kind = "panel"
+id = "goals_box"
+bounds = [656, 216, 310, 435]
+anchor = "top right bottom"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "goals_title"
+text = "Goals this month"
+bounds = [676, 232, 270, 24]
+anchor = "top right"
+class = "strong"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "goal1_label"
+text = "Sales target"
+bounds = [676, 272, 200, 20]
+anchor = "top right"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "goal1_value"
+text = "0%"
+bounds = [876, 272, 70, 20]
+anchor = "top right"
+class = "strong"
+back_color = "#ffffff"
+text_align = "right"
+
+[[control]]
+kind = "progress"
+id = "goal1"
+bounds = [676, 296, 270, 10]
+anchor = "top right"
+accent_color = "#12855f"
+
+[[control]]
+kind = "label"
+id = "goal2_label"
+text = "New customers"
+bounds = [676, 322, 200, 20]
+anchor = "top right"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "goal2_value"
+text = "0%"
+bounds = [876, 322, 70, 20]
+anchor = "top right"
+class = "strong"
+back_color = "#ffffff"
+text_align = "right"
+
+[[control]]
+kind = "progress"
+id = "goal2"
+bounds = [676, 346, 270, 10]
+anchor = "top right"
+accent_color = "#7c3aed"
+
+[[control]]
+kind = "label"
+id = "goal3_label"
+text = "Orders shipped on time"
+bounds = [676, 372, 200, 20]
+anchor = "top right"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "goal3_value"
+text = "0%"
+bounds = [876, 372, 70, 20]
+anchor = "top right"
+class = "strong"
+back_color = "#ffffff"
+text_align = "right"
+
+[[control]]
+kind = "progress"
+id = "goal3"
+bounds = [676, 396, 270, 10]
+anchor = "top right"
+accent_color = "#2563eb"
+
+[[control]]
+kind = "label"
+id = "attention_title"
+text = "Needs attention"
+bounds = [676, 440, 270, 24]
+anchor = "top right"
+class = "strong"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "attention1"
+text = ""
+bounds = [676, 472, 270, 22]
+anchor = "top right"
+class = "warn"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "attention2"
+text = ""
+bounds = [676, 498, 270, 22]
+anchor = "top right"
+class = "warn"
+back_color = "#ffffff"
+
+[[control]]
+kind = "label"
+id = "attention3"
+text = ""
+bounds = [676, 524, 270, 22]
+anchor = "top right"
+class = "warn"
+back_color = "#ffffff"
