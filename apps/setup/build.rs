@@ -19,7 +19,7 @@ fn main() {
         res.set("ProductName", "Phai Studio");
         res.set("FileDescription", "Phai Studio Setup");
         res.set("CompanyName", "Monrak Net");
-        res.set("LegalCopyright", "Copyright (c) 2026 Monrak Net - MIT License");
+        res.set("LegalCopyright", "Copyright (c) 2026 Monrak Net (Kirati Kittikhun) - MIT License");
         res.set("OriginalFilename", "phai-setup.exe");
         if let Err(e) = res.compile() {
             println!("cargo:warning=no version information in phai-setup.exe: {e}");

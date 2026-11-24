@@ -122,7 +122,7 @@ fn make(owner: HWND) -> HWND {
         let what = win::label(hwnd, t("A free RAD studio for Windows programs in Rust: draw the forms, style them with CSS, write what happens in Rust."), 0, font);
         wrapping(what);
         at(what, M, 104, W - 2 * M, 44);
-        let who = win::label(hwnd, t("Made by Kirati Kittikhun - Copyright (c) 2026 Monrak Net"), 0, font);
+        let who = win::label(hwnd, t("Copyright (c) 2026 Monrak Net (Kirati Kittikhun)"), 0, font);
         at(who, M, 152, W - 2 * M, 22);
         // The tools, and the buttons beside them.
         let works = win::label(hwnd, t("Works with:"), 0, bold);

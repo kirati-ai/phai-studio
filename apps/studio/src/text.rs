@@ -885,7 +885,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Report a problem", "แจ้งปัญหา"),
     ("Version {0}", "รุ่น {0}"),
     ("A free RAD studio for Windows programs in Rust: draw the forms, style them with CSS, write what happens in Rust.", "เครื่องมือ RAD ฟรี สำหรับสร้างโปรแกรม Windows ด้วย Rust: วาดฟอร์ม แต่งด้วย CSS แล้วเขียนว่าจะให้ทำอะไรด้วย Rust"),
-    ("Made by Kirati Kittikhun - Copyright (c) 2026 Monrak Net", "สร้างโดย Kirati Kittikhun - ลิขสิทธิ์ (c) 2026 Monrak Net"),
+    ("Copyright (c) 2026 Monrak Net (Kirati Kittikhun)", "ลิขสิทธิ์ (c) 2026 Monrak Net (Kirati Kittikhun)"),
     ("Works with:", "ทำงานร่วมกับ:"),
     ("Tool", "เครื่องมือ"),
     ("Copy info", "คัดลอกข้อมูล"),
