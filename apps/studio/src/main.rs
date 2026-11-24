@@ -10262,10 +10262,13 @@ fn main() {
             }
         }
         for p in &forms {
-            if phai_form::is_form(Path::new(p)) {
-                s.open_path(Path::new(p));
+            // Named from a terminal (`phai-studio src\main.rs`): its whole path, or its project -
+            // the name, the tree, rust-analyzer - is looked for from an empty folder.
+            let full = std::path::absolute(p).unwrap_or_else(|_| PathBuf::from(p));
+            if phai_form::is_form(&full) {
+                s.open_path(&full);
             } else {
-                s.open_code(Path::new(p));
+                s.open_code(&full);
             }
         }
         if forms.len() > 1 {
