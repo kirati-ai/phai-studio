@@ -216,11 +216,6 @@ main, .foot { position: relative; z-index: 2; }
 .family .card span { color: var(--muted); font-size: .9rem; }
 
 /* where you are on the page, bottom left */
-#hud { position: fixed; left: 16px; bottom: 16px; z-index: 20; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgb(255 255 255 / .88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); font: 10px/1.4 var(--mono); letter-spacing: .12em; color: var(--muted); pointer-events: none; }
-#hud i { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-#hud span:first-of-type { color: var(--ink); font-variant-numeric: tabular-nums; min-width: 3ch; }
-#hud b { font-weight: 400; color: var(--line); }
-@media (max-width: 640px) { #hud { display: none; } }
 
 /* Thai: lines break between phrases only (assets/thai-wrap.js), no lone word on the last line. */
 .nb { white-space: nowrap; }

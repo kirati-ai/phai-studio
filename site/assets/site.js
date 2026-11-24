@@ -107,13 +107,10 @@ document.querySelectorAll('.gallery').forEach((gal) => {
     });
 })();
 
-// cards fade in once; headings drift a little with the scrollbar; the strip shows how far down you are
+// cards fade in once; headings drift a little with the scrollbar
 (() => {
     const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const cards = [...document.querySelectorAll('.card, .slider')];
-    const pct = document.getElementById('hud-pct');
-    const text = document.getElementById('hud-text');
-    const words = window.HUD_WORDS || [];
     const items = [];
     if (!calm) {
         // cards only fade and rise in once: they never drift apart, so a row stays a straight row
@@ -139,10 +136,6 @@ document.querySelectorAll('.gallery').forEach((gal) => {
             if (Math.abs(target - it.now) > 0.2) moving = true;
             it.el.style.setProperty('--drift', it.now.toFixed(2) + 'px');
         }
-        const max = document.documentElement.scrollHeight - vh;
-        const done = max > 0 ? Math.min(1, scrollY / max) : 0;
-        if (pct) pct.textContent = Math.round(done * 100) + '%';
-        if (text && words.length) text.textContent = words[Math.min(words.length - 1, Math.floor(done * words.length))];
         running = moving;
         if (moving) requestAnimationFrame(step);
     };

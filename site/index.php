@@ -1,7 +1,7 @@
 <?php
 // phai-studio.monrak.net - Phai Studio's own page, in the look of phai-erp.monrak.net.
 // Thai or English (?lang=, then a cookie, then the browser's language). The installer is
-// downloaded from GitHub Releases through /download/setup, which counts it; /seen counts visitors.
+// downloaded from GitHub Releases through /download/setup, which counts it; /seen counts visitors (kept in storage/counts.json, not shown on the page).
 
 declare(strict_types=1);
 
@@ -99,7 +99,7 @@ $T = $th ? [
     'h1' => 'เขียนโปรแกรม Windows ด้วย Rust <em>ออกแบบหน้าจอแบบลากวาง</em>',
     'lead' => 'ลากวางปุ่ม ช่องกรอก ตาราง ลงบนฟอร์ม ดับเบิลคลิกเขียนโค้ด Rust กด F5 ก็ได้โปรแกรม Windows จริง (ลง Rust ครั้งแรกครั้งเดียว ฟรี) พร้อมตัวแก้โค้ดที่เติมคำให้ ดีบักเกอร์ เทสต์ Git และทำตัวติดตั้งให้ด้วย หน้าจอภาษาไทย และมีคู่มือสอน Rust ภาษาไทยในตัว',
     'btnDownload' => 'ดาวน์โหลดตัวติดตั้ง', 'btnGithub' => 'โค้ดบน GitHub', 'btnGuide' => 'อ่านคู่มือภาษาไทย',
-    'meta' => fn ($c) => "รุ่น {$release['version']} · {$mb} MB · Windows 10/11 (64 บิต) · <b>ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง</b> · เข้าชม {$c['visitors']} คน",
+    'meta' => fn ($c) => "รุ่น {$release['version']} · {$mb} MB · Windows 10/11 (64 บิต) · <b>ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง</b>",
     'learnH' => 'เรียนเขียนโปรแกรมด้วยภาษาไทย',
     'learnSub' => 'คู่มือภาษาไทยในตัวโปรแกรม สำหรับนักเรียน นักศึกษา และคนทำงานที่อยากเขียนโปรแกรมเอง มีสองส่วน: เครื่องมือทุกตัวใน Toolbox ทีละหน้า และบทเรียนภาษา Rust ตั้งแต่ศูนย์ ทุกตัวอย่างลองรันได้จริง',
     'toolsH' => 'เครื่องมือทีละตัว', 'toolsSub' => '43 หน้า ทุกเครื่องมือใน Toolbox และฟอร์ม: ใช้ทำอะไร ตัวอย่างโค้ด Method, Properties และ Events - เลือก control บนฟอร์มแล้วกด F1 เปิดหน้าของมันทันที',
@@ -198,9 +198,8 @@ $T = $th ? [
         'coverage' => ['รันเทสต์แล้ววัดว่าเทสต์วิ่งผ่านบรรทัดไหนบ้าง', 'แถบสีข้างบรรทัดบอกบรรทัดที่ครอบคลุมแล้ว และที่ยังไม่ครอบคลุม', 'รู้ว่าควรเขียนเทสต์เพิ่มตรงไหน'],
         'program' => ['โปรแกรม Windows จริงที่สร้างจาก Phai Studio', 'ได้ไฟล์ .exe ไฟล์เดียว ใช้แค่ Visual C++ runtime ที่เครื่องส่วนใหญ่มีอยู่แล้ว', 'หน้าจอภาษาไทยได้เต็มที่', 'Publish ทำตัวติดตั้งให้'],
     ],
-    'statVisitors' => 'ผู้เข้าชมทั้งหมด', 'statDownloads' => 'ดาวน์โหลดแล้ว', 'statVersion' => 'เวอร์ชัน', 'cta' => 'ดาวน์โหลด',
+    'statDownloads' => 'ดาวน์โหลดแล้ว', 'statVersion' => 'เวอร์ชัน', 'cta' => 'ดาวน์โหลด',
     'zoom' => 'คลิกเพื่อดูภาพเต็ม', 'prev' => 'ก่อนหน้า', 'next' => 'ถัดไป', 'close' => 'ปิด',
-    'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'วิทยาทาน · ใช้ฟรี', 'คู่มือ RUST ภาษาไทย', 'ดาวน์โหลดฟรี'],
     'whyH' => 'ทำไมต้อง Phai Studio',
     'why' => [
         ['ฟรีทุกฟีเจอร์ ไม่มีรุ่นเสียเงิน', 'ใช้ทำโปรแกรมขายได้ ไลบรารีที่ติดไปกับโปรแกรมเป็นสัญญาอนุญาต MIT'],
@@ -340,7 +339,7 @@ $T = $th ? [
     'h1' => 'Build Windows programs in Rust <em>with screens designed by drag and drop</em>',
     'lead' => 'Drag buttons, text boxes and grids onto a form, double-click to write the Rust, press F5 and you have a real Windows program (Rust is installed once, free). A code editor that completes for you, a debugger, tests, Git and an installer maker come with it, in English or Thai, with a Thai Rust guide built in.',
     'btnDownload' => 'Download the installer', 'btnGithub' => 'Code on GitHub', 'btnGuide' => 'Read the guide (Thai)',
-    'meta' => fn ($c) => "Version {$release['version']} · {$mb} MB · Windows 10/11 (64-bit) · <b>Downloaded {$c['downloads']} times</b> · {$c['visitors']} visitors",
+    'meta' => fn ($c) => "Version {$release['version']} · {$mb} MB · Windows 10/11 (64-bit) · <b>Downloaded {$c['downloads']} times</b>",
     'learnH' => 'Learn to program, in Thai',
     'learnSub' => 'A Thai guide inside the program, for students and anyone who wants to write their own programs, in two parts: every tool of the Toolbox a page at a time, and Rust from zero - every example really runs.',
     'toolsH' => 'Every tool, a page each', 'toolsSub' => '43 pages, every Toolbox tool and the form: what it is for, code examples, its methods, properties and events - choose a control on the form and press F1 to open its page',
@@ -439,9 +438,8 @@ $T = $th ? [
         'coverage' => ['Run the tests and measure which lines they reach', 'A coloured bar by each line: reached, or not yet', 'Know where more tests are needed'],
         'program' => ['A real Windows program made with Phai Studio', 'One .exe file, needing only the Visual C++ runtime most computers already have', 'A Thai interface, in full', 'Publish makes its installer'],
     ],
-    'statVisitors' => 'Visitors', 'statDownloads' => 'Downloads', 'statVersion' => 'Version', 'cta' => 'Download',
+    'statDownloads' => 'Downloads', 'statVersion' => 'Version', 'cta' => 'Download',
     'zoom' => 'Click to see it full size', 'prev' => 'Previous', 'next' => 'Next', 'close' => 'Close',
-    'hud' => ['PHAI STUDIO · RUST · WINDOWS', 'A GIFT OF KNOWLEDGE', 'LEARN RUST IN THAI', 'FREE DOWNLOAD'],
     'whyH' => 'Why Phai Studio',
     'why' => [
         ['Every feature free, no paid edition', 'Sell the programs you make: the libraries that go with them are MIT'],
@@ -621,7 +619,6 @@ $base = 'https://phai-studio.monrak.net/';
 </head>
 <body>
 <div id="grid-bg" aria-hidden="true"></div>
-<div id="hud" aria-hidden="true"><i></i><span id="hud-pct">0%</span><b>|</b><span id="hud-text"><?= e($T['hud'][0]) ?></span></div>
 
 <header class="top">
     <div class="wrap top-row">
@@ -651,7 +648,6 @@ $base = 'https://phai-studio.monrak.net/';
                 <a class="btn btn-ghost" href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> GitHub</a>
             </div>
             <div class="stats">
-                <div><small><?= e($T['statVisitors']) ?></small><b><?= number_format($c['visitors']) ?></b></div>
                 <div><small><?= e($T['statDownloads']) ?></small><b><?= number_format($c['downloads']) ?></b></div>
                 <div><small><?= e($T['statVersion']) ?></small><b><?= e($release['version']) ?></b></div>
             </div>
@@ -828,7 +824,6 @@ $base = 'https://phai-studio.monrak.net/';
 </div>
 
 <script src="<?= v('thai-wrap.js') ?>"></script>
-<script>window.HUD_WORDS = <?= json_encode($T['hud'], JSON_UNESCAPED_UNICODE) ?>;</script>
 <script src="<?= v('site.js') ?>"></script>
 <script>
 // A visitor is counted once a person does something on the page - moves the mouse, scrolls,
