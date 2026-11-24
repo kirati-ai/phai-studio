@@ -5183,6 +5183,10 @@ impl Studio {
     }
 
     pub fn open_path(&mut self, path: &Path) {
+        // Its project built behind the designer if it never was, so the first F5 is quick.
+        if let Some(project) = cargo::project_of(path) {
+            cargo::warm_up(&project);
+        }
         // A form by its older name (.phaiform): its project's forms renamed .phf first, if wanted.
         let renamed = self.offer_new_form_names(path);
         let path = renamed.as_deref().unwrap_or(path);

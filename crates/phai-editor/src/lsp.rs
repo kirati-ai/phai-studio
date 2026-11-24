@@ -187,7 +187,10 @@ impl Lsp {
                 },
                 "workspaceFolders": [{ "uri": uri_of(root), "name": "project" }],
                 // Type mistakes as you type, not only after `cargo check`.
-                "initializationOptions": { "inlayHints": { "typeHints": { "enable": true }, "parameterHints": { "enable": false }, "chainingHints": { "enable": false } }, "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } }, "lens": { "enable": true, "references": { "adt": { "enable": true }, "method": { "enable": true }, "trait": { "enable": true }, "enumVariant": { "enable": true } } } }
+                // `cargo.targetDir`: its `cargo check` in target/rust-analyzer, not the build's
+                // target - sharing it, Build waited for each check to end: 13 s after a project
+                // opened, as the check went through every library.
+                "initializationOptions": { "cargo": { "targetDir": true }, "inlayHints": { "typeHints": { "enable": true }, "parameterHints": { "enable": false }, "chainingHints": { "enable": false } }, "diagnostics": { "experimental": { "enable": true } }, "checkOnSave": true, "workspace": { "symbol": { "search": { "kind": "all_symbols" } } }, "lens": { "enable": true, "references": { "adt": { "enable": true }, "method": { "enable": true }, "trait": { "enable": true }, "enumVariant": { "enable": true } } } }
             }),
         );
         // rust-analyzer takes the notification as soon as it has answered `initialize`.

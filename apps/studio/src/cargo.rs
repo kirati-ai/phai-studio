@@ -602,6 +602,41 @@ pub fn run_batch(window: HWND, list: Vec<(PathBuf, bool)>, job: Job) {
     });
 }
 
+/// A project never built (no Debug program yet - new, or just copied): its first build begun at
+/// once, out of sight and at a low priority, while the form is designed. Its libraries - the
+/// `windows` crate and Phai's - take about 27 s the first time; F5 then finds them built and takes
+/// a second. A build started meanwhile waits for this one, never longer than it would have taken.
+pub fn warm_up(project: &Path) {
+    const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+    // Photographed for the guide or a test: nothing running behind it.
+    if std::env::var_os("PHAI_SHOT").is_some() || crate::setting_pub("warm_build").as_deref() == Some("0") {
+        return;
+    }
+    let Some(name) = package_name(project) else { return };
+    if project.join("target").join("debug").join(format!("{name}.exe")).is_file() {
+        return;
+    }
+    // Once a project while Studio runs: its forms opened one after another start one build.
+    static BEGUN: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+    {
+        let mut begun = BEGUN.lock().unwrap_or_else(|e| e.into_inner());
+        if begun.iter().any(|p| p == project) {
+            return;
+        }
+        begun.push(project.to_path_buf());
+    }
+    let Some(cargo) = find_cargo() else { return };
+    let _ = Command::new(cargo)
+        .args(["build", "--quiet", "--manifest-path"])
+        .arg(project.join("Cargo.toml"))
+        .current_dir(project)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS)
+        .spawn();
+}
+
 /// One run of Cargo: its output to the Output pane, its JSON diagnostics into `out`.
 fn step(target: isize, project: &Path, args: &[String], out: &mut Outcome) {
     {
