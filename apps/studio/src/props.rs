@@ -1500,7 +1500,10 @@ impl Props {
                 }
             }
             Key::Items => {
-                if let Some(text) = phai_ui::dialogs::ask_lines(Some(self.hwnd), p.name, t("One a line; a list's columns as Name:width."), &p.value) {
+                // A context menu's lines are its items - method | label - not a list's columns.
+                let menu = s.selected.and_then(|i| s.doc.form.control.get(i)).is_some_and(|c| c.kind == phai_form::Kind::ContextMenu);
+                let how = if menu { t("One a line: method | label - the method runs when it is chosen; - alone a separator.") } else { t("One a line; a list's columns as Name:width.") };
+                if let Some(text) = phai_ui::dialogs::ask_lines(Some(self.hwnd), p.name, how, &p.value) {
                     self.commit(p.key, &text);
                 }
             }

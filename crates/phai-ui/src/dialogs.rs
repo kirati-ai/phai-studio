@@ -164,9 +164,25 @@ fn make(owner: Option<HWND>, spec: &Spec) -> HWND {
         }
         let x = r.left + (r.right - r.left - w) / 2;
         let y = r.top + (r.bottom - r.top - h) / 2;
+        // Kept on the owner's screen: centred on a pane at its edge, it would hang off it.
+        let (x, y) = on_screen(owner.unwrap_or(hwnd), x, y, w, h);
         let _ = wm::SetWindowPos(hwnd, None, x, y, w, h, wm::SWP_NOZORDER);
         win::theme_frame(hwnd);
         hwnd
+    }
+}
+
+/// `x`, `y` moved so a `w` x `h` window lies wholly in the work area of `near`'s screen.
+fn on_screen(near: HWND, x: i32, y: i32, w: i32, h: i32) -> (i32, i32) {
+    use windows::Win32::Graphics::Gdi;
+    unsafe {
+        let mon = Gdi::MonitorFromWindow(near, Gdi::MONITOR_DEFAULTTONEAREST);
+        let mut info = Gdi::MONITORINFO { cbSize: std::mem::size_of::<Gdi::MONITORINFO>() as u32, ..Default::default() };
+        if !Gdi::GetMonitorInfoW(mon, &mut info).as_bool() {
+            return (x, y);
+        }
+        let a = info.rcWork;
+        (x.min(a.right - w).max(a.left), y.min(a.bottom - h).max(a.top))
     }
 }
 
