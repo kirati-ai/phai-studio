@@ -335,6 +335,8 @@ const TIMER_PULL: usize = 7304;
 /// `--split-flood N`: once the window has drawn, the side's splitter dragged N steps in one burst,
 /// as a quick hand sends them - checked by picture.
 const TIMER_SPLIT_FLOOD: usize = 7305;
+/// A list that came back empty asked for again, a moment later.
+const TIMER_COMPLETE_AGAIN: usize = 7306;
 static SPLIT_FLOOD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 /// The breadcrumb's height, design pixels.
 const CRUMB_H: i32 = 24;
@@ -644,6 +646,9 @@ pub struct Studio {
     pull_ids: std::collections::HashMap<PathBuf, i64>,
     /// The id of the last list asked for: an older one's answer is not shown.
     last_complete: i64,
+    /// A list that came back empty while it is still wanted - the server still loading the
+    /// project - and how often it has been asked again: asked once more when the server is ready.
+    complete_again: Option<(HWND, u32)>,
     /// The last code coverage found: each file's lines and counts.
     coverage: Vec<coverage::FileCoverage>,
     /// What the Memory window shows: an address or a variable.
@@ -3155,6 +3160,10 @@ impl Studio {
                     self.show_lsp_diagnostics(&path);
                 }
                 self.pull_now();
+                // Asked while it was still reading: a list waiting is asked for again, and the
+                // references counted afresh - "0 references" was only that it had not read them.
+                self.complete_again_now();
+                self.refresh_lenses();
             }
             return;
         }
@@ -3241,7 +3250,26 @@ impl Studio {
                 if id != self.last_complete {
                     return;
                 }
-                phai_editor::view::show_completions(h, phai_editor::lsp::completions_of(&result, 300));
+                let items = phai_editor::lsp::completions_of(&result, 300);
+                // Nothing yet where something is wanted: rust-analyzer is most often still reading
+                // the project. Asked again - when it is ready, or in a moment - not left empty.
+                if items.is_empty() && phai_editor::view::list_wanted(h) {
+                    let tries = self.complete_again.filter(|(e, _)| *e == h).map(|(_, n)| n).unwrap_or(0);
+                    if tries < 30 {
+                        self.complete_again = Some((h, tries + 1));
+                        if self.lsp_loading {
+                            controls::status_text(self.status, 0, t("rust-analyzer is still reading the project - the list comes when it is ready"));
+                        }
+                        unsafe {
+                            wm::SetTimer(Some(self.hwnd), TIMER_COMPLETE_AGAIN, if self.lsp_loading { 1000 } else { 400 }, None);
+                        }
+                    } else {
+                        self.complete_again = None;
+                    }
+                } else {
+                    self.complete_again = None;
+                }
+                phai_editor::view::show_completions(h, items);
             }
             Ask::Pull(path, id) => {
                 // An older ask answered after a newer was sent: the newer will say.
@@ -3539,7 +3567,9 @@ impl Studio {
                 let ticks = TICKS.fetch_add(1, Ordering::Relaxed);
                 // `PHAI_ARG_AFTER=N`: typed only after N seconds, the server loaded.
                 let after = std::env::var("PHAI_ARG_AFTER").ok().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
-                if LSP_TEST.load(Ordering::Relaxed) == 0 && (ticks < after || self.lsp_loading) {
+                // `PHAI_ARG_EARLY`: typed at once, the server still loading - as a hand that does not wait.
+                let early = std::env::var_os("PHAI_ARG_EARLY").is_some();
+                if LSP_TEST.load(Ordering::Relaxed) == 0 && (ticks < after || (self.lsp_loading && !early)) {
                 } else if LSP_TEST.load(Ordering::Relaxed) == 0 {
                     TICKS.store(1, Ordering::Relaxed);
                     phai_editor::view::go_to(h, l, c);
@@ -4436,6 +4466,16 @@ impl Studio {
             self.asked.insert(id, (h, Ask::Complete(id)));
             self.last_complete = id;
         }
+    }
+
+    /// A list that came back empty, asked for again if it is still wanted where it was.
+    fn complete_again_now(&mut self) {
+        let Some((h, _)) = self.complete_again else { return };
+        if !phai_editor::view::list_wanted(h) || Some(h) != self.doc.code {
+            self.complete_again = None;
+            return;
+        }
+        self.lsp_complete(h);
     }
 
     /// The editor said its text changed.
@@ -9411,6 +9451,13 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             s.pull_now();
             LRESULT(0)
         }
+        wm::WM_TIMER if w.0 == TIMER_COMPLETE_AGAIN => {
+            unsafe {
+                let _ = wm::KillTimer(Some(hwnd), TIMER_COMPLETE_AGAIN);
+            }
+            s.complete_again_now();
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_SPLIT_FLOOD => {
             unsafe {
                 let _ = wm::KillTimer(Some(hwnd), TIMER_SPLIT_FLOOD);
@@ -10097,6 +10144,7 @@ fn main() {
             pulled_diagnostics: Default::default(),
             pull_ids: Default::default(),
             last_complete: 0,
+            complete_again: None,
             frames: vec![],
             servers: None,
             watches: vec![],

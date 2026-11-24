@@ -1014,6 +1014,12 @@ fn word_before(v: &View) -> (usize, String) {
     (v.model.buf.line_start(line) + start, s[start..col].to_string())
 }
 
+/// Whether a list asked for is still wanted: none open, the caret still in the word it was asked
+/// for - an empty answer (the server still loading) is asked again while this holds.
+pub fn list_wanted(h: HWND) -> bool {
+    view(h).is_some_and(|v| v.list.is_none() && word_before(v).0 == v.list_at)
+}
+
 /// The list is being asked for here: its answer belongs to the word at the caret now.
 pub fn asking_list(h: HWND) {
     if let Some(v) = view(h) {

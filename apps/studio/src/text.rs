@@ -112,6 +112,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Errors and output", "ข้อผิดพลาดและผลลัพธ์"),
     ("Font size", "ขนาดฟอนต์"),
     ("rust-analyzer is not installed: rustup component add rust-analyzer", "ยังไม่ได้ติดตั้ง rust-analyzer: rustup component add rust-analyzer"),
+    ("rust-analyzer is still reading the project - the list comes when it is ready", "rust-analyzer ยังอ่านโปรเจกต์ไม่เสร็จ - อ่านเสร็จแล้วรายการจะขึ้นเอง"),
     ("{0} errors, {1} warnings", "ข้อผิดพลาด {0} คำเตือน {1}"),
     ("Line {0}, column {1}", "บรรทัด {0} คอลัมน์ {1}"),
     ("New from template", "สร้างจากแม่แบบ"),
