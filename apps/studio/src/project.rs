@@ -218,10 +218,11 @@ windows = {{ version = "0.62", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }}
 
+# Thin LTO: a release built in half the time and rebuilt in a quarter of it, for 7% more size
+# (measured: 66 s and 8 s for 523 KB with lto = true and codegen-units = 1; 30 s and 2 s for 563 KB).
 [profile.release]
 opt-level = "s"
-lto = true
-codegen-units = 1
+lto = "thin"
 panic = "abort"
 strip = true
 "#,
