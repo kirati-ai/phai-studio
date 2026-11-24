@@ -65,11 +65,9 @@ const ID_SERVERS_CAPTION: i32 = 413;
 const ID_SIDE_SPLIT2: i32 = 414;
 const ID_OUTLINE_CAPTION: i32 = 415;
 const ID_SIDE_SPLIT3: i32 = 416;
-const ID_AI_CAPTION: i32 = 417;
-const ID_SIDE_SPLIT4: i32 = 418;
-/// The side's panes top to bottom: Project, Server Explorer, Document Outline, the AI assistant,
-/// Properties - which is last, filling what is left.
-const ORDER: [usize; 5] = [0, 1, 2, 4, 3];
+/// The side's panes top to bottom: Project, Server Explorer, Document Outline, Properties - which
+/// is last, filling what is left.
+const ORDER: [usize; 4] = [0, 1, 2, 3];
 
 /// The right-hand side: two docked panes, the project explorer above the properties, each with
 /// its caption and close button, a splitter between them.
@@ -86,15 +84,12 @@ struct Side {
     /// Document Outline: shown, and its height when a pane lies below it.
     pub outline_on: bool,
     outline_h: i32,
-    /// The AI assistant: shown, and its height when a pane lies below it.
-    pub ai_on: bool,
-    ai_h: i32,
     /// Auto Hide, each pane on its own: Project, Properties.
     explorer_auto: bool,
     props_auto: bool,
     /// The panes as tabs, one shown at a time, their tabs along the bottom - as Visual Studio
     /// groups Solution Explorer and Properties. `active` is the pane shown (0 Project, 1 Server
-    /// Explorer, 2 Document Outline, 3 Properties, 4 the AI assistant).
+    /// Explorer, 2 Document Outline, 3 Properties).
     tabbed: bool,
     active: usize,
     tabs: HWND,
@@ -104,7 +99,7 @@ struct Side {
 
 /// The pane names on the tabs along the bottom, by pane.
 fn tab_name(k: usize) -> &'static str {
-    [t("Project"), t("Server Explorer"), t("Document Outline"), t("Properties"), "AI"][k]
+    [t("Project"), t("Server Explorer"), t("Document Outline"), t("Properties")][k]
 }
 
 #[derive(Clone, Copy)]
@@ -122,9 +117,6 @@ struct SideParts {
     outline_caption: HWND,
     outline: HWND,
     split3: HWND,
-    ai_caption: HWND,
-    ai: HWND,
-    split4: HWND,
 }
 
 impl Side {
@@ -134,7 +126,6 @@ impl Side {
             0 => self.explorer_on,
             1 => self.servers_on,
             2 => self.outline_on && !p.outline.is_invalid(),
-            4 => self.ai_on && !p.ai.is_invalid(),
             _ => self.props_on,
         }
     }
@@ -166,7 +157,6 @@ impl Side {
             (p.servers_caption, p.servers, self.servers_on, self.servers_h),
             (p.outline_caption, p.outline, self.outline_on && !p.outline.is_invalid(), self.outline_h),
             (p.props_caption, p.props, self.props_on, 0),
-            (p.ai_caption, p.ai, self.ai_on && !p.ai.is_invalid(), self.ai_h),
         ];
         let mut shown = self.docked();
         let tabbed = self.tabs_on();
@@ -189,7 +179,7 @@ impl Side {
                 win::show(p.explorer_search, on);
             }
         }
-        let splits = [p.split, p.split2, p.split3, p.split4];
+        let splits = [p.split, p.split2, p.split3];
         for s in splits {
             win::show(s, false);
         }
@@ -213,7 +203,7 @@ impl Side {
             if !last {
                 // The splitter under a pane sizes that pane: the first under Project, the
                 // second under Server Explorer, the third under Document Outline.
-                let s = splits[if *k == 4 { 3 } else { (*k).min(2) }];
+                let s = splits[(*k).min(2)];
                 win::show(s, true);
                 l.add(s, item(6, Dock::Top));
             }
@@ -470,14 +460,14 @@ pub fn side_panel(parent: HWND) -> HWND {
     let class = win::register("PhaiStudioSide", Some(side_proc), None);
     unsafe {
         let h = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_CHILD | wm::WS_VISIBLE | wm::WS_CLIPCHILDREN | wm::WS_CLIPSIBLINGS, 0, 0, 10, 10, Some(parent), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default();
-        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 260, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200, ai_on: false, ai_h: 320, explorer_auto: false, props_auto: false, tabbed: false, active: 0, tabs: HWND::default(), sliding: None }));
+        win::set_state(h, Box::new(Side { layout: Layout::new((280, 600)), parts: None, explorer_h: 260, servers_h: 200, explorer_on: true, props_on: true, servers_on: false, outline_on: false, outline_h: 200, explorer_auto: false, props_auto: false, tabbed: false, active: 0, tabs: HWND::default(), sliding: None }));
         h
     }
 }
 
 /// Makes the panes of the side: the explorer's caption and tree, a splitter, the properties'
 /// caption and the properties.
-pub fn set_side_parts(side: HWND, explorer: &Explorer, props: HWND, servers: HWND, outline: HWND, ai: HWND, font: HFONT) {
+pub fn set_side_parts(side: HWND, explorer: &Explorer, props: HWND, servers: HWND, outline: HWND, font: HFONT) {
     let (heading, bar, search, tree) = (explorer.hwnd, explorer.bar, explorer.search, explorer.tree);
     if let Some(s) = unsafe { win::state::<Side>(side) } {
         let split = phai_ui::controls::splitter(side, ID_SIDE_SPLIT, false);
@@ -486,10 +476,8 @@ pub fn set_side_parts(side: HWND, explorer: &Explorer, props: HWND, servers: HWN
         let servers_caption = phai_ui::controls::caption(side, t("Server Explorer"), ID_SERVERS_CAPTION, font);
         let outline_caption = phai_ui::controls::caption(side, t("Document Outline"), ID_OUTLINE_CAPTION, font);
         let split3 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT3, false);
-        let ai_caption = phai_ui::controls::caption(side, t("AI Assistant"), ID_AI_CAPTION, font);
-        let split4 = phai_ui::controls::splitter(side, ID_SIDE_SPLIT4, false);
         s.tabs = side_tabs(side, font);
-        s.parts = Some(SideParts { explorer_caption: heading, explorer_bar: bar, explorer_search: search, tree, split, props_caption, props, servers_caption, servers, split2, outline_caption, outline, split3, ai_caption, ai, split4 });
+        s.parts = Some(SideParts { explorer_caption: heading, explorer_bar: bar, explorer_search: search, tree, split, props_caption, props, servers_caption, servers, split2, outline_caption, outline, split3 });
         s.arrange(side);
     }
 }
@@ -518,22 +506,6 @@ pub fn show_outline(side: HWND, on: bool) -> bool {
     on
 }
 
-/// Shows or hides the AI assistant; whether it shows now.
-pub fn show_ai(side: HWND, on: bool) -> bool {
-    if let Some(s) = unsafe { win::state::<Side>(side) } {
-        if on && !s.ai_on {
-            s.active = 4;
-        }
-        s.ai_on = on;
-        s.arrange(side);
-    }
-    on
-}
-
-pub fn ai_shown(side: HWND) -> bool {
-    unsafe { win::state::<Side>(side) }.is_some_and(|s| s.ai_on)
-}
-
 pub fn outline_shown(side: HWND) -> bool {
     unsafe { win::state::<Side>(side) }.is_some_and(|s| s.outline_on)
 }
@@ -553,7 +525,6 @@ pub fn relabel_side(side: HWND) {
         win::set_text(p.props_caption, t("Properties"));
         win::set_text(p.servers_caption, t("Server Explorer"));
         win::set_text(p.outline_caption, t("Document Outline"));
-        win::set_text(p.ai_caption, t("AI Assistant"));
     }
     if let Some(s) = unsafe { win::state::<Side>(side) } {
         unsafe {
@@ -582,15 +553,6 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 e.filter = win::text_of(e.search).trim().to_lowercase();
                 let root = e.root.clone();
                 e.fill(root);
-            }
-            LRESULT(0)
-        }
-        wm::WM_COMMAND if win::loword(w.0) as i32 == ID_AI_CAPTION => {
-            if win::hiword(w.0) == phai_ui::controls::CAPTION_CLOSE {
-                show_ai(h, false);
-                if let Some(st) = studio() {
-                    st.rebuild_menu_pub();
-                }
             }
             LRESULT(0)
         }
@@ -623,9 +585,7 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
         phai_ui::controls::WM_SPLIT => {
             if let Some(s) = unsafe { win::state::<Side>(h) } {
                 let d = phai_ui::layout::unscale(l.0 as i32, win::dpi(h));
-                if w.0 as i32 == ID_SIDE_SPLIT4 {
-                    s.ai_h = (s.ai_h + d).clamp(120, 1200);
-                } else if w.0 as i32 == ID_SIDE_SPLIT3 {
+                if w.0 as i32 == ID_SIDE_SPLIT3 {
                     s.outline_h = (s.outline_h + d).clamp(60, 900);
                 } else if w.0 as i32 == ID_SIDE_SPLIT2 {
                     s.servers_h = (s.servers_h + d).clamp(60, 900);

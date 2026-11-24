@@ -85,7 +85,7 @@ pub struct Values {
     /// The tabs left open kept for next time, in place of `start_tabs`.
     pub remember_tabs: bool,
     // GitHub Copilot
-    /// Copilot on: its server runs, the AI Assistant offers it.
+    /// Copilot on: its server runs, and its suggestions come as you type.
     pub copilot: bool,
     /// Its grey suggestions as you type.
     pub copilot_suggest: bool,
@@ -420,7 +420,7 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             build_flash: check(t("Flash Phai Studio on the taskbar when a build ends behind other windows"), now.build_flash),
             start_tabs: START_TABS.iter().map(|k| check(crate::bottom::labels()[*k], now.start_tabs.contains(k))).collect(),
             remember_tabs: check(t("Open the tabs I left open, instead"), now.remember_tabs),
-            copilot: check(t("Turn on GitHub Copilot: suggestions as you type, and Copilot in the AI Assistant"), now.copilot),
+            copilot: check(t("Turn on GitHub Copilot: suggestions as you type"), now.copilot),
             copilot_suggest: check(t("Show Copilot's suggestions as you type (Tab takes one, Esc puts it away)"), now.copilot_suggest),
         };
         let rows = vec![
@@ -460,7 +460,7 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
                 note(t("Needs a GitHub account with Copilot - Copilot Free is enough (github.com/settings/copilot).")),
                 note(t("Phai Studio gets GitHub's Copilot Language Server once (about 110 MB) and checks it.")),
                 note(t("Sign in from Copilot on the status bar; GitHub's server keeps the sign-in, not Phai Studio.")),
-                note(t("What Copilot does counts against your Copilot plan, under GitHub's terms.")),
+                note(t("Its suggestions count against your Copilot plan, under GitHub's terms.")),
             ],
         ];
         let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
