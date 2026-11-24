@@ -245,7 +245,7 @@ $T = $th ? [
             'หน้าออกแบบเลื่อนได้เมื่อฟอร์มใหญ่กว่าที่ว่าง และแท็บ Events คลิกเลือก ดับเบิลคลิกเขียนเมธอดแล้วไปที่โค้ดนั้น',
         ]],
         ['0.2.10', '23 พ.ย. 2569', [
-            'ผู้ช่วย AI (View > AI Assistant): คุยกับ Claude เรื่องโปรเจกต์ โหมด ลงมือ ให้ Claude แก้โค้ดและฟอร์ม build แก้ error รันเทสต์ และดูภาพหน้าจอโปรแกรมเอง ทุกการแก้ไฟล์ให้กดรับหรือไม่รับก่อน (ใช้คีย์ API ของคุณเอง)',
+            'GitHub Copilot ในตัว: แนะนำโค้ดขณะพิมพ์เป็นตัวหนังสือสีเทา กด Tab รับ และแผงผู้ช่วย AI (View > AI Assistant) คุยเรื่องโปรเจกต์ เลือกรุ่น AI ได้ตามที่บัญชีมี เช่น GPT, Claude, Gemini โหมด ลงมือ ให้แก้โค้ดให้ ทุกการแก้ไฟล์ให้กดรับหรือไม่รับก่อน (ใช้บัญชี GitHub ของคุณเอง Copilot Free ก็ได้)',
             'นำเข้าฟอร์มจาก WinForms (Project > Import WinForms Form): เปิดฟอร์มที่ทำใน Visual Studio ทั้ง C# และ VB.NET หน้าตาเหมือนเดิม พร้อมเมนู event รูปและไอคอน แล้วแก้ต่อด้วยลากวาง',
             'Snippet แบบมีช่องกรอก: กด Tab ไปช่องถัดไป มี snippet ของ Phai เช่น msg yesno bg และเพิ่ม snippet ของคุณเองได้',
             'วาง control บน panel ที่มีสีพื้นแล้วไม่หายไปใต้ panel อีก',
@@ -485,7 +485,7 @@ $T = $th ? [
             'The designer scrolls a form larger than the room; the Events tab chooses with a click and writes the method with a double-click, going to it',
         ]],
         ['0.2.10', '23 Nov 2026', [
-            'An AI assistant (View > AI Assistant): talk to Claude about the project; in Act mode Claude edits code and forms, builds and fixes errors, runs the tests and looks at the running program - every change to a file is yours to accept or decline (your own API key)',
+            'GitHub Copilot built in: code suggested in grey as you type, Tab takes it - and an AI assistant (View > AI Assistant) to talk about the project, with the models your account offers, such as GPT, Claude and Gemini; in Act mode it edits the code, and every change to a file is yours to accept or decline (your own GitHub account; Copilot Free is enough)',
             'Import WinForms forms (Project > Import WinForms Form): a form made in Visual Studio, C# or VB.NET, opens looking as it did, with its menus, events, pictures and icon, to go on with by drag and drop',
             'Snippets with fields to fill in: Tab to the next; Phai\'s own such as msg, yesno, bg, and snippets of your own',
             'A control put on a coloured panel no longer disappears under it',
