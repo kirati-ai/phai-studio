@@ -736,7 +736,7 @@ fn is_thai(c: char) -> bool {
 }
 
 /// A line cut where Thai begins and ends: (Thai or not, the piece).
-fn script_runs(s: &str) -> Vec<(bool, &str)> {
+pub(crate) fn script_runs(s: &str) -> Vec<(bool, &str)> {
     let mut out: Vec<(bool, &str)> = Vec::new();
     let mut start = 0;
     let mut thai = None;

@@ -74,7 +74,12 @@ impl Popup {
 
     fn new(owner: HWND, font: HFONT, lines: Vec<String>, items: Vec<Completion>) -> Box<Popup> {
         let hwnd = make(owner);
-        let row_h = win::measure(hwnd, font, "Ag").1 + win::px(hwnd, 6);
+        // Tall enough for Thai's marks above and below too.
+        let thai = thai_beside(font);
+        let row_h = win::measure(hwnd, font, "Ag").1.max(win::measure(hwnd, thai, "ก็ญู").1) + win::px(hwnd, 6);
+        unsafe {
+            let _ = Gdi::DeleteObject(thai.into());
+        }
         let b = Box::new(Popup { hwnd, font, lines, items, chosen: 0, soft: false, row_h, own_font: false, guide: None });
         unsafe {
             wm::SetWindowLongPtrW(hwnd, wm::GWLP_USERDATA, &*b as *const Popup as isize);
@@ -94,7 +99,11 @@ impl Popup {
     pub fn place(&self, x: i32, y: i32) {
         let rows = self.rows();
         let pad = win::px(self.hwnd, 8);
-        let label_w = rows.iter().map(|r| win::measure(self.hwnd, self.font, r).0).max().unwrap_or(0);
+        let thai = thai_beside(self.font);
+        let label_w = rows.iter().map(|r| mixed_width(self.hwnd, self.font, thai, r)).max().unwrap_or(0);
+        unsafe {
+            let _ = Gdi::DeleteObject(thai.into());
+        }
         // Room for the longest detail beside the longest name, up to a reasonable width; what is
         // longer still is cut with ... rather than drawn over the name.
         let detail_w = self.items.iter().take(MAX_ROWS).map(|c| win::measure(self.hwnd, self.font, &detail_of(c)).0).max().unwrap_or(0);
@@ -398,6 +407,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
             let pad = win::px(h, 8);
             let old = Gdi::SelectObject(dc, p.font.into());
             Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
+            let thai_font = thai_beside(p.font);
             for (i, row) in p.rows().iter().enumerate() {
                 let y = pad / 2 + i as i32 * p.row_h;
                 let line = RECT { left: 0, top: y, right: r.right, bottom: y + p.row_h };
@@ -411,13 +421,21 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                         win::fill(dc, &line, chosen_bg);
                     }
                 }
-                let mut tr = RECT { left: pad, ..line };
-                let label_w = win::measure(h, p.font, row).0;
-                let mut words: Vec<u16> = row.encode_utf16().collect();
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(win::window_text().colorref()));
-                if !words.is_empty() {
+                // Thai in its own font, as the editor draws it: the code's font has no Thai, and
+                // the one Windows borrows for it stands far smaller than the words beside it.
+                let mut x = pad;
+                for (thai, piece) in crate::view::script_runs(row) {
+                    let f = if thai { thai_font } else { p.font };
+                    let w = win::measure(h, f, piece).0;
+                    let mut tr = RECT { left: x, ..line };
+                    let mut words: Vec<u16> = piece.encode_utf16().collect();
+                    Gdi::SelectObject(dc, f.into());
                     phai_ui::win::draw_text_w(dc, &mut words, &mut tr, Gdi::DT_LEFT | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE | Gdi::DT_NOPREFIX);
+                    x += w;
                 }
+                Gdi::SelectObject(dc, p.font.into());
+                let label_w = x - pad;
                 // A completion's detail, muted, at the right.
                 if let Some(c) = p.items.get(i) {
                     if !c.detail.is_empty() {
@@ -433,11 +451,31 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 }
             }
             Gdi::SelectObject(dc, old);
+            let _ = Gdi::DeleteObject(thai_font.into());
             drop(buf);
             let _ = Gdi::EndPaint(h, &ps);
             LRESULT(0)
         },
         _ => win::def(h, msg, w, l),
+    }
+}
+
+/// How wide a row stands, its Thai in `thai` and the rest in `font`, as it is drawn.
+fn mixed_width(h: HWND, font: HFONT, thai: HFONT, s: &str) -> i32 {
+    crate::view::script_runs(s).into_iter().map(|(t, piece)| win::measure(h, if t { thai } else { font }, piece).0).sum()
+}
+
+/// Leelawadee UI, Windows' own Thai, a little larger than `code` - as the editor sizes it, so
+/// Thai letters stand as tall as the code's small letters.
+fn thai_beside(code: HFONT) -> HFONT {
+    unsafe {
+        let mut lf = Gdi::LOGFONTW::default();
+        Gdi::GetObjectW(code.into(), std::mem::size_of::<Gdi::LOGFONTW>() as i32, Some(&mut lf as *mut _ as *mut _));
+        let mut thai = Gdi::LOGFONTW { lfHeight: lf.lfHeight * 118 / 100, lfCharSet: Gdi::DEFAULT_CHARSET, lfQuality: Gdi::CLEARTYPE_QUALITY, ..Default::default() };
+        for (i, u) in "Leelawadee UI".encode_utf16().enumerate() {
+            thai.lfFaceName[i] = u;
+        }
+        Gdi::CreateFontIndirectW(&thai)
     }
 }
 
