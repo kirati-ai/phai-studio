@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use crate::*;
 
 /// What is there now, worked out once for a menu's or a bar's worth of commands.
+#[derive(Default)]
 pub struct Now {
     /// Something open (not the empty start).
     open: bool,
@@ -21,6 +22,8 @@ pub struct Now {
     path: Option<PathBuf>,
     /// The Cargo project it is in.
     project: bool,
+    /// A project shown in Project, a file of it open or not.
+    project_shown: bool,
     /// A Git repository it is in.
     repo: bool,
     /// Controls chosen on the form.
@@ -59,6 +62,7 @@ impl Now {
             rust: code && path.as_ref().is_some_and(|p| p.extension().is_some_and(|e| e == "rs")),
             repo: path.as_deref().is_some_and(in_repo),
             project: project.is_some(),
+            project_shown: s.explorer.as_ref().is_some_and(|e| e.shows_project()),
             chosen: if open && !code { s.selection().len() } else { 0 },
             theme: open && !code && path.is_some() && s.doc.form.form.theme.is_some(),
             conns: s.servers.as_ref().is_some_and(|v| !v.conns.is_empty()),
@@ -89,7 +93,9 @@ impl Now {
         }
         match id {
             // File
-            ID_CLOSE | ID_CLOSE_PROJECT | ID_SAVE | ID_SAVE_AS | ID_SAVE_ALL => self.open,
+            ID_CLOSE | ID_SAVE | ID_SAVE_AS | ID_SAVE_ALL => self.open,
+            // A project shown with no file of it open can be closed too.
+            ID_CLOSE_PROJECT => self.open || self.project_shown,
             // Edit
             ID_UNDO => self.undo,
             ID_REDO => self.redo,
@@ -159,4 +165,20 @@ pub fn grey_menu(menu: windows::Win32::UI::WindowsAndMessaging::HMENU, now: &Now
         }
     }
     any
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn close_project_works_with_no_file_of_it_open() {
+        let nothing = Now::default();
+        assert!(!nothing.enabled(ID_CLOSE_PROJECT), "no project, nothing open: nothing to close");
+        let shown = Now { project_shown: true, ..Now::default() };
+        assert!(shown.enabled(ID_CLOSE_PROJECT), "a project in Project, no file of it open");
+        assert!(!shown.enabled(ID_CLOSE) && !shown.enabled(ID_SAVE), "no file: nothing to close or save");
+        let open = Now { open: true, ..Now::default() };
+        assert!(open.enabled(ID_CLOSE_PROJECT));
+    }
 }

@@ -838,6 +838,11 @@ impl Explorer {
         }
     }
 
+    /// Whether a project's folder is shown - with or without a file of it open.
+    pub fn shows_project(&self) -> bool {
+        self.root.is_some()
+    }
+
     pub fn show_project_of(&mut self, form: Option<&Path>) {
         let root = form.and_then(|f| crate::cargo::project_of(f).or_else(|| f.parent().map(Path::to_path_buf)));
         if root != self.root || self.entries.is_empty() {
