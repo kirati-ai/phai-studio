@@ -414,7 +414,9 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             if let Some(s) = win::state::<Side>(side) {
                 let old = Gdi::SelectObject(dc, font.into());
                 Gdi::SetBkMode(dc, Gdi::TRANSPARENT);
-                for (k, a, b) in tab_spans(h, s, font) {
+                let spans = tab_spans(h, s, font);
+                let last = spans.last().map(|(k, _, _)| *k);
+                for (k, a, b) in spans {
                     let on = k == s.active;
                     let mut tr = RECT { left: a, right: b, top: r.top, bottom: r.bottom };
                     if on {
@@ -423,9 +425,11 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                         win::fill(dc, &tr, win::window_background());
                         win::fill(dc, &RECT { top: tr.bottom - win::px(h, 2), ..tr }, accent);
                     }
-                    // A line down each side of every tab.
+                    // A line down each side of every tab - one between two.
                     win::fill(dc, &RECT { right: tr.left + 1, ..tr }, rule);
-                    win::fill(dc, &RECT { left: tr.right - 1, ..tr }, rule);
+                    if Some(k) == last {
+                        win::fill(dc, &RECT { left: tr.right - 1, ..tr }, rule);
+                    }
                     Gdi::SetTextColor(dc, COLORREF(if on { accent } else { muted }.colorref()));
                     let mut text: Vec<u16> = tab_name(k).encode_utf16().collect();
                     phai_ui::win::draw_text_w(dc, &mut text, &mut tr, Gdi::DT_CENTER | Gdi::DT_VCENTER | Gdi::DT_SINGLELINE);

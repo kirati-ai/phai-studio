@@ -256,11 +256,20 @@ extern "system" fn tabs_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                 win::fill(dc, &r, base.background_or(win::window_background_for(h)));
                 let rule = RECT { top: r.bottom - 1, ..r };
                 win::fill(dc, &rule, base.border_or(Color::rgb(229, 229, 229)));
-                for (i, (a, b)) in tab_edges(h, t).into_iter().enumerate() {
+                // A line between each tab and the next, and at either end, dark enough to see
+                // where one tab stops - one line between two, never two side by side.
+                let sep = win::window_background_for(h).mix(win::window_text_for(h), 0.18);
+                let edges = tab_edges(h, t);
+                let count = edges.len();
+                for (i, (a, b)) in edges.into_iter().enumerate() {
                     let st = win::style_animated_part(h, i + 1, Kind::Tabs, State { selected: i == t.selected, hover: t.hot == Some(i), ..Default::default() });
                     // A tab of a colour of its own (`tabs:hover { background }`) on the strip's.
                     if let Some(bg) = st.background.filter(|b| Some(*b) != base.background) {
                         win::fill(dc, &RECT { left: a, right: b, top: r.top, bottom: r.bottom - 1 }, bg);
+                    }
+                    win::fill(dc, &RECT { left: a, right: a + 1, top: r.top, bottom: r.bottom - 1 }, sep);
+                    if i + 1 == count {
+                        win::fill(dc, &RECT { left: b - 1, right: b, top: r.top, bottom: r.bottom - 1 }, sep);
                     }
                     let close_w = if t.closable { px(h, 20) } else { 0 };
                     let mut tr = RECT { left: a, right: b - close_w, top: r.top, bottom: r.bottom - px(h, 3) };

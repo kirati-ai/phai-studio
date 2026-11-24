@@ -110,6 +110,10 @@ fn paint(h: HWND) {
             // A bar along the tab, as Visual Studio marks one: the accent under the pointer.
             let br = if s.left { RECT { left: r.right - bar - 1, right: r.right - 1, top: a, bottom: b } } else { RECT { left: 1, right: 1 + bar, top: a, bottom: b } };
             win::fill(dc, &br, if on { accent } else { rule });
+            // A line across each end of the tab, as the other tabs have down their sides.
+            let sep = win::window_background().mix(win::window_text(), 0.18);
+            win::fill(dc, &RECT { top: a, bottom: a + 1, ..r }, sep);
+            win::fill(dc, &RECT { top: b - 1, bottom: b, ..r }, sep);
             Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(if on { win::window_text() } else { muted }.colorref()));
             // Turned a quarter clockwise, the words hang left of where they start.
             let x = (r.right + text_h) / 2 - if s.left { bar / 2 } else { -bar / 2 };
