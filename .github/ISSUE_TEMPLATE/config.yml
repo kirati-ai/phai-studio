@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Thai guide / คู่มือภาษาไทย
+    url: https://phai-studio.monrak.net/help/
+    about: How to use Phai Studio, and Rust lessons from zero.
+  - name: License questions / คำถามเรื่อง license
+    url: https://github.com/kirati-ai/phai-studio/blob/main/docs/license-faq.md
+    about: Selling your programs, forks, what counts as competing.

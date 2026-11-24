@@ -117,5 +117,8 @@ Two parts, two licenses - see [LICENSE](LICENSE). © 2026 Monrak Net (Kirati Kit
   share for any purpose - making programs you sell included - but not to offer a product that competes with Phai Studio.
   What Phai Studio writes into your projects is yours.
 
+Questions - selling your programs, forks, what counts as competing - are answered in
+[docs/license-faq.md](docs/license-faq.md). To help, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 Versions up to 0.2.7 were MIT alone. "Phai Studio" and the bamboo logo are Monrak Net's. Part of the Phai family
 (Phai ERP, PhaiDesk).
