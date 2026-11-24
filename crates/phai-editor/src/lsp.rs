@@ -115,48 +115,9 @@ impl Lsp {
     /// Starts rust-analyzer for the project at `root`; what it says goes to `window`.
     pub fn start(root: &Path, window: HWND) -> Option<Lsp> {
         let server = find_server()?;
-        let mut child = Command::new(server).current_dir(root).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).creation_flags(0x0800_0000).spawn().ok()?;
-        let stdin = child.stdin.take()?;
-        let stdout = child.stdout.take()?;
-        let target = window.0 as isize;
-        std::thread::spawn(move || {
-            let mut r = BufReader::new(stdout);
-            loop {
-                let mut len = 0usize;
-                loop {
-                    let mut header = String::new();
-                    if r.read_line(&mut header).unwrap_or(0) == 0 {
-                        return;
-                    }
-                    let h = header.trim();
-                    if h.is_empty() {
-                        break;
-                    }
-                    if let Some(v) = h.strip_prefix("Content-Length:") {
-                        len = v.trim().parse().unwrap_or(0);
-                    }
-                }
-                let mut body = vec![0u8; len];
-                if r.read_exact(&mut body).is_err() {
-                    return;
-                }
-                let Ok(value) = serde_json::from_slice::<Value>(&body) else { continue };
-                // `PHAI_LSP_LOG=1`: what the server says, one line each, for finding out why.
-                if std::env::var_os("PHAI_LSP_LOG").is_some() {
-                    let what = value.get("method").and_then(|m| m.as_str()).map(str::to_string).unwrap_or_else(|| format!("answer {}", value.get("id").cloned().unwrap_or_default()));
-                    let extra = if what == "textDocument/publishDiagnostics" { format!(" {} {}", value["params"]["uri"], value["params"]["diagnostics"].as_array().map(|a| a.len()).unwrap_or(0)) } else { String::new() };
-                    eprintln!("lsp: {what}{extra}");
-                }
-                let boxed = Box::into_raw(Box::new(value));
-                unsafe {
-                    if wm::PostMessageW(Some(HWND(target as *mut _)), WM_LSP, WPARAM(0), LPARAM(boxed as isize)).is_err() {
-                        drop(Box::from_raw(boxed));
-                        return;
-                    }
-                }
-            }
-        });
-        let mut lsp = Lsp { child, stdin: Mutex::new(stdin), next: 1, root: root.to_path_buf() };
+        let mut cmd = Command::new(server);
+        cmd.current_dir(root);
+        let mut lsp = Lsp::spawn(cmd, root, window, WM_LSP)?;
         lsp.request(
             "initialize",
             json!({
@@ -198,6 +159,64 @@ impl Lsp {
         Some(lsp)
     }
 
+    /// Runs a language server - `cmd`, its stdin and stdout piped here - for the project at
+    /// `root`; each message it sends is posted to `window` as `message` (`WM_LSP` or another's).
+    /// Nothing is said to it yet: `initialize` is the caller's.
+    pub fn spawn(mut cmd: Command, root: &Path, window: HWND, message: u32) -> Option<Lsp> {
+        let mut child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).creation_flags(0x0800_0000).spawn().ok()?;
+        let stdin = child.stdin.take()?;
+        let stdout = child.stdout.take()?;
+        let target = window.0 as isize;
+        std::thread::spawn(move || {
+            let mut r = BufReader::new(stdout);
+            loop {
+                let mut len = 0usize;
+                loop {
+                    let mut header = String::new();
+                    if r.read_line(&mut header).unwrap_or(0) == 0 {
+                        return;
+                    }
+                    let h = header.trim();
+                    if h.is_empty() {
+                        break;
+                    }
+                    if let Some(v) = h.strip_prefix("Content-Length:") {
+                        len = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0u8; len];
+                if r.read_exact(&mut body).is_err() {
+                    return;
+                }
+                let Ok(value) = serde_json::from_slice::<Value>(&body) else { continue };
+                // `PHAI_LSP_LOG=1`: what the server says, one line each, for finding out why.
+                if std::env::var_os("PHAI_LSP_LOG").is_some() {
+                    let what = value.get("method").and_then(|m| m.as_str()).map(str::to_string).unwrap_or_else(|| format!("answer {}", value.get("id").cloned().unwrap_or_default()));
+                    let extra = if what == "textDocument/publishDiagnostics" { format!(" {} {}", value["params"]["uri"], value["params"]["diagnostics"].as_array().map(|a| a.len()).unwrap_or(0)) } else { String::new() };
+                    eprintln!("lsp: {what}{extra}");
+                }
+                let boxed = Box::into_raw(Box::new(value));
+                unsafe {
+                    if wm::PostMessageW(Some(HWND(target as *mut _)), message, WPARAM(0), LPARAM(boxed as isize)).is_err() {
+                        drop(Box::from_raw(boxed));
+                        return;
+                    }
+                }
+            }
+        });
+        Some(Lsp { child, stdin: Mutex::new(stdin), next: 1, root: root.to_path_buf() })
+    }
+
+    /// Whether the server is still running.
+    pub fn alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
+    /// Answers a request the server made of us with `result`.
+    pub fn answer(&self, id: &Value, result: Value) {
+        send(&self.stdin, &json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+    }
+
     /// Sends a request; returns its id, which the answer will carry.
     pub fn request(&mut self, method: &str, params: Value) -> i64 {
         let id = self.next;
@@ -220,6 +239,11 @@ impl Lsp {
     pub fn did_open(&self, path: &Path, text: &str) {
         self.notify("textDocument/didOpen", json!({ "textDocument": { "uri": uri_of(path), "languageId": "rust", "version": 1, "text": text } }));
         self.did_save(path);
+    }
+
+    /// Opens a file with the server as `language` (`rust`, `toml`...), nothing more said.
+    pub fn open_as(&self, path: &Path, language: &str, version: i64, text: &str) {
+        self.notify("textDocument/didOpen", json!({ "textDocument": { "uri": uri_of(path), "languageId": language, "version": version, "text": text } }));
     }
 
     pub fn did_change(&self, path: &Path, version: i64, text: &str) {

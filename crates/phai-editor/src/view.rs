@@ -40,6 +40,23 @@ pub const ACTIONS: u16 = 0x0309;
 pub const ESCAPE: u16 = 0x030A;
 /// A test's ▶ in the margin was clicked: [`test_clicked`] names it.
 pub const RUN_TEST: u16 = 0x030B;
+/// The grey suggestion after the caret ([`set_ghost`]) was taken whole, with Tab.
+pub const GHOST_ACCEPT: u16 = 0x030C;
+/// Part of the grey suggestion was taken - its next word, Ctrl+Right: [`ghost_accepted`] says how much.
+pub const GHOST_PARTIAL: u16 = 0x030D;
+
+/// A suggestion shown grey after the caret, as an AI completion is: what Tab would put in.
+#[derive(Clone, Debug, PartialEq)]
+struct Ghost {
+    /// Where it goes in: the caret when it was shown (a byte offset).
+    at: usize,
+    /// The text Tab puts in at `at`.
+    text: String,
+    /// Up to where what is there now is replaced (`at` itself when nothing is) - on the caret's line.
+    to: usize,
+    /// UTF-16 units of the suggestion already taken by Ctrl+Right.
+    taken: usize,
+}
 
 /// How a line differs from the file as git last had it: the bar in the margin.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -243,6 +260,153 @@ pub fn insert_text(h: HWND, text: &str) {
     changed(h);
 }
 
+/// Whether the caret is where a grey suggestion may be shown: one caret, nothing selected, no
+/// list or snippet open, and nothing after it on its line but spaces and closing brackets or quotes.
+pub fn ghost_place(h: HWND) -> bool {
+    let Some(v) = view(h) else { return false };
+    if v.model.caret != v.model.anchor || !v.model.extra.is_empty() || v.model.snippet.is_some() || v.list.is_some() || v.find.is_some() {
+        return false;
+    }
+    let (line, col) = v.model.buf.position(v.model.caret);
+    v.model.buf.line(line)[col..].chars().all(|c| c.is_whitespace() || ")]}>\"';,".contains(c))
+}
+
+/// The grey suggestion of an inline completion: `text` to replace the LSP range `start`..`end`,
+/// which begins at or before the caret, on its line. Shown only when what is before the caret in
+/// the range is how `text` begins - the rest after the caret, grey. Whether it is shown.
+pub fn set_ghost(h: HWND, start: (u32, u32), end: (u32, u32), text: &str) -> bool {
+    let Some(v) = view(h) else { return false };
+    let Some(g) = ghost_of(&v.model, start, end, text) else { return false };
+    v.ghost = Some(g);
+    unsafe {
+        let _ = Gdi::InvalidateRect(Some(h), None, false);
+    }
+    true
+}
+
+/// The suggestion an inline completion makes at the caret of `m`, if it fits there.
+fn ghost_of(m: &Model, start: (u32, u32), end: (u32, u32), text: &str) -> Option<Ghost> {
+    let at = |(line, ch): (u32, u32)| {
+        let l = line as usize;
+        (l < m.buf.line_count()).then(|| m.buf.line_start(l) + crate::lsp::from_lsp(&m.buf.line(l), ch))
+    };
+    let (a, z) = (at(start)?, at(end)?);
+    let caret = m.caret;
+    let (line, _) = m.buf.position(caret);
+    let all = m.buf.text();
+    let line_end = m.buf.line_start(line) + m.buf.line(line).len();
+    if a > caret || z > line_end || m.buf.position(a).0 != line {
+        return None;
+    }
+    let text = text.replace("\r\n", "\n");
+    let rest = text.strip_prefix(&all[a..caret])?;
+    let to = z.max(caret);
+    // What it would put in is what is there already: nothing to show.
+    if rest.is_empty() || rest == &all[caret..to] {
+        return None;
+    }
+    Some(Ghost { at: caret, text: rest.to_string(), to, taken: 0 })
+}
+
+/// The grey suggestion taken away.
+pub fn clear_ghost(h: HWND) {
+    if let Some(v) = view(h) {
+        if v.ghost.take().is_some() {
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(h), None, false);
+            }
+        }
+    }
+}
+
+/// What the grey suggestion would put in, if one is shown.
+pub fn ghost_text(h: HWND) -> Option<String> {
+    view(h).and_then(|v| v.ghost.as_ref().map(|g| g.text.clone()))
+}
+
+/// How much of the suggestion has been taken in all, in UTF-16 units.
+pub fn ghost_accepted(h: HWND) -> usize {
+    view(h).map(|v| v.last_taken).unwrap_or(0)
+}
+
+/// Tab on a grey suggestion: it is put in, the caret after it.
+fn take_ghost(h: HWND, v: &mut View) {
+    let Some(g) = v.ghost.take() else { return };
+    v.model.anchor = g.at;
+    v.model.caret = g.to.max(g.at);
+    v.model.insert(&g.text);
+    v.last_taken = g.taken + g.text.encode_utf16().count();
+    changed(h);
+}
+
+/// Where Ctrl+Right ends in a suggestion: past its next word (or the spaces before it, or the
+/// end of its line) - a byte offset in `text`.
+fn next_word_end(text: &str) -> usize {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let mut i = 0;
+    while i < chars.len() && chars[i].1.is_whitespace() && chars[i].1 != '\n' {
+        i += 1;
+    }
+    if i < chars.len() && chars[i].1 == '\n' {
+        i += 1;
+    } else if i < chars.len() {
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        let first = word(chars[i].1);
+        while i < chars.len() && chars[i].1 != '\n' && !chars[i].1.is_whitespace() && word(chars[i].1) == first {
+            i += 1;
+        }
+    }
+    chars.get(i).map(|x| x.0).unwrap_or(text.len())
+}
+
+/// Ctrl+Right on a grey suggestion: its next word put in, the rest still grey.
+fn take_ghost_word(h: HWND, v: &mut View) {
+    let Some(g) = v.ghost.take() else { return };
+    let (word, rest) = g.text.split_at(next_word_end(&g.text));
+    let (word, rest) = (word.to_string(), rest.to_string());
+    v.model.anchor = g.at;
+    v.model.caret = g.at;
+    v.model.insert(&word);
+    let taken = g.taken + word.encode_utf16().count();
+    v.last_taken = taken;
+    let at = v.model.caret;
+    let to = g.to.max(g.at) + word.len();
+    changed(h);
+    if let Some(v) = view(h) {
+        if !rest.is_empty() {
+            v.ghost = Some(Ghost { at, text: rest, to, taken });
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(h), None, false);
+            }
+        }
+    }
+}
+
+/// The grey suggestion's rows: the row of the caret it is drawn after, and how many rows its
+/// further lines take below it - the rows after are drawn that much lower.
+fn ghost_rows(v: &View) -> Option<(usize, usize)> {
+    let g = v.ghost.as_ref()?;
+    let (line, col) = v.model.buf.position(g.at);
+    Some((v.row_of_pos(line, col), g.text.matches('\n').count()))
+}
+
+/// A point in the editor, as it would be with no grey lines pushing the text below them down.
+fn without_ghost(v: &View, y: i32) -> i32 {
+    match ghost_rows(v) {
+        Some((row, extra)) if extra > 0 && row >= v.top => {
+            let below = (row + 1 - v.top) as i32 * v.line_h;
+            if y < below {
+                y
+            } else if y < below + extra as i32 * v.line_h {
+                below - 1
+            } else {
+                y - extra as i32 * v.line_h
+            }
+        }
+        _ => y,
+    }
+}
+
 /// Inlay hints to show after their lines (lines from 0): `total: i32` for a type the code does
 /// not write - quiet, as Visual Studio's inline hints.
 pub fn set_inlay_hints(h: HWND, hints: Vec<(usize, String)>) {
@@ -422,6 +586,10 @@ struct View {
     depths_for: usize,
     /// The lines sticky scroll holds at the top now.
     sticky: Vec<usize>,
+    /// A grey suggestion after the caret.
+    ghost: Option<Ghost>,
+    /// UTF-16 units of the last suggestion taken, whole or in part.
+    last_taken: usize,
 }
 
 /// The bar at the editor's top right: a box to find, and - with Ctrl+H - a box to replace.
@@ -689,7 +857,7 @@ pub fn create(parent: HWND, id: i32, text: &str, path: &str) -> HWND {
         let font = code_font(h);
         let (line_h, char_w) = metrics(h, font);
         let (thai, thai_dy, line_h) = thai_font(h, font, line_h);
-        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, signing: false, args_list: false, list_at: usize::MAX, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![] }));
+        win::set_state(h, Box::new(View { pt: font_size(), face: crate::prefs::get().font, model: Model::new(text), lang: Language::of(path), font, thai, thai_dy, line_h, char_w, top: 0, left: 0, comments: vec![], comments_for: usize::MAX, edits: 0, dragging: false, high_surrogate: None, swallow_char: false, marks: vec![], hover: None, tracking: false, tip: None, box_from: None, opts: Default::default(), lenses: vec![], bookmarks: vec![], regions: vec![], regions_for: usize::MAX, folded: vec![], rows: vec![], wrap_cols: 0, rows_cols: 0, peeking: false, signing: false, args_list: false, list_at: usize::MAX, list: None, all_items: vec![], version: 1, find: None, query: String::new(), hits: vec![], hits_for: usize::MAX, breakpoints: vec![], current: None, lines_were: 0, conditional: vec![], disabled: vec![], coverage: Default::default(), changes: Default::default(), tests: vec![], tests_for: usize::MAX, clicked_test: None, tracepoints: vec![], grown: vec![], hints: vec![], depths: vec![], depths_for: usize::MAX, sticky: vec![], ghost: None, last_taken: 0 }));
         // The studio's shortcuts leave typing keys to a box: this is one.
         win::register_kind(h, win::Kind::Edit);
         let _ = windows::Win32::UI::Controls::SetWindowTheme(h, if theme::current().is_dark() { windows::core::w!("DarkMode_Explorer") } else { windows::core::w!("Explorer") }, PCWSTR::null());
@@ -1781,6 +1949,8 @@ fn changed(h: HWND) {
         v.lines_were = now;
         v.edits += 1;
         v.version += 1;
+        // Typed on, or anything else changed: the suggestion was for what was there before.
+        v.ghost = None;
         // Old marks point at text that moved; the server sends fresh ones.
         v.marks.clear();
         if !v.signing {
@@ -1801,6 +1971,12 @@ fn changed(h: HWND) {
 }
 
 fn moved(h: HWND) {
+    // The caret gone elsewhere: the suggestion was for where it was.
+    if let Some(v) = view(h) {
+        if v.ghost.as_ref().is_some_and(|g| g.at != v.model.caret || v.model.anchor != v.model.caret) {
+            v.ghost = None;
+        }
+    }
     place_caret(h);
     unsafe {
         let _ = Gdi::InvalidateRect(Some(h), None, false);
@@ -1892,9 +2068,15 @@ fn paint(h: HWND, v: &mut View) {
         }
         v.set_wrap_width(h);
         v.refresh_rows();
+        // A grey suggestion of several lines: the rows below the caret's moved down to make room.
+        let ghost = ghost_rows(v);
         for row in v.top..(v.top + page).min(v.row_count()) {
             let line = v.line_of(row);
-            let y = (row - v.top) as i32 * v.line_h;
+            let pushed = match ghost {
+                Some((g, extra)) if row > g && g >= v.top => extra as i32 * v.line_h,
+                _ => 0,
+            };
+            let y = (row - v.top) as i32 * v.line_h + pushed;
             let s = v.model.buf.line(line);
             let start = v.model.buf.line_start(line);
             // A wrapped line's row: the line drawn shifted by where its piece begins - the gutter
@@ -2041,6 +2223,33 @@ fn paint(h: HWND, v: &mut View) {
                 Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(muted.colorref()));
                 let text = wide_of(words);
                 let _ = Gdi::ExtTextOutW(dc, x0, y + win::px(h, 2), Gdi::ETO_OPTIONS(0), None, PCWSTR(text.as_ptr()), text.len() as u32, None);
+            }
+            // The grey suggestion after the caret: its first line there, the line's own rest after
+            // its last, and its other lines on rows of their own below.
+            if let (Some(g), Some((grow, _))) = (v.ghost.as_ref(), ghost) {
+                if grow == row {
+                    let a = g.at - start;
+                    let keep = &s[(g.to - start).min(s.len())..];
+                    let x0 = gutter + v.width_of(dc, &s[..a]) - left;
+                    win::fill(dc, &RECT { left: x0.max(gutter), top: y, right: w, bottom: y + v.line_h }, bg);
+                    let grey = muted.mix(bg, 0.15);
+                    let mut gx = x0;
+                    let mut gy = y;
+                    for (k, part) in g.text.split('\n').enumerate() {
+                        if k > 0 {
+                            gy += v.line_h;
+                            gx = gutter - left;
+                            win::fill(dc, &RECT { left: gutter, top: gy, right: w, bottom: gy + v.line_h }, bg);
+                        }
+                        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(grey.colorref()));
+                        v.text_out(dc, gx, gy + win::px(h, 2), part);
+                        gx += v.width_of(dc, part);
+                    }
+                    if !keep.is_empty() {
+                        Gdi::SetTextColor(dc, windows::Win32::Foundation::COLORREF(win::window_text().colorref()));
+                        v.text_out(dc, gx, gy + win::px(h, 2), keep);
+                    }
+                }
             }
             // Wavy lines under what the language server found.
             for m in v.marks.iter().filter(|m| m.to > start && m.from <= start + s.len()) {
@@ -2347,6 +2556,28 @@ fn key(h: HWND, v: &mut View, vk: u16) -> bool {
             _ => {}
         }
     }
+    // A grey suggestion: Tab takes it, Ctrl+Right its next word, Esc puts it away.
+    if v.ghost.is_some() {
+        match vk {
+            0x09 if !shift && !ctrl => {
+                take_ghost(h, v);
+                v.swallow_char = true;
+                notify(h, GHOST_ACCEPT);
+                return true;
+            }
+            0x27 if ctrl && !shift => {
+                take_ghost_word(h, v);
+                notify(h, GHOST_PARTIAL);
+                return true;
+            }
+            0x1B => {
+                v.ghost = None;
+                moved(h);
+                return true;
+            }
+            _ => {}
+        }
+    }
     // Esc ends a snippet being filled in.
     if vk == 0x1B && v.model.snippet.take().is_some() {
         return true;
@@ -2527,6 +2758,11 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_KILLFOCUS => {
             v.list = None;
+            if v.ghost.take().is_some() {
+                unsafe {
+                    let _ = Gdi::InvalidateRect(Some(h), None, false);
+                }
+            }
             // Gone elsewhere - another window, another program: its tip goes too.
             if !v.peeking {
                 hide_tip(v);
@@ -2779,6 +3015,15 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_LBUTTONDOWN | wm::WM_MOUSEMOVE if msg == wm::WM_LBUTTONDOWN || v.dragging => {
             v.list = None;
+            // Grey lines push the text below them down: the click is where the text truly is.
+            let l = if v.ghost.is_some() {
+                let (x, y) = win::point_of(l);
+                let y = without_ghost(v, y);
+                v.ghost = None;
+                LPARAM((((y as u16 as u32) << 16) | (x as u16 as u32)) as isize)
+            } else {
+                l
+            };
             if msg == wm::WM_LBUTTONDOWN && v.peeking {
                 hide_tip(v);
             }
@@ -2999,5 +3244,45 @@ mod wrap_tests {
         assert_eq!(super::script_runs("ui.msg(\"ลบไหม?\")"), vec![(false, "ui.msg(\""), (true, "ลบไหม"), (false, "?\")")]);
         assert_eq!(super::script_runs("น้ำ"), vec![(true, "น้ำ")], "a mark stays with its letter");
         assert_eq!(super::script_runs(""), vec![]);
+    }
+}
+
+#[cfg(test)]
+mod ghost_tests {
+    use super::{ghost_of, next_word_end, Model};
+
+    #[test]
+    fn a_suggestion_shows_what_comes_after_the_caret() {
+        // Copilot's answer replaces the line from its start: what is typed before the caret is
+        // how it begins, the rest is grey.
+        let mut m = Model::new("fn fib(n: u64) -> u64 {\n    \n}\n");
+        m.caret = 28;
+        m.anchor = 28;
+        let g = ghost_of(&m, (1, 0), (1, 4), "    if n < 2 {\n        return n;\n    }").unwrap();
+        assert_eq!(g.text, "if n < 2 {\n        return n;\n    }");
+        assert_eq!((g.at, g.to), (28, 28));
+        // Typed already, differently: not shown.
+        assert!(ghost_of(&m, (1, 0), (1, 4), "  x").is_none());
+        // Nothing more than what is there.
+        assert!(ghost_of(&m, (1, 0), (1, 4), "    ").is_none());
+        // A range past the line, or after the caret: not one this caret can show.
+        assert!(ghost_of(&m, (1, 0), (2, 1), "    }").is_none());
+        assert!(ghost_of(&m, (0, 2), (0, 2), "x").is_none());
+        // The closer after the caret replaced: `)` is the suggestion's, not shown twice.
+        let mut m = Model::new("go(\u{0e01})");
+        m.caret = "go(\u{0e01}".len();
+        m.anchor = m.caret;
+        let g = ghost_of(&m, (0, 0), (0, 5), "go(\u{0e01}, 2)").unwrap();
+        assert_eq!(g.text, ", 2)");
+        assert_eq!(g.to, m.caret + 1);
+    }
+
+    #[test]
+    fn ctrl_right_takes_a_word_at_a_time() {
+        assert_eq!(next_word_end("if n < 2"), 2);
+        assert_eq!(next_word_end(" < 2"), 2);
+        assert_eq!(next_word_end("\n    return"), 1);
+        assert_eq!(next_word_end("x_1.len()"), 3);
+        assert_eq!(next_word_end(""), 0);
     }
 }

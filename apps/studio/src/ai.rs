@@ -3,10 +3,16 @@
 //! (each change shown side by side to accept or not), builds and runs its tests until they pass,
 //! and photographs the running program to see what it made. In Ask mode it changes nothing.
 //!
+//! Beside Claude (Anthropic, with its own API key) the pane offers GitHub Copilot: the agent of
+//! GitHub's Copilot Language Server, spoken to over ACP (`acp.rs`) with the person's GitHub
+//! sign-in, its models (GPT, Claude, Gemini... whatever the account offers) in the model box. Its
+//! changes to files are shown side by side to accept or not, as Claude's are.
+//!
 //! The conversation is kept as the API gave it and only ever added to, so Claude's thinking stays
 //! valid from one turn to the next and the prompt cache keeps hitting. The tools are the same in
 //! both modes - which mode is in force is said in each message - for the same reason.
 
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc;
 
@@ -18,7 +24,9 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::HFONT;
 use windows::Win32::UI::WindowsAndMessaging as wm;
 
+use crate::acp;
 use crate::claude;
+use crate::copilot;
 use crate::explorer;
 use crate::studio;
 
@@ -30,6 +38,7 @@ const ID_MODEL: i32 = 14;
 const ID_NEW: i32 = 15;
 const ID_KEY: i32 = 16;
 const ID_STATUS: i32 = 17;
+const ID_PROVIDER: i32 = 18;
 
 /// What the worker tells the pane: its LPARAM is a boxed [`Note`].
 const WM_AI: u32 = wm::WM_APP + 0x0E40;
@@ -55,7 +64,35 @@ enum Note {
     Done(Vec<Value>, Option<String>),
 }
 
+/// A change of Copilot's shown side by side (its window waits for the answer, messages still
+/// coming): the agent's next requests wait for it, here - outside the pane, which the window's
+/// wait reaches again.
+static REVIEWING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static QUEUED: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+
+fn reviewing() -> bool {
+    REVIEWING.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn set_reviewing(on: bool) {
+    REVIEWING.store(on, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn take_queued() -> Vec<Value> {
+    std::mem::take(&mut *QUEUED.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
+/// What an answer of Copilot's agent is to.
+#[derive(Clone, Debug)]
+enum AcpAsk {
+    Init,
+    NewSession,
+    SetModel(String),
+    Prompt,
+}
+
 struct Pane {
+    provider: HWND,
     transcript: HWND,
     input: HWND,
     send: HWND,
@@ -74,6 +111,20 @@ struct Pane {
     accept_all: bool,
     /// The last block shown: a new kind starts a new paragraph.
     last_block: String,
+    // GitHub Copilot, when it is the one chosen.
+    copilot: bool,
+    /// The models the model box offers for Copilot: (id, name).
+    cmodels: Vec<(String, String)>,
+    acp: Option<acp::Acp>,
+    acp_ready: bool,
+    acp_asked: HashMap<i64, AcpAsk>,
+    session: Option<String>,
+    /// The model the session was last set to.
+    session_model: Option<String>,
+    /// What is to be sent once the agent and its session are ready.
+    waiting: Option<Value>,
+    /// The agent's tool calls, by id: their kind and the files they name.
+    calls: HashMap<String, (String, Vec<String>)>,
 }
 
 /// The pane, made inside `parent` (the side), hidden until the View menu shows it.
@@ -86,17 +137,47 @@ pub fn create(parent: HWND, font: HFONT) -> HWND {
         let input = win::textarea_with(h, "", ID_INPUT, font, true, "vertical");
         let send = win::button(h, t("Send"), ID_SEND, font, true);
         let mode = win::combo(h, ID_MODE, font, &[t("Ask"), t("Act")]);
-        let names: Vec<&str> = claude::MODELS.iter().map(|(_, n)| *n).collect();
-        let model = win::combo(h, ID_MODEL, font, &names);
-        let chosen = crate::setting_pub("ai_model").and_then(|m| claude::MODELS.iter().position(|(id, _)| *id == m)).unwrap_or(0);
-        let _ = wm::SendMessageW(model, 0x014E /* CB_SETCURSEL */, Some(WPARAM(chosen)), None);
+        // `PHAI_AI_PROVIDER=copilot`: Copilot chosen - for tests and the guide's picture.
+        let copilot = std::env::var("PHAI_AI_PROVIDER").ok().or_else(|| crate::setting_pub("ai_provider")).as_deref() == Some("copilot");
+        let provider = win::combo(h, ID_PROVIDER, font, &["Claude (Anthropic)", "GitHub Copilot"]);
+        let _ = wm::SendMessageW(provider, 0x014E /* CB_SETCURSEL */, Some(WPARAM(copilot as usize)), None);
+        let model = win::combo(h, ID_MODEL, font, &[]);
         let act = crate::setting_pub("ai_mode").as_deref() == Some("act");
         let _ = wm::SendMessageW(mode, 0x014E, Some(WPARAM(act as usize)), None);
         let new_chat = win::button(h, t("New chat"), ID_NEW, font, false);
         let key = win::button(h, t("API key..."), ID_KEY, font, false);
         let status = win::label(h, "", ID_STATUS, font);
-        win::set_state(h, Box::new(Pane { transcript, input, send, mode, model, new_chat, key, status, messages: vec![], system: String::new(), root: None, busy: None, accept_all: false, last_block: String::new() }));
+        win::set_state(
+            h,
+            Box::new(Pane {
+                provider,
+                transcript,
+                input,
+                send,
+                mode,
+                model,
+                new_chat,
+                key,
+                status,
+                messages: vec![],
+                system: String::new(),
+                root: None,
+                busy: None,
+                accept_all: false,
+                last_block: String::new(),
+                copilot,
+                cmodels: vec![],
+                acp: None,
+                acp_ready: false,
+                acp_asked: HashMap::new(),
+                session: None,
+                session_model: None,
+                waiting: None,
+                calls: HashMap::new(),
+            }),
+        );
         let p = state(h).unwrap();
+        p.fill_models(h);
         p.greet();
         // `PHAI_AI_ASK=<words>`: asked by itself a moment after Studio opens - for tests and the
         // guide's picture, with `PHAI_CLAUDE_URL` pointing at a test's own server.
@@ -113,7 +194,11 @@ fn state(h: HWND) -> Option<&'static mut Pane> {
 
 impl Pane {
     fn greet(&mut self) {
-        let words = if claude::api_key().is_some() {
+        let words = if self.copilot && !crate::copilot_on_pub() {
+            t("GitHub Copilot is off: turn it on in Tools > Options > GitHub Copilot, then sign in with your GitHub account (Copilot Free is enough).")
+        } else if self.copilot {
+            t("Ask GitHub Copilot about your project, or switch to Act and say what to change. Copilot reads the files it needs; in Act mode each change is shown to you first. What it uses counts against your Copilot plan.")
+        } else if claude::api_key().is_some() {
             t("Ask about your project, or switch to Act and say what to change. Claude reads the files it needs; in Act mode each change is shown to you first.")
         } else {
             t("Claude needs an API key from console.anthropic.com - click API key... The key stays in Windows' Credential Manager; what Claude costs, Anthropic bills you.")
@@ -141,9 +226,11 @@ impl Pane {
         let (w, ht) = (r.right, r.bottom);
         let row = px(26);
         let m = px(6);
-        // The bar: the mode and the model.
+        // The bar: the mode, who answers, and the model.
+        let pw = px(140).min((w - m * 4 - px(76) - px(80)).max(px(90)));
         win::move_to(self.mode, m, m, px(76), px(240));
-        win::move_to(self.model, m * 2 + px(76), m, (w - m * 3 - px(76)).max(px(80)), px(240));
+        win::move_to(self.provider, m * 2 + px(76), m, pw, px(240));
+        win::move_to(self.model, m * 3 + px(76) + pw, m, (w - m * 4 - px(76) - pw).max(px(80)), px(240));
         // Below: the box to write in, Send, New chat and the key beside it.
         let bw = px(84);
         let input_h = row * 3 + px(8);
@@ -166,10 +253,61 @@ impl Pane {
         claude::MODELS.get(win::combo_selected(self.model).max(0) as usize).map(|(id, _)| *id).unwrap_or(claude::MODELS[0].0)
     }
 
+    /// The Copilot model chosen in the model box, if the account has offered any.
+    fn copilot_model(&self) -> Option<String> {
+        self.cmodels.get(win::combo_selected(self.model).max(0) as usize).map(|(id, _)| id.clone())
+    }
+
+    /// The model box filled for the one chosen: Claude's models, or the ones Copilot offers - asked
+    /// of the Copilot server when not yet known.
+    fn fill_models(&mut self, h: HWND) {
+        let (names, chosen): (Vec<String>, usize) = if self.copilot {
+            let saved = crate::setting_pub("copilot_model");
+            (self.cmodels.iter().map(|(_, n)| n.clone()).collect(), saved.and_then(|m| self.cmodels.iter().position(|(id, _)| *id == m)).unwrap_or(0))
+        } else {
+            (claude::MODELS.iter().map(|(_, n)| n.to_string()).collect(), crate::setting_pub("ai_model").and_then(|m| claude::MODELS.iter().position(|(id, _)| *id == m)).unwrap_or(0))
+        };
+        unsafe {
+            let _ = wm::SendMessageW(self.model, 0x014B /* CB_RESETCONTENT */, None, None);
+            for n in &names {
+                let w = win::wide(n);
+                let _ = wm::SendMessageW(self.model, 0x0143 /* CB_ADDSTRING */, None, Some(LPARAM(w.as_ptr() as isize)));
+            }
+            let _ = wm::SendMessageW(self.model, 0x014E /* CB_SETCURSEL */, Some(WPARAM(chosen)), None);
+        }
+        win::set_text(self.key, if self.copilot { t("Sign in...") } else { t("API key...") });
+        if self.copilot && self.cmodels.is_empty() && crate::copilot_on_pub() {
+            if let Some(s) = studio() {
+                s.copilot_models_for(h);
+            }
+        }
+    }
+
+    /// Claude or Copilot chosen: a new conversation with it.
+    fn provider_changed(&mut self, h: HWND) {
+        let copilot = win::combo_selected(self.provider) == 1;
+        if copilot == self.copilot {
+            return;
+        }
+        self.new_chat();
+        self.copilot = copilot;
+        crate::remember_setting_pub("ai_provider", if copilot { "copilot" } else { "anthropic" });
+        self.fill_models(h);
+        self.greet();
+    }
+
     fn new_chat(&mut self) {
         if let Some(c) = self.busy.take() {
             c.stop();
+            if let (Some(a), Some(sid)) = (self.acp.as_ref(), self.session.as_ref()) {
+                a.notify("session/cancel", json!({ "sessionId": sid }));
+            }
         }
+        // Copilot's next words start a session of their own.
+        self.session = None;
+        self.session_model = None;
+        self.waiting = None;
+        self.calls.clear();
         self.messages.clear();
         self.system.clear();
         self.root = None;
@@ -182,6 +320,12 @@ impl Pane {
 
     fn ask_key(&mut self, h: HWND) {
         let owner = studio().map(|s| s.hwnd).unwrap_or(h);
+        if self.copilot {
+            if let Some(s) = studio() {
+                s.copilot_sign_in();
+            }
+            return;
+        }
         let Some(a) = phai_ui::dialogs::ask_fields(Some(owner), t("Claude API key"), &[phai_ui::dialogs::Field::Password(t("API key from console.anthropic.com (empty: forget it)"), "")]) else { return };
         match claude::save_key(Some(&a[0]).filter(|k| !k.trim().is_empty()).map(String::as_str)) {
             Ok(()) => {
@@ -198,11 +342,20 @@ impl Pane {
         if let Some(c) = self.busy.take() {
             c.stop();
             win::set_text(self.status, t("Stopping..."));
+            if self.copilot {
+                match (self.acp.as_ref(), self.session.as_ref()) {
+                    (Some(a), Some(sid)) => a.notify("session/cancel", json!({ "sessionId": sid })),
+                    _ => self.copilot_done(Some(t("Stopped").to_string())),
+                }
+            }
             return;
         }
         let words = win::text_of(self.input).trim().to_string();
         if words.is_empty() {
             return;
+        }
+        if self.copilot {
+            return self.send_copilot(h, words);
         }
         if claude::api_key().is_none() {
             self.ask_key(h);
@@ -243,7 +396,7 @@ impl Pane {
             Note::Block(kind) => {
                 if kind != self.last_block && (kind == "text" || kind == "thinking") {
                     if self.last_block.is_empty() {
-                        self.append(&format!("{}\n", t("Claude:")));
+                        self.append(&format!("{}\n", if self.copilot { t("Copilot:") } else { t("Claude:") }));
                     } else {
                         self.append("\n");
                     }
@@ -282,11 +435,470 @@ impl Pane {
     }
 }
 
+// --- GitHub Copilot's agent ---------------------------------------------------------------------
+
+impl Pane {
+    /// Words for Copilot's agent: sent once it is running and has a session for the project.
+    fn send_copilot(&mut self, h: HWND, words: String) {
+        if !crate::copilot_on_pub() {
+            win::set_text(self.status, t("Turn on GitHub Copilot in Tools > Options first."));
+            return;
+        }
+        let Some(root) = studio().and_then(|s| s.project_dir_pub()) else {
+            win::set_text(self.status, t("Open a project first: Copilot works in the project of the open file."));
+            return;
+        };
+        if self.root.as_deref() != Some(root.as_path()) {
+            if self.session.is_some() {
+                self.new_chat();
+            }
+            self.root = Some(root.clone());
+            // Another folder: an agent started there.
+            self.acp = None;
+        }
+        let act = self.act();
+        crate::remember_setting_pub("ai_mode", if act { "act" } else { "ask" });
+        if let Some(m) = self.copilot_model() {
+            crate::remember_setting_pub("copilot_model", &m);
+        }
+        // The agent reads the files as they are on disk: the open ones saved first in Act mode,
+        // so what it changes is what is shown here.
+        if act {
+            if let Some(s) = studio() {
+                s.save_all_pub();
+            }
+        }
+        let mode = if act { "Act: you may change the project's files; each change is shown to the person to accept." } else { "Ask: answer only - do not change, create or delete any file, and run no commands." };
+        let mut prompt = vec![json!({"type": "text", "text": words}), json!({"type": "text", "text": format!("<studio>Mode: {mode}</studio>")})];
+        // The first words of a session: where it is, and the form files' reference.
+        if self.session.is_none() {
+            prompt.insert(0, json!({"type": "text", "text": format!("<studio>{}</studio>", copilot_context(&root))}));
+            prompt.push(json!({"type": "resource", "resource": {"uri": "phai://reference/phaiform.md", "mimeType": "text/markdown", "text": include_str!("../../../docs/phaiform.md")}}));
+        }
+        self.waiting = Some(Value::Array(prompt));
+        win::set_text(self.input, "");
+        self.append(&format!("{} {words}\n\n", t("You:")));
+        self.last_block.clear();
+        self.busy = Some(claude::Cancel::default());
+        win::set_text(self.send, t("Stop"));
+        win::set_text(self.status, t("Copilot is thinking..."));
+        self.acp_go(h);
+    }
+
+    /// The next step towards sending what waits: the agent started, initialized, a session made,
+    /// its model set - then the words sent.
+    fn acp_go(&mut self, h: HWND) {
+        let Some(root) = self.root.clone() else { return };
+        if !self.acp.as_mut().is_some_and(|a| a.alive()) {
+            self.acp_ready = false;
+            self.session = None;
+            let Some(launch) = copilot::find() else {
+                return self.copilot_done(Some(t("GitHub Copilot's server is not here yet - turn Copilot on in Tools > Options to get it.").to_string()));
+            };
+            let Some(mut a) = acp::Acp::start(copilot::command(&launch, true, &root), h) else {
+                return self.copilot_done(Some(t("Copilot's agent could not be started.").to_string()));
+            };
+            let id = a.request("initialize", json!({
+                "protocolVersion": 1,
+                "clientCapabilities": { "fs": { "readTextFile": true, "writeTextFile": true }, "terminal": false },
+                "clientInfo": { "name": "phai-studio", "title": "Phai Studio", "version": env!("CARGO_PKG_VERSION") }
+            }));
+            self.acp_asked.insert(id, AcpAsk::Init);
+            self.acp = Some(a);
+            return;
+        }
+        if !self.acp_ready {
+            return;
+        }
+        let model = self.copilot_model().filter(|m| self.session_model.as_deref() != Some(m.as_str()));
+        let Some(a) = self.acp.as_mut() else { return };
+        let Some(sid) = self.session.clone() else {
+            let id = a.request("session/new", json!({ "cwd": root.to_string_lossy(), "mcpServers": [] }));
+            self.acp_asked.insert(id, AcpAsk::NewSession);
+            return;
+        };
+        if let Some(m) = model {
+            let id = a.request("session/set_model", json!({ "sessionId": sid, "modelId": m }));
+            self.acp_asked.insert(id, AcpAsk::SetModel(m.clone()));
+            self.session_model = Some(m);
+        }
+        if let Some(prompt) = self.waiting.take() {
+            let id = a.request("session/prompt", json!({ "sessionId": sid, "prompt": prompt }));
+            self.acp_asked.insert(id, AcpAsk::Prompt);
+        }
+    }
+
+    /// The answer is over.
+    fn copilot_done(&mut self, err: Option<String>) {
+        self.busy = None;
+        self.waiting = None;
+        win::set_text(self.send, t("Send"));
+        win::set_text(self.status, &err.clone().unwrap_or_default());
+        if let Some(e) = err {
+            self.append(&format!("\n[{e}]\n"));
+        }
+        self.append("\n\n");
+        self.last_block.clear();
+    }
+
+    /// A paragraph of `kind` (text, thinking) begins, under "Copilot:" if it is the first.
+    fn block(&mut self, kind: &str) {
+        if kind != self.last_block {
+            if self.last_block.is_empty() {
+                self.append(&format!("{}\n", t("Copilot:")));
+            } else {
+                self.append("\n");
+            }
+            if kind == "thinking" {
+                self.append("› ");
+            }
+            self.last_block = kind.to_string();
+        }
+    }
+
+    /// A message from Copilot's agent.
+    fn acp_message(&mut self, h: HWND, msg: Value) {
+        if msg["phaiGone"] == true {
+            self.acp = None;
+            self.acp_ready = false;
+            self.session = None;
+            if self.busy.is_some() {
+                self.copilot_done(Some(t("Copilot's agent ended.").to_string()));
+            }
+            return;
+        }
+        // An answer of ours.
+        if let (Some(id), None) = (msg.get("id").and_then(Value::as_i64), msg.get("method")) {
+            let Some(ask) = self.acp_asked.remove(&id) else { return };
+            let error = msg["error"]["message"].as_str().map(str::to_string);
+            let result = msg.get("result").cloned().unwrap_or(Value::Null);
+            match ask {
+                AcpAsk::Init => match error {
+                    Some(e) => self.copilot_done(Some(e)),
+                    None => {
+                        self.acp_ready = true;
+                        self.acp_go(h);
+                    }
+                },
+                AcpAsk::NewSession => match error {
+                    Some(e) => self.copilot_done(Some(plain_agent_error(&e))),
+                    None => {
+                        self.session = result["sessionId"].as_str().map(str::to_string);
+                        self.session_model = result["models"]["currentModelId"].as_str().map(str::to_string);
+                        // The agent's own list of models, where it gives one, is the one to choose from.
+                        let list: Vec<(String, String)> = result["models"]["availableModels"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|m| Some((m["modelId"].as_str()?.to_string(), m["name"].as_str().or(m["modelId"].as_str())?.to_string())))
+                            .collect();
+                        if !list.is_empty() && list != self.cmodels {
+                            let chosen = self.copilot_model();
+                            self.cmodels = list;
+                            self.fill_models(h);
+                            if let Some(i) = chosen.and_then(|c| self.cmodels.iter().position(|(id, _)| *id == c)) {
+                                unsafe {
+                                    let _ = wm::SendMessageW(self.model, 0x014E, Some(WPARAM(i)), None);
+                                }
+                            }
+                        }
+                        if self.session.is_none() {
+                            return self.copilot_done(Some(t("Copilot's agent gave no session.").to_string()));
+                        }
+                        self.acp_go(h);
+                    }
+                },
+                // Not taken: asked again with the next words.
+                AcpAsk::SetModel(m) => {
+                    if error.is_some() && self.session_model.as_deref() == Some(m.as_str()) {
+                        self.session_model = None;
+                    }
+                }
+                AcpAsk::Prompt => {
+                    let ended = match (error, result["stopReason"].as_str()) {
+                        (Some(e), _) => Some(plain_agent_error(&e)),
+                        (None, Some("cancelled")) => Some(t("Stopped").to_string()),
+                        (None, Some("refusal")) => Some(t("Copilot declined this request.").to_string()),
+                        (None, Some("max_tokens")) => Some(t("The answer was cut off - it was too long.").to_string()),
+                        (None, Some("max_turn_requests")) => Some(tf("Stopped after {0} steps - say go on to continue.", &[&MAX_STEPS])),
+                        _ => None,
+                    };
+                    self.copilot_done(ended);
+                }
+            }
+            return;
+        }
+        let method = msg["method"].as_str().unwrap_or("").to_string();
+        if msg.get("id").is_some() {
+            return self.acp_request(h, msg);
+        }
+        if method == "session/update" && msg["params"]["sessionId"].as_str() == self.session.as_deref() {
+            self.acp_update(&msg["params"]["update"]);
+        }
+    }
+
+    /// What the agent says as it works: its words, its thinking, the tools it uses, its plan.
+    fn acp_update(&mut self, u: &Value) {
+        let text = || u["content"]["text"].as_str().unwrap_or("").to_string();
+        match u["sessionUpdate"].as_str().unwrap_or("") {
+            "agent_message_chunk" => {
+                self.block("text");
+                win::set_text(self.status, t("Copilot is writing..."));
+                self.append(&text());
+            }
+            "agent_thought_chunk" => {
+                self.block("thinking");
+                self.append(&text());
+            }
+            "tool_call" => {
+                let id = u["toolCallId"].as_str().unwrap_or("").to_string();
+                let kind = u["kind"].as_str().unwrap_or("other").to_string();
+                let files: Vec<String> = u["locations"].as_array().into_iter().flatten().filter_map(|l| l["path"].as_str().map(str::to_string)).collect();
+                let title = u["title"].as_str().unwrap_or(&kind).to_string();
+                if self.last_block.is_empty() {
+                    self.append(&format!("{}\n", t("Copilot:")));
+                } else if self.last_block != "tool" {
+                    self.append("\n");
+                }
+                self.append(&format!("⚙ {title}\n"));
+                self.last_block = "tool".into();
+                win::set_text(self.status, &format!("Copilot: {title}..."));
+                self.calls.insert(id, (kind, files));
+            }
+            "tool_call_update" => {
+                let id = u["toolCallId"].as_str().unwrap_or("").to_string();
+                if u["status"] == "failed" {
+                    self.append(&format!("⚙ {}\n", t("(did not go)")));
+                    self.last_block = "tool".into();
+                }
+                if u["status"] != "completed" {
+                    return;
+                }
+                // A file it changed: the editor showing it takes the file as it now is on disk -
+                // the agent writes it itself, and its diff's `newText` may be only the part changed.
+                let mut changed: Vec<PathBuf> = u["content"].as_array().into_iter().flatten().filter(|c| c["type"] == "diff").filter_map(|c| Some(PathBuf::from(c["path"].as_str()?))).collect();
+                if let Some((_, files)) = self.calls.get(&id).filter(|(k, _)| k == "edit") {
+                    changed.extend(files.iter().map(PathBuf::from));
+                }
+                changed.sort();
+                changed.dedup();
+                let root = self.root.clone().unwrap_or_default();
+                for path in changed {
+                    if !lsp_same_start(&path, &root) {
+                        continue;
+                    }
+                    let Some(text) = std::fs::read_to_string(&path).ok().map(|t| t.replace("\r\n", "\n")) else { continue };
+                    if let Some(s) = studio() {
+                        s.file_changed_by_assistant(&path, &text);
+                    }
+                }
+            }
+            "plan" => {
+                let items: Vec<String> = u["entries"].as_array().into_iter().flatten().map(|e| format!("{} {}", if e["status"] == "completed" { "☑" } else { "☐" }, e["content"].as_str().unwrap_or(""))).collect();
+                if !items.is_empty() {
+                    self.append(&format!("\n{}\n", items.join("\n")));
+                    self.last_block = "tool".into();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The agent asking something of Studio: leave to use a tool, a file's text, a file written.
+    fn acp_request(&mut self, h: HWND, msg: Value) {
+        let id = msg["id"].clone();
+        let p = msg["params"].clone();
+        let act = self.act();
+        let root = self.root.clone().unwrap_or_default();
+        match msg["method"].as_str().unwrap_or("") {
+            "session/request_permission" => {
+                // One change shown at a time: the next waits for it.
+                if reviewing() {
+                    QUEUED.lock().unwrap_or_else(|e| e.into_inner()).push(msg);
+                    return;
+                }
+                let tc = &p["toolCall"];
+                let kind = tc["kind"].as_str().unwrap_or("other");
+                let title = tc["title"].as_str().unwrap_or(kind).to_string();
+                let allow = match kind {
+                    "read" | "search" | "think" | "fetch" => true,
+                    "edit" | "delete" | "move" if !act => {
+                        win::set_text(self.status, t("Ask mode: Copilot's change was not made - switch to Act to have it made."));
+                        false
+                    }
+                    "edit" => self.review_edit(h, tc),
+                    _ if !act => false,
+                    _ => {
+                        let owner = studio().map(|s| s.hwnd).unwrap_or(h);
+                        let what = tc["rawInput"]["command"].as_str().map(|c| format!("\n\n{c}")).unwrap_or_default();
+                        std::env::var_os("PHAI_AI_REVIEW").is_some_and(|a| a == "accept" || a == "all")
+                            || win::message(Some(owner), &format!("{}{what}", tf("Copilot wants to: {0}", &[&title])), "GitHub Copilot", wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES
+                    }
+                };
+                if let Some(a) = self.acp.as_ref() {
+                    a.answer(&id, acp::choose(&p["options"], allow));
+                }
+                // What waited for this one.
+                if !reviewing() {
+                    for q in take_queued() {
+                        self.acp_request(h, q);
+                    }
+                }
+            }
+            "fs/read_text_file" => {
+                let path = p["path"].as_str().unwrap_or("");
+                let r = inside(&root, path, false).and_then(|f| current_text(&f).ok_or_else(|| format!("{path} cannot be read")));
+                if let Some(a) = self.acp.as_ref() {
+                    match r {
+                        Ok(text) => {
+                            let from = p["line"].as_u64().unwrap_or(1).max(1) as usize - 1;
+                            let limit = p["limit"].as_u64().map(|n| n as usize).unwrap_or(usize::MAX);
+                            let content = if from == 0 && limit == usize::MAX { text } else { text.split('\n').skip(from).take(limit).collect::<Vec<_>>().join("\n") };
+                            a.answer(&id, json!({ "content": content }));
+                        }
+                        Err(e) => a.refuse(&id, -32002, &e),
+                    }
+                }
+            }
+            "fs/write_text_file" => {
+                let path = p["path"].as_str().unwrap_or("").to_string();
+                let r = if !act {
+                    Err("Ask mode: no file is changed.".to_string())
+                } else {
+                    let rel = inside(&root, &path, true).map(|f| f.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or(path.clone()));
+                    rel.and_then(|rel| {
+                        set_reviewing(true);
+                        let r = change_file(h, &root, &json!({ "path": rel, "contents": p["content"] }), false, "Copilot");
+                        set_reviewing(false);
+                        r
+                    })
+                };
+                if let Some(a) = self.acp.as_ref() {
+                    match r {
+                        Ok(_) => a.answer(&id, json!({})),
+                        Err(e) => a.refuse(&id, -32003, &e),
+                    }
+                }
+                for q in take_queued() {
+                    self.acp_request(h, q);
+                }
+            }
+            _ => {
+                if let Some(a) = self.acp.as_ref() {
+                    a.refuse(&id, -32601, "Phai Studio does not offer that.");
+                }
+            }
+        }
+    }
+
+    /// A change the agent wants to make, shown side by side: whether the person let it.
+    fn review_edit(&mut self, h: HWND, tc: &Value) -> bool {
+        let root = self.root.clone().unwrap_or_default();
+        let file = tc["rawInput"]["fileName"].as_str().or(tc["rawInput"]["path"].as_str()).or(tc["locations"][0]["path"].as_str()).unwrap_or("").to_string();
+        let path = match inside(&root, &file, true) {
+            Ok(p) => p,
+            Err(e) => {
+                win::set_text(self.status, &tf("Copilot's change was refused: {0}", &[&e]));
+                return false;
+            }
+        };
+        if self.accept_all {
+            return true;
+        }
+        let rel = path.strip_prefix(&root).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or(file.clone());
+        let old = std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
+        let new = match tc["rawInput"]["diff"].as_str() {
+            Some(d) => acp::apply_unified(&old, d).unwrap_or_else(|| d.to_string()),
+            None => tc["rawInput"]["content"].as_str().or(tc["rawInput"]["newText"].as_str()).map(str::to_string).unwrap_or_else(|| old.clone()),
+        };
+        set_reviewing(true);
+        let r = review(h, &tf("Copilot wants to change {0}", &[&rel]), &rel, &old, &new);
+        set_reviewing(false);
+        match r {
+            Review::Accept => true,
+            Review::AcceptAll => {
+                self.accept_all = true;
+                true
+            }
+            Review::Decline => false,
+        }
+    }
+}
+
+/// Whether `path` is under `root`, Windows' way (case does not matter).
+fn lsp_same_start(path: &Path, root: &Path) -> bool {
+    let low = |p: &Path| p.to_string_lossy().replace('/', "\\").to_lowercase();
+    low(path).starts_with(&low(root))
+}
+
+/// An error of the agent's, in words a person can act on.
+fn plain_agent_error(e: &str) -> String {
+    let l = e.to_lowercase();
+    if l.contains("auth") || l.contains("sign in") || l.contains("not signed") || l.contains("token") {
+        t("Sign in to GitHub Copilot first: Sign in... below, or Copilot on the status bar.").to_string()
+    } else if l.contains("quota") || l.contains("limit") || l.contains("exceeded") {
+        t("This month's Copilot use is spent - it comes back next month, or with a paid plan.").to_string()
+    } else {
+        e.to_string()
+    }
+}
+
+/// What Copilot's agent is told of where it is, once a session.
+fn copilot_context(root: &Path) -> String {
+    let name = root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    format!(
+        "You are working inside Phai Studio, a RAD IDE for Windows programs written in Rust, on the project \"{name}\". \
+A Phai Studio project: Cargo.toml; src/main.rs; each window is a form - `<name>.phf` (TOML the visual designer reads and writes: \
+controls, their bounds, properties, events - see the attached reference before changing one), `<name>_ui.rs` (generated from the .phf - \
+never edit it), and `<name>.rs` (the person's code: `impl <Name>Events for <Name>` with a method per event). The controls are phai-ui's \
+(a WinForms-like library on Win32); `ui.<id>` reaches a control. src/text.rs holds the Thai for every English sentence the program shows. \
+Each change you make is shown to the person to accept; a declined change is their decision. Answer in the language the person writes in - often Thai."
+    )
+}
+
+/// The models Copilot's server offers, for the pane `pane`; `note` said when there are none.
+pub fn copilot_models(pane: HWND, list: Vec<(String, String)>, note: Option<&str>) {
+    let Some(p) = state(pane) else { return };
+    if !list.is_empty() {
+        p.cmodels = list;
+    }
+    if p.copilot {
+        p.fill_models(pane);
+        if let Some(n) = note {
+            win::set_text(p.status, n);
+        }
+    }
+}
+
+/// Copilot was turned on or off, or signed in: the pane says so.
+pub fn copilot_changed(pane: HWND) {
+    if let Some(p) = state(pane) {
+        if p.copilot && p.busy.is_none() && p.messages.is_empty() && p.session.is_none() {
+            p.greet();
+            if p.cmodels.is_empty() {
+                p.fill_models(pane);
+            }
+        }
+        if !crate::copilot_on_pub() {
+            p.acp = None;
+            p.acp_ready = false;
+            p.session = None;
+        }
+    }
+}
+
 extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
         wm::WM_SIZE => {
             if let Some(p) = state(h) {
                 p.layout(h);
+            }
+            LRESULT(0)
+        }
+        acp::WM_ACP => {
+            let v = unsafe { Box::from_raw(l.0 as *mut Value) };
+            if let Some(p) = state(h) {
+                p.acp_message(h, *v);
             }
             LRESULT(0)
         }
@@ -296,6 +908,7 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
                 ID_SEND => p.send(h),
                 ID_NEW => p.new_chat(),
                 ID_KEY => p.ask_key(h),
+                ID_PROVIDER if win::hiword(w.0) == 1 /* CBN_SELCHANGE */ => p.provider_changed(h),
                 _ => {}
             }
             LRESULT(0)
@@ -585,7 +1198,7 @@ impl Job {
                 }
                 let edit = name == "edit_file";
                 let pane = self.pane;
-                let r = self.on_ui(move || json!(change_file(HWND(pane as *mut _), &root, &input, edit).map_err(|e| format!("\u{1}{e}")).unwrap_or_else(|e| e)));
+                let r = self.on_ui(move || json!(change_file(HWND(pane as *mut _), &root, &input, edit, "Claude").map_err(|e| format!("\u{1}{e}")).unwrap_or_else(|e| e)));
                 let s = r.as_str().unwrap_or("").to_string();
                 done(match s.strip_prefix('\u{1}') {
                     Some(e) => Err(e.to_string()),
@@ -795,7 +1408,7 @@ pub fn changed_text(old: Option<&str>, input: &Value, edit: bool) -> Result<Stri
 }
 
 /// A write or an edit, shown to the person and made if they accept - on the window's thread.
-fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool) -> Result<String, String> {
+fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool, who: &str) -> Result<String, String> {
     let rel = input["path"].as_str().unwrap_or("").to_string();
     let p = inside(root, &rel, true)?;
     let old = current_text(&p);
@@ -809,7 +1422,8 @@ fn change_file(pane: HWND, root: &Path, input: &Value, edit: bool) -> Result<Str
     }
     let accept_all = state(pane).is_some_and(|s| s.accept_all);
     if !accept_all {
-        match review(pane, &rel, old.as_deref().unwrap_or(""), &new) {
+        let title = if who == "Copilot" { tf("Copilot wants to change {0}", &[&rel]) } else { tf("Claude wants to change {0}", &[&rel]) };
+        match review(pane, &title, &rel, old.as_deref().unwrap_or(""), &new) {
             Review::Accept => {}
             Review::AcceptAll => {
                 if let Some(s) = state(pane) {
@@ -938,7 +1552,7 @@ const ID_ALL: i32 = 3;
 
 /// The change side by side - the file as it is, as it would be, what differs marked - with
 /// Accept, Accept All and Decline. Waits for the answer.
-fn review(pane: HWND, rel: &str, old: &str, new: &str) -> Review {
+fn review(pane: HWND, title: &str, rel: &str, old: &str, new: &str) -> Review {
     if let Ok(a) = std::env::var("PHAI_AI_REVIEW") {
         return match a.as_str() {
             "accept" => Review::Accept,
@@ -949,7 +1563,7 @@ fn review(pane: HWND, rel: &str, old: &str, new: &str) -> Review {
     let owner = studio().map(|s| s.hwnd).unwrap_or(pane);
     win::init();
     let class = win::register("PhaiAIReview", Some(review_proc), None);
-    let title = win::wide(&tf("Claude wants to change {0}", &[&rel]));
+    let title = win::wide(title);
     unsafe {
         let hwnd = wm::CreateWindowExW(Default::default(), PCWSTR(class.as_ptr()), PCWSTR(title.as_ptr()), wm::WS_OVERLAPPEDWINDOW | wm::WS_CLIPCHILDREN, wm::CW_USEDEFAULT, wm::CW_USEDEFAULT, 100, 100, Some(owner), None, Some(win::instance()), None).unwrap_or_default();
         let font = win::font(hwnd, 0, false);

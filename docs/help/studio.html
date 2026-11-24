@@ -295,6 +295,18 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <figure><img class="shot" src="img/ai-review.png" alt="หน้าต่างเทียบการแก้ไฟล์ของ Claude" width="560"><figcaption>Claude ขอแก้ main_window.rs: บรรทัดใหม่มีแถบเขียว</figcaption></figure>
 <p><b>คีย์ API:</b> ผู้ช่วย AI ใช้ Claude ของ Anthropic ผ่านคีย์ของคุณเอง สมัครและสร้างคีย์ที่ <code>console.anthropic.com</code> แล้วกด <b>คีย์ API...</b> ในแผง คีย์เก็บใน Credential Manager ของ Windows ไม่อยู่ในไฟล์ใด ๆ ของ Phai Studio ค่าใช้ Claude ทาง Anthropic เรียกเก็บจากคุณตามที่ใช้ (Phai Studio เองยังฟรี) — ส่งข้อมูลไปเฉพาะตอนกดส่ง: สิ่งที่พิมพ์ และส่วนของโปรเจกต์ที่ Claude ขออ่าน</p>
 
+<h3 id="copilot">GitHub Copilot</h3>
+<p>ใช้ GitHub Copilot แทน Claude ได้ ด้วยบัญชี GitHub ของคุณเอง (Copilot Free ก็พอ) ไม่ต้องมีคีย์ API</p>
+<ol>
+  <li><b>Tools &gt; Options &gt; GitHub Copilot</b> ติ๊ก <b>เปิด GitHub Copilot</b> ครั้งแรก Phai Studio จะขอดาวน์โหลด Copilot Language Server ของ GitHub (ราว 110 MB จาก github.com/github/copilot-language-server-release ตรวจกับ SHA-256 ที่ GitHub ให้) เก็บไว้ใน AppData ไม่ต้องติดตั้ง Node.js</li>
+  <li>คลิก <b>Copilot</b> ที่มุมขวาของแถบสถานะ &gt; <b>เข้าสู่ระบบ GitHub...</b> จะได้รหัส 8 ตัว (คัดลอกไว้ให้แล้ว) เบราว์เซอร์เปิด github.com/login/device วางรหัส กดอนุญาต กลับมาแถบสถานะจะขึ้นชื่อบัญชี การเข้าสู่ระบบเก็บไว้ที่เซิร์ฟเวอร์ของ GitHub ไม่อยู่ในไฟล์ของ Phai Studio</li>
+</ol>
+<p><b>แนะนำโค้ดขณะพิมพ์:</b> พิมพ์แล้วหยุดสักครู่ Copilot จะเสนอโค้ดต่อเป็นตัวหนังสือสีเทาหลังเคอร์เซอร์ กด <kbd>Tab</kbd> รับทั้งหมด <kbd>Ctrl+→</kbd> รับทีละคำ <kbd>Esc</kbd> หรือพิมพ์ต่อเพื่อทิ้ง ปิดได้จากเมนู Copilot บนแถบสถานะ</p>
+<figure><img class="shot" src="img/copilot-ghost.png" alt="คำแนะนำของ Copilot เป็นตัวหนังสือสีเทาหลังเคอร์เซอร์" width="460"><figcaption>พิมพ์ fn add แล้ว Copilot เสนอที่เหลือเป็นสีเทา</figcaption></figure>
+<p><b>แชตและเอเจนต์:</b> ในแผง AI เลือก <b>GitHub Copilot</b> ที่ช่องกลาง ช่องขวาคือโมเดลที่บัญชีของคุณใช้ได้ (Auto, GPT, Claude, Gemini... ตามแผน Copilot) ถามหรือสั่งแก้ได้เหมือน Claude ในโหมด <b>ลงมือ</b> ทุกการแก้ไฟล์ขึ้นหน้าต่างเทียบให้รับหรือไม่รับก่อน คำสั่งอื่นที่ Copilot ขอทำจะถามก่อนทุกครั้ง ในโหมด <b>ถาม</b> ไม่มีการแก้ไฟล์</p>
+<figure><img class="shot" src="img/copilot-pane.png" alt="แผงผู้ช่วย AI เลือก GitHub Copilot" width="300"><figcaption>Copilot แก้ไฟล์ให้หลังกดรับ</figcaption></figure>
+<p>การใช้ Copilot นับรวมในโควตาของแผน Copilot ของคุณ ตามเงื่อนไขของ GitHub — ส่งข้อมูลไปให้ GitHub: ไฟล์ที่เปิดอยู่ (เพื่อแนะนำโค้ด) สิ่งที่พิมพ์ในแชต และไฟล์ที่ Copilot ขออ่าน</p>
+
 <h2>ปุ่มลัดที่ใช้บ่อย</h2>
 <table>
   <tr><th>ปุ่ม</th><th>ทำอะไร</th><th>ปุ่ม</th><th>ทำอะไร</th></tr>

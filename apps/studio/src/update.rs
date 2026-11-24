@@ -71,12 +71,12 @@ pub fn download(r: &Release) -> Result<PathBuf, String> {
     Ok(to)
 }
 
-fn sha256_hex(data: &[u8]) -> String {
+pub(crate) fn sha256_hex(data: &[u8]) -> String {
     use sha2::Digest;
     sha2::Sha256::digest(data).iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn curl(args: &[&str]) -> Result<Vec<u8>, String> {
+pub(crate) fn curl(args: &[&str]) -> Result<Vec<u8>, String> {
     let out = Command::new("curl.exe")
         .arg("-A")
         .arg(concat!("phai-studio/", env!("CARGO_PKG_VERSION")))

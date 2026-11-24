@@ -84,6 +84,11 @@ pub struct Values {
     pub start_tabs: Vec<usize>,
     /// The tabs left open kept for next time, in place of `start_tabs`.
     pub remember_tabs: bool,
+    // GitHub Copilot
+    /// Copilot on: its server runs, the AI Assistant offers it.
+    pub copilot: bool,
+    /// Its grey suggestions as you type.
+    pub copilot_suggest: bool,
 }
 
 /// The panel's tabs Options offers to open at start: all but the debugger's own (Immediate to
@@ -156,6 +161,8 @@ impl Values {
             build_flash: tick(get("build_flash"), true),
             start_tabs: tabs_of(get("bottom_tabs")),
             remember_tabs: tick(get("remember_tabs"), false),
+            copilot: tick(get("copilot"), false),
+            copilot_suggest: tick(get("copilot_suggest"), true),
         }
     }
 
@@ -203,6 +210,8 @@ impl Values {
             ("build_flash", one(self.build_flash)),
             ("bottom_tabs", self.start_tabs.iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",")),
             ("remember_tabs", one(self.remember_tabs)),
+            ("copilot", one(self.copilot)),
+            ("copilot_suggest", one(self.copilot_suggest)),
         ]
     }
 
@@ -241,6 +250,7 @@ pub fn pages() -> Vec<(&'static str, &'static str)> {
         (t("Projects and Solutions"), t("Phai libraries")),
         (t("Debugging"), t("General")),
         (t("Source Control"), t("Git")),
+        ("GitHub Copilot", t("General")),
     ]
 }
 
@@ -291,6 +301,8 @@ struct Controls {
     /// One tick per tab of `START_TABS`.
     start_tabs: Vec<HWND>,
     remember_tabs: HWND,
+    copilot: HWND,
+    copilot_suggest: HWND,
 }
 
 struct Dialog {
@@ -408,6 +420,8 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             build_flash: check(t("Flash Phai Studio on the taskbar when a build ends behind other windows"), now.build_flash),
             start_tabs: START_TABS.iter().map(|k| check(crate::bottom::labels()[*k], now.start_tabs.contains(k))).collect(),
             remember_tabs: check(t("Open the tabs I left open, instead"), now.remember_tabs),
+            copilot: check(t("Turn on GitHub Copilot: suggestions as you type, and Copilot in the AI Assistant"), now.copilot),
+            copilot_suggest: check(t("Show Copilot's suggestions as you type (Tab takes one, Esc puts it away)"), now.copilot_suggest),
         };
         let rows = vec![
             vec![Row::Pair(label(t("Color theme:")), c.theme), Row::Pair(label(t("Language:")), c.language), Row::Pair(label(t("Items in recently used lists:")), c.recent)],
@@ -440,6 +454,14 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             vec![Row::Check(c.git), note(t("Off: from this machine, beside Phai Studio.")), note(t("On: a project builds on any machine, the same next year."))],
             vec![Row::Check(c.panic), note(t("Which Windows exceptions stop it: Debug > Exception Settings."))],
             vec![Row::Check(c.blame)],
+            vec![
+                Row::Check(c.copilot),
+                Row::Check(c.copilot_suggest),
+                note(t("Needs a GitHub account with Copilot - Copilot Free is enough (github.com/settings/copilot).")),
+                note(t("Phai Studio gets GitHub's Copilot Language Server once (about 110 MB) and checks it.")),
+                note(t("Sign in from Copilot on the status bar; GitHub's server keeps the sign-in, not Phai Studio.")),
+                note(t("What Copilot does counts against your Copilot plan, under GitHub's terms.")),
+            ],
         ];
         let ok = win::button(hwnd, t("OK"), ID_OK, font, true);
         let cancel = win::button(hwnd, t("Cancel"), ID_CANCEL, font, false);
@@ -677,6 +699,8 @@ fn read(c: &Controls) -> Values {
             if t.is_empty() { vec![0] } else { t }
         },
         remember_tabs: win::is_checked(c.remember_tabs),
+        copilot: win::is_checked(c.copilot),
+        copilot_suggest: win::is_checked(c.copilot_suggest),
     }
 }
 
@@ -747,6 +771,7 @@ mod tests {
         let d = Values::load(|_| None);
         assert!(d.theme == 1 && d.recent == 9 && d.startup == 0 && d.tabbed && d.tab_size == 4 && d.spaces && d.font == "Cascadia Mono", "the defaults");
         assert!(d.break_on_panic && d.save_before_build && d.output_on_build && d.snap_to_grid && d.grid == 4 && !d.format_on_save && !d.blame);
+        assert!(!d.copilot && d.copilot_suggest, "Copilot off until it is turned on");
         let v = Values {
             theme: 2,
             thai: true,
@@ -782,6 +807,8 @@ mod tests {
             build_flash: false,
             start_tabs: vec![0, 1, 6],
             remember_tabs: true,
+            copilot: true,
+            copilot_suggest: false,
         };
         let saved: std::collections::HashMap<&str, String> = v.pairs(Some("panic,0xC0000005")).into_iter().collect();
         assert_eq!(saved["exceptions"], "0xC0000005", "panic out, the exceptions kept");

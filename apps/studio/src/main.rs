@@ -60,6 +60,8 @@ mod update;
 mod about;
 mod claude;
 mod ai;
+mod acp;
+mod copilot;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -337,6 +339,10 @@ const TIMER_PULL: usize = 7304;
 const TIMER_SPLIT_FLOOD: usize = 7305;
 /// A list that came back empty asked for again, a moment later.
 const TIMER_COMPLETE_AGAIN: usize = 7306;
+/// Typing rested: GitHub Copilot asked for a suggestion at the caret.
+const TIMER_COPILOT: usize = 7307;
+/// `PHAI_COPILOT_TYPE`: the test's next step, each half second.
+const TIMER_COPILOT_TEST: usize = 7308;
 static SPLIT_FLOOD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 /// The breadcrumb's height, design pixels.
 const CRUMB_H: i32 = 24;
@@ -599,6 +605,16 @@ pub struct Studio {
     running: Option<std::process::Child>,
     /// rust-analyzer for the project of the code being edited.
     lsp: Option<phai_editor::lsp::Lsp>,
+    /// GitHub Copilot's language server, while Copilot is on (Tools > Options).
+    copilot: Option<copilot::Copilot>,
+    /// The suggestion shown last: the editor it was shown in, and the server's item.
+    copilot_item: Option<(HWND, serde_json::Value)>,
+    /// Copilot's server being downloaded.
+    copilot_getting: bool,
+    /// AI Assistant panes waiting for Copilot's models.
+    copilot_models_wanted: Vec<HWND>,
+    /// The AI Assistant's pane.
+    ai_pane: HWND,
     /// Requests sent to it, by id: which editor asked, and what for.
     asked: std::collections::HashMap<i64, (HWND, Ask)>,
     pub canvas: Option<Canvas>,
@@ -3087,10 +3103,349 @@ impl Studio {
             }
             self.pull_soon();
         }
+        if let Some(c) = self.copilot.as_mut() {
+            c.open(path, phai_editor::view::version(h), &text);
+        }
         self.undo.clear();
         self.redo.clear();
         self.selected = None;
         self.after_switch();
+    }
+
+    // --- GitHub Copilot ---------------------------------------------------------------------------
+
+    /// Copilot's server started, when Copilot is on and the server is here.
+    fn copilot_start(&mut self) {
+        if !copilot_on() || self.copilot.as_mut().is_some_and(|c| c.alive()) {
+            return;
+        }
+        self.copilot = None;
+        let Some(launch) = copilot::find() else {
+            self.copilot_status();
+            return;
+        };
+        let root = self.project_dir_pub().or_else(|| self.doc.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf))).unwrap_or_else(std::env::temp_dir);
+        self.copilot = copilot::Copilot::start(&launch, &root, self.hwnd);
+        if self.copilot.is_none() {
+            controls::status_text(self.status, 5, t("Copilot: its server did not start"));
+            return;
+        }
+        self.copilot_status();
+        // `PHAI_COPILOT_TYPE=line:col:words`: typed there once it is ready, the suggestion printed.
+        if std::env::var_os("PHAI_COPILOT_TYPE").is_some() {
+            unsafe {
+                wm::SetTimer(Some(self.hwnd), TIMER_COPILOT_TEST, 500, None);
+            }
+        }
+    }
+
+    fn copilot_stop(&mut self) {
+        self.copilot = None;
+        if let Some(h) = self.doc.code {
+            phai_editor::view::clear_ghost(h);
+        }
+        self.copilot_item = None;
+    }
+
+    /// Copilot on the status bar: off, getting its server, starting, who is signed in, trouble.
+    fn copilot_status(&mut self) {
+        let words = if !copilot_on() {
+            t("Copilot: off").to_string()
+        } else if self.copilot_getting {
+            t("Copilot: downloading its server...").to_string()
+        } else if let Some(c) = self.copilot.as_ref() {
+            c.status_words()
+        } else if copilot::find().is_none() {
+            t("Copilot: get its server").to_string()
+        } else {
+            t("Copilot: not running").to_string()
+        };
+        controls::status_text(self.status, 5, &words);
+    }
+
+    /// Copilot's server downloaded from GitHub - asked first when `ask`.
+    fn copilot_get_server(&mut self, ask: bool) {
+        if self.copilot_getting {
+            return;
+        }
+        let yes = !ask
+            || win::message(Some(self.hwnd), t("GitHub Copilot works through GitHub's Copilot Language Server. Phai Studio downloads it once from GitHub (about 110 MB, checked against GitHub's SHA-256) into your AppData folder. Get it now?"), "GitHub Copilot", wm::MB_YESNO | wm::MB_ICONQUESTION) == wm::IDYES;
+        if !yes {
+            return;
+        }
+        self.copilot_getting = true;
+        copilot::download_in_background(self.hwnd);
+        self.copilot_status();
+    }
+
+    /// The status bar's Copilot clicked: what can be done with it now.
+    fn copilot_menu(&mut self) {
+        const ON: u32 = 0x7C01;
+        const OFF: u32 = 0x7C02;
+        const GET: u32 = 0x7C03;
+        const SIGN_IN: u32 = 0x7C04;
+        const SIGN_OUT: u32 = 0x7C05;
+        const SUGGEST: u32 = 0x7C06;
+        const OPTIONS: u32 = 0x7C07;
+        const PLAN: u32 = 0x7C08;
+        let mut items: Vec<(u32, String)> = Vec::new();
+        let suggest = setting("copilot_suggest").as_deref() != Some("0");
+        if !copilot_on() {
+            items.push((ON, t("Turn on GitHub Copilot").to_string()));
+        } else {
+            match self.copilot.as_ref().map(|c| c.state.clone()) {
+                None if copilot::find().is_none() => items.push((GET, t("Get Copilot's server (about 110 MB)").to_string())),
+                Some(copilot::State::SignedIn(user)) => {
+                    let plan = self.copilot.as_ref().map(|c| c.plan.clone()).unwrap_or_default();
+                    let who = if plan.is_empty() { tf("Signed in as {0}", &[&user]) } else { tf("Signed in as {0} (Copilot {1})", &[&user, &plan]) };
+                    items.push((0x7C10, who));
+                    items.push((SIGN_OUT, t("Sign out").to_string()));
+                }
+                Some(copilot::State::NoCopilot(_)) => {
+                    items.push((PLAN, t("Turn on Copilot Free for this account...").to_string()));
+                    items.push((SIGN_OUT, t("Sign out").to_string()));
+                }
+                Some(_) => items.push((SIGN_IN, t("Sign in to GitHub...").to_string())),
+                None => {}
+            }
+            items.push((0, String::new()));
+            items.push((SUGGEST, format!("{}{}", if suggest { "\u{2713} " } else { "    " }, t("Suggestions as you type"))));
+            items.push((OFF, t("Turn off GitHub Copilot").to_string()));
+        }
+        items.push((OPTIONS, t("GitHub Copilot options...").to_string()));
+        let list: Vec<(u32, &str)> = items.iter().map(|(i, w)| (*i, w.as_str())).collect();
+        match win::popup(self.hwnd, &list) {
+            ON => {
+                remember_setting("copilot", "1");
+                self.copilot_start();
+                if copilot::find().is_none() {
+                    self.copilot_get_server(true);
+                }
+                ai::copilot_changed(self.ai_pane);
+            }
+            OFF => {
+                remember_setting("copilot", "0");
+                self.copilot_stop();
+                ai::copilot_changed(self.ai_pane);
+            }
+            GET => self.copilot_get_server(false),
+            SIGN_IN => self.copilot_sign_in(),
+            SIGN_OUT => {
+                if let Some(c) = self.copilot.as_mut() {
+                    c.sign_out();
+                }
+            }
+            PLAN => {
+                copilot::open_page("https://github.com/settings/copilot");
+            }
+            SUGGEST => remember_setting("copilot_suggest", if suggest { "0" } else { "1" }),
+            OPTIONS => self.options(options::pages().len() - 1),
+            _ => {}
+        }
+        self.copilot_status();
+    }
+
+    /// Sign in to GitHub for Copilot: its device code shown, GitHub opened to enter it.
+    pub fn copilot_sign_in(&mut self) {
+        if !copilot_on() {
+            self.say_status(t("Turn on GitHub Copilot in Tools > Options first."));
+            return;
+        }
+        self.copilot_start();
+        match self.copilot.as_mut() {
+            Some(c) if c.ready => c.sign_in(),
+            Some(_) => self.say_status(t("Copilot is still starting - try again in a moment.")),
+            None => self.copilot_get_server(true),
+        }
+    }
+
+    /// The AI Assistant wants Copilot's models for its model box.
+    pub fn copilot_models_for(&mut self, pane: HWND) {
+        self.copilot_start();
+        match self.copilot.as_mut() {
+            Some(c) if c.ready => c.models(pane),
+            Some(_) => {
+                if !self.copilot_models_wanted.contains(&pane) {
+                    self.copilot_models_wanted.push(pane);
+                }
+            }
+            None => ai::copilot_models(pane, vec![], Some(t("GitHub Copilot's server is not here yet - turn Copilot on in Tools > Options to get it."))),
+        }
+    }
+
+    /// Typing rested: a suggestion asked for at the caret, if one can be shown there.
+    fn copilot_suggest(&mut self) {
+        let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) else { return };
+        if !phai_editor::view::ghost_place(h) {
+            return;
+        }
+        let prefs = phai_editor::prefs::get();
+        let (text, version, at) = (phai_editor::view::text(h), phai_editor::view::version(h), phai_editor::view::caret_lsp(h));
+        if let Some(c) = self.copilot.as_mut() {
+            c.suggest(h, &path, &text, version, at, (prefs.tab_size, prefs.spaces));
+        }
+    }
+
+    /// The suggestion shown was taken, whole or a word of it: the server told.
+    pub fn copilot_accepted(&mut self, h: HWND, partly: bool) {
+        let Some((e, item)) = self.copilot_item.clone() else { return };
+        if e != h {
+            return;
+        }
+        if let Some(c) = self.copilot.as_mut() {
+            if partly {
+                c.partly_accepted(&item, phai_editor::view::ghost_accepted(h));
+            } else {
+                c.accepted(&item);
+                self.copilot_item = None;
+            }
+        }
+    }
+
+    /// A message from Copilot's server, or the download's end.
+    fn copilot_message(&mut self, msg: serde_json::Value) {
+        if msg["phaiDownload"] == true {
+            self.copilot_getting = false;
+            match msg["error"].as_str() {
+                Some(e) => {
+                    controls::status_text(self.status, 5, &format!("Copilot: {e}"));
+                    win::message(Some(self.hwnd), e, "GitHub Copilot", wm::MB_ICONWARNING);
+                    return;
+                }
+                None => {
+                    self.say_status(t("Copilot's server is downloaded and checked."));
+                    self.copilot_start();
+                }
+            }
+            ai::copilot_changed(self.ai_pane);
+            return;
+        }
+        let Some(c) = self.copilot.as_mut() else { return };
+        match c.message(msg) {
+            copilot::Said::Nothing => {}
+            copilot::Said::Ready => {
+                // The files open now, told it.
+                let editors: Vec<(HWND, PathBuf)> = self.tabs.iter().filter_map(|t| Some((t.doc.code?, t.doc.path.clone()?))).chain(self.doc.code.zip(self.doc.path.clone())).collect();
+                if let Some(c) = self.copilot.as_mut() {
+                    for (h, p) in editors {
+                        c.open(&p, phai_editor::view::version(h), &phai_editor::view::text(h));
+                    }
+                }
+                self.copilot_status();
+            }
+            copilot::Said::Status => {
+                self.copilot_status();
+                ai::copilot_changed(self.ai_pane);
+                if let Some(c) = self.copilot.as_mut() {
+                    if c.ready {
+                        for pane in std::mem::take(&mut self.copilot_models_wanted) {
+                            c.models(pane);
+                        }
+                    }
+                }
+            }
+            copilot::Said::Suggestion { editor, version, at, item } => {
+                // Still where it was asked: the same file, unchanged, the caret not moved.
+                if Some(editor) != self.doc.code || phai_editor::view::version(editor) != version || phai_editor::view::caret_lsp(editor) != at || !phai_editor::view::ghost_place(editor) {
+                    return;
+                }
+                let (start, end, text) = copilot::item_parts(&item, at);
+                if phai_editor::view::set_ghost(editor, start, end, &text) {
+                    if let Some(c) = self.copilot.as_ref() {
+                        c.shown(&item);
+                    }
+                    self.copilot_item = Some((editor, item));
+                }
+            }
+            copilot::Said::SignInCode { code, uri } => {
+                set_clipboard(self.hwnd, &code);
+                self.copilot_status();
+                let go = std::env::var_os("PHAI_COPILOT_SIGNIN").is_some()
+                    || win::message(Some(self.hwnd), &format!("{}\n\n{}", tf("Your code is {0} - it is copied.", &[&code]), tf("GitHub opens in your browser at {0}: paste the code there, allow GitHub Copilot, and come back. Phai Studio sees it at once.", &[&uri])), t("Sign in to GitHub Copilot"), wm::MB_OKCANCEL | wm::MB_ICONINFORMATION) == wm::IDOK;
+                if let Some(c) = self.copilot.as_mut() {
+                    if go {
+                        c.finish_sign_in();
+                    } else {
+                        c.state = copilot::State::SignedOut;
+                    }
+                }
+                self.copilot_status();
+            }
+            copilot::Said::Models { pane, list } => {
+                let none = list.is_empty();
+                ai::copilot_models(pane, list, none.then(|| t("Copilot offered no models - is the account signed in?")));
+            }
+        }
+    }
+
+    /// `PHAI_COPILOT_TYPE=line:col:words`, a step each half second: once Copilot is signed in and
+    /// the file told it, the words typed at line:col (from 1); then, once a suggestion is grey
+    /// after the caret, it is printed - and with `PHAI_COPILOT_TAB=1` taken with Tab and the line
+    /// printed. Being photographed (`PHAI_SHOT`), it stays for the picture.
+    fn copilot_test_step(&mut self) {
+        static STEP: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        static TICKS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let ticks = TICKS.fetch_add(1, Ordering::Relaxed);
+        if ticks > 240 {
+            println!("copilot test: no suggestion in 2 minutes ({})", self.copilot.as_ref().map(|c| c.status_words()).unwrap_or_default());
+            std::process::exit(4);
+        }
+        let Some(h) = self.doc.code else { return };
+        let Some(path) = self.doc.path.clone() else { return };
+        let ready = self.copilot.as_ref().is_some_and(|c| c.ready && c.signed_in() && c.is_open(&path));
+        let spec = std::env::var("PHAI_COPILOT_TYPE").unwrap_or_default();
+        let mut parts = spec.splitn(3, ':');
+        let (l, col) = (parts.next().and_then(|n| n.parse().ok()).unwrap_or(1), parts.next().and_then(|n| n.parse().ok()).unwrap_or(1));
+        let words = parts.next().unwrap_or_default().to_string();
+        match STEP.load(Ordering::Relaxed) {
+            0 if ready => {
+                unsafe {
+                    let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(h));
+                }
+                phai_editor::view::go_to(h, l, col);
+                for u in words.encode_utf16() {
+                    unsafe {
+                        wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(u as usize)), Some(LPARAM(1)));
+                    }
+                }
+                println!("copilot test: signed in as {}, typed {words:?}", self.copilot.as_ref().map(|c| c.status_words()).unwrap_or_default());
+                STEP.store(1, Ordering::Relaxed);
+            }
+            1 => {
+                if let Some(g) = phai_editor::view::ghost_text(h) {
+                    println!("copilot test: suggestion {g:?}");
+                    if std::env::var_os("PHAI_COPILOT_TAB").is_some() {
+                        unsafe {
+                            wm::SendMessageW(h, wm::WM_KEYDOWN, Some(WPARAM(0x09)), Some(LPARAM(1)));
+                            wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(0x09)), Some(LPARAM(1)));
+                        }
+                        let text = phai_editor::view::text(h);
+                        println!("copilot test: after Tab, line {l}: {:?}", text.lines().nth(l.saturating_sub(1)).unwrap_or_default());
+                        println!("copilot test: shown {}", phai_editor::view::ghost_text(h).is_some());
+                    }
+                    STEP.store(2, Ordering::Relaxed);
+                    if std::env::var_os("PHAI_SHOT").is_none() {
+                        // A moment for the server to hear what was accepted.
+                        STEP.store(3, Ordering::Relaxed);
+                    }
+                }
+            }
+            3 => std::process::exit(0),
+            // Photographed a moment after the suggestion is shown, then the end.
+            2 => {
+                static SHOWN_AT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+                let at = SHOWN_AT.load(Ordering::Relaxed);
+                if at == 0 {
+                    SHOWN_AT.store(ticks, Ordering::Relaxed);
+                } else if ticks >= at + 2 {
+                    if let Ok(out) = std::env::var("PHAI_SHOT") {
+                        let _ = phai_ui::shot::save(self.hwnd, Path::new(&out));
+                    }
+                    std::process::exit(0);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// rust-analyzer for the project holding `path`, started if it is not running for it already.
@@ -4621,6 +4976,17 @@ impl Studio {
     }
 
     pub fn code_changed(&mut self) {
+        // Copilot told, and asked for a suggestion once typing rests.
+        if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
+            if let Some(c) = self.copilot.as_mut() {
+                c.change(&path, phai_editor::view::version(h), &phai_editor::view::text(h));
+                if c.signed_in() && setting("copilot_suggest").as_deref() != Some("0") {
+                    unsafe {
+                        wm::SetTimer(Some(self.hwnd), TIMER_COPILOT, 350, None);
+                    }
+                }
+            }
+        }
         if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
             if path.extension().is_some_and(|e| e == "rs") {
                 let text = phai_editor::view::text(h);
@@ -5120,6 +5486,9 @@ impl Studio {
         if let Some(h) = self.doc.code.take() {
             if let (Some(l), Some(p)) = (self.lsp.as_ref(), self.doc.path.as_ref()) {
                 l.did_close(p);
+            }
+            if let (Some(c), Some(p)) = (self.copilot.as_mut(), self.doc.path.as_ref()) {
+                c.close(p);
             }
             unsafe {
                 let _ = wm::DestroyWindow(h);
@@ -5666,6 +6035,17 @@ impl Studio {
         if !v.rust_analyzer {
             self.lsp = None;
         }
+        // GitHub Copilot on: started (its server got first, asked); off: stopped.
+        if v.copilot {
+            self.copilot_start();
+            if copilot::find().is_none() {
+                self.copilot_get_server(true);
+            }
+        } else {
+            self.copilot_stop();
+        }
+        self.copilot_status();
+        ai::copilot_changed(self.ai_pane);
         if v.blame != self.blame_on {
             self.blame_on = v.blame;
             self.refresh_blame();
@@ -7345,6 +7725,10 @@ impl Studio {
     }
 
     fn save_all(&mut self) {
+        // Nothing unsaved: nothing to do - the tabs are left as they are.
+        if !self.doc.dirty && !self.tabs.iter().enumerate().any(|(i, t)| i != self.active && t.doc.dirty) {
+            return;
+        }
         let front = self.active;
         for i in 0..self.tabs.len() {
             let dirty = if i == self.active { self.doc.dirty } else { self.tabs[i].doc.dirty };
@@ -9169,6 +9553,16 @@ pub fn setting_pub(name: &str) -> Option<String> {
     setting(name)
 }
 
+/// Whether GitHub Copilot is on (Tools > Options > GitHub Copilot) - `PHAI_COPILOT=1` turns it on
+/// for a test.
+fn copilot_on() -> bool {
+    std::env::var("PHAI_COPILOT").ok().or_else(|| setting("copilot")).as_deref() == Some("1")
+}
+
+pub fn copilot_on_pub() -> bool {
+    copilot_on()
+}
+
 fn setting(name: &str) -> Option<String> {
     let text = std::fs::read_to_string(settings_dir()?.join("settings.txt")).ok()?;
     text.lines().find_map(|l| l.strip_prefix(&format!("{name}=")).map(str::to_string))
@@ -9451,6 +9845,22 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             s.pull_now();
             LRESULT(0)
         }
+        wm::WM_TIMER if w.0 == TIMER_COPILOT => {
+            unsafe {
+                let _ = wm::KillTimer(Some(hwnd), TIMER_COPILOT);
+            }
+            s.copilot_suggest();
+            LRESULT(0)
+        }
+        wm::WM_TIMER if w.0 == TIMER_COPILOT_TEST => {
+            s.copilot_test_step();
+            LRESULT(0)
+        }
+        copilot::WM_COPILOT => {
+            let v = unsafe { Box::from_raw(l.0 as *mut serde_json::Value) };
+            s.copilot_message(*v);
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_COMPLETE_AGAIN => {
             unsafe {
                 let _ = wm::KillTimer(Some(hwnd), TIMER_COMPLETE_AGAIN);
@@ -9502,6 +9912,8 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
                 }
             } else if id == ID_STATUS && win::hiword(w.0) == controls::STATUS_CLICK + 4 {
                 s.branch_menu();
+            } else if id == ID_STATUS && win::hiword(w.0) == controls::STATUS_CLICK + 5 {
+                s.copilot_menu();
             } else if id == ID_STATUS {
             } else if id == ID_TABS {
                 let i = win::hiword(w.0) as usize;
@@ -10009,6 +10421,10 @@ fn main() {
     #[cfg(debug_assertions)]
     report_crashes();
     let args: Vec<String> = std::env::args().collect();
+    // `--fake-copilot --stdio|--acp`: standing in for GitHub Copilot's server, for tests.
+    if args.get(1).map(String::as_str) == Some("--fake-copilot") {
+        copilot::fake::serve(args.get(2).map(String::as_str) == Some("--acp"));
+    }
     words::add(text::THAI);
     phai_form::live::set_translate(false);
     if let Some(pt) = setting("editor_font_pt").and_then(|v| v.parse().ok()) {
@@ -10074,7 +10490,8 @@ fn main() {
         win::show(bottom_split, false);
         // The last part: the errors and warnings - a click opens the Error List.
         // And the git branch: a click switches it, makes one, stashes.
-        controls::status_parts(status, &[260, 80, 110, 130]);
+        // And GitHub Copilot: on or off, who is signed in - a click for its menu.
+        controls::status_parts(status, &[260, 80, 110, 130, 210]);
         controls::status_text(status, 2, "Debug");
         controls::status_text(status, 0, t("Ready"));
         let dpi = win::dpi(hwnd);
@@ -10110,6 +10527,11 @@ fn main() {
             building: false,
             running: None,
             lsp: None,
+            copilot: None,
+            copilot_item: None,
+            copilot_getting: false,
+            copilot_models_wanted: vec![],
+            ai_pane: HWND::default(),
             asked: std::collections::HashMap::new(),
             canvas: None,
             side: HWND::default(),
@@ -10208,7 +10630,12 @@ fn main() {
         let servers = servers::Servers::new(side, font);
         let outline = outline::Outline::new(side, font);
         let ai = ai::create(side, font);
+        s.ai_pane = ai;
         explorer::set_side_parts(side, &explorer, props.hwnd, servers.tree, outline.tree, ai, font);
+        s.copilot_status();
+        if copilot_on() {
+            s.copilot_start();
+        }
         // Project and Properties as tabs along the bottom, as Visual Studio groups them - unless
         // switched off from a pane's ▾ menu.
         explorer::set_tabbed(side, setting("side_tabbed").as_deref() != Some("0"));

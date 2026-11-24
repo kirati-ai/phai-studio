@@ -1590,6 +1590,12 @@ extern "system" fn canvas_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESU
             }
             LRESULT(0)
         }
+        wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::GHOST_ACCEPT || win::hiword(w.0) == phai_editor::view::GHOST_PARTIAL => {
+            if let Some(s) = studio() {
+                s.copilot_accepted(HWND(l.0 as *mut _), win::hiword(w.0) == phai_editor::view::GHOST_PARTIAL);
+            }
+            LRESULT(0)
+        }
         wm::WM_COMMAND if win::hiword(w.0) == phai_editor::view::HOVER => {
             if let Some(s) = studio() {
                 s.lsp_hover(HWND(l.0 as *mut _));
