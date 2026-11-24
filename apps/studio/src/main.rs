@@ -1819,6 +1819,11 @@ impl Studio {
                 // The form's own size is no size of this control's.
                 let own = size.filter(|n| Some(*n) != self.doc.form.form.font_size.or(Some(9)));
                 self.apply_one(Key::Font, &own.map(|n| n.to_string()).unwrap_or_default());
+                // A family named first (as the Font dialog writes it): Segoe UI is Windows' own, none of its own.
+                let family = text.split(',').next().map(str::trim).filter(|w| !w.is_empty() && props::font_spec(w).is_some_and(|(n, b)| n.is_none() && !b));
+                if let Some(family) = family {
+                    self.apply_one(Key::More("font_family"), if family.eq_ignore_ascii_case("Segoe UI") { "" } else { family });
+                }
                 return self.apply_one(Key::Bold, if bold { "True" } else { "False" });
             }
             _ => {}

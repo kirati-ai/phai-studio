@@ -279,8 +279,33 @@ impl FontDialog {
         FontDialog { owner }
     }
     pub fn show_dialog(&self) -> Option<ChosenFont> {
+        self.ask(None)
+    }
+
+    /// The dialog opened on `font` - its face, size and weight chosen in it to begin with.
+    pub fn show_dialog_from(&self, font: &ChosenFont) -> Option<ChosenFont> {
+        self.ask(Some(font))
+    }
+
+    fn ask(&self, start: Option<&ChosenFont>) -> Option<ChosenFont> {
         let mut lf = Gdi::LOGFONTW::default();
-        let mut cf = dlg::CHOOSEFONTW { lStructSize: std::mem::size_of::<dlg::CHOOSEFONTW>() as u32, hwndOwner: self.owner, lpLogFont: &mut lf, Flags: dlg::CF_SCREENFONTS | dlg::CF_EFFECTS, ..Default::default() };
+        let mut flags = dlg::CF_SCREENFONTS | dlg::CF_EFFECTS;
+        if let Some(f) = start {
+            let dpi = unsafe {
+                let screen = Gdi::GetDC(None);
+                let d = Gdi::GetDeviceCaps(Some(screen), Gdi::LOGPIXELSY);
+                Gdi::ReleaseDC(None, screen);
+                d
+            };
+            lf.lfHeight = -(f.points * dpi / 72);
+            lf.lfWeight = if f.bold { 700 } else { 400 };
+            lf.lfItalic = f.italic as u8;
+            for (i, u) in f.face.encode_utf16().take(31).enumerate() {
+                lf.lfFaceName[i] = u;
+            }
+            flags |= dlg::CF_INITTOLOGFONTSTRUCT;
+        }
+        let mut cf = dlg::CHOOSEFONTW { lStructSize: std::mem::size_of::<dlg::CHOOSEFONTW>() as u32, hwndOwner: self.owner, lpLogFont: &mut lf, Flags: flags, ..Default::default() };
         if !unsafe { dlg::ChooseFontW(&mut cf) }.as_bool() {
             return None;
         }

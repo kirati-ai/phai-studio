@@ -151,7 +151,7 @@ fn form_rows(f: &phai_form::FormFile) -> Vec<Prop> {
     .chain(table::FORM.iter().map(|sp| {
         let buttons: Vec<String> = f.control.iter().filter(|c| c.kind == Kind::Button).map(|c| c.id.clone()).collect();
         let v = f.form.prop(sp.name);
-        Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: ed_of(sp, &buttons), help: t(sp.help).into(), parent: None, set: v.is_some() }
+        Prop { category: t(sp.category), key: Key::FormMore(sp.name), name: sp.label, value: shown(sp, v), ed: form_ed(sp, &buttons), help: t(sp.help).into(), parent: None, set: v.is_some() }
     }))
     .collect()
 }
@@ -221,7 +221,7 @@ fn control_rows(f: &phai_form::FormFile, c: &phai_form::Control, theme: Option<&
         v.push(p(t("Appearance"), Key::Text, t("Text"), c.text.clone().unwrap_or_default(), Ed::Text, t("The words it shows - an English key, translated by the program.")));
     }
     v.extend([
-        p(t("Appearance"), Key::FontAll, t("Font"), format!("Segoe UI, {}pt{}", c.font_size.or(f.form.font_size).unwrap_or(9), if c.bold == Some(true) { ", Bold" } else { "" }), Ed::Text, t("Its words' size and weight - Segoe UI, 9pt is Windows' own.")),
+        p(t("Appearance"), Key::FontAll, t("Font"), format!("{}, {}pt{}", c.word("font_family").filter(|w| !w.is_empty()).unwrap_or("Segoe UI"), c.font_size.or(f.form.font_size).unwrap_or(9), if c.bold == Some(true) { ", Bold" } else { "" }), Ed::Dialog, t("Its words' size and weight - Segoe UI, 9pt is Windows' own.")),
         part(Key::FontAll, t("Appearance"), Key::Font, t("Font size"), c.font_size.map(|n| n.to_string()).unwrap_or_default(), Ed::Choice(sizes, true), t("Points for this control's words, over the form's.")),
         part(Key::FontAll, t("Appearance"), Key::Bold, t("Bold"), yes_no(c.bold == Some(true)), bools.clone(), t("Its words in bold.")),
         p(t("Appearance"), Key::BackColor, t("Back colour"), colour(&c.back_color), Ed::Color, t("Its background, over the theme - written into CSS as #id { background }.")),
@@ -256,7 +256,7 @@ fn control_rows(f: &phai_form::FormFile, c: &phai_form::Control, theme: Option<&
         v.push(p(t("Layout"), Key::Cols, t("Columns"), c.cols.unwrap_or(2).to_string(), Ed::Number, t("How many equal columns the controls in it are laid in.")));
     }
     if c.kind == Kind::Picture {
-        v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::Text, t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
+        v.push(p(t("Appearance"), Key::Image, t("Image"), c.image.clone().unwrap_or_default(), Ed::File(t("Pictures (PNG, JPEG, BMP, GIF)"), "*.png;*.jpg;*.jpeg;*.bmp;*.gif"), t("The picture's file: PNG, JPEG, BMP or GIF - from the project's folder, or a full path.")));
     }
     if matches!(c.kind, Kind::Combo | Kind::List | Kind::Tabs | Kind::Tree | Kind::Grid | Kind::ListBox | Kind::CheckedList) {
         let items = match c.kind {
@@ -362,7 +362,81 @@ pub fn form_events_for_help() -> Vec<(&'static str, &'static str, &'static str, 
 }
 
 /// The editor a table property's kind wants.
+/// The font families on this computer, by name - found once.
+fn font_names() -> Vec<String> {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            unsafe extern "system" fn each(lf: *const Gdi::LOGFONTW, _: *const Gdi::TEXTMETRICW, _: u32, l: LPARAM) -> i32 {
+                let names = unsafe { &mut *(l.0 as *mut Vec<String>) };
+                let face = unsafe { &(*lf).lfFaceName };
+                let n = face.iter().position(|c| *c == 0).unwrap_or(face.len());
+                let name = String::from_utf16_lossy(&face[..n]);
+                // Not the sideways fonts of East Asia (@...).
+                if !name.starts_with('@') && !names.contains(&name) {
+                    names.push(name);
+                }
+                1
+            }
+            let mut names: Vec<String> = Vec::new();
+            unsafe {
+                let screen = Gdi::GetDC(None);
+                let lf = Gdi::LOGFONTW { lfCharSet: Gdi::DEFAULT_CHARSET, ..Default::default() };
+                Gdi::EnumFontFamiliesExW(screen, &lf, Some(each), LPARAM(&mut names as *mut _ as isize), 0);
+                Gdi::ReleaseDC(None, screen);
+            }
+            names.sort_by_key(|n| n.to_lowercase());
+            names
+        })
+        .clone()
+}
+
+/// A form's property's editor: its icon and its picture chosen as files.
+fn form_ed(s: &Spec, buttons: &[String]) -> Ed {
+    match s.name {
+        "icon" => Ed::File(t("Icons (*.ico)"), "*.ico"),
+        "background_image" => Ed::File(t("Pictures (PNG, JPEG, BMP, GIF)"), "*.png;*.jpg;*.jpeg;*.bmp;*.gif"),
+        _ => ed_of(s, buttons),
+    }
+}
+
+/// `file` as the project names it, from its folder `dir`: as it is when inside; else copied in
+/// beside Cargo.toml - the program takes it in when it is built - under a name not yet taken by
+/// another file.
+fn into_project(dir: &std::path::Path, file: &std::path::Path) -> std::io::Result<String> {
+    let slashes = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    if let Ok(inside) = file.strip_prefix(dir) {
+        return Ok(slashes(inside));
+    }
+    let stem = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
+    let ext = file.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let bytes = std::fs::read(file)?;
+    for n in 1.. {
+        let name = if n == 1 { format!("{stem}{ext}") } else { format!("{stem}-{n}{ext}") };
+        let to = dir.join(&name);
+        match std::fs::read(&to) {
+            Ok(there) if there == bytes => return Ok(name),
+            Ok(_) => continue,
+            Err(_) => {
+                std::fs::write(&to, &bytes)?;
+                return Ok(name);
+            }
+        }
+    }
+    unreachable!()
+}
+
 fn ed_of(s: &Spec, buttons: &[String]) -> Ed {
+    // Words of a known shape: a list of the usual ones, and room to type another.
+    let usual = |v: &[&str]| Ed::Choice(v.iter().map(|x| x.to_string()).collect(), true);
+    match s.name {
+        "font_family" => return Ed::Choice(font_names(), true),
+        "mask" => return usual(&["000-000-0000", "00/00/0000", "0-0000-00000-00-0", "00:00", "00000"]),
+        "custom_format" => return usual(&["dd/MM/yyyy", "dd/MM/yyyy HH:mm", "d MMMM yyyy", "HH:mm", "HH:mm:ss"]),
+        "filter" => return usual(&["Text files|*.txt|All files|*.*", "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif", "CSV files|*.csv", "Excel files|*.xlsx", "All files|*.*"]),
+        "default_ext" => return usual(&["txt", "csv", "png", "xlsx", "pdf"]),
+        _ => {}
+    }
     match s.ty {
         Ty::Bool => Ed::Bool,
         Ty::Int(..) => Ed::Number,
@@ -402,6 +476,9 @@ enum Ed {
     Choice(Vec<String>, bool),
     /// "…" opens a dialog.
     Dialog,
+    /// A file of the project, chosen with Windows' Open box - these files (its words, its
+    /// pattern); one from elsewhere is copied in. Delete takes it away.
+    File(&'static str, &'static str),
     Anchor,
     Color,
     /// Shown, not changed here.
@@ -1172,7 +1249,7 @@ impl Props {
                                 vr.left += win::px(h, 24);
                                 draw(dc, &p.value, &mut vr, win::window_text(), Gdi::DT_LEFT);
                             }
-                            Ed::Dialog => {
+                            Ed::Dialog | Ed::File(..) => {
                                 let first = p.value.lines().next().unwrap_or_default();
                                 let more = if p.value.lines().count() > 1 { "  …" } else { "" };
                                 let mut words = RECT { right: vr.right - win::px(h, 26), ..vr };
@@ -1251,7 +1328,7 @@ impl Props {
                 self.say_help();
                 // A click on a value edits it; on a name, a double-click does.
                 if x >= self.split() || double {
-                    self.edit(k, i);
+                    self.edit(k, i, double);
                 }
             }
         }
@@ -1261,47 +1338,51 @@ impl Props {
     }
 
     /// Opens the editor a property's kind wants, over its value.
-    fn edit(&mut self, line: usize, i: usize) {
+    fn edit(&mut self, line: usize, i: usize, double: bool) {
         let p = self.props[i].clone();
         let lr = self.line_rect(line);
         let split = self.split();
         let cell = RECT { left: split + 1, ..lr };
         match p.ed {
             Ed::ReadOnly => {}
-            Ed::Bool => {
-                // As Visual Studio does on a double-click: the other value, at once.
-                self.commit(p.key, &yes_no(p.value != "True"));
-            }
+            // As Visual Studio: a click shows True and False to choose; a double-click (on the
+            // name) is the other value at once.
+            Ed::Bool if double => self.commit(p.key, &yes_no(p.value != "True")),
+            Ed::Bool => self.open_list(cell, i, &[yes_no(true), yes_no(false)], false, &p.value),
             Ed::Text | Ed::Number => self.open_box(cell, i, &p.value),
             Ed::Color => self.pick_colour(i, &p.value),
-            Ed::Choice(items, free) => {
-                const CBS_DROPDOWN: u32 = 0x0002;
-                const CBS_DROPDOWNLIST: u32 = 0x0003;
-                let style = if free { CBS_DROPDOWN } else { CBS_DROPDOWNLIST };
-                let refs: Vec<&str> = items.iter().map(String::as_str).collect();
-                let combo = win::combo(self.grid, ID_EDITOR, self.font, &refs);
-                unsafe {
-                    let old = wm::GetWindowLongW(combo, wm::GWL_STYLE) as u32;
-                    wm::SetWindowLongW(combo, wm::GWL_STYLE, ((old & !0x3) | style) as i32);
-                }
-                win::move_to(combo, cell.left, cell.top, cell.right - cell.left, win::px(self.grid, 300));
-                if free {
-                    win::set_text(combo, &p.value);
-                }
-                let at = items.iter().position(|s| *s == p.value).unwrap_or(usize::MAX);
-                unsafe {
-                    wm::SendMessageW(combo, 0x014E /* CB_SETCURSEL */, Some(WPARAM(at)), None);
-                    // A long list - a form's every method - opens under the box with a scroll
-                    // bar, as Visual Studio's, not across the whole screen.
-                    wm::SendMessageW(combo, 0x1701 /* CB_SETMINVISIBLE */, Some(WPARAM(12)), None);
-                    let _ = km::SetFocus(Some(combo));
-                    wm::SendMessageW(combo, 0x014F /* CB_SHOWDROPDOWN */, Some(WPARAM(1)), None);
-                }
-                self.editor = Some((combo, i));
-            }
+            Ed::Choice(items, free) => self.open_list(cell, i, &items, free, &p.value),
             Ed::Dialog => self.open_dialog(i),
+            Ed::File(words, pattern) => self.choose_file(i, words, pattern),
             Ed::Anchor => self.pick_anchor(i, cell),
         }
+    }
+
+    /// A drop-down list over a value: its choices, open; `free` lets other words be typed.
+    fn open_list(&mut self, cell: RECT, i: usize, items: &[String], free: bool, value: &str) {
+        const CBS_DROPDOWN: u32 = 0x0002;
+        const CBS_DROPDOWNLIST: u32 = 0x0003;
+        let style = if free { CBS_DROPDOWN } else { CBS_DROPDOWNLIST };
+        let refs: Vec<&str> = items.iter().map(String::as_str).collect();
+        let combo = win::combo(self.grid, ID_EDITOR, self.font, &refs);
+        unsafe {
+            let old = wm::GetWindowLongW(combo, wm::GWL_STYLE) as u32;
+            wm::SetWindowLongW(combo, wm::GWL_STYLE, ((old & !0x3) | style) as i32);
+        }
+        win::move_to(combo, cell.left, cell.top, cell.right - cell.left, win::px(self.grid, 300));
+        if free {
+            win::set_text(combo, value);
+        }
+        let at = items.iter().position(|s| s == value).unwrap_or(usize::MAX);
+        unsafe {
+            wm::SendMessageW(combo, 0x014E /* CB_SETCURSEL */, Some(WPARAM(at)), None);
+            // A long list - a form's every method - opens under the box with a scroll
+            // bar, as Visual Studio's, not across the whole screen.
+            wm::SendMessageW(combo, 0x1701 /* CB_SETMINVISIBLE */, Some(WPARAM(12)), None);
+            let _ = km::SetFocus(Some(combo));
+            wm::SendMessageW(combo, 0x014F /* CB_SHOWDROPDOWN */, Some(WPARAM(1)), None);
+        }
+        self.editor = Some((combo, i));
     }
 
     fn open_box(&mut self, cell: RECT, i: usize, value: &str) {
@@ -1357,11 +1438,51 @@ impl Props {
         }
     }
 
+    /// Windows' Open box for a file property, the file kept in the project.
+    fn choose_file(&mut self, i: usize, words: &str, pattern: &str) {
+        let Some(s) = studio() else { return };
+        let Some(dir) = s.doc.path.as_deref().and_then(crate::cargo::project_of) else {
+            win::message(Some(self.hwnd), t("Save the form in a project first - or make one with New project."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        };
+        let Some(file) = crate::file_dialog_pub(self.hwnd, false, words, pattern, "") else { return };
+        match into_project(&dir, &file) {
+            Ok(name) => {
+                let key = self.props[i].key;
+                self.commit(key, &name);
+            }
+            Err(e) => {
+                win::message(Some(self.hwnd), &e.to_string(), "Phai Studio", wm::MB_ICONWARNING);
+            }
+        }
+    }
+
+    /// Delete on a file property: the file no longer used (the file itself stays).
+    fn clear_file(&mut self) -> bool {
+        let Some(Line::Prop(i)) = self.chosen.and_then(|k| self.lines.get(k)).copied() else { return false };
+        let p = &self.props[i];
+        if !matches!(p.ed, Ed::File(..)) || p.value.is_empty() {
+            return false;
+        }
+        let key = p.key;
+        self.commit(key, "");
+        true
+    }
+
     fn open_dialog(&mut self, i: usize) {
         let Some(s) = studio() else { return };
         let p = self.props[i].clone();
         match p.key {
             Key::FormTheme => s.command(crate::ID_THEME_IMPORT_PUB),
+            // Windows' Font dialog, on the control's font now.
+            Key::FontAll => {
+                let face = p.value.split(',').next().map(str::trim).filter(|f| !f.is_empty()).unwrap_or("Segoe UI").to_string();
+                let (points, bold) = font_spec(&p.value).map(|(n, b)| (n.unwrap_or(9), b)).unwrap_or((9, false));
+                let start = phai_ui::components::ChosenFont { face, points, bold, italic: false };
+                if let Some(f) = phai_ui::components::FontDialog::new(self.hwnd).show_dialog_from(&start) {
+                    self.commit(p.key, &format!("{}, {}pt{}", f.face, f.points.clamp(6, 48), if f.bold { ", Bold" } else { "" }));
+                }
+            }
             Key::StyleToTheme => {
                 let suggested = s.selected.and_then(|i| s.doc.form.control.get(i)).map(|c| c.id.replace('_', "-")).unwrap_or_default();
                 if let Some(class) = phai_ui::dialogs::ask(Some(self.hwnd), t("Send to theme"), t("The class's name, as CSS writes it - letters, digits and -:"), &suggested, false) {
@@ -1557,10 +1678,15 @@ extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
             LRESULT(0)
         }
         wm::WM_LBUTTONDOWN | wm::WM_LBUTTONDBLCLK => {
+            // The keys come here after a click: Delete on a file property.
+            unsafe {
+                let _ = km::SetFocus(Some(h));
+            }
             let (x, y) = win::point_of(l);
             p.click(x, y, msg == wm::WM_LBUTTONDBLCLK);
             LRESULT(0)
         }
+        wm::WM_KEYDOWN if w.0 == 0x2E /* VK_DELETE */ && p.clear_file() => LRESULT(0),
         wm::WM_MOUSEWHEEL => {
             let delta = (w.0 >> 16) as i16 as i32;
             p.close_editor(true);
@@ -1601,7 +1727,11 @@ extern "system" fn grid_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                     if let Some((e, i)) = p.editor {
                         if !free {
                             let k = win::combo_selected(e).max(0) as usize;
-                            let value = if let Ed::Choice(items, _) = &p.props[i].ed { items.get(k).cloned().unwrap_or_default() } else { String::new() };
+                            let value = match &p.props[i].ed {
+                                Ed::Choice(items, _) => items.get(k).cloned().unwrap_or_default(),
+                                Ed::Bool => yes_no(k == 0),
+                                _ => String::new(),
+                            };
                             let key = p.props[i].key;
                             p.editor = None;
                             unsafe {
@@ -1793,6 +1923,33 @@ fn anchor_picker(owner: HWND, x: i32, y: i32, start: Anchors) -> Option<Anchors>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_property_has_the_editor_its_value_wants() {
+        let spec = |name| phai_form::props::find_form(name).or_else(|| table::of_kind(phai_form::Kind::Date).find(|s| s.name == name)).unwrap();
+        assert!(matches!(form_ed(spec("icon"), &[]), Ed::File(_, "*.ico")), "Icon: a file");
+        assert!(matches!(form_ed(spec("background_image"), &[]), Ed::File(..)), "BackgroundImage: a file");
+        assert_eq!(form_ed(spec("auto_scroll"), &[]), Ed::Bool, "True or False: chosen from a list");
+        assert!(matches!(ed_of(spec("font_family"), &[]), Ed::Choice(ref f, true) if f.iter().any(|n| n == "Segoe UI")), "FontFamily: this computer's fonts");
+        assert!(matches!(ed_of(spec("custom_format"), &[]), Ed::Choice(ref f, true) if f.contains(&"dd/MM/yyyy".to_string())), "CustomFormat: the usual ones");
+    }
+
+    #[test]
+    fn a_chosen_file_is_kept_in_the_project() {
+        let root = std::env::temp_dir().join(format!("phai-into-{}", std::process::id()));
+        let (dir, away) = (root.join("proj"), root.join("away"));
+        std::fs::create_dir_all(dir.join("art")).unwrap();
+        std::fs::create_dir_all(&away).unwrap();
+        std::fs::write(dir.join("art").join("app.ico"), b"in").unwrap();
+        assert_eq!(into_project(&dir, &dir.join("art").join("app.ico")).unwrap(), "art/app.ico", "inside: named from the project");
+        std::fs::write(away.join("app.ico"), b"one").unwrap();
+        assert_eq!(into_project(&dir, &away.join("app.ico")).unwrap(), "app.ico", "from elsewhere: copied in");
+        assert_eq!(std::fs::read(dir.join("app.ico")).unwrap(), b"one");
+        assert_eq!(into_project(&dir, &away.join("app.ico")).unwrap(), "app.ico", "the same file again: the copy there");
+        std::fs::write(away.join("app.ico"), b"two").unwrap();
+        assert_eq!(into_project(&dir, &away.join("app.ico")).unwrap(), "app-2.ico", "another of that name: never over the first");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn composites_typed_in_whole_are_read() {

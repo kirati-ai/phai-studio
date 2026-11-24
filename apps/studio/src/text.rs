@@ -703,6 +703,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("{0} Tasks", "งานของ {0}"),
     ("The words {0} shows:", "ข้อความที่ {0} แสดง:"),
     ("Pictures (PNG, JPEG, BMP, GIF)", "รูปภาพ (PNG, JPEG, BMP, GIF)"),
+    ("Icons (*.ico)", "ไอคอน (*.ico)"),
     ("Split", "แบ่งหน้าต่าง"),
     ("Flow layout", "จัดเรียงต่อกัน (Flow)"),
     ("Table layout", "จัดเป็นตาราง (Table)"),
