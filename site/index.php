@@ -231,6 +231,9 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.12', '24 พ.ย. 2569', [
+            'ไม่กะพริบอีก: Studio และ control ของ Phai วาดเสร็จทั้งภาพก่อนแล้วค่อยขึ้นจอทีเดียว - ตาราง Properties เวลาเลื่อน หน้าออกแบบเวลาแก้หรือย้าย control ปุ่ม แท็บ และพื้นหลังของฟอร์ม รวมถึงโปรแกรมที่สร้างด้วย Phai',
+        ]],
         ['0.2.11', '24 พ.ย. 2569', [
             'กล่องคำแนะนำข้างรายการเติมคำ: เรียกอย่างไร ทำอะไร พร้อมตัวอย่าง สำหรับเมธอดของ control ฟอร์ม และฟังก์ชันที่ใช้บ่อย เป็นภาษาไทยเมื่อตั้ง Studio เป็นไทย',
             'เขียนโค้ดง่ายขึ้น: หลัง ( และ , มีรายการให้เลือกเอง ชื่อผิดหรือชนิดผิดมีเส้นหยักทันทีที่หยุดพิมพ์ พิมพ์ MessageBoxButtons. แล้วกลายเป็น :: ให้เอง วงเล็บและเครื่องหมายคำพูดมาเป็นคู่ และอักษรไทยในโค้ดตัวใหญ่เท่าโค้ด',
@@ -465,6 +468,9 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.12', '24 Nov 2026', [
+            'No more flicker: Phai Studio and Phai\'s controls draw the whole picture first and put it on the screen at once - the Properties grid as it scrolls, the designer as controls are changed or moved, buttons, tabs and a form\'s background, in the programs made with Phai too',
+        ]],
         ['0.2.11', '24 Nov 2026', [
             'A guide beside the completion list: how the chosen item is called, what it does and an example, for the methods of every control and of the form, and the everyday functions - in Thai when Phai Studio is',
             'Easier code: choices open by themselves after ( and , - a wrong name or type gets its wavy line as soon as typing rests - MessageBoxButtons. becomes :: as typed - brackets and quotes come in pairs - Thai in the code as large as the code',
