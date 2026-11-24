@@ -59,6 +59,7 @@ mod vsextra;
 mod update;
 mod about;
 mod copilot;
+mod extend;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -601,6 +602,14 @@ pub struct Studio {
     running: Option<std::process::Child>,
     /// rust-analyzer for the project of the code being edited.
     lsp: Option<phai_editor::lsp::Lsp>,
+    /// The language servers one added (Tools > Options > Text Editor > Language Servers), each
+    /// started for a project as a file of its kind is opened there.
+    more_lsp: Vec<MoreLsp>,
+    /// Command lines that would not start, each with the folder: not tried again until Options
+    /// changes them.
+    lsp_failed: Vec<String>,
+    /// The tag the next added server's messages carry.
+    next_lsp_tag: usize,
     /// GitHub Copilot's language server, while Copilot is on (Tools > Options).
     copilot: Option<copilot::Copilot>,
     /// The suggestion shown last: the editor it was shown in, and the server's item.
@@ -749,6 +758,30 @@ pub struct Studio {
 static BUILD_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Find in Files' search: `what` in every text file under `root` - Cargo's `target` and hidden
 /// folders left out - as places (line, UTF-16 column, as the language server counts), at most `max`.
+/// A language server one added, running for one folder.
+struct MoreLsp {
+    /// Its messages' `WPARAM`.
+    tag: usize,
+    /// The command line it was started with, as Options has it.
+    command: String,
+    lsp: phai_editor::lsp::Lsp,
+    /// The files it has been told are open (`didOpen`), small letters.
+    opened: Vec<String>,
+}
+
+/// `--tools-menu`: the Tools menu photographed as soon as it is open.
+static LSP_TRY_STEP: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static MENU_SHOT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// `--tools-menu`: the Tools menu dropped under its place on the menu bar.
+const WM_TOOLS_MENU_SHOT: u32 = wm::WM_APP + 0x0E32;
+/// What an added language server says: `WPARAM` its tag, `LPARAM` a `Box<serde_json::Value>`.
+const WM_LSP_MORE: u32 = wm::WM_APP + 0x0C03;
+/// Tools > External Tools..., and each tool on the menu: `ID_EXT_TOOL + n`.
+const ID_EXT_TOOLS: i32 = 2950;
+const ID_EXT_TOOL: i32 = 2960;
+/// `--lsp-try LINE:COL`: hover, then completion, asked there of the open file's server.
+const ID_LSP_TRY: i32 = 2951;
+
 fn find_in_tree(root: &Path, what: &str, case: bool, max: usize) -> Vec<phai_editor::lsp::Location> {
     const KINDS: [&str; 10] = ["rs", "toml", "css", "phf", "phaiform", "md", "txt", "json", "sql", "html"];
     let mut found = Vec::new();
@@ -1584,6 +1617,14 @@ fn build_menu() -> HMENU {
         add(cmd, ID_CMD_PROMPT, t("Command Prompt"), "");
         add(cmd, ID_POWERSHELL, "PowerShell", "");
         sub_of(tools, t("Command Line"), cmd);
+        sep(tools);
+        // External Tools, as Visual Studio's: each one added an item here, then the list's editor.
+        let ext = extend::tools();
+        for (k, tool) in ext.iter().take(extend::MAX_TOOLS).enumerate() {
+            let title = if tool.title.trim().is_empty() { tool.command.clone() } else { tool.title.clone() };
+            add(tools, ID_EXT_TOOL + k as i32, &title, "");
+        }
+        add(tools, ID_EXT_TOOLS, t("External Tools..."), "");
         sep(tools);
         add(tools, ID_COMPARE, t("Compare Files..."), "");
         add(tools, ID_USER_SNIPPETS, t("Code Snippets..."), "");
@@ -2456,7 +2497,7 @@ impl Studio {
         }
         // A code file: its symbols, from the language server.
         if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
-            if path.extension().is_some_and(|e| e == "rs") {
+            if Self::has_lsp(&path) {
                 if let Some(l) = self.lsp_for(&path) {
                     let id = l.document_symbols(&path);
                     self.asked.insert(id, (h, Ask::Outline));
@@ -3085,12 +3126,7 @@ impl Studio {
         self.doc = Doc { code: Some(h), crlf, ..Doc::new(FormFile::new("Code"), Some(path.to_path_buf())) };
         // The lines changed since git's last commit: the bar beside them.
         phai_editor::view::set_changes(h, &changes::of_file(path));
-        if path.extension().is_some_and(|e| e == "rs") {
-            if let Some(l) = self.lsp_for(path) {
-                l.did_open(path, &text);
-            }
-            self.pull_soon();
-        }
+        self.lsp_open(path, h, &text);
         if let Some(c) = self.copilot.as_mut() {
             c.open(path, phai_editor::view::version(h), &text);
         }
@@ -3407,8 +3443,174 @@ impl Studio {
         }
     }
 
-    /// rust-analyzer for the project holding `path`, started if it is not running for it already.
+    /// The language server for the file at `path`, started if it is not running for its project
+    /// already: the one added in Options for its extension, else rust-analyzer as always.
     fn lsp_for(&mut self, path: &Path) -> Option<&mut phai_editor::lsp::Lsp> {
+        if let Some(server) = extend::server_for(&extend::servers(), path).cloned() {
+            return self.more_lsp_for(path, &server);
+        }
+        self.rust_lsp_for(path)
+    }
+
+    /// The folder an added server runs for: the project's (Cargo.toml's, or the one open), else
+    /// the file's own.
+    fn lsp_root(&self, path: &Path) -> PathBuf {
+        cargo::workspace_of(path).or_else(|| cargo::project_of(path)).or_else(|| path.parent().map(Path::to_path_buf)).unwrap_or_default()
+    }
+
+    /// An added server for `path`'s folder, started if it is not running - and told of every file
+    /// of its kind open now.
+    fn more_lsp_for(&mut self, path: &Path, server: &extend::Server) -> Option<&mut phai_editor::lsp::Lsp> {
+        let root = self.lsp_root(path);
+        if let Some(i) = self.more_lsp.iter().position(|m| m.command == server.command && phai_editor::lsp::same_path(&m.lsp.root, &root)) {
+            if self.more_lsp[i].lsp.alive() {
+                return Some(&mut self.more_lsp[i].lsp);
+            }
+            // It ended: said once, not started again until Options changes it.
+            let gone = self.more_lsp.remove(i);
+            self.lsp_failed.push(format!("{}|{}", gone.command, root.display()));
+            controls::status_text(self.status, 0, &tf("The language server stopped: {0}", &[&gone.command]));
+            return None;
+        }
+        let key = format!("{}|{}", server.command, root.display());
+        if self.lsp_failed.contains(&key) {
+            return None;
+        }
+        let tag = self.next_lsp_tag;
+        self.next_lsp_tag += 1;
+        match phai_editor::lsp::Lsp::start_command(&server.command, &root, self.hwnd, WM_LSP_MORE, tag, tag as i64 * 1_000_000_000) {
+            Ok(lsp) => {
+                controls::status_text(self.status, 0, &tf("Starting {0}...", &[&server.command]));
+                self.more_lsp.push(MoreLsp { tag, command: server.command.clone(), lsp, opened: Vec::new() });
+                // The files of its kind open already: it is told of each.
+                let mut open: Vec<(PathBuf, HWND)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?))).collect();
+                if let (Some(p), Some(h)) = (self.doc.path.clone(), self.doc.code) {
+                    open.push((p, h));
+                }
+                let i = self.more_lsp.len() - 1;
+                for (p, h) in open {
+                    if server.takes(&p) && phai_editor::lsp::same_path(&self.lsp_root(&p), &root) {
+                        Self::tell_open(&mut self.more_lsp[i], &p, h);
+                    }
+                }
+                Some(&mut self.more_lsp[i].lsp)
+            }
+            Err(e) => {
+                self.lsp_failed.push(key);
+                controls::status_text(self.status, 0, &tf("The language server would not start: {0}", &[&e]));
+                if let Some(b) = self.bottom.as_ref() {
+                    b.add_line_from(bottom::OUT_TOOLS, &tf("The language server would not start: {0}", &[&e]));
+                }
+                None
+            }
+        }
+    }
+
+    /// An added server told a file is open, once.
+    fn tell_open(m: &mut MoreLsp, path: &Path, h: HWND) {
+        let key = path.to_string_lossy().to_lowercase();
+        if m.opened.contains(&key) {
+            return;
+        }
+        m.opened.push(key);
+        let ext = path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+        m.lsp.open_as(path, &phai_editor::lsp::language_id(&ext), phai_editor::view::version(h), &phai_editor::view::text(h));
+    }
+
+    /// A code file just opened in editor `h`, told to its language server.
+    fn lsp_open(&mut self, path: &Path, h: HWND, text: &str) {
+        if path.extension().is_some_and(|e| e == "rs") {
+            if let Some(l) = self.lsp_for(path) {
+                l.did_open(path, text);
+            }
+            self.pull_soon();
+            return;
+        }
+        let Some(server) = extend::server_for(&extend::servers(), path).cloned() else { return };
+        if self.more_lsp_for(path, &server).is_some() {
+            let root = self.lsp_root(path);
+            if let Some(m) = self.more_lsp.iter_mut().find(|m| m.command == server.command && phai_editor::lsp::same_path(&m.lsp.root, &root)) {
+                Self::tell_open(m, path, h);
+            }
+        }
+    }
+
+    /// The server running for `path` now, none started: an added one for its kind, else
+    /// rust-analyzer.
+    fn lsp_running(&self, path: &Path) -> Option<&phai_editor::lsp::Lsp> {
+        if let Some(server) = extend::server_for(&extend::servers(), path) {
+            let root = self.lsp_root(path);
+            return self.more_lsp.iter().find(|m| m.command == server.command && phai_editor::lsp::same_path(&m.lsp.root, &root)).map(|m| &m.lsp);
+        }
+        self.lsp.as_ref()
+    }
+
+    /// A file closed: its server told, and an added one forgets it was open.
+    fn lsp_close(&mut self, path: &Path) {
+        if let Some(l) = self.lsp_running(path) {
+            l.did_close(path);
+        }
+        let key = path.to_string_lossy().to_lowercase();
+        for m in &mut self.more_lsp {
+            m.opened.retain(|k| *k != key);
+        }
+    }
+
+    /// Whether a file has a language server to tell of its changes: Rust, or one added for it.
+    fn has_lsp(path: &Path) -> bool {
+        path.extension().is_some_and(|e| e == "rs") || extend::server_for(&extend::servers(), path).is_some()
+    }
+
+    /// A message from an added language server.
+    fn more_lsp_message(&mut self, tag: usize, msg: serde_json::Value) {
+        let Some(i) = self.more_lsp.iter().position(|m| m.tag == tag) else { return };
+        if self.more_lsp[i].lsp.is_init_answer(&msg) {
+            self.more_lsp[i].lsp.ready();
+            let name = self.more_lsp[i].command.clone();
+            if msg.get("error").is_some() {
+                controls::status_text(self.status, 0, &tf("The language server would not start: {0}", &[&msg["error"]["message"].as_str().unwrap_or(&name)]));
+            } else {
+                controls::status_text(self.status, 0, &tf("Language server ready: {0}", &[&name]));
+            }
+            return;
+        }
+        // A request of ours answered.
+        if let (Some(id), None) = (msg.get("id").and_then(|i| i.as_i64()), msg.get("method")) {
+            if let Some((h, ask)) = self.asked.remove(&id) {
+                let result = msg.get("result").cloned().unwrap_or_default();
+                let error = msg["error"]["message"].as_str().map(str::to_string);
+                self.lsp_answer(h, ask, result, error);
+            }
+            return;
+        }
+        // The server asking something of us: its settings - none here - or anything else, nothing.
+        if let (Some(id), Some(method)) = (msg.get("id"), msg["method"].as_str()) {
+            let l = &self.more_lsp[i].lsp;
+            if method == "workspace/configuration" {
+                let n = msg["params"]["items"].as_array().map(|a| a.len()).unwrap_or(0);
+                l.answer(id, serde_json::Value::Array(vec![serde_json::Value::Null; n]));
+            } else if method == "workspace/workspaceFolders" {
+                let root = l.root.clone();
+                l.answer(id, serde_json::json!([{ "uri": phai_editor::lsp::uri_of(&root), "name": root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default() }]));
+            } else {
+                l.respond(id);
+            }
+            return;
+        }
+        if msg["method"] == "window/showMessage" && msg["params"]["type"].as_u64() == Some(1) {
+            if let Some(text) = msg["params"]["message"].as_str() {
+                controls::status_text(self.status, 0, text);
+            }
+            return;
+        }
+        if let Some((path, diags)) = phai_editor::lsp::diagnostics_of(&msg) {
+            self.pushed_diagnostics.insert(path.clone(), diags);
+            self.show_lsp_diagnostics(&path);
+        }
+    }
+
+    /// rust-analyzer for the project holding `path`, started if it is not running for it already.
+    fn rust_lsp_for(&mut self, path: &Path) -> Option<&mut phai_editor::lsp::Lsp> {
         // Off in Tools > Options: no language server at all.
         if setting("rust_analyzer").as_deref() == Some("0") {
             return None;
@@ -3530,6 +3732,9 @@ impl Studio {
         let diags = &diags;
         if std::env::var_os("PHAI_PRINT_DIAGS").is_some() {
             println!("shown: {} for {}", diags.len(), path.file_name().unwrap_or_default().to_string_lossy());
+            for d in diags {
+                println!("  {}:{} {}", d.start.0 + 1, d.start.1 + 1, d.message);
+            }
         }
         {
             if let Some(h) = self.editor_of(path) {
@@ -3554,6 +3759,9 @@ impl Studio {
                 phai_editor::view::set_inlay_hints(h, hints);
             }
             Ask::Hover => {
+                if std::env::var_os("PHAI_LSP_TRY").is_some() {
+                    println!("hover: {:?} (error {:?})", phai_editor::lsp::hover_text(&result).map(|t| t.chars().take(200).collect::<String>()), error);
+                }
                 if let Some(text) = phai_editor::lsp::hover_text(&result) {
                     phai_editor::view::show_tip(h, &text);
                 }
@@ -3565,6 +3773,9 @@ impl Studio {
                     return;
                 }
                 let items = phai_editor::lsp::completions_of(&result, 300);
+                if std::env::var_os("PHAI_LSP_TRY").is_some() {
+                    println!("completion: {} items, like {:?} (error {:?})", items.len(), items.iter().take(6).map(|c| c.label.clone()).collect::<Vec<_>>(), error);
+                }
                 // Nothing yet where something is wanted: rust-analyzer is most often still reading
                 // the project. Asked again - when it is ready, or in a moment - not left empty.
                 if items.is_empty() && phai_editor::view::list_wanted(h) {
@@ -3792,7 +4003,7 @@ impl Studio {
                     // Not the file in front: its tab is changed, and the server told.
                     let text = phai_editor::view::text(h);
                     let version = phai_editor::view::version(h);
-                    if let Some(l) = self.lsp.as_ref() {
+                    if let Some(l) = self.lsp_running(&path) {
                         l.did_change(&path, version, &text);
                     }
                     if let Some(tab) = self.tabs.iter_mut().find(|t| t.doc.code == Some(h)) {
@@ -4947,13 +5158,15 @@ impl Studio {
             }
         }
         if let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) {
-            if path.extension().is_some_and(|e| e == "rs") {
+            if Self::has_lsp(&path) {
                 let text = phai_editor::view::text(h);
                 let version = phai_editor::view::version(h);
                 if let Some(l) = self.lsp_for(&path) {
                     l.did_change(&path, version, &text);
                 }
-                self.pull_soon();
+                if path.extension().is_some_and(|e| e == "rs") {
+                    self.pull_soon();
+                }
             }
         }
         if let Some(h) = self.doc.code {
@@ -5443,8 +5656,8 @@ impl Studio {
             return false;
         }
         if let Some(h) = self.doc.code.take() {
-            if let (Some(l), Some(p)) = (self.lsp.as_ref(), self.doc.path.as_ref()) {
-                l.did_close(p);
+            if let Some(p) = self.doc.path.clone() {
+                self.lsp_close(&p);
             }
             if let (Some(c), Some(p)) = (self.copilot.as_mut(), self.doc.path.as_ref()) {
                 c.close(p);
@@ -5654,7 +5867,7 @@ impl Studio {
             let text = if self.doc.crlf { text.replace('\n', "\r\n") } else { text };
             return match std::fs::write(&path, text) {
                 Ok(()) => {
-                    if let Some(l) = self.lsp.as_ref() {
+                    if let Some(l) = self.lsp_running(&path) {
                         l.did_save(&path);
                     }
                     phai_editor::view::set_clean(h);
@@ -5941,6 +6154,110 @@ impl Studio {
 
     // --- projects, building and running --------------------------------------------------------
 
+    /// Tools > External Tools...: the list edited; saved, and the Tools menu made again.
+    fn external_tools(&mut self) {
+        let Some(list) = extend::edit_tools(self.hwnd, extend::tools()) else { return };
+        remember_setting("external_tools", &extend::tools_text(&list));
+        self.rebuild_menu();
+    }
+
+    /// What a tool's placeholders stand for now.
+    fn tool_places(&self) -> extend::Places {
+        let file = self.doc.path.clone().filter(|_| !self.nothing);
+        let project = file.as_deref().and_then(cargo::project_of);
+        let selected = self.code_shown().map(phai_editor::view::selected_text).unwrap_or_default();
+        extend::Places { file, project, selected }
+    }
+
+    /// An External Tool chosen on the Tools menu: the open file saved first if it uses it, then
+    /// run - what it prints, and how it ended, in Output.
+    fn run_tool(&mut self, k: usize) {
+        let Some(tool) = extend::tools().into_iter().nth(k) else { return };
+        let title = if tool.title.trim().is_empty() { tool.command.clone() } else { tool.title.replace('&', "") };
+        if extend::uses_file(&tool) {
+            if self.doc.path.is_none() || self.nothing {
+                controls::status_text(self.status, 0, &tf("{0} works on the open file: open one first", &[&title]));
+                return;
+            }
+            if self.doc.dirty && !self.save(false) {
+                return;
+            }
+        }
+        let run = match extend::prepare(&tool, &self.tool_places()) {
+            Ok(r) => r,
+            Err(e) => {
+                self.tool_said(&tf("{0}: {1}", &[&title, &e]));
+                return;
+            }
+        };
+        if tool.output {
+            self.show_pane(Pane::Output, true);
+            if let Some(b) = self.bottom.as_ref() {
+                b.show_tab(1);
+            }
+            self.tool_said(&format!("------ {title}: {} {} ------", run.program.display(), run.args));
+        }
+        match extend::start(&run, &title, tool.output, self.hwnd) {
+            Ok(()) => controls::status_text(self.status, 0, &tf("{0} started", &[&title])),
+            Err(e) => self.tool_said(&tf("{0} would not start: {1}", &[&title, &e])),
+        }
+    }
+
+    /// A line in Output, from the tools.
+    fn tool_said(&mut self, line: &str) {
+        if let Some(b) = self.bottom.as_ref() {
+            b.add_line_from(bottom::OUT_TOOLS, line);
+        }
+        controls::status_text(self.status, 0, line);
+    }
+
+    /// A tool sent to Output ended: its exit code said, and the open files it changed loaded again.
+    fn tool_done(&mut self, title: &str, code: Option<i32>) {
+        let said = match code {
+            Some(c) => tf("{0} ended with exit code {1}", &[&title, &c]),
+            None => tf("{0} was stopped", &[&title]),
+        };
+        self.tool_said(&said);
+        for p in self.reload_changed_code() {
+            self.tool_said(&tf("Loaded again, as the tool changed it: {0}", &[&p.display()]));
+        }
+    }
+
+    /// The code files open here with no unsaved changes, loaded again where they changed on
+    /// disk - one undo step each, as Visual Studio does after an outside tool. Those loaded.
+    fn reload_changed_code(&mut self) -> Vec<PathBuf> {
+        let mut open: Vec<(PathBuf, HWND, bool)> = self.tabs.iter().filter_map(|t| Some((t.doc.path.clone()?, t.doc.code?, t.doc.crlf))).collect();
+        if let (Some(p), Some(h)) = (self.doc.path.clone(), self.doc.code) {
+            open.push((p, h, self.doc.crlf));
+        }
+        let mut loaded = Vec::new();
+        for (path, h, _) in open {
+            if phai_editor::view::is_dirty(h) {
+                continue;
+            }
+            let Ok(disk) = std::fs::read_to_string(&path) else { continue };
+            let disk = disk.replace("\r\n", "\n");
+            if disk == phai_editor::view::text(h) {
+                continue;
+            }
+            phai_editor::view::replace_whole(h, &disk);
+            phai_editor::view::set_clean(h);
+            phai_editor::view::set_changes(h, &changes::of_file(&path));
+            let version = phai_editor::view::version(h);
+            if let Some(l) = self.lsp_running(&path) {
+                l.did_change(&path, version, &disk);
+                l.did_save(&path);
+            }
+            loaded.push(path);
+        }
+        if !loaded.is_empty() {
+            self.doc.dirty = self.doc.code.is_some_and(phai_editor::view::is_dirty);
+            self.say_title();
+            self.refresh_tabs();
+        }
+        loaded
+    }
+
     /// Tools > Options: Phai Studio's settings in one window, opened on `page`; what is chosen is
     /// saved and takes effect at once.
     fn options(&mut self, page: usize) {
@@ -5990,6 +6307,16 @@ impl Studio {
         }
         self.fill_errors();
         canvas::set_designer(v.grid, v.snap_to_grid, v.snaplines);
+        // Language servers one added: those taken out or changed stopped, and those that would not
+        // start tried again; the file in front told to its own.
+        self.more_lsp.retain(|m| v.servers.iter().any(|s| s.command == m.command));
+        self.lsp_failed.clear();
+        if let (Some(h), Some(p)) = (self.doc.code, self.doc.path.clone()) {
+            if extend::server_for(&v.servers, &p).is_some() {
+                let text = phai_editor::view::text(h);
+                self.lsp_open(&p, h, &text);
+            }
+        }
         // rust-analyzer off: the running one stopped; on, it starts with the next Rust file shown.
         if !v.rust_analyzer {
             self.lsp = None;
@@ -8597,6 +8924,19 @@ impl Studio {
             f if (ID_FORMAT..ID_FORMAT + FORMATS.len() as i32).contains(&f) => self.format(FORMATS[(f - ID_FORMAT) as usize]),
             ID_EDIT_TOOLBAR => self.edit_toolbar(),
             ID_LSP_TEST => self.lsp_test_step(),
+            ID_LSP_TRY => {
+                let (Some(h), Some(path)) = (self.doc.code, self.doc.path.clone()) else { return };
+                let at = std::env::var("PHAI_LSP_TRY").ok().and_then(|v| v.split_once(':').and_then(|(l, c)| Some((l.parse::<u32>().ok()?, c.parse::<u32>().ok()?)))).unwrap_or((0, 0));
+                phai_editor::view::select_lsp(h, at, at);
+                if LSP_TRY_STEP.fetch_add(1, Ordering::Relaxed) == 0 {
+                    if let Some(l) = self.lsp_for(&path) {
+                        let id = l.hover(&path, at.0, at.1);
+                        self.asked.insert(id, (h, Ask::Hover));
+                    }
+                } else {
+                    self.lsp_complete(h);
+                }
+            }
             ID_CHORD => controls::status_text(self.status, 0, t("A chord's first key was pressed. Waiting for the second key...")),
             ID_FORMAT_DOC => self.format_document(),
             ID_FOLD | ID_FOLD_ALL => match self.code_shown() {
@@ -9122,6 +9462,8 @@ impl Studio {
                 set_clipboard(self.hwnd, &g);
                 controls::status_text(self.status, 0, &tf("{0} copied", &[&g]));
             }
+            ID_EXT_TOOLS => self.external_tools(),
+            k if (ID_EXT_TOOL..ID_EXT_TOOL + extend::MAX_TOOLS as i32).contains(&k) => self.run_tool((k - ID_EXT_TOOL) as usize),
             ID_CMD_PROMPT | ID_POWERSHELL => {
                 use std::os::windows::process::CommandExt;
                 let dir = self.doc.path.as_deref().and_then(cargo::project_of).or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from)).unwrap_or_default();
@@ -9980,6 +10322,56 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             s.lsp_message(*msg);
             LRESULT(0)
         }
+        WM_TOOLS_MENU_SHOT => {
+            unsafe {
+                let bar = wm::GetMenu(hwnd);
+                let tools = wide(t("T&ools"));
+                for k in 0..wm::GetMenuItemCount(Some(bar)).max(0) {
+                    let mut buf = [0u16; 64];
+                    let n = wm::GetMenuStringW(bar, k as u32, Some(&mut buf), wm::MF_BYPOSITION) as usize;
+                    if buf[..n] != tools[..tools.len() - 1] {
+                        continue;
+                    }
+                    let mut r = RECT::default();
+                    let _ = wm::GetMenuItemRect(Some(hwnd), bar, k as u32, &mut r);
+                    let sub = wm::GetSubMenu(bar, k);
+                    let _ = wm::TrackPopupMenu(sub, wm::TPM_LEFTALIGN | wm::TPM_TOPALIGN, r.left, r.bottom, Some(0), hwnd, None);
+                    break;
+                }
+            }
+            LRESULT(0)
+        }
+        // `--tools-menu`: the menu is open and drawn - photographed, and the end.
+        wm::WM_ENTERIDLE if MENU_SHOT.load(Ordering::Relaxed) => {
+            MENU_SHOT.store(false, Ordering::Relaxed);
+            // From another thread, a moment on: this one must stay free to draw the menu.
+            let target = hwnd.0 as isize;
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(700));
+                if let Ok(out) = std::env::var("PHAI_SHOT") {
+                    let _ = phai_ui::shot::save_screen(HWND(target as *mut _), Path::new(&out));
+                }
+                std::process::exit(0);
+            });
+            LRESULT(0)
+        }
+        WM_LSP_MORE => {
+            let msg = unsafe { Box::from_raw(l.0 as *mut serde_json::Value) };
+            s.more_lsp_message(w.0, *msg);
+            LRESULT(0)
+        }
+        extend::WM_TOOL_LINE => {
+            let line = unsafe { Box::from_raw(l.0 as *mut String) };
+            if let Some(b) = s.bottom.as_ref() {
+                b.add_line_from(bottom::OUT_TOOLS, &line);
+            }
+            LRESULT(0)
+        }
+        extend::WM_TOOL_DONE => {
+            let done = unsafe { Box::from_raw(l.0 as *mut (String, Option<i32>)) };
+            s.tool_done(&done.0, done.1);
+            LRESULT(0)
+        }
         cargo::WM_BUILD_LINE => {
             let line = unsafe { Box::from_raw(l.0 as *mut String) };
             if let Some(b) = s.bottom.as_ref() {
@@ -10416,6 +10808,9 @@ fn main() {
             building: false,
             running: None,
             lsp: None,
+            more_lsp: Vec::new(),
+            lsp_failed: Vec::new(),
+            next_lsp_tag: 1,
             copilot: None,
             copilot_item: None,
             copilot_getting: false,
@@ -10556,7 +10951,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item", "--split-flood", "--prop-line"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item", "--split-flood", "--prop-line", "--run-tool"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -10834,6 +11229,20 @@ fn main() {
             s.choose_bar(Some(BarSel::MenuItem(path)));
             s.show_pane(Pane::Properties, true);
             explorer::front_props(s.side);
+        }
+        // `--external-tools` opens Tools > External Tools; `--tools-menu` opens the Tools menu and
+        // photographs the screen over the window once it is drawn - for checking them by picture.
+        if args.iter().any(|a| a == "--external-tools") {
+            let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM(ID_EXT_TOOLS as usize), LPARAM(0));
+        }
+        // `--run-tool N`: External Tool N chosen on the Tools menu, as a click does.
+        if let Some(n) = args.iter().position(|a| a == "--run-tool").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<i32>().ok()) {
+            let _ = wm::PostMessageW(Some(hwnd), wm::WM_COMMAND, WPARAM((ID_EXT_TOOL + n) as usize), LPARAM(0));
+        }
+        if args.iter().any(|a| a == "--tools-menu") {
+            MENU_SHOT.store(true, Ordering::Relaxed);
+            let _ = wm::SetForegroundWindow(hwnd);
+            let _ = wm::PostMessageW(Some(hwnd), WM_TOOLS_MENU_SHOT, WPARAM(0), LPARAM(0));
         }
         // `--toolbar` opens the toolbar designer - for checking it by its picture.
         if args.iter().any(|a| a == "--toolbar") {
@@ -11200,6 +11609,25 @@ fn main() {
                 wm::SendMessageW(h, wm::WM_CHAR, Some(WPARAM(0x0D)), Some(LPARAM(1)));
                 s.save(false);
             }
+        }
+        // `PHAI_LSP_TRY=LINE:COL`: the open file's language server asked what is there - its hover
+        // at 4 s, its completions at 6 s - and the answers printed; with PHAI_SHOT, photographed later.
+        if std::env::var_os("PHAI_LSP_TRY").is_some() {
+            let target = hwnd.0 as isize;
+            std::thread::spawn(move || {
+                // `PHAI_LSP_TRY_STEPS=1`: the hover only.
+                let steps = std::env::var("PHAI_LSP_TRY_STEPS").ok().and_then(|n| n.parse().ok()).unwrap_or(2);
+                for wait in [4000, 2000].into_iter().take(steps) {
+                    std::thread::sleep(std::time::Duration::from_millis(wait));
+                    let _ = wm::PostMessageW(Some(HWND(target as *mut _)), wm::WM_COMMAND, WPARAM(ID_LSP_TRY as usize), LPARAM(0));
+                }
+                // `PHAI_SHOT_SCREEN=out.png`: the screen over the window, its tip or list too.
+                if let Ok(out) = std::env::var("PHAI_SHOT_SCREEN") {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    let _ = phai_ui::shot::save_screen(HWND(target as *mut _), Path::new(&out));
+                    std::process::exit(0);
+                }
+            });
         }
         // `--lsptest`: F12 and F2 against rust-analyzer, end to end - see `lsp_test_step`.
         if args.iter().any(|a| a == "--lsptest") {

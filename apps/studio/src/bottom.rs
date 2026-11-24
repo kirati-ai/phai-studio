@@ -36,6 +36,8 @@ pub const OUT_BUILD: usize = 1;
 pub const OUT_DEBUG: usize = 2;
 pub const OUT_TESTS: usize = 3;
 pub const OUT_DATA: usize = 4;
+/// External Tools' output, and an added language server that would not start.
+pub const OUT_TOOLS: usize = 5;
 /// Lines Output keeps; the oldest go first.
 const OUT_KEEP: usize = 20_000;
 pub const ID_IMMEDIATE: i32 = 522;
@@ -133,7 +135,7 @@ impl Bottom {
         let errors = win::list(hwnd, errors_id, font, &[(t("Kind"), 80), (t("Message"), 560), (t("File"), 170), (t("Line"), 60)]);
         let output = win::edit_lines(hwnd, "", ID_OUTPUT, font);
         // Visual Studio's "Show output from": one source, or all of them.
-        let out_source = win::combo(hwnd, ID_OUT_SOURCE, bar_font, &[t("All output"), t("Build"), t("Debug"), t("Tests"), t("Data")]);
+        let out_source = win::combo(hwnd, ID_OUT_SOURCE, bar_font, &[t("All output"), t("Build"), t("Debug"), t("Tests"), t("Data"), t("Tools")]);
         // Visual Studio's Locals and Autos: every local, or only those the line stopped at and the
         // one before it use.
         let locals_mode = win::combo(hwnd, ID_LOCALS_MODE, bar_font, &[t("Locals"), t("Autos")]);
