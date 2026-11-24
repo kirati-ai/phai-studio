@@ -625,6 +625,10 @@ extern "system" fn side_proc(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT
                     s.explorer_h = (s.explorer_h + d).clamp(60, 900);
                 }
                 s.arrange(h);
+                // Painted at once while the bar moves, as the studio's own splitters are.
+                unsafe {
+                    let _ = windows::Win32::Graphics::Gdi::RedrawWindow(Some(h), None, None, windows::Win32::Graphics::Gdi::RDW_INVALIDATE | windows::Win32::Graphics::Gdi::RDW_ERASE | windows::Win32::Graphics::Gdi::RDW_ALLCHILDREN | windows::Win32::Graphics::Gdi::RDW_UPDATENOW);
+                }
             }
             LRESULT(0)
         }

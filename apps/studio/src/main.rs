@@ -332,6 +332,10 @@ const TIMER_DIAG: usize = 7302;
 const TIMER_CRUMB: usize = 7303;
 /// A moment after typing rests: the server asked for its findings in the code (see `pull_now`).
 const TIMER_PULL: usize = 7304;
+/// `--split-flood N`: once the window has drawn, the side's splitter dragged N steps in one burst,
+/// as a quick hand sends them - checked by picture.
+const TIMER_SPLIT_FLOOD: usize = 7305;
+static SPLIT_FLOOD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 /// The breadcrumb's height, design pixels.
 const CRUMB_H: i32 = 24;
 /// File > Recent: `ID_RECENT + n`, newest first.
@@ -7997,6 +8001,12 @@ impl Studio {
             }
         }
         self.layout.apply(self.hwnd);
+        // Painted at once, not when the drag rests: a quick hand sends moves faster than Windows
+        // asks for paint, and the panes would keep their old pixels (and the bar's lines at
+        // every place it passed) where they no longer are.
+        unsafe {
+            let _ = Gdi::RedrawWindow(Some(self.hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_ERASE | Gdi::RDW_ALLCHILDREN | Gdi::RDW_UPDATENOW);
+        }
     }
 
     fn build_done(&mut self, out: cargo::Outcome) {
@@ -9401,6 +9411,20 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
             s.pull_now();
             LRESULT(0)
         }
+        wm::WM_TIMER if w.0 == TIMER_SPLIT_FLOOD => {
+            unsafe {
+                let _ = wm::KillTimer(Some(hwnd), TIMER_SPLIT_FLOOD);
+            }
+            // Each step as the splitter sends it, nothing painted between them.
+            let n = SPLIT_FLOOD.load(Ordering::Relaxed);
+            let step = if n < 0 { win::px(hwnd, 12) } else { -win::px(hwnd, 12) };
+            for _ in 0..n.abs() {
+                unsafe {
+                    wm::SendMessageW(hwnd, phai_ui::controls::WM_SPLIT, Some(WPARAM(ID_SPLIT_SIDE as usize)), Some(LPARAM(step as isize)));
+                }
+            }
+            LRESULT(0)
+        }
         wm::WM_TIMER if w.0 == TIMER_CRUMB => {
             s.crumb_tick();
             LRESULT(0)
@@ -10172,7 +10196,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item", "--split-flood"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -10258,6 +10282,11 @@ fn main() {
             } else {
                 s.theme_editor();
             }
+        }
+        // `--split-flood N`: the side widened by N quick steps (narrowed when N < 0) once drawn.
+        if let Some(n) = args.iter().position(|a| a == "--split-flood").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<i32>().ok()) {
+            SPLIT_FLOOD.store(n, Ordering::Relaxed);
+            wm::SetTimer(Some(hwnd), TIMER_SPLIT_FLOOD, 400, None);
         }
         // `--style N`: the Style tab, on state N - for checking by picture.
         if let Some(n) = args.iter().position(|a| a == "--style").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
