@@ -285,6 +285,13 @@
       },
       {
         "category": "รูปแบบหน้าต่าง",
+        "default": "False",
+        "help": "สร้างหน้าต่างและเรียก Loaded แต่ไม่แสดง - สำหรับโปรแกรมที่อยู่ในไอคอนมุมจอ (NotifyIcon); ui.show_window() เรียกขึ้นมาแสดง",
+        "name": "StartHidden",
+        "part": false
+      },
+      {
+        "category": "รูปแบบหน้าต่าง",
         "default": "100",
         "help": "ความทึบเป็นเปอร์เซ็นต์ ยิ่งน้อยยิ่งเห็นสิ่งที่อยู่ข้างหลัง",
         "name": "Opacity",
@@ -7990,7 +7997,7 @@
         {
           "category": "ข้อมูล",
           "default": "copy_clicked | Copy\npaste_clicked | Paste",
-          "help": "บรรทัดละรายการ: เมธอด | ข้อความ - เลือกแล้วเมธอดนั้นทำงาน; - อย่างเดียวคือเส้นคั่น",
+          "help": "บรรทัดละรายการ: เมธอด | ข้อความ - เลือกแล้วเมธอดนั้นทำงาน - ต่อด้วย checked, disabled, hidden หรือ check_on_click ถ้าต้องการ; - อย่างเดียวคือเส้นคั่น; ข้อความที่มีบรรทัดย่อหน้าอยู่ใต้มัน คือเมนูย่อย",
           "name": "รายการ",
           "part": false
         }
@@ -10227,6 +10234,20 @@
           "help": "ไอคอนมุมจอถูกดับเบิลคลิก - มักใช้เพื่อแสดงหน้าต่างอีกครั้ง",
           "key": "double_click",
           "name": "MouseDoubleClick"
+        },
+        {
+          "arg": null,
+          "category": "การกระทำ",
+          "help": "คลิกที่ข้อความแจ้งเตือนของไอคอน (show_balloon_tip) - เพื่อเปิดสิ่งที่แจ้ง",
+          "key": "balloon_click",
+          "name": "BalloonTipClicked"
+        },
+        {
+          "arg": null,
+          "category": "การกระทำ",
+          "help": "ข้อความแจ้งเตือนหายไปโดยไม่ถูกคลิก: หมดเวลา หรือกด X ปิด",
+          "key": "balloon_closed",
+          "name": "BalloonTipClosed"
         }
       ],
       "group": 1,

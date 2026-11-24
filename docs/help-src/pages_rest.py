@@ -201,4 +201,5 @@ TH = {
     'FolderBrowserDialog.show_dialog': 'เปิดหน้าต่าง ได้โฟลเดอร์ที่เลือก - <code>None</code> เมื่อกด Cancel',
     'ColorDialog.show_dialog': 'เปิดหน้าต่างโดยเริ่มที่สี <code>start</code> ได้ <code>"#rrggbb"</code> - <code>None</code> เมื่อกด Cancel',
     'FontDialog.show_dialog': 'เปิดหน้าต่าง ได้ <code>ChosenFont</code> (face, points, bold, italic) - <code>None</code> เมื่อกด Cancel',
+    'FontDialog.show_dialog_from': 'เปิดหน้าต่างโดยเลือกฟอนต์ <code>font</code> ไว้ให้ก่อน (ชื่อ ขนาด ตัวหนา) - <code>None</code> เมื่อกด Cancel',
 }

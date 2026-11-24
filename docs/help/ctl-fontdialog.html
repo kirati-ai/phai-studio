@@ -124,6 +124,7 @@
 <h2>Method ของ FontDialog</h2>
 <table class="ref"><tr><th>Method</th><th>ทำอะไร</th></tr>
 <tr><td><code>show_dialog(&amp;self) -&gt; Option&lt;ChosenFont&gt;</code></td><td>เปิดหน้าต่าง ได้ <code>ChosenFont</code> (face, points, bold, italic) - <code>None</code> เมื่อกด Cancel</td></tr>
+<tr><td><code>show_dialog_from(&amp;self, font: &amp;ChosenFont) -&gt; Option&lt;ChosenFont&gt;</code></td><td>เปิดหน้าต่างโดยเลือกฟอนต์ <code>font</code> ไว้ให้ก่อน (ชื่อ ขนาด ตัวหนา) - <code>None</code> เมื่อกด Cancel</td></tr>
 </table>
 <h2>Properties</h2>
 <p>ตั้งได้ในหน้าต่าง Properties เมื่อเลือกมันบนฟอร์ม - ตารางนี้สร้างจาก Phai Studio เอง จึงตรงกับที่เห็นในโปรแกรมเสมอ</p>

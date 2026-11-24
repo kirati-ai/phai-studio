@@ -29,7 +29,7 @@ PAGES = {
     'picture': dict(
         title='รูปภาพ', winforms='PictureBox',
         intro='''<p>แสดง<b>รูปภาพ</b>บนหน้าต่าง จากไฟล์ PNG, JPEG, BMP หรือ GIF เช่น โลโก้ รูปสินค้า รูปประจำตัว</p>
-<ul><li>ตั้ง <b>Image</b> เป็นไฟล์ในโฟลเดอร์โปรเจกต์ (หรือพาธเต็ม) แล้วรูปขึ้นในตัวออกแบบทันที</li>
+<ul><li>คลิกช่อง <b>Image</b> ใน Properties แล้วเลือกไฟล์รูป รูปขึ้นในตัวออกแบบทันที (ไฟล์ที่อยู่นอกโปรเจกต์ Phai Studio คัดลอกมาไว้ในโปรเจกต์ให้ กด <kbd>Delete</kbd> ที่ช่องนี้เพื่อเอารูปออก)</li>
 <li><b>SizeMode</b>: <code>zoom</code> ใหญ่ที่สุดที่พอดีโดยไม่เบี้ยว · <code>stretch</code> ยืดเต็มกรอบ · <code>center</code> อยู่กลาง · <code>normal</code> ขนาดจริงชิดซ้ายบน</li>
 <li><code>load(ไฟล์)</code> เปลี่ยนรูปในโค้ด · event <b>Paint</b> วาดเองทับรูปได้</li></ul>''',
         examples=[

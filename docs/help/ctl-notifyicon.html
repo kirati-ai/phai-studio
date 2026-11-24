@@ -148,6 +148,8 @@
 <table class="ref"><tr><th>Event</th><th>ทำอะไร</th><th>method ที่ Phai Studio เขียนให้</th></tr>
 <tr><td><b>คลิก</b></td><td>เมธอดที่ทำงานเมื่อเกิดเหตุการณ์นี้ ดับเบิลคลิก control เพื่อเขียน</td><td><code>fn notifyicon_clicked(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
 <tr><td><b>MouseDoubleClick</b></td><td>ไอคอนมุมจอถูกดับเบิลคลิก - มักใช้เพื่อแสดงหน้าต่างอีกครั้ง</td><td><code>fn notifyicon_double_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>BalloonTipClicked</b></td><td>คลิกที่ข้อความแจ้งเตือนของไอคอน (show_balloon_tip) - เพื่อเปิดสิ่งที่แจ้ง</td><td><code>fn notifyicon_balloon_click(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
+<tr><td><b>BalloonTipClosed</b></td><td>ข้อความแจ้งเตือนหายไปโดยไม่ถูกคลิก: หมดเวลา หรือกด X ปิด</td><td><code>fn notifyicon_balloon_closed(&amp;mut self, ui: &amp;MainWindowUi)</code></td></tr>
 </table>
 <h2>ลองทำเอง</h2><div class="try"><ol><li>ซ่อนหน้าต่าง (<code>ui.hide()</code>) เมื่อย่อหน้าต่าง แล้วให้ไอคอนเรียกกลับมา</li><li>ใช้ <a href="ctl-timer.html">ตัวจับเวลา</a> แจ้งเตือน "ได้เวลาพัก" ทุก 30 นาที</li></ol></div>
 <div class="pager"><a href="ctl-calendar.html">← ปฏิทินเดือน (MonthCalendar)</a><a href="ctl-number.html">ตัวเลข (NumericUpDown) →</a></div>
