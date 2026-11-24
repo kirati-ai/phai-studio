@@ -35,7 +35,9 @@ fn make(owner: HWND) -> HWND {
     let class = win::register("PhaiEditorPopup", Some(proc_), None);
     unsafe {
         let top = wm::GetAncestor(owner, wm::GA_ROOT);
-        wm::CreateWindowExW(wm::WS_EX_NOACTIVATE | wm::WS_EX_TOPMOST | wm::WS_EX_TOOLWINDOW, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP | wm::WS_BORDER, 0, 0, 10, 10, Some(top), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default()
+        // Owned by the studio's window, so above it - and behind another program brought to
+        // the front, as the studio is: not topmost, which stood over every window on the screen.
+        wm::CreateWindowExW(wm::WS_EX_NOACTIVATE | wm::WS_EX_TOOLWINDOW, PCWSTR(class.as_ptr()), PCWSTR::null(), wm::WS_POPUP | wm::WS_BORDER, 0, 0, 10, 10, Some(top), Some(HMENU::default()), Some(win::instance()), None).unwrap_or_default()
     }
 }
 

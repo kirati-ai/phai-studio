@@ -2527,6 +2527,10 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         }
         wm::WM_KILLFOCUS => {
             v.list = None;
+            // Gone elsewhere - another window, another program: its tip goes too.
+            if !v.peeking {
+                hide_tip(v);
+            }
             unsafe {
                 let _ = wm::DestroyCaret();
             }
