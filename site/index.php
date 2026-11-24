@@ -230,6 +230,11 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.14', '24 พ.ย. 2569', [
+            'GitHub Copilot ในตัว: แนะนำโค้ดขณะพิมพ์เป็นตัวหนังสือสีเทา กด Tab รับ (Ctrl+→ รับทีละคำ) และแผงผู้ช่วย AI (View > AI Assistant) คุยเรื่องโปรเจกต์ เลือกรุ่นได้ตามที่บัญชีมี เช่น GPT, Claude, Gemini โหมด ลงมือ ให้แก้โค้ดให้ ทุกการแก้ไฟล์ให้กดรับก่อน ใช้บัญชี GitHub ของคุณเอง (Copilot Free ก็ได้) ไม่ต้องมีคีย์ API อีกต่อไป',
+            'ตัวแก้โค้ด: พิมพ์จุดแล้วรายการขึ้นเสมอ แม้ rust-analyzer ยังอ่านโปรเจกต์ไม่เสร็จ จำนวน references นับใหม่เมื่อพร้อม เส้นเตือนที่คลุมหลายบรรทัดขีดแค่บรรทัดแรก ตัวไทยในกล่องคำแนะนำขนาดเท่าตัวอังกฤษ และเปิดไฟล์จาก terminal ด้วยที่อยู่แบบย่อได้ถูกต้อง',
+            'หน้าตา: ตาราง Properties มีเส้นแบ่งชัดขึ้น แท็บทุกที่มีเส้นข้าง คำอธิบายใต้ Properties ขยายตามข้อความ แถบด้านข้างวาดใหม่ทันทีขณะลากเส้นแบ่ง และกล่องเล็กไม่ลอยทับโปรแกรมอื่นหรือหลุดขอบจอ',
+        ]],
         ['0.2.13', '24 พ.ย. 2569', [
             'ช่องใน Properties แก้ตามชนิดของค่า: True/False เลือกจากรายการแทนการเปลี่ยนเมื่อคลิก Icon, BackgroundImage และ Image เปิดหน้าต่างเลือกไฟล์ (ไฟล์นอกโปรเจกต์คัดลอกเข้ามาให้) Font เปิดหน้าต่างเลือกฟอนต์ และ FontFamily, Mask, CustomFormat, Filter มีรายการให้เลือก',
             'กด F5 ครั้งแรกเร็วขึ้นมาก: โปรเจกต์ใหม่ build ไว้ให้เบื้องหลังตั้งแต่เปิดฟอร์ม F5 แรกจากราว 27 วินาทีเหลือราว 1 วินาที และโปรเจกต์ใหม่ build ตัวจริง (Release) เร็วขึ้นราวสองเท่า',
@@ -470,6 +475,11 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.14', '24 Nov 2026', [
+            'GitHub Copilot built in: code suggested in grey as you type, Tab takes it (Ctrl+Right a word) - and the AI Assistant (View > AI Assistant) to talk about the project with the models your account offers, such as GPT, Claude and Gemini; in Act mode it edits the code, every change yours to accept first. Your own GitHub account (Copilot Free is enough), no API key any more',
+            'The code editor: the list after a dot always comes, even while rust-analyzer still reads the project; references counted again once it is ready; a warning over many lines underlined on its first line only; Thai in the tips as large as the English beside it; a file named from a terminal by a short path opened right',
+            'The look: lines you can follow in the Properties grid, a line beside every tab, the help under Properties as tall as its words, side panes painted at once while a splitter is dragged, and small popups no longer over other programs or off the screen',
+        ]],
         ['0.2.13', '24 Nov 2026', [
             'Each property edited as its value wants: True and False chosen from a list rather than flipped by a click - Icon, BackgroundImage and Image chosen with the Open box, a file from outside the project copied in - Font from the Font dialog - lists for FontFamily, Mask, CustomFormat and Filter',
             'A much faster first F5: a new project is built in the background as soon as its form opens, so the first run takes about a second rather than about 27 - and a new project builds for release in about half the time',
