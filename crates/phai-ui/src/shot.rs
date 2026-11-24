@@ -36,11 +36,24 @@ fn from_screen(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
 
 /// [`from_screen`], with `m` pixels more of the screen on each side.
 fn from_screen_around(hwnd: HWND, m: i32) -> Option<(Vec<u8>, u32, u32)> {
-    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
     unsafe {
         let _ = wm::SetForegroundWindow(hwnd);
         let _ = Gdi::RedrawWindow(Some(hwnd), None, None, Gdi::RDW_INVALIDATE | Gdi::RDW_UPDATENOW | Gdi::RDW_ALLCHILDREN);
         std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    screen_as_is_around(hwnd, m)
+}
+
+/// The window's place on the screen copied as it is, nothing brought forward - a menu open over it
+/// stays open.
+fn screen_as_is(hwnd: HWND) -> Option<(Vec<u8>, u32, u32)> {
+    screen_as_is_around(hwnd, 0)
+}
+
+/// [`screen_as_is`], with `m` pixels more of the screen on each side.
+fn screen_as_is_around(hwnd: HWND, m: i32) -> Option<(Vec<u8>, u32, u32)> {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    unsafe {
         let mut r = RECT::default();
         DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut r as *mut RECT as *mut _, std::mem::size_of::<RECT>() as u32).ok()?;
         let r = RECT { left: r.left - m, top: r.top - m, right: r.right + m, bottom: r.bottom + m };
@@ -140,11 +153,21 @@ pub fn save(hwnd: HWND, path: &Path) -> std::io::Result<()> {
         None => capture(hwnd),
     };
     let (px, w, h) = taken.ok_or_else(|| std::io::Error::other("PrintWindow could not photograph the window"))?;
+    write_png(path, &px, w, h)
+}
+
+/// Saves what the screen shows where the window is - a menu open over it, too - as a PNG.
+pub fn save_screen(hwnd: HWND, path: &Path) -> std::io::Result<()> {
+    let (px, w, h) = screen_as_is(hwnd).ok_or_else(|| std::io::Error::other("the screen could not be copied"))?;
+    write_png(path, &px, w, h)
+}
+
+fn write_png(path: &Path, px: &[u8], w: u32, h: u32) -> std::io::Result<()> {
     let file = std::io::BufWriter::new(std::fs::File::create(path)?);
     let mut enc = png::Encoder::new(file, w, h);
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
     let mut writer = enc.write_header().map_err(std::io::Error::other)?;
-    writer.write_image_data(&px).map_err(std::io::Error::other)?;
+    writer.write_image_data(px).map_err(std::io::Error::other)?;
     Ok(())
 }

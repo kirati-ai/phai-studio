@@ -1,4 +1,5 @@
-//! A client of the Language Server Protocol, for rust-analyzer: JSON-RPC over the server's stdin
+//! A client of the Language Server Protocol, for rust-analyzer and any other server one adds in
+//! Tools > Options ([`Lsp::start_command`]): JSON-RPC over the server's stdin
 //! and stdout, framed by `Content-Length` headers. A thread reads what the server says and posts
 //! each message to a window as [`WM_LSP`]; the window's thread does everything else, so no state
 //! is shared between threads but the pipe.
@@ -23,6 +24,11 @@ pub struct Lsp {
     stdin: Mutex<ChildStdin>,
     next: i64,
     pub root: PathBuf,
+    /// What is said before the server has answered `initialize`, kept until it has: a server that
+    /// keeps to the protocol takes nothing else before then. `None` once it is said.
+    held: Mutex<Option<Vec<String>>>,
+    /// The id of our `initialize`, while its answer is awaited ([`Lsp::start_command`]'s).
+    init_id: Option<i64>,
 }
 
 /// Where rust-analyzer is: beside Cargo, on the PATH, or in `D:\Tools\Rust`.
@@ -105,10 +111,98 @@ pub fn from_lsp(line_text: &str, character: u32) -> usize {
     line_text.len()
 }
 
-fn send(stdin: &Mutex<ChildStdin>, msg: &Value) -> bool {
-    let body = msg.to_string();
+fn write_body(stdin: &Mutex<ChildStdin>, body: &str) -> bool {
     let mut w = stdin.lock().unwrap_or_else(|e| e.into_inner());
     write!(w, "Content-Length: {}\r\n\r\n{}", body.len(), body).is_ok() && w.flush().is_ok()
+}
+
+/// A command line split into its words, as Windows' own programs read theirs: spaces between
+/// words, a word in double quotes may hold spaces. `taplo lsp stdio` - three words.
+pub fn split_command(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    let (mut quoted, mut any) = (false, false);
+    for c in line.chars() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                any = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if any {
+                    out.push(std::mem::take(&mut word));
+                    any = false;
+                }
+            }
+            c => {
+                word.push(c);
+                any = true;
+            }
+        }
+    }
+    if any {
+        out.push(word);
+    }
+    out
+}
+
+/// Where a program named on a command line is: a path as it is, else the first folder of `PATH`
+/// (then `.cargo\bin`) holding it as it is named or with one of `PATHEXT`'s endings - `taplo`
+/// is `taplo.exe`, `pyright-langserver` is `pyright-langserver.cmd`.
+pub fn find_program(name: &str) -> Option<PathBuf> {
+    let name = name.trim().trim_matches('"');
+    if name.is_empty() {
+        return None;
+    }
+    let p = Path::new(name);
+    let exts: Vec<String> = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into()).split(';').filter(|e| !e.is_empty()).map(|e| e.to_ascii_lowercase()).collect();
+    let try_in = |dir: &Path| -> Option<PathBuf> {
+        let base = dir.join(name);
+        if p.extension().is_some() && base.is_file() {
+            return Some(base);
+        }
+        exts.iter().map(|e| PathBuf::from(format!("{}{}", base.display(), e))).find(|c| c.is_file())
+    };
+    if p.is_absolute() || name.contains('\\') || name.contains('/') {
+        return try_in(Path::new("")).or_else(|| p.is_file().then(|| p.to_path_buf()));
+    }
+    let mut places: Vec<PathBuf> = std::env::var_os("PATH").map(|v| std::env::split_paths(&v).collect()).unwrap_or_default();
+    if let Some(home) = std::env::var_os("CARGO_HOME") {
+        places.push(PathBuf::from(home).join("bin"));
+    }
+    if let Some(user) = std::env::var_os("USERPROFILE") {
+        places.push(PathBuf::from(user).join(".cargo").join("bin"));
+    }
+    places.iter().find_map(|d| try_in(d))
+}
+
+/// The `languageId` LSP gives a file of extension `ext` (the dot or not): the well-known ones by
+/// their names in the protocol, any other as the extension itself.
+pub fn language_id(ext: &str) -> String {
+    let e = ext.trim().trim_start_matches('.').to_ascii_lowercase();
+    match e.as_str() {
+        "rs" => "rust",
+        "py" | "pyw" => "python",
+        "js" | "mjs" | "cjs" => "javascript",
+        "ts" | "mts" | "cts" => "typescript",
+        "jsx" => "javascriptreact",
+        "tsx" => "typescriptreact",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => "cpp",
+        "cs" => "csharp",
+        "fs" | "fsx" => "fsharp",
+        "md" | "markdown" => "markdown",
+        "yml" | "yaml" => "yaml",
+        "sh" | "bash" => "shellscript",
+        "ps1" | "psm1" => "powershell",
+        "htm" | "html" => "html",
+        "rb" => "ruby",
+        "kt" | "kts" => "kotlin",
+        "tex" => "latex",
+        "bat" | "cmd" => "bat",
+        other => other,
+    }
+    .to_string()
 }
 
 impl Lsp {
@@ -162,7 +256,13 @@ impl Lsp {
     /// Runs a language server - `cmd`, its stdin and stdout piped here - for the project at
     /// `root`; each message it sends is posted to `window` as `message` (`WM_LSP` or another's).
     /// Nothing is said to it yet: `initialize` is the caller's.
-    pub fn spawn(mut cmd: Command, root: &Path, window: HWND, message: u32) -> Option<Lsp> {
+    pub fn spawn(cmd: Command, root: &Path, window: HWND, message: u32) -> Option<Lsp> {
+        Lsp::spawn_tagged(cmd, root, window, message, 0)
+    }
+
+    /// [`Lsp::spawn`], each message posted with `tag` as its `WPARAM` - which of several servers
+    /// said it.
+    pub fn spawn_tagged(mut cmd: Command, root: &Path, window: HWND, message: u32, tag: usize) -> Option<Lsp> {
         let mut child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).creation_flags(0x0800_0000).spawn().ok()?;
         let stdin = child.stdin.take()?;
         let stdout = child.stdout.take()?;
@@ -192,19 +292,96 @@ impl Lsp {
                 // `PHAI_LSP_LOG=1`: what the server says, one line each, for finding out why.
                 if std::env::var_os("PHAI_LSP_LOG").is_some() {
                     let what = value.get("method").and_then(|m| m.as_str()).map(str::to_string).unwrap_or_else(|| format!("answer {}", value.get("id").cloned().unwrap_or_default()));
-                    let extra = if what == "textDocument/publishDiagnostics" { format!(" {} {}", value["params"]["uri"], value["params"]["diagnostics"].as_array().map(|a| a.len()).unwrap_or(0)) } else { String::new() };
+                    let extra = match what.as_str() {
+                        "textDocument/publishDiagnostics" => format!(" {} {}", value["params"]["uri"], value["params"]["diagnostics"].as_array().map(|a| a.len()).unwrap_or(0)),
+                        "window/logMessage" | "window/showMessage" => format!(" {}", value["params"]["message"].as_str().unwrap_or("").chars().take(300).collect::<String>()),
+                        _ => String::new(),
+                    };
                     eprintln!("lsp: {what}{extra}");
                 }
                 let boxed = Box::into_raw(Box::new(value));
                 unsafe {
-                    if wm::PostMessageW(Some(HWND(target as *mut _)), message, WPARAM(0), LPARAM(boxed as isize)).is_err() {
+                    if wm::PostMessageW(Some(HWND(target as *mut _)), message, WPARAM(tag), LPARAM(boxed as isize)).is_err() {
                         drop(Box::from_raw(boxed));
                         return;
                     }
                 }
             }
         });
-        Some(Lsp { child, stdin: Mutex::new(stdin), next: 1, root: root.to_path_buf() })
+        Some(Lsp { child, stdin: Mutex::new(stdin), next: 1, root: root.to_path_buf(), held: Mutex::new(None), init_id: None })
+    }
+
+    /// Starts the language server `line` names (`taplo lsp stdio`) for the folder `root`: what it
+    /// says is posted to `window` as `message`, `tag` its `WPARAM`. Its requests are numbered
+    /// from `first_id`, so they are not taken for another server's. `initialize` is sent; what
+    /// is said after it waits for its answer - [`Lsp::is_init_answer`], then [`Lsp::ready`].
+    pub fn start_command(line: &str, root: &Path, window: HWND, message: u32, tag: usize, first_id: i64) -> Result<Lsp, String> {
+        let words = split_command(line);
+        let Some(first) = words.first() else { return Err("no command".into()) };
+        let program = find_program(first).ok_or_else(|| format!("{first}: not found (PATH)"))?;
+        let mut cmd = Command::new(&program);
+        cmd.args(&words[1..]).current_dir(root);
+        let mut lsp = Lsp::spawn_tagged(cmd, root, window, message, tag).ok_or_else(|| format!("{}: could not start", program.display()))?;
+        lsp.next = first_id.max(1);
+        let id = lsp.request(
+            "initialize",
+            json!({
+                "processId": std::process::id(),
+                "clientInfo": { "name": "Phai Studio" },
+                "rootUri": uri_of(root),
+                "rootPath": root.to_string_lossy(),
+                "capabilities": {
+                    "textDocument": {
+                        "synchronization": { "didSave": true, "dynamicRegistration": false },
+                        "hover": { "contentFormat": ["plaintext", "markdown"] },
+                        "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
+                        "completion": { "completionItem": { "snippetSupport": false, "documentationFormat": ["markdown", "plaintext"] } },
+                        "publishDiagnostics": {},
+                        "definition": { "linkSupport": true },
+                        "references": {},
+                        "rename": { "prepareSupport": true },
+                        "codeAction": { "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["", "quickfix", "refactor", "source"] } } },
+                        "signatureHelp": { "signatureInformation": { "parameterInformation": { "labelOffsetSupport": true } } }
+                    },
+                    "workspace": { "workspaceEdit": { "documentChanges": true }, "workspaceFolders": true, "configuration": true },
+                    "general": { "positionEncodings": ["utf-16"] }
+                },
+                "workspaceFolders": [{ "uri": uri_of(root), "name": root.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "project".into()) }]
+            }),
+        );
+        // From here on, held until the answer.
+        *lsp.held.lock().unwrap_or_else(|e| e.into_inner()) = Some(Vec::new());
+        lsp.init_id = Some(id);
+        Ok(lsp)
+    }
+
+    /// Whether `msg` answers our `initialize` - the server is ready for the rest.
+    pub fn is_init_answer(&self, msg: &Value) -> bool {
+        self.init_id.is_some() && msg.get("method").is_none() && msg.get("id").and_then(|i| i.as_i64()) == self.init_id
+    }
+
+    /// `initialize` answered: `initialized` said, then all that waited, in order.
+    pub fn ready(&mut self) {
+        self.init_id = None;
+        let held = self.held.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or_default();
+        self.send(&json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+        for body in held {
+            write_body(&self.stdin, &body);
+        }
+    }
+
+    /// Whether `initialize` has been answered (always, for rust-analyzer's own start).
+    pub fn is_ready(&self) -> bool {
+        self.init_id.is_none()
+    }
+
+    fn send(&self, msg: &Value) -> bool {
+        let body = msg.to_string();
+        if let Some(held) = self.held.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            held.push(body);
+            return true;
+        }
+        write_body(&self.stdin, &body)
     }
 
     /// Whether the server is still running.
@@ -214,24 +391,24 @@ impl Lsp {
 
     /// Answers a request the server made of us with `result`.
     pub fn answer(&self, id: &Value, result: Value) {
-        send(&self.stdin, &json!({ "jsonrpc": "2.0", "id": id, "result": result }));
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "result": result }));
     }
 
     /// Sends a request; returns its id, which the answer will carry.
     pub fn request(&mut self, method: &str, params: Value) -> i64 {
         let id = self.next;
         self.next += 1;
-        send(&self.stdin, &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
         id
     }
 
     /// Answers a request the server made of us - with nothing, which is all it needs here.
     pub fn respond(&self, id: &Value) {
-        send(&self.stdin, &json!({ "jsonrpc": "2.0", "id": id, "result": Value::Null }));
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "result": Value::Null }));
     }
 
     pub fn notify(&self, method: &str, params: Value) {
-        send(&self.stdin, &json!({ "jsonrpc": "2.0", "method": method, "params": params }));
+        self.send(&json!({ "jsonrpc": "2.0", "method": method, "params": params }));
     }
 
     /// Opens a file with the server - and says it was saved, so `cargo check` runs and its errors
@@ -810,6 +987,36 @@ pub fn apply_edits(text: &str, edits: &[TextEdit]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_line_in_its_words() {
+        assert_eq!(split_command("taplo lsp stdio"), ["taplo", "lsp", "stdio"]);
+        assert_eq!(split_command(r#"  "C:\Program Files\sqls\sqls.exe"  -config "my config.yml" "#), [r"C:\Program Files\sqls\sqls.exe", "-config", "my config.yml"]);
+        assert_eq!(split_command(r#"x """#), ["x", ""], "an empty word in quotes is a word");
+        assert!(split_command("   ").is_empty());
+    }
+
+    #[test]
+    fn each_file_kind_by_its_language_name() {
+        assert_eq!(language_id(".toml"), "toml");
+        assert_eq!(language_id("SQL"), "sql");
+        assert_eq!(language_id(".py"), "python");
+        assert_eq!(language_id("tsx"), "typescriptreact");
+        assert_eq!(language_id(".rs"), "rust");
+    }
+
+    #[test]
+    fn a_program_found_with_its_ending() {
+        let dir = std::env::temp_dir().join(format!("phai-find-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("my-server.cmd"), "@echo off").unwrap();
+        let named = dir.join("my-server");
+        assert_eq!(find_program(&named.to_string_lossy()).map(|p| p.extension().unwrap().to_ascii_lowercase()), Some("cmd".into()), "a path without its ending: PATHEXT's");
+        assert!(find_program(&dir.join("my-server.cmd").to_string_lossy()).is_some());
+        assert!(find_program(&dir.join("nothing-here").to_string_lossy()).is_none());
+        assert!(find_program("cmd").is_some_and(|p| p.is_file()), "cmd.exe on PATH");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn paths_and_uris_go_both_ways() {

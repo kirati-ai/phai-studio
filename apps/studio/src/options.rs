@@ -17,6 +17,12 @@ const ID_EXPORT: i32 = 12;
 const ID_IMPORT: i32 = 13;
 const ID_OK: i32 = 1;
 const ID_CANCEL: i32 = 2;
+/// Text Editor > Language Servers: the list, its two boxes, Add and Remove.
+const ID_SRV_LIST: i32 = 20;
+const ID_SRV_EXT: i32 = 21;
+const ID_SRV_CMD: i32 = 22;
+const ID_SRV_ADD: i32 = 23;
+const ID_SRV_REMOVE: i32 = 24;
 
 /// Phai Studio's settings as Options shows them.
 #[derive(Clone, Debug, PartialEq)]
@@ -89,6 +95,9 @@ pub struct Values {
     pub copilot: bool,
     /// Its grey suggestions as you type.
     pub copilot_suggest: bool,
+    // Text Editor > Language Servers
+    /// Servers one added for other kinds of file.
+    pub servers: Vec<crate::extend::Server>,
 }
 
 /// The panel's tabs Options offers to open at start: all but the debugger's own (Immediate to
@@ -163,6 +172,7 @@ impl Values {
             remember_tabs: tick(get("remember_tabs"), false),
             copilot: tick(get("copilot"), false),
             copilot_suggest: tick(get("copilot_suggest"), true),
+            servers: crate::extend::parse_servers(get("language_servers").as_deref()),
         }
     }
 
@@ -212,6 +222,7 @@ impl Values {
             ("remember_tabs", one(self.remember_tabs)),
             ("copilot", one(self.copilot)),
             ("copilot_suggest", one(self.copilot_suggest)),
+            ("language_servers", crate::extend::servers_text(&self.servers)),
         ]
     }
 
@@ -245,6 +256,7 @@ pub fn pages() -> Vec<(&'static str, &'static str)> {
         (t("Text Editor"), t("Tabs")),
         (t("Text Editor"), t("Font")),
         (t("Text Editor"), t("Formatting")),
+        (t("Text Editor"), t("Language Servers")),
         (t("Form Designer"), t("General")),
         (t("Projects and Solutions"), t("Build and Run")),
         (t("Projects and Solutions"), t("Phai libraries")),
@@ -263,6 +275,10 @@ enum Row {
     Check(HWND),
     /// A quiet note, the whole width.
     Note(HWND),
+    /// A list, the whole width and several rows tall.
+    List(HWND),
+    /// Buttons side by side.
+    Buttons(HWND, HWND),
 }
 
 struct Controls {
@@ -303,6 +319,15 @@ struct Controls {
     remember_tabs: HWND,
     copilot: HWND,
     copilot_suggest: HWND,
+    srv_list: HWND,
+    srv_ext: HWND,
+    srv_cmd: HWND,
+    srv_add: HWND,
+    srv_remove: HWND,
+    /// The servers as the page has them now.
+    servers: Vec<crate::extend::Server>,
+    /// The boxes being filled from the list: their changes are not the person's.
+    srv_loading: bool,
 }
 
 struct Dialog {
@@ -422,7 +447,20 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             remember_tabs: check(t("Open the tabs I left open, instead"), now.remember_tabs),
             copilot: check(t("Turn on GitHub Copilot: suggestions as you type, and Copilot in the AI Assistant"), now.copilot),
             copilot_suggest: check(t("Show Copilot's suggestions as you type (Tab takes one, Esc puts it away)"), now.copilot_suggest),
+            srv_list: {
+                let h = win::list(hwnd, ID_SRV_LIST, font, &[(t("File extensions"), 150), (t("Command line"), 330)]);
+                win::grid_lines(h);
+                h
+            },
+            srv_ext: win::edit(hwnd, "", ID_SRV_EXT, font, false),
+            srv_cmd: win::edit(hwnd, "", ID_SRV_CMD, font, false),
+            srv_add: win::button(hwnd, t("Add"), ID_SRV_ADD, font, false),
+            srv_remove: win::button(hwnd, t("Remove"), ID_SRV_REMOVE, font, false),
+            servers: now.servers.clone(),
+            srv_loading: false,
         };
+        win::set_button_glyph(c.srv_add, 0xE710);
+        win::set_button_glyph(c.srv_remove, 0xE74D);
         let rows = vec![
             vec![Row::Pair(label(t("Color theme:")), c.theme), Row::Pair(label(t("Language:")), c.language), Row::Pair(label(t("Items in recently used lists:")), c.recent)],
             vec![Row::Pair(label(t("On startup, open:")), c.startup)],
@@ -449,6 +487,16 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             vec![Row::Pair(label(t("Tab size:")), c.tab_size), Row::Pair(label(t("Indent with:")), c.indent)],
             vec![Row::Pair(label(t("Font:")), c.font), Row::Pair(label(t("Size (points):")), c.font_pt), note(t("A fixed-width font keeps code in columns."))],
             vec![Row::Check(c.format), note(t("Format Document (Ctrl+K, Ctrl+D) does it by hand."))],
+            vec![
+                note(t("Servers for other kinds of file: their errors, completion, hover and Go To Definition.")),
+                Row::List(c.srv_list),
+                Row::Pair(label(t("File extensions:")), c.srv_ext),
+                Row::Pair(label(t("Command line:")), c.srv_cmd),
+                Row::Buttons(c.srv_add, c.srv_remove),
+                note(t("Like: .toml - taplo lsp stdio;  .sql - sqls;  .py - pyright-langserver --stdio")),
+                note(t("The program must be installed - on PATH, or give its whole path.")),
+                note(t("Rust files are rust-analyzer's (Text Editor > General).")),
+            ],
             vec![Row::Pair(label(t("Grid size (pixels):")), c.grid), Row::Check(c.snap), Row::Check(c.snaplines)],
             vec![Row::Check(c.save_first), Row::Check(c.output), Row::Check(c.remember), Row::Pair(label(t("cargo.exe:")), c.cargo), note(t("Empty: found as usual - PATH, CARGO_HOME, then .cargo\\bin in your folder."))],
             vec![Row::Check(c.git), note(t("Off: from this machine, beside Phai Studio.")), note(t("On: a project builds on any machine, the same next year."))],
@@ -469,8 +517,10 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
         let import = win::button(hwnd, t("Import..."), ID_IMPORT, font, false);
         let all = pages();
         let page = page.min(all.len() - 1);
+        let first_server = c.servers.len();
         win::set_state(hwnd, Box::new(Dialog { find, export, import, tree, heading, rows, page, c, ok, cancel, chosen: None, done: false }));
         let items = fill_tree(hwnd, "");
+        fill_servers(hwnd, if first_server == 0 { usize::MAX } else { 0 });
         let (w, h) = (win::px(hwnd, 800), win::px(hwnd, 540));
         let mut r = RECT::default();
         let _ = wm::GetWindowRect(owner, &mut r);
@@ -501,6 +551,7 @@ fn page_matches(d: &Dialog, k: usize, query: &str) -> bool {
         let w = match r {
             Row::Pair(a, _) => *a,
             Row::Check(h) | Row::Note(h) => *h,
+            Row::List(_) | Row::Buttons(..) => continue,
         };
         words.push(' ');
         words.push_str(&win::text_of(w));
@@ -599,8 +650,58 @@ fn search(h: HWND) {
 fn row_windows(r: &Row) -> Vec<HWND> {
     match r {
         Row::Pair(a, b) => vec![*a, *b],
-        Row::Check(h) | Row::Note(h) => vec![*h],
+        Row::Check(h) | Row::Note(h) | Row::List(h) => vec![*h],
+        Row::Buttons(a, b) => vec![*a, *b],
     }
+}
+
+/// Language Servers' list again, row `at` chosen (none for `usize::MAX`) and its boxes filled.
+fn fill_servers(h: HWND, at: usize) {
+    let Some(d) = state(h) else { return };
+    let c = &mut d.c;
+    unsafe {
+        wm::SendMessageW(c.srv_list, cc::LVM_DELETEALLITEMS, None, None);
+    }
+    for s in &c.servers {
+        win::list_add(c.srv_list, &[&s.exts, &s.command]);
+    }
+    if at != usize::MAX && !c.servers.is_empty() {
+        win::list_select(c.srv_list, at.min(c.servers.len() - 1));
+    }
+    load_server(h);
+}
+
+fn server_chosen(c: &Controls) -> Option<usize> {
+    let i = unsafe { wm::SendMessageW(c.srv_list, cc::LVM_GETNEXTITEM, Some(WPARAM(usize::MAX)), Some(LPARAM(2 /* LVNI_SELECTED */))).0 };
+    usize::try_from(i).ok().filter(|i| *i < c.servers.len())
+}
+
+/// The chosen server into the two boxes; with none chosen they are off.
+fn load_server(h: HWND) {
+    let Some(d) = state(h) else { return };
+    let c = &mut d.c;
+    c.srv_loading = true;
+    let at = server_chosen(c);
+    let s = at.and_then(|i| c.servers.get(i)).cloned().unwrap_or_default();
+    win::set_text(c.srv_ext, &s.exts);
+    win::set_text(c.srv_cmd, &s.command);
+    for b in [c.srv_ext, c.srv_cmd, c.srv_remove] {
+        win::enable(b, at.is_some());
+    }
+    c.srv_loading = false;
+}
+
+/// The two boxes into the chosen server.
+fn store_server(h: HWND) {
+    let Some(d) = state(h) else { return };
+    let c = &mut d.c;
+    if c.srv_loading {
+        return;
+    }
+    let Some(i) = server_chosen(c) else { return };
+    c.servers[i] = crate::extend::Server { exts: win::text_of(c.srv_ext).trim().to_string(), command: win::text_of(c.srv_cmd).trim().to_string() };
+    phai_ui::grid::set_cell(c.srv_list, i, 0, &c.servers[i].exts);
+    phai_ui::grid::set_cell(c.srv_list, i, 1, &c.servers[i].command);
 }
 
 fn show_page(h: HWND, page: usize) {
@@ -638,11 +739,20 @@ fn layout(h: HWND) {
     for line in &d.rows[d.page] {
         match line {
             Row::Check(b) | Row::Note(b) => win::move_to(*b, x, y, right - x, row),
+            Row::List(b) => {
+                let tall = px(150);
+                win::move_to(*b, x, y, right - x, tall);
+                y += tall - row;
+            }
+            Row::Buttons(a, b) => {
+                win::move_to(*a, x + label_w, y, bw, row);
+                win::move_to(*b, x + label_w + bw + px(8), y, bw, row);
+            }
             Row::Pair(a, b) => {
                 win::move_to(*a, x, y, label_w, row);
                 let (w, tall) = match win::kind_of(*b) {
                     Some(win::Kind::Combo) => (px(260), px(220)),
-                    Some(win::Kind::Edit) if *b == d.c.cargo => (right - x - label_w, row),
+                    Some(win::Kind::Edit) if *b == d.c.cargo || *b == d.c.srv_ext || *b == d.c.srv_cmd => (right - x - label_w, row),
                     _ => (px(90), row),
                 };
                 win::move_to(*b, x + label_w, y, w, tall);
@@ -701,6 +811,7 @@ fn read(c: &Controls) -> Values {
         remember_tabs: win::is_checked(c.remember_tabs),
         copilot: win::is_checked(c.copilot),
         copilot_suggest: win::is_checked(c.copilot_suggest),
+        servers: c.servers.iter().filter(|s| !s.exts.trim().is_empty() || !s.command.trim().is_empty()).cloned().collect(),
     }
 }
 
@@ -719,10 +830,27 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         wm::WM_COMMAND => {
             match win::loword(w.0) as i32 {
                 ID_OK => {
+                    store_server(h);
                     d.chosen = Some(read(&d.c));
                     d.done = true;
                 }
                 ID_CANCEL => d.done = true,
+                ID_SRV_ADD => {
+                    d.c.servers.push(crate::extend::Server { exts: ".".into(), command: String::new() });
+                    fill_servers(h, d.c.servers.len() - 1);
+                    unsafe {
+                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(d.c.srv_ext));
+                        wm::SendMessageW(d.c.srv_ext, 0x00B1 /* EM_SETSEL */, Some(WPARAM(1)), Some(LPARAM(1)));
+                    }
+                }
+                ID_SRV_REMOVE => {
+                    if let Some(i) = server_chosen(&d.c) {
+                        d.c.servers.remove(i);
+                        let next = if d.c.servers.is_empty() { usize::MAX } else { i.min(d.c.servers.len() - 1) };
+                        fill_servers(h, next);
+                    }
+                }
+                ID_SRV_EXT | ID_SRV_CMD if win::hiword(w.0) as u32 == wm::EN_CHANGE => store_server(h),
                 ID_FIND if win::hiword(w.0) as u32 == wm::EN_CHANGE => search(h),
                 ID_EXPORT => export_settings(h),
                 ID_IMPORT => {
@@ -738,6 +866,13 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
         wm::WM_NOTIFY => {
             let hdr = unsafe { &*(l.0 as *const cc::NMHDR) };
             const TVN_SELCHANGEDW: u32 = (-451i32) as u32;
+            if hdr.hwndFrom == d.c.srv_list && hdr.code == cc::LVN_ITEMCHANGED {
+                let nm = unsafe { &*(l.0 as *const cc::NMLISTVIEW) };
+                if (nm.uNewState ^ nm.uOldState) & cc::LVIS_SELECTED.0 != 0 {
+                    load_server(h);
+                }
+                return LRESULT(0);
+            }
             if hdr.hwndFrom == d.tree {
                 if hdr.code == cc::NM_CUSTOMDRAW {
                     return win::tree_custom_draw(l);
@@ -809,6 +944,7 @@ mod tests {
             remember_tabs: true,
             copilot: true,
             copilot_suggest: false,
+            servers: vec![crate::extend::Server { exts: ".toml".into(), command: "taplo lsp stdio".into() }],
         };
         let saved: std::collections::HashMap<&str, String> = v.pairs(Some("panic,0xC0000005")).into_iter().collect();
         assert_eq!(saved["exceptions"], "0xC0000005", "panic out, the exceptions kept");

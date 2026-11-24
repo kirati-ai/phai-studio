@@ -306,6 +306,45 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <figure><img class="shot" src="img/copilot-review.png" alt="หน้าต่างเทียบการแก้ไฟล์ของ Copilot" width="560"><figcaption>Copilot ขอแก้ src/main.rs: บรรทัดใหม่มีแถบเขียว</figcaption></figure>
 <p>การใช้ Copilot นับรวมในโควตาของแผน Copilot ของคุณ ตามเงื่อนไขของ GitHub — ส่งข้อมูลไปให้ GitHub: ไฟล์ที่เปิดอยู่ (เพื่อแนะนำโค้ด) สิ่งที่พิมพ์ในแชต และไฟล์ที่ Copilot ขออ่าน</p>
 
+<h2 id="language-servers">Language Server สำหรับไฟล์ชนิดอื่น</h2>
+<p>ไฟล์ Rust ใช้ rust-analyzer อยู่แล้ว ไฟล์ชนิดอื่น เช่น <code>.toml</code> <code>.sql</code> <code>.py</code> ก็ได้ error ขณะพิมพ์ เติมคำ คำอธิบายเมื่อชี้ และ Go To Definition (<kbd>F12</kbd>) เหมือนกัน ถ้ามี language server ของภาษานั้นติดตั้งไว้ ไม่ต้องเขียนโค้ดเพิ่ม</p>
+<ol>
+  <li>ติดตั้ง language server ของภาษานั้นก่อน เช่น TOML ใช้ <code>cargo install taplo-cli</code></li>
+  <li><b>Tools &gt; Options &gt; Text Editor &gt; Language Servers</b> กด <b>Add</b></li>
+  <li><b>File extensions</b> ใส่นามสกุลไฟล์ คั่นด้วยจุลภาคได้หลายตัว เช่น <code>.sql, .psql</code></li>
+  <li><b>Command line</b> ใส่คำสั่งที่เริ่มเซิร์ฟเวอร์แบบ stdio เช่น <code>taplo lsp stdio</code> ถ้าโปรแกรมไม่อยู่ใน PATH ใส่พาธเต็ม (มีช่องว่างให้ครอบด้วย <code>"..."</code>)</li>
+  <li>กด <b>OK</b> แล้วเปิดไฟล์ชนิดนั้น แถบสถานะจะขึ้น <b>language server พร้อมแล้ว</b></li>
+</ol>
+<figure><img class="shot" src="img/ext-language-servers.png" alt="หน้า Language Server ใน Tools > Options" width="640"><figcaption>ไฟล์ .toml ใช้ taplo, .sql ใช้ sqls, .py ใช้ pyright</figcaption></figure>
+<table>
+  <tr><th>ภาษา</th><th>นามสกุล</th><th>Command line</th><th>ติดตั้ง</th></tr>
+  <tr><td>TOML</td><td><code>.toml</code></td><td><code>taplo lsp stdio</code></td><td><code>cargo install taplo-cli</code></td></tr>
+  <tr><td>SQL</td><td><code>.sql</code></td><td><code>sqls</code></td><td><code>go install github.com/sqls-server/sqls@latest</code></td></tr>
+  <tr><td>Python</td><td><code>.py</code></td><td><code>pyright-langserver --stdio</code></td><td><code>npm install -g pyright</code></td></tr>
+</table>
+<p>แต่ละเซิร์ฟเวอร์เริ่มครั้งเดียวต่อโปรเจกต์ (โฟลเดอร์ที่มี Cargo.toml หรือโฟลเดอร์ของไฟล์) ถ้าเริ่มไม่ได้ จะบอกที่แถบสถานะและหน้าต่าง Output (แหล่ง <b>Tools</b>) แล้วไม่ลองซ้ำจนกว่าจะแก้ใน Options — ไฟล์ <code>.rs</code> ใช้ rust-analyzer เสมอ</p>
+<p>เคล็ดลับ: taplo บอกคีย์ของ Cargo.toml ได้ละเอียดเมื่อรู้ schema ใส่บรรทัดแรกของไฟล์ว่า <code>#:schema https://json.schemastore.org/cargo.json</code></p>
+
+<h2 id="external-tools">เครื่องมือภายนอก (External Tools)</h2>
+<p>ใส่โปรแกรมที่ใช้บ่อยไว้ในเมนู <b>Tools</b> ได้ เช่น จัดรูปแบบไฟล์นี้ด้วย rustfmt หรือรัน <code>cargo clippy</code> กับโปรเจกต์ เลือกจากเมนูครั้งเดียวก็รัน ผลที่โปรแกรมพิมพ์ออกมาและรหัสออก (exit code) ไปอยู่ในหน้าต่าง <b>Output</b></p>
+<ol>
+  <li><b>Tools &gt; External Tools...</b> กด <b>Add</b></li>
+  <li><b>Title</b> ชื่อในเมนู, <b>Command</b> โปรแกรม (กด <b>...</b> เพื่อเลือกไฟล์), <b>Arguments</b> อาร์กิวเมนต์, <b>Initial directory</b> โฟลเดอร์ที่รัน (ว่างไว้ = โฟลเดอร์ของโปรเจกต์)</li>
+  <li>ติ๊ก <b>Use Output window</b> ให้ผลไปอยู่ใน Output ถ้าไม่ติ๊ก โปรแกรมจะรันในหน้าต่างของมันเอง</li>
+</ol>
+<figure><img class="shot" src="img/ext-tools-dialog.png" alt="หน้าต่าง External Tools" width="560"><figcaption>เครื่องมือ "rustfmt this file" รัน rustfmt กับไฟล์ที่เปิดอยู่</figcaption></figure>
+<p>ปุ่ม <b>›</b> ข้างช่องจะใส่ตัวแทนเหล่านี้ให้ ตอนรันจะถูกแทนด้วยค่าจริง (พิมพ์ตัวใหญ่หรือเล็กก็ได้)</p>
+<table>
+  <tr><th>ตัวแทน</th><th>แทนด้วย</th></tr>
+  <tr><td><code>$(FilePath)</code></td><td>พาธเต็มของไฟล์ที่เปิดอยู่</td></tr>
+  <tr><td><code>$(FileDir)</code></td><td>โฟลเดอร์ของไฟล์ที่เปิดอยู่</td></tr>
+  <tr><td><code>$(FileName)</code></td><td>ชื่อไฟล์ที่เปิดอยู่</td></tr>
+  <tr><td><code>$(ProjectDir)</code></td><td>โฟลเดอร์ของโปรเจกต์ (ที่มี Cargo.toml)</td></tr>
+  <tr><td><code>$(SelectedText)</code></td><td>ข้อความที่เลือกในตัวแก้โค้ด</td></tr>
+</table>
+<p>ครอบตัวแทนด้วย <code>"..."</code> เมื่อพาธอาจมีช่องว่าง เช่น Arguments ของ rustfmt: <code>--edition 2021 "$(FilePath)"</code> ถ้าเครื่องมือใช้ไฟล์ที่เปิดอยู่ ไฟล์จะถูกบันทึกก่อนรัน และเมื่อรันจบ ไฟล์ที่เครื่องมือแก้จะถูกโหลดใหม่ให้เอง (ย้อนกลับได้ด้วย <kbd>Ctrl+Z</kbd>)</p>
+<figure><img class="shot" src="img/ext-tools-menu.png" alt="เมนูเครื่องมือที่มี rustfmt this file และ cargo clippy" width="250"><figcaption>เครื่องมือที่เพิ่มไว้อยู่เหนือ External Tools... ในเมนู Tools</figcaption></figure>
+
 <h2>ปุ่มลัดที่ใช้บ่อย</h2>
 <table>
   <tr><th>ปุ่ม</th><th>ทำอะไร</th><th>ปุ่ม</th><th>ทำอะไร</th></tr>
