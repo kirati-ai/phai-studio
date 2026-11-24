@@ -1052,6 +1052,37 @@ impl Props {
                 win::set_text(self.help_text, "");
             }
         }
+        // The box under the grid grows to the words it now holds.
+        self.layout();
+    }
+
+    /// Line `k` of the grid chosen, its help shown below - `--prop-line`, for checking by picture.
+    pub fn choose_line(&mut self, k: usize) {
+        if k < self.lines.len() {
+            self.chosen = Some(k);
+            self.say_help();
+            unsafe {
+                let _ = Gdi::InvalidateRect(Some(self.grid), None, false);
+            }
+        }
+    }
+
+    /// How tall the help's words stand at `width`, wrapped as the box wraps them.
+    fn help_height(&self, width: i32) -> i32 {
+        let text: Vec<u16> = win::text_of(self.help_text).encode_utf16().collect();
+        if text.is_empty() || width <= 0 {
+            return 0;
+        }
+        unsafe {
+            let dc = Gdi::GetDC(Some(self.help_text));
+            let old = Gdi::SelectObject(dc, self.font.into());
+            let mut r = RECT { left: 0, top: 0, right: width, bottom: 0 };
+            let mut text = text;
+            Gdi::DrawTextW(dc, &mut text, &mut r, Gdi::DT_CALCRECT | Gdi::DT_WORDBREAK | Gdi::DT_NOPREFIX);
+            Gdi::SelectObject(dc, old);
+            Gdi::ReleaseDC(Some(self.help_text), dc);
+            r.bottom - r.top
+        }
     }
 
     pub fn layout(&self) {
@@ -1073,7 +1104,9 @@ impl Props {
             win::move_to(self.heading, m, y, width - 2 * m, row);
             y += row + gap;
         }
-        let help_h = px(64);
+        // The help as tall as its words - a long one is read whole - but never more than half
+        // the pane, so the grid keeps its room.
+        let help_h = (row + self.help_height(width - 2 * m) + px(4)).clamp(px(64), ((r.bottom - y) / 2).max(px(64)));
         let grid_h = (r.bottom - y - help_h - gap).max(0);
         win::move_to(self.grid, 0, y, width, grid_h);
         y += grid_h + gap;

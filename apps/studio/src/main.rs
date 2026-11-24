@@ -10196,7 +10196,7 @@ fn main() {
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOMOVE | wm::SWP_NOZORDER | wm::SWP_NOACTIVATE);
         // Every form named on the command line, each in its tab; the first one shown. A value
         // after a `--flag` that takes one is not a form.
-        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item", "--split-flood"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
+        let forms: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && !["--selftest", "--selftest-multi", "--tab", "--command", "--select", "--find", "--slide", "--dock-toolbox", "--jobtest", "--show-rows", "--design", "--guide-shot", "--publish-shot", "--dock-side", "--goto", "--find-in-files", "--box", "--go-to-all", "--new-project", "--style", "--pin", "--slide", "--print-menu", "--options", "--connect", "--phone", "--devices", "--bar-tool", "--bar-item", "--split-flood", "--prop-line"].contains(&args[i - 1].as_str())).map(|(_, a)| a).collect();
         if forms.is_empty() {
             s.set_doc(FormFile::new("MainWindow"), None);
             // Opened with nothing: nothing open (no form, no project) and the start window, once
@@ -10281,6 +10281,12 @@ fn main() {
                 std::process::exit(0);
             } else {
                 s.theme_editor();
+            }
+        }
+        // `--prop-line N`: line N of the Properties grid chosen, its help below it.
+        if let Some(n) = args.iter().position(|a| a == "--prop-line").and_then(|i| args.get(i + 1)).and_then(|n| n.parse::<usize>().ok()) {
+            if let Some(p) = s.props.as_mut() {
+                p.choose_line(n);
             }
         }
         // `--split-flood N`: the side widened by N quick steps (narrowed when N < 0) once drawn.
