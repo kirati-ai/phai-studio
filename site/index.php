@@ -237,6 +237,11 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.15', '25 พ.ย. 2569', [
+            'New Project แบบใหม่: แม่แบบ 13 แบบแยกเป็นกลุ่ม ค้นหาได้ เห็นภาพโปรแกรมก่อนสร้าง มีโปรแกรมหลายเอกสาร (MDI) หน้าต่างเล็ก โปรแกรมในถาด ข้อมูลลูกค้าในฐานข้อมูล SQLite เข้าสู่ระบบก่อนใช้งาน รายงานพร้อมดูก่อนพิมพ์ แดชบอร์ดผู้ดูแลระบบ แบบ Explorer แบบ Notepad ตัวช่วยทีละขั้น และเกมจับลูกบอลสำหรับโรงเรียน ทุกแบบรันได้ทันที พร้อมคู่มือหน้า "เริ่มจากแม่แบบ"',
+            'ก้าวแรกสู่ส่วนเสริม: Tools > Options > Text Editor > Language Servers เพิ่มตัวช่วยภาษาอื่นได้ (เช่น taplo สำหรับ .toml, sqls สำหรับ .sql) ได้ error เติมคำ และ Go To Definition และ Tools > External Tools... เพิ่มโปรแกรมภายนอกลงเมนู Tools ส่งชื่อไฟล์ โฟลเดอร์ หรือข้อความที่เลือกไปให้ได้',
+            'Help > สนับสนุน Phai Studio... (QR พร้อมเพย์ซ่อนไว้จนกว่าจะกดดู) และลิงก์ไป ชุมชนคนรัก Rust แก้: File > Close Project กดได้เมื่อมีโปรเจกต์เปิดอยู่แม้ไม่มีไฟล์เปิด และ F2 เปิดกล่อง Rename ทีละกล่อง',
+        ]],
         ['0.2.14', '24 พ.ย. 2569', [
             'GitHub Copilot ในตัว: แนะนำโค้ดขณะพิมพ์เป็นตัวหนังสือสีเทา กด Tab รับ (Ctrl+→ รับทีละคำ) และแผงผู้ช่วย AI (View > AI Assistant) คุยเรื่องโปรเจกต์ เลือกรุ่นได้ตามที่บัญชีมี เช่น GPT, Claude, Gemini โหมด ลงมือ ให้แก้โค้ดให้ ทุกการแก้ไฟล์ให้กดรับก่อน ใช้บัญชี GitHub ของคุณเอง (Copilot Free ก็ได้) ไม่ต้องมีคีย์ API อีกต่อไป',
             'ตัวแก้โค้ด: พิมพ์จุดแล้วรายการขึ้นเสมอ แม้ rust-analyzer ยังอ่านโปรเจกต์ไม่เสร็จ จำนวน references นับใหม่เมื่อพร้อม เส้นเตือนที่คลุมหลายบรรทัดขีดแค่บรรทัดแรก ตัวไทยในกล่องคำแนะนำขนาดเท่าตัวอังกฤษ และเปิดไฟล์จาก terminal ด้วยที่อยู่แบบย่อได้ถูกต้อง',
@@ -484,6 +489,11 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.15', '25 Nov 2026', [
+            'A new New Project: 13 templates in groups, searchable, each with a picture of the program it makes - child forms (MDI), a small dialog, a tray program, customers in a SQLite database, sign in first, a report with print preview, an admin dashboard, Explorer-style, Notepad-style, a step-by-step wizard and a timer game for schools; each runs at once, with a new guide page, Start from a template',
+            'A first step toward extensions: Tools > Options > Text Editor > Language Servers adds help for other languages (taplo for .toml, sqls for .sql...) - errors, completion and Go To Definition - and Tools > External Tools... puts your own tools on the Tools menu, handed the file, its folder or the selected text',
+            'Help > Support Phai Studio... (the PromptPay QR code hidden until you ask for it) and a link to the Rust Lovers Community. Fixed: File > Close Project works with a project shown and no file open, and F2 opens one Rename box at a time',
+        ]],
         ['0.2.14', '24 Nov 2026', [
             'GitHub Copilot built in: code suggested in grey as you type, Tab takes it (Ctrl+Right a word) - and the AI Assistant (View > AI Assistant) to talk about the project with the models your account offers, such as GPT, Claude and Gemini; in Act mode it edits the code, every change yours to accept first. Your own GitHub account (Copilot Free is enough), no API key any more',
             'The code editor: the list after a dot always comes, even while rust-analyzer still reads the project; references counted again once it is ready; a warning over many lines underlined on its first line only; Thai in the tips as large as the English beside it; a file named from a terminal by a short path opened right',

@@ -575,7 +575,7 @@ dependencies = [
 
 [[package]]
 name = "phai-data"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "base64",
  "hmac",
@@ -592,7 +592,7 @@ dependencies = [
 
 [[package]]
 name = "phai-debug"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "iced-x86",
  "windows",
@@ -600,14 +600,14 @@ dependencies = [
 
 [[package]]
 name = "phai-design"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-form",
 ]
 
 [[package]]
 name = "phai-editor"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-ui",
  "regex",
@@ -617,7 +617,7 @@ dependencies = [
 
 [[package]]
 name = "phai-form"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-ui",
  "serde",
@@ -627,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "phai-gallery"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-ui",
  "windows",
@@ -635,14 +635,14 @@ dependencies = [
 
 [[package]]
 name = "phai-pack"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "miniz_oxide 0.8.9",
 ]
 
 [[package]]
 name = "phai-sample"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-ui",
  "windows",
@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "phai-setup"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-pack",
  "phai-ui",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "phai-studio"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "phai-data",
  "phai-debug",
@@ -679,7 +679,7 @@ dependencies = [
 
 [[package]]
 name = "phai-ui"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "png",
  "windows",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "phai-web"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
