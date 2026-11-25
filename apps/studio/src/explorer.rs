@@ -843,6 +843,11 @@ impl Explorer {
         self.root.is_some()
     }
 
+    /// The project's folder shown, if one is.
+    pub fn root(&self) -> Option<PathBuf> {
+        self.root.clone()
+    }
+
     pub fn show_project_of(&mut self, form: Option<&Path>) {
         let root = form.and_then(|f| crate::cargo::project_of(f).or_else(|| f.parent().map(Path::to_path_buf)));
         if root != self.root || self.entries.is_empty() {

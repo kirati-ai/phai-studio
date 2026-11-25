@@ -1598,10 +1598,10 @@ fn build_menu() -> HMENU {
         // The form's theme in one place: change its colours (the Theme Editor) or its words, then
         // which style sheet the form uses - the project's own, the form's ticked - a new one, one
         // brought in, or none.
-        let (sheets, current) = studio().map(|s| (s.theme_files(), s.form_theme())).unwrap_or_default();
+        let (sheets, current, file) = studio().map(|s| (s.theme_files(), s.form_theme(), s.theme_file())).unwrap_or_default();
         add(th, ID_THEME_EDITOR, t("Theme Editor..."), "");
-        if current.is_some() {
-            add(th, ID_THEME_EDIT, &tf("Edit {0} as text", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
+        if let Some(f) = &file {
+            add(th, ID_THEME_EDIT, &tf("Edit {0} as text", &[&f.file_name().unwrap_or_default().to_string_lossy().to_string()]), "");
         }
         sep(th);
         for (i, name) in sheets.iter().enumerate().take(THEME_FILES_MAX) {
@@ -6024,6 +6024,23 @@ impl Studio {
         relative_to(path.parent()?, &sheet)
     }
 
+    /// The theme file the Theme Editor and Edit as text open: the form's (its own, or the
+    /// project's); with no form open - a code file, or nothing but the project - the project's
+    /// `theme.css`. The theme is the project's, so it can be edited whatever is open.
+    pub fn theme_file(&self) -> Option<PathBuf> {
+        let form_open = !self.nothing && self.doc.code.is_none();
+        if form_open {
+            if let (Some(p), Some(th)) = (self.doc.path.as_ref(), self.form_theme()) {
+                let file = p.with_file_name("").join(th);
+                let file = tidy_path(&file);
+                return file.is_file().then_some(file);
+            }
+        }
+        let root = self.doc.path.as_deref().filter(|_| !self.nothing).and_then(cargo::project_of).or_else(|| self.explorer.as_ref().and_then(|e| e.root()))?;
+        let sheet = root.join("theme.css");
+        sheet.is_file().then_some(sheet)
+    }
+
     /// The form's theme, read beside the form and watched; the built-in one when it has none.
     fn load_theme(&mut self) {
         let theme = self.form_theme();
@@ -6049,11 +6066,7 @@ impl Studio {
 
     /// The Theme Editor on the form's theme file - one made from the standard first if it has none.
     fn theme_editor(&mut self) {
-        let file = match (&self.doc.path, &self.form_theme()) {
-            (Some(p), Some(th)) => Some(p.with_file_name("").join(th)),
-            _ => None,
-        };
-        match file.filter(|f| f.is_file()) {
+        match self.theme_file() {
             Some(f) => themeedit::open(self.hwnd, &f),
             None => {
                 controls::status_text(self.status, 0, t("The form has no theme - choose or make one in the Theme menu first."));
@@ -9615,14 +9628,9 @@ impl Studio {
                 }
             }
             ID_THEME_EDIT => {
-                if let (Some(p), Some(th)) = (self.doc.path.clone(), self.form_theme()) {
-                    // A style sheet: in the code editor, not read as a form. Its path without the
-                    // `..` a form's theme is named with.
-                    let file = p.with_file_name("").join(&th);
-                    let file = file.canonicalize().map(|c| PathBuf::from(c.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(file);
-                    if file.is_file() {
-                        self.open_code(&file);
-                    }
+                // A style sheet: in the code editor, not read as a form.
+                if let Some(file) = self.theme_file() {
+                    self.open_code(&file);
                 }
             }
             ID_THEME_EDITOR => self.theme_editor(),
@@ -10681,6 +10689,7 @@ extern "system" fn proc_(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT 
         wm::WM_DESTROY => {
             s.stop();
             remember_setting("editor_font_pt", &phai_editor::view::font_size().to_string());
+            remember_setting("toolbars", &win::rebar_layout(s.rebar));
             unsafe { wm::PostQuitMessage(0) };
             LRESULT(0)
         }
@@ -11049,6 +11058,10 @@ fn main() {
         let debug_bar = win::toolbar(rebar, ID_DEBUG_BAR, &debug_items());
         win::rebar_add(rebar, debug_bar, BAND_DEBUG, false);
         wm::SendMessageW(rebar, 0x0423 /* RB_SHOWBAND */, Some(WPARAM(2)), Some(LPARAM(0)));
+        // Where the bars were dragged to last time: their order, rows and widths.
+        if let Some(kept) = setting("toolbars") {
+            win::rebar_restore(rebar, &kept);
+        }
         // The Debug / Release box lies over the room the Standard bar keeps for it.
         let config = win::combo(toolbar, ID_CONFIG, font, &["Debug", "Release"]);
         let toolbox = toolbox::new(hwnd, ID_TOOLBOX, font);
@@ -12272,6 +12285,11 @@ fn bind_project_files(dir: &Path, conn: &phai_data::Connection) -> std::io::Resu
 
 /// `file` as seen from `dir`: `theme.css`, or `../theme.css` one folder up. Both must be in the
 /// same tree (a project).
+/// A path without its `..` and without Windows' `\\?\` - as a form's theme is named, made plain.
+fn tidy_path(p: &Path) -> PathBuf {
+    p.canonicalize().map(|c| PathBuf::from(c.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or_else(|_| p.to_path_buf())
+}
+
 fn relative_to(dir: &Path, file: &Path) -> Option<String> {
     let d: Vec<_> = dir.components().collect();
     let f: Vec<_> = file.components().collect();

@@ -2672,14 +2672,12 @@ pub fn rebar(parent: HWND, id: i32) -> HWND {
     h
 }
 
-/// A rebar's bands drawn: on a dark tray, each band's gripper again in the theme's colours -
-/// Windows draws it in its 3-D white.
+/// A rebar's bands drawn: each band's gripper again in the theme's colours, dots to take hold of -
+/// Windows draws it in its 3-D white on a dark tray, and on a light one so faintly that the
+/// toolbars did not look as if they could be moved.
 fn rebar_custom_draw(l: LPARAM) -> LRESULT {
     use windows::Win32::UI::Controls as cc;
     let cd = unsafe { &mut *(l.0 as *mut cc::NMCUSTOMDRAW) };
-    if !theme::current().is_dark() {
-        return LRESULT(cc::CDRF_DODEFAULT as isize);
-    }
     match cd.dwDrawStage {
         cc::CDDS_PREPAINT => LRESULT(cc::CDRF_NOTIFYITEMDRAW as isize),
         cc::CDDS_ITEMPREPAINT => LRESULT(cc::CDRF_NOTIFYPOSTPAINT as isize),
@@ -2780,6 +2778,50 @@ pub fn rebar_fit(rb: HWND) {
             info.fMask = cc::RBBIM_CHILDSIZE | cc::RBBIM_IDEALSIZE;
             wm::SendMessageW(rb, 0x040B /* RB_SETBANDINFOW */, Some(WPARAM(i)), Some(LPARAM(&info as *const _ as isize)));
         }
+    }
+}
+
+/// How the tray's bands lie now, to keep for next time: `id:row:width` for each in order - `row` 1
+/// where a band starts a row of its own, the width in design pixels.
+pub fn rebar_layout(rb: HWND) -> String {
+    use windows::Win32::UI::Controls as cc;
+    let scale = dpi(rb).max(1) as i32;
+    let mut out = Vec::new();
+    unsafe {
+        let n = wm::SendMessageW(rb, 0x040C /* RB_GETBANDCOUNT */, None, None).0.max(0) as usize;
+        for i in 0..n {
+            let mut get = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_ID | cc::RBBIM_STYLE | cc::RBBIM_SIZE, ..Default::default() };
+            wm::SendMessageW(rb, 0x041C /* RB_GETBANDINFOW */, Some(WPARAM(i)), Some(LPARAM(&mut get as *mut _ as isize)));
+            out.push(format!("{}:{}:{}", get.wID, (get.fStyle & 0x0001 != 0) as u8, get.cx as i32 * 96 / scale));
+        }
+    }
+    out.join(",")
+}
+
+/// The tray's bands laid out again as [`rebar_layout`] kept them: their order, which start a row,
+/// their widths. A band it does not name stays where it is; shown or hidden stays as it is.
+pub fn rebar_restore(rb: HWND, kept: &str) {
+    use windows::Win32::UI::Controls as cc;
+    let scale = dpi(rb).max(1) as i32;
+    let mut at = 0usize;
+    for part in kept.split(',') {
+        let f: Vec<i32> = part.split(':').filter_map(|v| v.trim().parse().ok()).collect();
+        let [id, row, width] = f[..] else { continue };
+        unsafe {
+            let from = wm::SendMessageW(rb, 0x0410 /* RB_IDTOINDEX */, Some(WPARAM(id as usize)), None).0;
+            if from < 0 {
+                continue;
+            }
+            if from as usize != at {
+                wm::SendMessageW(rb, 0x0427 /* RB_MOVEBAND */, Some(WPARAM(from as usize)), Some(LPARAM(at as isize)));
+            }
+            let mut get = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_STYLE, ..Default::default() };
+            wm::SendMessageW(rb, 0x041C /* RB_GETBANDINFOW */, Some(WPARAM(at)), Some(LPARAM(&mut get as *mut _ as isize)));
+            let style = if row != 0 { get.fStyle | 0x0001 } else { get.fStyle & !0x0001 };
+            let set = cc::REBARBANDINFOW { cbSize: std::mem::size_of::<cc::REBARBANDINFOW>() as u32, fMask: cc::RBBIM_STYLE | cc::RBBIM_SIZE, fStyle: style, cx: (width.max(16) * scale / 96) as u32, ..Default::default() };
+            wm::SendMessageW(rb, 0x040B /* RB_SETBANDINFOW */, Some(WPARAM(at)), Some(LPARAM(&set as *const _ as isize)));
+        }
+        at += 1;
     }
 }
 
