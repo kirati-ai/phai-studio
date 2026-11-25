@@ -2092,6 +2092,7 @@ fn kind_of(o: &Obj) -> Option<Kind> {
         "TreeView" => Kind::Tree,
         "PictureBox" => Kind::Picture,
         "WebView2" | "WebBrowser" => Kind::Browser,
+        "Chart" => Kind::Chart,
         "ProgressBar" => Kind::Progress,
         "TrackBar" => Kind::Slider,
         "NumericUpDown" => Kind::Number,

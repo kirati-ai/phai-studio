@@ -326,6 +326,7 @@ fn element(kind: &str, text: &str) -> HtmlElement {
         }
         "picture" => make("img"),
         "browser" => make("iframe"),
+        "chart" => make("div"),
         "statusbar" => {
             let e = make("div");
             let part = make("span");

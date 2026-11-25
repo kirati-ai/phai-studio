@@ -1100,6 +1100,7 @@ pub fn kind_label(k: Kind) -> &'static str {
         Kind::Tree => t("Tree view"),
         Kind::Picture => t("Picture"),
         Kind::Browser => t("Web page"),
+        Kind::Chart => t("Chart"),
         Kind::Timer => t("Timer"),
         Kind::Flow => t("Flow layout"),
         Kind::Table => t("Table layout"),
@@ -1149,6 +1150,7 @@ pub fn toolbox_items() -> Vec<(i32, &'static str, u16)> {
             Kind::Tree => glyph::TREE,
             Kind::Picture => glyph::PICTURE,
             Kind::Browser => glyph::GLOBE,
+            Kind::Chart => glyph::CHART,
             Kind::Timer => glyph::TIMER,
             Kind::Flow => glyph::LAY_SPACE_ACROSS,
             Kind::Table => glyph::LAY_GRID,
@@ -2120,6 +2122,8 @@ impl Studio {
                         Kind::ContextMenu => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
                         // A tree's lines keep their indent: it is the tree.
                         Kind::Tree => c.items = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty()).map(str::to_string).collect(),
+                        // A chart's table: its lines as they are, the empty ones left out.
+                        Kind::Chart => c.items = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect(),
                         Kind::Tabs => c.tabs = list(),
                         Kind::List | Kind::Grid => {
                             c.columns = list().into_iter().map(|s| match s.rsplit_once(':') {
@@ -2248,6 +2252,7 @@ impl Studio {
         match c.kind {
             Kind::List | Kind::Grid => tasks.push((ITEMS, t("Edit Columns...").to_string())),
             Kind::Combo | Kind::Tree | Kind::ListBox | Kind::CheckedList => tasks.push((ITEMS, t("Edit Items...").to_string())),
+            Kind::Chart => tasks.push((ITEMS, t("Edit Data...").to_string())),
             Kind::Tabs => tasks.push((ITEMS, t("Edit Tabs...").to_string())),
             Kind::Picture => tasks.push((IMAGE, t("Choose Image...").to_string())),
             _ => {}
@@ -2306,7 +2311,8 @@ impl Studio {
                     Kind::List | Kind::Grid => c.columns.iter().map(|(n, w)| format!("{n}:{w}")).collect::<Vec<_>>().join("\n"),
                     _ => c.items.join("\n"),
                 };
-                if let Some(v) = phai_ui::dialogs::ask_lines(Some(self.hwnd), &tf("{0} Tasks", &[&kind_label(c.kind)]), t("One a line; a list's columns as Name:width."), &now) {
+                let prompt = if c.kind == Kind::Chart { t("A row a line, commas between; the first line the headings - Month, Sales, Cost. Candlesticks: Day, Open, High, Low, Close.") } else { t("One a line; a list's columns as Name:width.") };
+                if let Some(v) = phai_ui::dialogs::ask_lines(Some(self.hwnd), &tf("{0} Tasks", &[&kind_label(c.kind)]), prompt, &now) {
                     set(self, Key::Items, &v);
                 }
             }

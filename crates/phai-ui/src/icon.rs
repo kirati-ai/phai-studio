@@ -57,6 +57,7 @@ pub mod glyph {
     pub const TREE: u16 = 0xE8B7; // Folder
     pub const PICTURE: u16 = 0xE8B9;
     pub const GLOBE: u16 = 0xE774; // Globe: the browser control
+    pub const CHART: u16 = 0xE9D2; // AreaChart: the chart control
     pub const TIMER: u16 = 0xE916; // Stopwatch
     pub const MENU_BAR: u16 = 0xE700; // GlobalNavigationButton
     pub const TOOLBAR: u16 = 0xEC7A; // DeveloperTools

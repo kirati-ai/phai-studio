@@ -219,6 +219,10 @@ pub enum Kind {
     /// `url` is the page it opens. Needs phai-ui's `browser` feature and WebView2Loader.dll
     /// beside the program; without them it says so in its place.
     Browser,
+    /// A chart - columns, bars, lines, areas, a pie, a doughnut or candlesticks - of the table in
+    /// `items`: a line a row, commas between, the first line the headings (`Month, Sales, Cost`).
+    /// `text` is its title, `chart_type` what it draws.
+    Chart,
     /// A component, not a control: something happens every so many milliseconds.
     Timer,
     /// A panel that lays the controls in it out left to right, row after row.
@@ -281,7 +285,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 41] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Browser, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource, Kind::UserControl];
+    pub const ALL: [Kind; 42] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Browser, Kind::Chart, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource, Kind::UserControl];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -312,6 +316,7 @@ impl Kind {
             Kind::Tree => "tree",
             Kind::Picture => "picture",
             Kind::Browser => "browser",
+            Kind::Chart => "chart",
             Kind::Timer => "timer",
             Kind::Flow => "flow",
             Kind::Table => "table",
@@ -359,6 +364,7 @@ impl Kind {
             Kind::Tree => (200, 150),
             Kind::Picture => (120, 90),
             Kind::Browser => (320, 240),
+            Kind::Chart => (360, 240),
             Kind::Timer => (32, 32),
             Kind::Flow | Kind::Table => (240, 120),
             Kind::Rich => (240, 120),
@@ -388,7 +394,7 @@ impl Kind {
     }
 
     pub fn has_text(self) -> bool {
-        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group | Kind::Link | Kind::NotifyIcon)
+        matches!(self, Kind::Label | Kind::Edit | Kind::Textarea | Kind::Rich | Kind::Button | Kind::Checkbox | Kind::Radio | Kind::Group | Kind::Link | Kind::NotifyIcon | Kind::Chart)
     }
 }
 
@@ -673,6 +679,7 @@ impl Control {
             Kind::Radio => Some("Option".to_string()),
             Kind::Group => Some("Group".to_string()),
             Kind::Link => Some("Link".to_string()),
+            Kind::Chart => Some("Sales by month".to_string()),
             _ => None,
         };
         let mut c = Control {
@@ -720,6 +727,7 @@ impl Control {
         match kind {
             Kind::Combo => c.items = vec!["One".into(), "Two".into()],
             Kind::Tree => c.items = vec!["Root".into(), "  First".into(), "  Second".into()],
+            Kind::Chart => c.items = vec!["Month, Sales, Cost".into(), "Jan, 120, 80".into(), "Feb, 150, 95".into(), "Mar, 135, 90".into(), "Apr, 180, 110".into(), "May, 210, 120".into(), "Jun, 195, 130".into()],
             Kind::Timer => c.value = Some(1000),
             Kind::Table => c.cols = Some(2),
             Kind::Grid => c.columns = vec![("Name".into(), 140), ("Value".into(), 120)],
@@ -1092,7 +1100,7 @@ impl FormFile {
                 handlers.insert(h.clone());
             }
             let wrong = |field: &str, ok: bool| (!ok).then(|| (format!("{field} does not belong on a {}", c.kind.name()), at.clone()));
-            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu | Kind::ListBox | Kind::CheckedList)));
+            out.extend(wrong("items", c.items.is_empty() || matches!(c.kind, Kind::Combo | Kind::Tree | Kind::ContextMenu | Kind::ListBox | Kind::CheckedList | Kind::Chart)));
             for (st, decls) in &c.states {
                 if !STATES.contains(&st.as_str()) {
                     out.push((format!("{}: no state {st} - {}", c.id, STATES.join(", ")), at.clone()));

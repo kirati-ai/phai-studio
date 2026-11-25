@@ -20,6 +20,10 @@ shot = ["dep:png"]
 browser = ["dep:webview2-com"]
 
 [[example]]
+name = "chart_demo"
+required-features = ["shot"]
+
+[[example]]
 name = "grid_demo"
 # It photographs its window for PHAI_SHOT.
 required-features = ["shot"]
@@ -32,6 +36,7 @@ webview2-com = { version = "0.39", optional = true }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_GdiPlus",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Imaging",
     "Win32_Graphics_Printing",

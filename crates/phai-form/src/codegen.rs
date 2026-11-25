@@ -226,6 +226,7 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::Tree => "TreeView",
         Kind::Picture => "PictureBox",
         Kind::Browser => "WebBrowser",
+        Kind::Chart => "Chart",
         Kind::Date => "DateTimePicker",
         Kind::Number => "NumericUpDown",
         Kind::Slider => "TrackBar",
@@ -710,6 +711,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Tree => format!("{{ let h = win::tree(hwnd, {id}, {font}); win::tree_items(h, &[{}]); h }}", c.items.iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
             Kind::Picture => format!("phai_ui::picture::picture(hwnd, {id}, {})", lit(c.image.as_deref().unwrap_or(""))),
             Kind::Browser => format!("phai_ui::browser::browser(hwnd, {id}, {})", lit(c.word("url").unwrap_or(""))),
+            Kind::Chart => format!("{{ let h = phai_ui::chart::chart(hwnd, {id}, {font}); phai_ui::chart::set_title(h, {text}); phai_ui::chart::set_data_text(h, {}); h }}", lit(&c.items.join("\n"))),
             Kind::Flow | Kind::Table => format!("win::panel(hwnd, {id}, false)"),
             Kind::Rich => format!("phai_ui::grid::richtext(hwnd, {id}, {font}, {})", lit(&text_of(c))),
             Kind::Grid => {

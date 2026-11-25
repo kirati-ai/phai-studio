@@ -30,6 +30,7 @@
 pub mod app;
 pub mod binding;
 pub mod browser;
+pub mod chart;
 pub mod components;
 pub mod controls;
 pub mod convert;

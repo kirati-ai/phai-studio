@@ -586,6 +586,21 @@ pub fn allow_drop(h: HWND, on: bool) {
     unsafe { windows::Win32::UI::Shell::DragAcceptFiles(h, on) };
 }
 
+/// ChartType of a chart: `column`, `bar`, `line`, `area`, `pie`, `doughnut` or `candlestick`.
+pub fn chart_type(h: HWND, kind: &str) {
+    crate::chart::set_type(h, kind);
+}
+
+/// Legend of a chart: each series' colour and name shown.
+pub fn legend(h: HWND, on: bool) {
+    crate::chart::set_legend(h, on);
+}
+
+/// MaxPoints of a chart: how many points it keeps as they are added; 0 all.
+pub fn max_points(h: HWND, n: i32) {
+    crate::chart::set_max_points(h, n.max(0) as usize);
+}
+
 /// SizeMode of a picture: `zoom`, `normal`, `stretch` or `center`.
 pub fn size_mode(h: HWND, mode: &str) {
     crate::picture::set_size_mode(h, mode);
@@ -602,7 +617,7 @@ pub const NAMES: &[(&str, char)] = &[
     ("header", 't'), ("hide_selection", 'b'), ("show_lines", 'b'), ("show_plus_minus", 'b'), ("show_root_lines", 'b'),
     ("expand_all", 'b'), ("format", 't'), ("custom_format", 't'), ("date", 't'), ("min_date", 't'), ("max_date", 't'),
     ("size_mode", 't'), ("auto_size", 'b'), ("three_state", 'b'), ("indeterminate", 'b'), ("appearance", 't'),
-    ("orientation", 't'), ("label_edit", 'b'), ("allow_drop", 'b'),
+    ("orientation", 't'), ("label_edit", 'b'), ("allow_drop", 'b'), ("chart_type", 't'), ("legend", 'b'), ("max_points", 'n'),
 ];
 
 /// One property by its `.phf` name and its value as words - `true`, `40`, `left` - as the
@@ -612,6 +627,9 @@ pub fn apply(h: HWND, name: &str, value: &str) {
     let n = value.trim().parse::<i32>().unwrap_or(0);
     match name {
         "tab_stop" => tab_stop(h, yes),
+        "chart_type" => chart_type(h, value),
+        "legend" => legend(h, yes),
+        "max_points" => max_points(h, n),
         "tooltip" => tooltip(h, value),
         "cursor" => cursor(h, value),
         "text_align" => text_align(h, value),

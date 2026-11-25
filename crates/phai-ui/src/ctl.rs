@@ -405,6 +405,10 @@ control!(
     WebBrowser
 );
 control!(
+    /// A chart of a table - WinForms' Chart: columns, bars, lines, areas, pies, candlesticks.
+    Chart
+);
+control!(
     /// WinForms' TabControl.
     TabControl
 );
@@ -1407,6 +1411,63 @@ impl PictureBox {
     /// Example: `ui.picture1.set_size_mode("zoom");`
     pub fn set_size_mode(self, mode: &str) {
         crate::picture::set_size_mode(self.0, mode)
+    }
+}
+
+impl Chart {
+    /// Its table: rows of cells, the first row the headings - what the categories are, then each series.
+    /// ไทย: ข้อมูลของกราฟเป็นแถว แถวแรกคือหัวคอลัมน์ (ชื่อหมวด แล้วชื่อแต่ละชุดข้อมูล)
+    /// Example: `ui.chart1.set_data(&[vec!["Month".into(), "Sales".into()], vec!["Jan".into(), "120".into()]]);`
+    pub fn set_data(self, rows: &[Vec<String>]) {
+        crate::chart::set_data(self.0, rows)
+    }
+    /// Its table as text: a line a row, commas between, the first line the headings.
+    /// ไทย: ข้อมูลของกราฟเป็นข้อความ บรรทัดละแถว คั่นด้วยจุลภาค บรรทัดแรกคือหัวคอลัมน์
+    /// Example: `ui.chart1.set_data_text("Month, Sales\nJan, 120\nFeb, 150");`
+    pub fn set_data_text(self, text: &str) {
+        crate::chart::set_data_text(self.0, text)
+    }
+    /// One more point at the end - a day, a second - with a value for each series.
+    /// ไทย: เพิ่มจุดข้อมูลต่อท้าย พร้อมค่าของแต่ละชุด
+    /// Example: `ui.price.add_point("10:31", &[101.25]);`
+    pub fn add_point(self, label: &str, values: &[f64]) {
+        crate::chart::add_point(self.0, label, values)
+    }
+    /// How many points it keeps as they are added, the oldest dropped; 0 keeps them all.
+    /// ไทย: เก็บจุดล่าสุดไว้กี่จุด จุดเก่าสุดหายไปก่อน 0 คือเก็บทั้งหมด
+    /// Example: `ui.price.set_max_points(120);`
+    pub fn set_max_points(self, n: usize) {
+        crate::chart::set_max_points(self.0, n)
+    }
+    /// What it draws: `"column"`, `"bar"`, `"line"`, `"area"`, `"pie"`, `"doughnut"` or `"candlestick"`.
+    /// ไทย: ชนิดกราฟ: แท่งตั้ง แท่งนอน เส้น พื้นที่ วงกลม โดนัท หรือแท่งเทียน
+    /// Example: `ui.chart1.set_type("line");`
+    pub fn set_type(self, kind: &str) {
+        crate::chart::set_type(self.0, kind)
+    }
+    /// The words over it.
+    /// ไทย: ชื่อกราฟด้านบน
+    /// Example: `ui.chart1.set_title("ยอดขายรายเดือน");`
+    pub fn set_title(self, title: &str) {
+        crate::chart::set_title(self.0, title)
+    }
+    /// Whether each series' colour and name shows.
+    /// ไทย: แสดงคำอธิบายสีของแต่ละชุดหรือไม่
+    /// Example: `ui.chart1.set_legend(false);`
+    pub fn set_legend(self, on: bool) {
+        crate::chart::set_legend(self.0, on)
+    }
+    /// Category `k` shown as the mouse over it would, its values in a box; `None` for none.
+    /// ไทย: ชี้ที่หมวดที่ k เหมือนเอาเมาส์ไปวาง แสดงค่าในกล่อง
+    /// Example: `ui.chart1.highlight(Some(2));`
+    pub fn highlight(self, k: Option<usize>) {
+        crate::chart::highlight(self.0, k)
+    }
+    /// Every point taken out; the headings stay.
+    /// ไทย: ลบจุดข้อมูลทั้งหมด หัวคอลัมน์ยังอยู่
+    /// Example: `ui.price.clear();`
+    pub fn clear(self) {
+        crate::chart::clear(self.0)
     }
 }
 

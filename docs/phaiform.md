@@ -93,7 +93,7 @@ parts = [120]
 
 | ช่อง | ใช้กับ | ความหมาย |
 |---|---|---|
-| `kind` | ทุกตัว | `label` `edit` `textarea` `button` `checkbox` `radio` `combo` `list` `date` `number` `slider` `progress` `group` `tabs` `statusbar` `tree` `picture` `browser` `timer` `flow` `table` `richtext` `grid` `contextmenu` |
+| `kind` | ทุกตัว | `label` `edit` `textarea` `button` `checkbox` `radio` `combo` `list` `date` `number` `slider` `progress` `group` `tabs` `statusbar` `tree` `picture` `browser` `chart` `timer` `flow` `table` `richtext` `grid` `contextmenu` |
 | `id` | ทุกตัว | ชื่อ field ใน struct ที่สร้าง และ `#id` ใน CSS — snake_case ห้ามซ้ำ |
 | `text` | label, edit, textarea, button, checkbox, radio, group | คีย์อังกฤษ (edit = ข้อความเริ่มต้น ไม่แปล) |
 | `bounds` | ทุกตัวที่ไม่ dock | `[x, y, w, h]` design px |
@@ -329,6 +329,29 @@ anchor = "left top right bottom"
 - หน้าเว็บเริ่มหลังหน้าต่างเปิดแล้ว ไม่ใช่ระหว่างสร้างฟอร์ม ข้อมูลของหน้าเว็บ (cookie, cache) เก็บที่
   `%LOCALAPPDATA%\<ชื่อโปรแกรม>\WebView2` เพราะข้างโปรแกรมใน Program Files เขียนไม่ได้
 - ใน designer จะเห็นแค่กรอบกับที่อยู่ ไม่เปิดหน้าเว็บจริง; ในเว็บ (PWA) เป็น `<iframe>`
+
+## กราฟ — control `chart`
+
+```toml
+[[control]]
+kind = "chart"
+id = "sales"
+text = "ยอดขายรายเดือน"
+chart_type = "column"
+items = ["เดือน, ยอดขาย, ต้นทุน", "ม.ค., 120, 80", "ก.พ., 150, 95", "มี.ค., 135, 90"]
+bounds = [12, 12, 470, 260]
+```
+
+กราฟของตารางใน `items`: บรรทัดละแถว คั่นด้วยจุลภาค (หรือ tab) บรรทัดแรกคือหัวคอลัมน์ — ชื่อหมวด แล้วชื่อแต่ละชุดข้อมูล
+`text` คือชื่อกราฟด้านบน วาดด้วย GDI+ เส้นและวงกลมขอบเรียบ ชี้เมาส์แล้วเห็นค่าในกล่อง (เหมือน control Chart ของ WinForms)
+
+- `chart_type`: `column` แท่งตั้ง (ค่าเริ่มต้น) `bar` แท่งนอน `line` เส้น `area` พื้นที่ `pie` วงกลม `doughnut` โดนัท (รวมอยู่กลาง)
+  `candlestick` แท่งเทียน — หัวคอลัมน์ `วัน, เปิด, สูงสุด, ต่ำสุด, ปิด` แท่งเขียวเมื่อปิดสูงกว่าเปิด แดงเมื่อต่ำกว่า
+- `legend` (true): สีและชื่อของแต่ละชุดด้านบน (ข้างวงกลมสำหรับ pie/doughnut พร้อมเปอร์เซ็นต์)
+- `max_points` (0): ข้อมูลสด — เพิ่มจุดด้วย `ui.price.add_point("10:31", &[101.25])` เก็บแค่จุดล่าสุดตามจำนวนนี้ 0 = เก็บทั้งหมด
+- ในโค้ด: `set_data(&rows)` `set_data_text(text)` `set_type("line")` `set_title(...)` `set_legend(false)`
+  `highlight(Some(k))` (ชี้หมวดที่ k เหมือนเอาเมาส์วาง) `clear()`
+- ใน designer เห็นกราฟจริงจากข้อมูลใน `items` (Edit Data... ใน smart tag) ในเว็บ (PWA) ยังเป็นกรอบว่าง
 
 ## การพิมพ์ — component `printdocument`
 
