@@ -35,6 +35,8 @@ pub struct Values {
     pub recent: usize,
     /// On startup: 0 the start window, 1 nothing open, 2 the project opened last.
     pub startup: usize,
+    /// GitHub asked, once a day as Phai Studio starts, for a newer Phai Studio - offered when there is.
+    pub check_updates: bool,
     /// Project and Properties as tabs along the bottom.
     pub tabbed: bool,
     /// A form changed outside Phai Studio (the Live Inspector, Git) is noticed...
@@ -139,6 +141,7 @@ impl Values {
             thai: get("lang").as_deref() == Some("th"),
             recent: number("recent_max", 9, 1, 9) as usize,
             startup,
+            check_updates: tick(get("check_updates"), true),
             tabbed: tick(get("side_tabbed"), true),
             detect_changes: tick(get("detect_changes"), true),
             auto_reload: tick(get("auto_reload"), true),
@@ -190,6 +193,7 @@ impl Values {
             ("startup", STARTUPS[self.startup].to_string()),
             // The start window's own tick says the same.
             ("start_window", one(self.startup == 0)),
+            ("check_updates", one(self.check_updates)),
             ("side_tabbed", one(self.tabbed)),
             ("detect_changes", one(self.detect_changes)),
             ("auto_reload", one(self.auto_reload)),
@@ -286,6 +290,7 @@ struct Controls {
     language: HWND,
     recent: HWND,
     startup: HWND,
+    updates: HWND,
     tabbed: HWND,
     detect: HWND,
     reload: HWND,
@@ -411,6 +416,7 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
             language: combo(&["English", "ไทย"], now.thai as usize),
             recent: win::number(hwnd, id(), font, 1, 9, now.recent as i32),
             startup: combo(&[t("Start Window"), t("Empty environment"), t("Most recent project")], now.startup),
+            updates: check(t("Check for a newer Phai Studio when it starts (once a day)"), now.check_updates),
             tabbed: check(t("Project and Properties as tabs along the bottom"), now.tabbed),
             detect: check(t("Detect when a form is changed outside Phai Studio"), now.detect_changes),
             reload: check(t("Reload it without asking when it has no unsaved changes"), now.auto_reload),
@@ -463,7 +469,7 @@ pub fn make(owner: HWND, now: &Values, page: usize) -> HWND {
         win::set_button_glyph(c.srv_remove, 0xE74D);
         let rows = vec![
             vec![Row::Pair(label(t("Color theme:")), c.theme), Row::Pair(label(t("Language:")), c.language), Row::Pair(label(t("Items in recently used lists:")), c.recent)],
-            vec![Row::Pair(label(t("On startup, open:")), c.startup)],
+            vec![Row::Pair(label(t("On startup, open:")), c.startup), Row::Check(c.updates)],
             vec![Row::Check(c.tabbed)],
             vec![Row::Check(c.detect), Row::Check(c.reload)],
             vec![
@@ -776,6 +782,7 @@ fn read(c: &Controls) -> Values {
         thai: win::combo_selected(c.language) == 1,
         recent: number(c.recent, 1, 9, 9) as usize,
         startup: win::combo_selected(c.startup).max(0) as usize,
+        check_updates: win::is_checked(c.updates),
         tabbed: win::is_checked(c.tabbed),
         detect_changes: win::is_checked(c.detect),
         auto_reload: win::is_checked(c.reload),
@@ -904,7 +911,7 @@ mod tests {
     #[test]
     fn settings_go_out_and_come_back_the_same() {
         let d = Values::load(|_| None);
-        assert!(d.theme == 1 && d.recent == 9 && d.startup == 0 && d.tabbed && d.tab_size == 4 && d.spaces && d.font == "Cascadia Mono", "the defaults");
+        assert!(d.theme == 1 && d.recent == 9 && d.startup == 0 && d.check_updates && d.tabbed && d.tab_size == 4 && d.spaces && d.font == "Cascadia Mono", "the defaults");
         assert!(d.break_on_panic && d.save_before_build && d.output_on_build && d.snap_to_grid && d.grid == 4 && !d.format_on_save && !d.blame);
         assert!(!d.copilot && d.copilot_suggest, "Copilot off until it is turned on");
         let v = Values {
@@ -912,6 +919,7 @@ mod tests {
             thai: true,
             recent: 5,
             startup: 2,
+            check_updates: false,
             tabbed: false,
             detect_changes: false,
             auto_reload: false,

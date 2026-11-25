@@ -304,6 +304,7 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
 <ul>
   <li>ติดอะไร อยากถาม หรืออยากอวดโปรแกรมที่ทำ เขียนได้ที่ <a href="https://phai-studio.monrak.net/board" target="_blank" rel="noopener">ชุมชนคนรัก Rust</a> ไม่ต้องสมัคร</li>
   <li><b>Help &gt; สนับสนุน Phai Studio...</b> มีลิงก์กดดาวบน GitHub แจ้งปัญหา และ QR พร้อมเพย์สำหรับสนับสนุน (QR ซ่อนไว้ กด <b>แสดง QR code</b> ก่อนถึงจะเห็น)</li>
+  <li><b>รุ่นใหม่</b> Phai Studio ถาม GitHub วันละครั้งตอนเปิดโปรแกรม ถ้ามีรุ่นใหม่จะถามว่าจะติดตั้งเลยไหม กด <b>Yes</b> แล้วดาวน์โหลด ตรวจไฟล์ และติดตั้งให้ (งานที่ยังไม่บันทึกจะถามก่อน) กด <b>No</b> พรุ่งนี้จะถามอีก ไม่อยากให้ถาม ปิดได้ที่ <b>Tools &gt; Options &gt; Environment &gt; Startup</b> และตรวจเองได้ทุกเมื่อที่ <b>Help &gt; ตรวจหารุ่นใหม่</b></li>
   <li><b>Help &gt; เกี่ยวกับ Phai Studio</b> บอกรุ่นของ Phai Studio และเครื่องมือที่ใช้ กด <b>Copy info</b> แล้วแนบไปตอนแจ้งปัญหา</li>
 </ul>
 '''

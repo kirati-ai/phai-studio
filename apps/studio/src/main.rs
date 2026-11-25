@@ -216,6 +216,9 @@ const ID_CHECK_UPDATES: i32 = 2901;
 const ID_UPDATE_READY: i32 = 2902;
 /// The setup downloaded, or why not - handed from the download's thread to the window.
 static UPDATE_DOWNLOADED: std::sync::Mutex<Option<Result<PathBuf, String>>> = std::sync::Mutex::new(None);
+/// A newer Phai Studio, found by the quiet look as it starts - offered on [`ID_UPDATE_FOUND`].
+const ID_UPDATE_FOUND: i32 = 2907;
+static UPDATE_FOUND: std::sync::Mutex<Option<update::Release>> = std::sync::Mutex::new(None);
 /// Theme > the project's style sheets, one item each; Theme > Edit the one in use.
 const ID_THEME_FILE: i32 = 760;
 const THEME_FILES_MAX: usize = 20;
@@ -6968,7 +6971,17 @@ impl Studio {
             win::message(Some(self.hwnd), &tf("You have the newest Phai Studio ({0}).", &[&ours]), t("Check for Updates"), wm::MB_ICONINFORMATION);
             return;
         }
-        let ask = tf("Phai Studio {0} is out - you have {1}.\n\nDownload and install it now? Phai Studio closes for the setup; what is not saved is asked about first.\n\nWhat is new: {2}", &[&r.version, &ours, &SITE]);
+        self.offer_update(r, false);
+    }
+
+    /// A newer release offered: downloaded and installed on Yes. `quietly`: found by the look as
+    /// Phai Studio starts - which is said, and how to stop it.
+    fn offer_update(&mut self, r: update::Release, quietly: bool) {
+        let ours = env!("CARGO_PKG_VERSION");
+        let mut ask = tf("Phai Studio {0} is out - you have {1}.\n\nDownload and install it now? Phai Studio closes for the setup; what is not saved is asked about first.\n\nWhat is new: {2}", &[&r.version, &ours, &SITE]);
+        if quietly {
+            ask = format!("{ask}\n\n{}", t("No: asked again tomorrow. Tools > Options > Environment > Startup stops the asking."));
+        }
         if win::message(Some(self.hwnd), &ask, t("Check for Updates"), wm::MB_YESNO | wm::MB_ICONQUESTION) != wm::IDYES {
             return;
         }
@@ -6978,6 +6991,48 @@ impl Studio {
             *UPDATE_DOWNLOADED.lock().unwrap_or_else(|e| e.into_inner()) = Some(update::download(&r));
             let _ = unsafe { wm::PostMessageW(Some(HWND(hwnd as *mut _)), wm::WM_COMMAND, WPARAM(ID_UPDATE_READY as usize), LPARAM(0)) };
         });
+    }
+
+    /// As Phai Studio starts, once a day unless Tools > Options says not: GitHub asked in the
+    /// background for a newer Phai Studio, [`ID_UPDATE_FOUND`] posted when there is one. Nothing
+    /// said when there is none, or GitHub cannot be reached.
+    fn look_for_update_quietly(&self) {
+        if setting("check_updates").as_deref() == Some("0") {
+            return;
+        }
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let last = setting("update_checked").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        if now < last + 20 * 3600 && std::env::var_os("PHAI_UPDATE_CHECK").is_none() {
+            return;
+        }
+        let hwnd = self.hwnd.0 as isize;
+        std::thread::spawn(move || {
+            // A moment for the window and its project to come up first.
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            let Ok(r) = update::newest() else { return };
+            remember_setting("update_checked", &now.to_string());
+            // `PHAI_UPDATE_CHECK=offer`: offered even when it is this one - for trying the question.
+            let offer = std::env::var("PHAI_UPDATE_CHECK").is_ok_and(|v| v == "offer");
+            if offer || update::is_newer(&r.version, env!("CARGO_PKG_VERSION")) {
+                *UPDATE_FOUND.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
+                let _ = unsafe { wm::PostMessageW(Some(HWND(hwnd as *mut _)), wm::WM_COMMAND, WPARAM(ID_UPDATE_FOUND as usize), LPARAM(0)) };
+            }
+        });
+    }
+
+    /// The quiet look found a newer Phai Studio: offered - once the window takes questions (not
+    /// while the start window or another dialog is open over it).
+    fn update_found(&mut self) {
+        if !unsafe { windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(self.hwnd) }.as_bool() {
+            let hwnd = self.hwnd.0 as isize;
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                let _ = unsafe { wm::PostMessageW(Some(HWND(hwnd as *mut _)), wm::WM_COMMAND, WPARAM(ID_UPDATE_FOUND as usize), LPARAM(0)) };
+            });
+            return;
+        }
+        let Some(r) = UPDATE_FOUND.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+        self.offer_update(r, true);
     }
 
     /// The newest setup downloaded: started, and Phai Studio closed so it can be replaced.
@@ -9428,6 +9483,7 @@ impl Studio {
             ID_CHECK_UPDATES => self.check_for_updates(),
             ID_SUPPORT => support::show(self.hwnd),
             ID_UPDATE_READY => self.update_downloaded(),
+            ID_UPDATE_FOUND => self.update_found(),
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),
                 None => controls::status_text(self.status, 0, t("Open a code file first")),
@@ -11962,6 +12018,10 @@ fn main() {
                 }
                 _ => s.start_job(cargo::Job::Build, true),
             }
+        }
+        // Opened by a person (no `--` test or picture switch): a newer Phai Studio looked for.
+        if !args.iter().skip(1).any(|a| a.starts_with("--")) && std::env::var_os("PHAI_SHOT").is_none() {
+            s.look_for_update_quietly();
         }
         // The loop: shortcuts first, then Tab between boxes, then everything else.
         if std::env::var("PHAI_SHOT").is_ok() {

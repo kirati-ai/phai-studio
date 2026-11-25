@@ -907,6 +907,8 @@ pub static THAI: &[(&str, &str)] = &[
     ("not found", "ไม่พบ"),
     ("Check for Updates...", "ตรวจหารุ่นใหม่..."),
     ("Check for Updates", "ตรวจหารุ่นใหม่"),
+    ("No: asked again tomorrow. Tools > Options > Environment > Startup stops the asking.", "ไม่: จะถามอีกครั้งพรุ่งนี้ ปิดการถามได้ที่ เครื่องมือ > ตัวเลือก > สภาพแวดล้อม > เมื่อเปิดโปรแกรม"),
+    ("Check for a newer Phai Studio when it starts (once a day)", "ตรวจหา Phai Studio รุ่นใหม่ตอนเปิดโปรแกรม (วันละครั้ง)"),
     ("Check for updates", "ตรวจหารุ่นใหม่"),
     ("Asking GitHub for the newest Phai Studio...", "กำลังถาม GitHub ว่ามี Phai Studio รุ่นใหม่ไหม..."),
     ("You have the newest Phai Studio ({0}).", "Phai Studio ที่ใช้อยู่เป็นรุ่นล่าสุดแล้ว ({0})"),
