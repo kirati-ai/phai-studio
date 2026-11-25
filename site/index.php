@@ -240,6 +240,7 @@ $T = $th ? [
         ['0.2.15', '25 พ.ย. 2569', [
             'New Project แบบใหม่: แม่แบบ 13 แบบแยกเป็นกลุ่ม ค้นหาได้ เห็นภาพโปรแกรมก่อนสร้าง มีโปรแกรมหลายเอกสาร (MDI) หน้าต่างเล็ก โปรแกรมในถาด ข้อมูลลูกค้าในฐานข้อมูล SQLite เข้าสู่ระบบก่อนใช้งาน รายงานพร้อมดูก่อนพิมพ์ แดชบอร์ดผู้ดูแลระบบ แบบ Explorer แบบ Notepad ตัวช่วยทีละขั้น และเกมจับลูกบอลสำหรับโรงเรียน ทุกแบบรันได้ทันที พร้อมคู่มือหน้า "เริ่มจากแม่แบบ"',
             'ก้าวแรกสู่ส่วนเสริม: Tools > Options > Text Editor > Language Servers เพิ่มตัวช่วยภาษาอื่นได้ (เช่น taplo สำหรับ .toml, sqls สำหรับ .sql) ได้ error เติมคำ และ Go To Definition และ Tools > External Tools... เพิ่มโปรแกรมภายนอกลงเมนู Tools ส่งชื่อไฟล์ โฟลเดอร์ หรือข้อความที่เลือกไปให้ได้',
+            'แจ้งรุ่นใหม่เอง: ตอนเปิดโปรแกรม Phai Studio ถาม GitHub วันละครั้ง ถ้ามีรุ่นใหม่จะถามว่าจะติดตั้งเลยไหม กดตกลงแล้วดาวน์โหลด ตรวจไฟล์ และติดตั้งให้ ไม่อยากให้ถาม ปิดได้ที่ Tools > Options > Environment > Startup',
             'Help > สนับสนุน Phai Studio... (QR พร้อมเพย์ซ่อนไว้จนกว่าจะกดดู) และลิงก์ไป ชุมชนคนรัก Rust แก้: File > Close Project กดได้เมื่อมีโปรเจกต์เปิดอยู่แม้ไม่มีไฟล์เปิด และ F2 เปิดกล่อง Rename ทีละกล่อง',
         ]],
         ['0.2.14', '24 พ.ย. 2569', [
@@ -492,6 +493,7 @@ $T = $th ? [
         ['0.2.15', '25 Nov 2026', [
             'A new New Project: 13 templates in groups, searchable, each with a picture of the program it makes - child forms (MDI), a small dialog, a tray program, customers in a SQLite database, sign in first, a report with print preview, an admin dashboard, Explorer-style, Notepad-style, a step-by-step wizard and a timer game for schools; each runs at once, with a new guide page, Start from a template',
             'A first step toward extensions: Tools > Options > Text Editor > Language Servers adds help for other languages (taplo for .toml, sqls for .sql...) - errors, completion and Go To Definition - and Tools > External Tools... puts your own tools on the Tools menu, handed the file, its folder or the selected text',
+            'Told of a new version: as it starts, Phai Studio asks GitHub once a day and, when a newer one is out, asks whether to install it now - Yes downloads, checks and installs it. Tools > Options > Environment > Startup turns it off',
             'Help > Support Phai Studio... (the PromptPay QR code hidden until you ask for it) and a link to the Rust Lovers Community. Fixed: File > Close Project works with a project shown and no file open, and F2 opens one Rename box at a time',
         ]],
         ['0.2.14', '24 Nov 2026', [
