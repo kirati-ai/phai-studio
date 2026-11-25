@@ -167,11 +167,17 @@ pub fn ready(h: impl Into<HWND>) -> bool {
 }
 
 fn start(h: HWND) {
-    let Some(b) = (unsafe { win::state::<Browser>(h) }) else { return };
     #[cfg(feature = "browser")]
     {
-        match engine::View::new(h, &b.url) {
+        // Making WebView2 pumps messages, and the program's own may run in that time - a
+        // navigate() among them, which can only remember its address while there is no page. So
+        // the state is read again once WebView2 is there, and the page opened is the address asked
+        // for last, never the one there was when starting (which left the window blank).
+        let made = engine::View::new(h);
+        let Some(b) = (unsafe { win::state::<Browser>(h) }) else { return };
+        match made {
             Ok(v) => {
+                v.navigate(&b.url);
                 b.view = Some(v);
                 fit(h);
             }
@@ -180,6 +186,7 @@ fn start(h: HWND) {
     }
     #[cfg(not(feature = "browser"))]
     {
+        let Some(b) = (unsafe { win::state::<Browser>(h) }) else { return };
         b.note = t("This program was built without phai-ui's browser feature, so the page cannot be shown.").to_string();
     }
     unsafe {
@@ -338,7 +345,7 @@ mod engine {
     }
 
     impl View {
-        pub(super) fn new(host: HWND, url: &str) -> Result<View, String> {
+        pub(super) fn new(host: HWND) -> Result<View, String> {
             // WebView2 wants a single-threaded apartment; one the program made already is fine.
             unsafe {
                 let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -387,9 +394,7 @@ mod engine {
                     let _ = w14.add_ServerCertificateErrorDetected(&handler, &mut token);
                 }
             }
-            let view = View { controller, webview };
-            view.navigate(url);
-            Ok(view)
+            Ok(View { controller, webview })
         }
 
         pub(super) fn navigate(&self, url: &str) {
