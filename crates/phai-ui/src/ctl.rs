@@ -1435,6 +1435,13 @@ impl WebBrowser {
     pub fn go_back(self) {
         crate::browser::go_back(self.0)
     }
+    /// Accepts a certificate the computer does not trust - one a server made itself - for this
+    /// one host only, instead of WebView2's warning page.
+    /// ไทย: ยอมรับใบรับรองที่เครื่องไม่รู้จัก (เช่นที่เซิร์ฟเวอร์ทำขึ้นเอง) เฉพาะ host นี้เท่านั้น
+    /// Example: `ui.page.allow_certificate_errors_for("192.168.0.10");`
+    pub fn allow_certificate_errors_for(self, host: &str) {
+        crate::browser::allow_certificate_errors_for(self.0, host)
+    }
     /// Whether a page is showing: WebView2 started on this computer.
     /// ไทย: แสดงหน้าเว็บได้แล้วหรือยัง
     /// Example: `if !ui.page.ready() { ... }`

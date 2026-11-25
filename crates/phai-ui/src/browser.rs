@@ -32,6 +32,8 @@ struct Browser {
     url: String,
     /// What the control says while there is no page: why, or the address in the designer.
     note: String,
+    /// The one host whose certificate errors are accepted ([`allow_certificate_errors_for`]).
+    trusted_host: Option<String>,
     #[cfg(feature = "browser")]
     view: Option<engine::View>,
 }
@@ -75,6 +77,7 @@ fn make(parent: HWND, id: i32, url: &str, note: String) -> HWND {
         Box::new(Browser {
             url: url.trim().to_string(),
             note,
+            trusted_host: None,
             #[cfg(feature = "browser")]
             view: None,
         }),
@@ -122,6 +125,32 @@ pub fn go_back(h: impl Into<HWND>) {
     }
     #[cfg(not(feature = "browser"))]
     let _ = h.into();
+}
+
+/// Accepts a certificate the computer does not trust - one a server made itself - for `host` only
+/// (`192.168.0.10`, `server.office.local`), instead of WebView2's warning page; every other host
+/// is checked as any browser checks it. For a program that talks to one server of its own inside
+/// an office, whose address it already holds: what this accepts is no weaker than plain HTTP to
+/// that server, and the page stays encrypted. Empty takes it back.
+pub fn allow_certificate_errors_for(h: impl Into<HWND>, host: &str) {
+    if let Some(b) = unsafe { win::state::<Browser>(h.into()) } {
+        let host = host.trim().to_ascii_lowercase();
+        b.trusted_host = (!host.is_empty()).then_some(host);
+    }
+}
+
+/// The host of `url`, in lower case, without its port: what [`allow_certificate_errors_for`] is
+/// compared with.
+pub fn host_of(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let host = if authority.starts_with('[') {
+        authority.split_once(']').map_or(authority, |(h, _)| h).trim_start_matches('[')
+    } else {
+        authority.split(':').next().unwrap_or("")
+    };
+    host.to_ascii_lowercase()
 }
 
 /// Whether a page is showing (WebView2 started).
@@ -225,13 +254,30 @@ extern "system" fn proc_(h: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::host_of;
+
+    #[test]
+    fn a_host_is_read_out_of_an_address() {
+        assert_eq!(host_of("https://192.168.0.108/phaidesk/admin.php"), "192.168.0.108");
+        assert_eq!(host_of("https://Server.Office.Local:8443/x"), "server.office.local");
+        assert_eq!(host_of("http://user@host.example/"), "host.example");
+        assert_eq!(host_of("https://[::1]:443/"), "::1");
+        assert_eq!(host_of("https://evil.example/?h=192.168.0.108"), "evil.example");
+        assert_eq!(host_of("https://192.168.0.108.evil.example/"), "192.168.0.108.evil.example");
+    }
+}
+
 #[cfg(feature = "browser")]
 mod engine {
     use std::path::PathBuf;
     use std::sync::mpsc;
 
-    use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2Controller, ICoreWebView2Environment};
-    use webview2_com::{CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler};
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2, ICoreWebView2Controller, ICoreWebView2Environment, ICoreWebView2_14, COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW,
+    };
+    use webview2_com::{CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler, ServerCertificateErrorDetectedEventHandler};
     use windows::core::{Interface, HRESULT, PCWSTR, PWSTR};
     use windows::Win32::Foundation::{E_POINTER, HWND, RECT};
     use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED};
@@ -312,6 +358,34 @@ mod engine {
             let webview = unsafe { controller.CoreWebView2() }.map_err(|_| no_runtime())?;
             unsafe {
                 let _ = controller.SetIsVisible(true);
+            }
+            // A certificate error on the one host the program named is accepted
+            // (super::allow_certificate_errors_for); WebView2's own page for every other.
+            if let Ok(w14) = webview.cast::<ICoreWebView2_14>() {
+                let window = host.0 as isize;
+                let mut token = 0i64;
+                let handler = ServerCertificateErrorDetectedEventHandler::create(Box::new(move |_view, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut raw = PWSTR::null();
+                    let url = unsafe {
+                        if args.RequestUri(&mut raw).is_err() || raw.is_null() {
+                            return Ok(());
+                        }
+                        let s = raw.to_string().unwrap_or_default();
+                        CoTaskMemFree(Some(raw.0 as *const _));
+                        s
+                    };
+                    let trusted = unsafe { crate::win::state::<super::Browser>(HWND(window as *mut _)) }.and_then(|b| b.trusted_host.clone());
+                    if trusted.is_some_and(|t| t == super::host_of(&url)) {
+                        unsafe {
+                            let _ = args.SetAction(COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW);
+                        }
+                    }
+                    Ok(())
+                }));
+                unsafe {
+                    let _ = w14.add_ServerCertificateErrorDetected(&handler, &mut token);
+                }
             }
             let view = View { controller, webview };
             view.navigate(url);

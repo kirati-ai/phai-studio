@@ -318,6 +318,8 @@ anchor = "left top right bottom"
 
 แสดงหน้าเว็บด้วย Microsoft Edge WebView2 (เหมือน control WebView2 ของ WinForms) ในโค้ด: `ui.page.navigate(url)`
 `ui.page.url()` `ui.page.reload()` `ui.page.go_back()` และ `ui.page.ready()` (เริ่มแสดงได้แล้วหรือยัง)
+`ui.page.allow_certificate_errors_for(host)` ยอมรับใบรับรองที่เซิร์ฟเวอร์ทำขึ้นเองเฉพาะ host นั้น แทนหน้าคำเตือน
+(สำหรับโปรแกรมที่คุยกับเซิร์ฟเวอร์ของตัวเองในสำนักงาน host อื่นยังตรวจตามปกติ)
 
 - ต้องเปิดคุณสมบัติ `browser` ของ phai-ui ใน `Cargo.toml` ของโปรแกรม:
   `phai-ui = { git = "...", rev = "...", features = ["browser"] }` ถ้าไม่เปิด โปรแกรมยัง compile ได้ และ control

@@ -755,6 +755,8 @@ impl WebBrowser {
     }
     /// A frame cannot go back on the program's behalf in a browser; it does nothing here.
     pub fn go_back(self) {}
+    /// The browser the page runs in decides about certificates; nothing to do here.
+    pub fn allow_certificate_errors_for(self, _host: &str) {}
     /// A frame is always there in a browser.
     pub fn ready(self) -> bool {
         true
