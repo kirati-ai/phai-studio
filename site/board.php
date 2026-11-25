@@ -1,5 +1,5 @@
 <?php
-// The Q&A board at /board: topics in groups, anyone may start one or answer, no sign-up and no
+// The Rust Lovers Community (ชุมชนคนรัก Rust) at /board, a question-and-answer board: topics in groups, anyone may start one or answer, no sign-up and no
 // waiting for approval. What is not fit is deleted afterwards in its back office, /board/admin,
 // signed in as monrak.net's back office is (the same users, the same five tries a quarter hour).
 // Kept in storage/board.sqlite. Reached only through index.php, which defines PHAI_SITE.
@@ -123,7 +123,7 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         $db = board_db($storage);
     } catch (Throwable) {
         http_response_code(503);
-        echo $th ? 'กระดานถามตอบยังใช้ไม่ได้ในตอนนี้ ลองใหม่ภายหลัง' : 'The Q&A board is not available right now - try again later.';
+        echo $th ? 'ชุมชนคนรัก Rust ยังใช้ไม่ได้ในตอนนี้ ลองใหม่ภายหลัง' : 'The Rust Lovers Community is not available right now - try again later.';
         exit;
     }
     $ip = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
@@ -133,7 +133,7 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         exit;
     };
     $L = $th ? [
-        'title' => 'ถามตอบ Phai Studio', 'lead' => 'ถาม ตอบ และแบ่งปันความรู้เรื่อง Phai Studio และ Rust ใครก็เขียนได้ ไม่ต้องสมัคร',
+        'title' => 'ชุมชนคนรัก Rust', 'lead' => 'ถาม ตอบ และแบ่งปันความรู้เรื่อง Rust และ Phai Studio ใครก็เขียนได้ ไม่ต้องสมัคร', 'close' => 'ปิด',
         'topics' => 'กระทู้', 'replies' => 'ตอบ', 'views' => 'อ่าน', 'latest' => 'กระทู้ล่าสุด', 'new' => 'ตั้งกระทู้ใหม่', 'none' => 'ยังไม่มีกระทู้ในหมวดนี้ เริ่มเป็นคนแรกได้เลย',
         'name' => 'ชื่อ (ไม่ใส่ก็ได้)', 'subject' => 'หัวข้อ', 'body' => 'รายละเอียด', 'reply' => 'ตอบกระทู้', 'send' => 'ส่ง', 'post' => 'ตั้งกระทู้', 'group' => 'หมวด',
         'anon' => 'ไม่ระบุชื่อ', 'code' => 'ใส่โค้ดระหว่าง ``` สองชุด จะขึ้นเป็นกรอบโค้ด', 'back' => 'กลับไปหน้ารวม', 'home' => 'หน้าหลัก', 'all' => 'ทุกหมวด',
@@ -143,7 +143,7 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         'page' => 'หน้า', 'by' => 'โดย', 'rules' => 'เขียนอย่างสุภาพ ข้อความที่ไม่เหมาะสมจะถูกลบ',
         'cap' => 'คำถามกันสแปม', 'capHint' => 'ตอบเป็นตัวเลข', 'capWrong' => 'คำตอบคำถามกันสแปมไม่ถูก ลองข้อใหม่',
     ] : [
-        'title' => 'Phai Studio Q&A', 'lead' => 'Ask, answer and share what you know about Phai Studio and Rust - anyone may write, no sign-up.',
+        'title' => 'Rust Lovers Community', 'lead' => 'Ask, answer and share what you know about Rust and Phai Studio - anyone may write, no sign-up.', 'close' => 'Close',
         'topics' => 'topics', 'replies' => 'replies', 'views' => 'views', 'latest' => 'Latest topics', 'new' => 'New topic', 'none' => 'No topic here yet - start the first.',
         'name' => 'Name (optional)', 'subject' => 'Subject', 'body' => 'Details', 'reply' => 'Reply', 'send' => 'Send', 'post' => 'Post topic', 'group' => 'Group',
         'anon' => 'Anonymous', 'code' => 'Put code between two ``` lines to show it as code', 'back' => 'All groups', 'home' => 'Home', 'all' => 'All groups',
@@ -306,6 +306,13 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         $h .= '<p class="rules">' . $e($L['rules']) . '</p></form>';
         return $h;
     };
+    // The form in a window over the page, so the page itself shows the topics: opened by a button
+    // with data-open="write", and at once when the last send failed or the link asks (?write=1).
+    $dialog = function (string $heading, string $inside) use ($e, $L, &$error): string {
+        $show = $error || isset($_GET['write']);
+        return '<dialog class="board-dialog" id="write"' . ($show ? ' data-show' : '') . '><div class="dlg-head"><h2>' . $e($heading) . '</h2><button type="button" class="dlg-x" data-close aria-label="' . $e($L['close']) . '"><i class="ti ti-x"></i></button></div>' . ($error ? '<p class="err">' . $e($error) . '</p>' : '') . $inside . '</dialog>';
+    };
+    $opener = fn (string $label, string $icon = 'ti-plus'): string => '<button type="button" class="btn btn-primary" data-open="write"><i class="ti ' . $icon . '"></i> ' . $e($label) . '</button>';
     $del = function (string $kind, int $id, string $back) use ($e, $L, $csrf, $B): string {
         return '<form class="del" method="post" action="' . $e($B . 'board/admin/delete') . '" onsubmit="return confirm(\'' . $e($L['sure']) . '\')"><input type="hidden" name="csrf" value="' . $e($csrf) . '"><input type="hidden" name="do" value="delete"><input type="hidden" name="kind" value="' . $kind . '"><input type="hidden" name="id" value="' . $id . '"><input type="hidden" name="back" value="' . $e($back) . '"><button type="submit" class="btn-del"><i class="ti ti-trash"></i> ' . $e($L['delete']) . '</button></form>';
     };
@@ -356,14 +363,14 @@ function board_page(string $path, string $B, bool $th, string $storage): void
                 $n++;
                 $body .= '<article class="post" id="r' . (int) $reply['id'] . '"><div class="t-meta"><b>#' . $n . '</b> ' . $e($reply['name']) . ' · ' . $e(board_ago((int) $reply['at'], $th)) . '</div><div class="post-body">' . board_text($reply['body']) . '</div>' . ($admin ? $del('reply', (int) $reply['id'], $B . 'board/t/' . $id) : '') . '</article>';
             }
-            $body .= '<h2 id="reply">' . $e($L['reply']) . '</h2>' . ($error ? '<p class="err">' . $e($error) . '</p>' : '') . $form($B . 'board/t/' . $id . '/reply', false);
+            $body .= '<div class="reply-bar">' . $opener($L['reply'], 'ti-message-reply') . '</div>' . $dialog($L['reply'], $form($B . 'board/t/' . $id . '/reply', false));
         }
     } elseif (preg_match('~^/c/([a-z]+)$~', $sub, $m) && isset($groups[$m[1]])) {
         $g = $groups[$m[1]];
         $page = max(1, (int) ($_GET['p'] ?? 1));
         $title = $g['name'] . ' - ' . $L['title'];
         $body .= '<nav class="crumbs"><a href="' . $e($B . 'board') . '">' . $e($L['title']) . '</a> › ' . $e($g['name']) . '</nav>';
-        $body .= '<div class="board-head"><h1><i class="ti ' . $e($g['icon']) . '"></i> ' . $e($g['name']) . '</h1>' . ((!$g['admin'] || $admin) ? '<a class="btn btn-primary" href="#new"><i class="ti ti-plus"></i> ' . $e($L['new']) . '</a>' : '') . '</div><p class="sub">' . $e($g['about']) . '</p>';
+        $body .= '<div class="board-head"><h1><i class="ti ' . $e($g['icon']) . '"></i> ' . $e($g['name']) . '</h1>' . ((!$g['admin'] || $admin) ? $opener($L['new']) : '') . '</div><p class="sub">' . $e($g['about']) . '</p>';
         $q = $db->prepare('SELECT * FROM topics WHERE grp = ? ORDER BY last_at DESC LIMIT 31 OFFSET ?');
         $q->execute([$g['key'], ($page - 1) * 30]);
         $list = $q->fetchAll();
@@ -372,14 +379,14 @@ function board_page(string $path, string $B, bool $th, string $storage): void
             $body .= '<nav class="pages">' . ($page > 1 ? '<a href="?p=' . ($page - 1) . '">‹</a>' : '') . '<span>' . $e($L['page']) . ' ' . $page . '</span>' . (count($list) > 30 ? '<a href="?p=' . ($page + 1) . '">›</a>' : '') . '</nav>';
         }
         if (!$g['admin'] || $admin) {
-            $body .= '<h2 id="new">' . $e($L['new']) . '</h2>' . ($error ? '<p class="err">' . $e($error) . '</p>' : '') . $form($B . 'board/new', true, $g['key']);
+            $body .= $dialog($L['new'], $form($B . 'board/new', true, $g['key']));
         }
     } else {
         $counts = [];
         foreach ($db->query('SELECT grp, COUNT(*) n, MAX(last_at) last FROM topics GROUP BY grp') as $c) {
             $counts[$c['grp']] = $c;
         }
-        $body .= '<div class="board-head"><div><h1>' . $e($L['title']) . '</h1><p class="sub">' . $e($L['lead']) . '</p></div><a class="btn btn-primary" href="' . $e($B . 'board/c/start#new') . '"><i class="ti ti-plus"></i> ' . $e($L['new']) . '</a></div>';
+        $body .= '<div class="board-head"><div><h1>' . $e($L['title']) . '</h1><p class="sub">' . $e($L['lead']) . '</p></div>' . $opener($L['new']) . '</div>';
         $body .= '<div class="groups">';
         foreach ($groups as $g) {
             $c = $counts[$g['key']] ?? null;
@@ -388,6 +395,7 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         $body .= '</div><h2>' . $e($L['latest']) . '</h2>';
         $latest = $db->query('SELECT * FROM topics ORDER BY last_at DESC LIMIT 15')->fetchAll();
         $body .= '<div class="topics">' . ($latest ? implode('', array_map($row, $latest)) : '<p class="none">' . $e($L['none']) . '</p>') . '</div>';
+        $body .= $dialog($L['new'], $form($B . 'board/new', true, 'start'));
     }
 
     header('Content-Type: text/html; charset=utf-8');
@@ -420,6 +428,18 @@ function board_page(string $path, string $B, bool $th, string $storage): void
 <?= $body ?>
 </main>
 <footer class="board-foot wrap"><a href="<?= $B ?>board/admin"><?= $e($L['admin']) ?></a></footer>
+<script>
+document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => {
+    const d = document.getElementById(b.dataset.open);
+    d.showModal();
+    const f = d.querySelector('input:not([type=hidden]):not([tabindex="-1"]), textarea');
+    if (f) f.focus();
+}));
+document.querySelectorAll('dialog [data-close]').forEach(b => b.addEventListener('click', () => b.closest('dialog').close()));
+document.querySelectorAll('dialog').forEach(d => d.addEventListener('click', ev => { if (ev.target === d) d.close(); }));
+const shown = document.querySelector('dialog[data-show]');
+if (shown) shown.showModal();
+</script>
 </body>
 </html>
 <?php

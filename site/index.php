@@ -78,7 +78,7 @@ if (!in_array($lang, ['th', 'en'], true)) {
 }
 $th = $lang === 'th';
 
-// The Q&A board (/board): its own pages, from board.php.
+// The Rust Lovers Community, a question-and-answer board (/board): its own pages, from board.php.
 define('PHAI_SITE', true);
 require __DIR__ . '/board.php';
 board_page($path, $B, $th, $storage);
@@ -644,7 +644,7 @@ $base = 'https://phai-studio.monrak.net/';
             <a class="hide-sm" href="#features"><?= e($T['nav']['features']) ?></a>
             <a class="hide-sm" href="#install"><?= e($T['nav']['install']) ?></a>
             <a class="hide-sm" href="#history"><?= e($T['histH']) ?></a>
-            <a href="<?= $B ?>board"><?= $th ? 'ถามตอบ' : 'Q&amp;A' ?></a>
+            <a href="<?= $B ?>board"><?= $th ? 'ชุมชนคนรัก Rust' : 'Rust Community' ?></a>
             <a class="lang" href="?lang=<?= $th ? 'en' : 'th' ?>"><i class="ti ti-world"></i> <?= $th ? 'EN' : 'ไทย' ?></a>
             <a class="cta" href="#download"><?= e($T['cta']) ?> <i class="ti ti-arrow-right"></i></a>
         </nav>
