@@ -8,6 +8,8 @@ mod button_demo;
 mod button_demo_ui;
 mod calendar_demo;
 mod calendar_demo_ui;
+mod chart_demo;
+mod chart_demo_ui;
 mod checkbox_demo;
 mod checkbox_demo_ui;
 mod checkedlist_demo;
@@ -94,6 +96,7 @@ fn main() {
         "bindingsource" => bindingsource_demo_ui::BindingsourceDemoUi::run(bindingsource_demo::BindingsourceDemo::default()),
         "button" => button_demo_ui::ButtonDemoUi::run(button_demo::ButtonDemo::default()),
         "calendar" => calendar_demo_ui::CalendarDemoUi::run(calendar_demo::CalendarDemo::default()),
+        "chart" => chart_demo_ui::ChartDemoUi::run(chart_demo::ChartDemo::default()),
         "checkbox" => checkbox_demo_ui::CheckboxDemoUi::run(checkbox_demo::CheckboxDemo::default()),
         "checkedlist" => checkedlist_demo_ui::CheckedlistDemoUi::run(checkedlist_demo::CheckedlistDemo::default()),
         "colordialog" => colordialog_demo_ui::ColordialogDemoUi::run(colordialog_demo::ColordialogDemo::default()),

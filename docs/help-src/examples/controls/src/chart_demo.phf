@@ -1,0 +1,58 @@
+# Phai Studio form - docs/phaiform.md
+format = 1
+
+[form]
+name = "ChartDemo"
+title = "Chart"
+size = [660, 340]
+start = "center"
+
+[[control]]
+kind = "chart"
+id = "sales"
+text = "Sales by month"
+bounds = [16, 16, 306, 250]
+items = ["Month, Sales, Cost", "Jan, 120, 80", "Feb, 150, 95", "Mar, 135, 90", "Apr, 180, 110", "May, 210, 120", "Jun, 195, 130"]
+
+[[control]]
+kind = "chart"
+id = "price"
+text = "Live price"
+bounds = [338, 16, 306, 250]
+items = ["Time, Price"]
+chart_type = "line"
+max_points = 30
+
+[[control]]
+kind = "button"
+id = "column"
+text = "Columns"
+bounds = [16, 280, 96, 30]
+on_click = "column_clicked"
+
+[[control]]
+kind = "button"
+id = "line"
+text = "Lines"
+bounds = [121, 280, 96, 30]
+on_click = "line_clicked"
+
+[[control]]
+kind = "button"
+id = "pie"
+text = "Pie"
+bounds = [226, 280, 96, 30]
+on_click = "pie_clicked"
+
+[[control]]
+kind = "button"
+id = "start_stop"
+text = "Stop"
+bounds = [338, 280, 120, 30]
+on_click = "start_stop_clicked"
+
+[[control]]
+kind = "timer"
+id = "clock"
+on_tick = "clock_ticked"
+value = 500

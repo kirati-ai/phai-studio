@@ -5005,6 +5005,569 @@
     },
     {
       "component": false,
+      "event": null,
+      "events": [
+        {
+          "arg": null,
+          "category": "การกระทำ",
+          "help": "ถูกดับเบิลคลิก",
+          "key": "double_click",
+          "name": "DoubleClick"
+        },
+        {
+          "arg": null,
+          "category": "เมาส์",
+          "help": "เมาส์เลื่อนเข้ามาบนตัวนี้",
+          "key": "mouse_enter",
+          "name": "MouseEnter"
+        },
+        {
+          "arg": null,
+          "category": "เมาส์",
+          "help": "เมาส์เลื่อนออกจากตัวนี้",
+          "key": "mouse_leave",
+          "name": "MouseLeave"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "กดปุ่มเมาส์บนตัวนี้ - e.x, e.y, e.button",
+          "key": "mouse_down",
+          "name": "MouseDown"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "ปล่อยปุ่มเมาส์บนตัวนี้",
+          "key": "mouse_up",
+          "name": "MouseUp"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "เมาส์เคลื่อนบนตัวนี้",
+          "key": "mouse_move",
+          "name": "MouseMove"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "หมุนลูกล้อเมาส์บน control - e.delta ทีละ 120 ต่อหนึ่งจังหวะ มากกว่า 0 คือหมุนออกจากตัว",
+          "key": "mouse_wheel",
+          "name": "MouseWheel"
+        },
+        {
+          "arg": null,
+          "category": "การจัดวาง",
+          "help": "ขนาดเปลี่ยน - หน้าต่างถูกย่อขยายและตัวนี้ยึดขอบหรือ dock ไว้",
+          "key": "resize",
+          "name": "Resize"
+        },
+        {
+          "arg": "phai_ui::events::FileDropEventArgs",
+          "category": "การกระทำ",
+          "help": "มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)",
+          "key": "drag_drop",
+          "name": "DragDrop"
+        }
+      ],
+      "group": 1,
+      "label": "หน้าเว็บ",
+      "properties": [
+        {
+          "category": "ออกแบบ",
+          "default": "browser",
+          "help": "ชื่อ control ในโค้ด และ #id ใน CSS",
+          "name": "รหัส",
+          "part": false
+        },
+        {
+          "category": "ออกแบบ",
+          "default": "",
+          "help": "คลาส CSS จากธีม เช่น primary หลายคลาสคั่นด้วยช่องว่าง",
+          "name": "คลาส",
+          "part": false
+        },
+        {
+          "category": "ออกแบบ",
+          "default": "False",
+          "help": "ล็อกไว้: เมาส์และปุ่มลูกศรจะไม่ย้ายหรือปรับขนาดในหน้าออกแบบ",
+          "name": "ล็อก",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "Segoe UI, 9pt",
+          "help": "ขนาดและน้ำหนักของตัวอักษร - Segoe UI, 9pt คือของ Windows",
+          "name": "ฟอนต์",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ขนาดตัวอักษร (พอยต์) ของ control นี้ ทับของฟอร์ม",
+          "name": "ขนาดฟอนต์",
+          "part": true
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "False",
+          "help": "แสดงข้อความเป็นตัวหนา",
+          "name": "ตัวหนา",
+          "part": true
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีพื้นหลัง ทับธีม - เขียนเป็น CSS #id { background }",
+          "name": "สีพื้น",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีข้อความ ทับธีม - #id { color }",
+          "name": "สีตัวอักษร",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีขอบ ทับธีม - #id { border-color }",
+          "name": "สีขอบ",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ความมนของมุม เป็นพิกเซล - #id { border-radius }",
+          "name": "มุมมน",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "True",
+          "help": "ใช้งานได้ หรือแสดงเป็นสีเทา",
+          "name": "ใช้งานได้",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "True",
+          "help": "แสดงเมื่อเปิดหน้าต่างหรือไม่",
+          "name": "มองเห็น",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "12, 12",
+          "help": "มุมซ้ายบนนับจากของฟอร์ม ที่สเกล 100%",
+          "name": "ตำแหน่ง",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "12",
+          "help": "ระยะจากซ้ายของฟอร์ม ที่สเกล 100%",
+          "name": "X",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "12",
+          "help": "ระยะจากบนของฟอร์ม ที่สเกล 100%",
+          "name": "Y",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "120, 24",
+          "help": "ความกว้างและความสูง ที่สเกล 100%",
+          "name": "ขนาด",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "120",
+          "help": "ที่สเกล 100%",
+          "name": "กว้าง",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "24",
+          "help": "ที่สเกล 100%",
+          "name": "สูง",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "none",
+          "help": "ติดขอบหนึ่งของฟอร์ม หรือเต็มพื้นที่ที่เหลือ",
+          "name": "ติดขอบ",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "left top",
+          "help": "ขอบที่รักษาระยะไว้เมื่อหน้าต่างขยาย",
+          "name": "ยึดขอบ",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ข้อความที่ขึ้นเมื่อวางเมาส์ค้างไว้",
+          "name": "ToolTip",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "default",
+          "help": "รูปตัวชี้เมาส์เมื่ออยู่บนตัวนี้",
+          "name": "Cursor",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ความหนาของขอบ (พิกเซล) - #id { border-width }",
+          "name": "Border width",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีเคลื่อนไหวเอง: blink 1s infinite (กะพริบ), pulse 1.5s infinite (เต้น), fade-in 400ms (ค่อย ๆ ปรากฏ) หรือ @keyframes ในธีม - #id { animation }",
+          "name": "Animation",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "แบบตัวอักษรของข้อความ เช่น Consolas สำหรับ log ส่วน Segoe UI คือแบบของ Windows เอง",
+          "name": "FontFamily",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน เช่น 150ms, 0.3s ease-out - #id { transition }",
+          "name": "Transition",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "False",
+          "help": "ลากไฟล์จาก Explorer มาวางได้ - ใช้ event DragDrop",
+          "name": "AllowDrop",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "",
+          "help": "หน้าเว็บที่เปิด - https://... - หรือเว้นว่างเพื่อเปิดหน้าว่าง",
+          "name": "Source",
+          "part": false
+        }
+      ],
+      "tag": "browser",
+      "type": "WebBrowser"
+    },
+    {
+      "component": false,
+      "event": null,
+      "events": [
+        {
+          "arg": null,
+          "category": "การกระทำ",
+          "help": "ถูกดับเบิลคลิก",
+          "key": "double_click",
+          "name": "DoubleClick"
+        },
+        {
+          "arg": null,
+          "category": "เมาส์",
+          "help": "เมาส์เลื่อนเข้ามาบนตัวนี้",
+          "key": "mouse_enter",
+          "name": "MouseEnter"
+        },
+        {
+          "arg": null,
+          "category": "เมาส์",
+          "help": "เมาส์เลื่อนออกจากตัวนี้",
+          "key": "mouse_leave",
+          "name": "MouseLeave"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "กดปุ่มเมาส์บนตัวนี้ - e.x, e.y, e.button",
+          "key": "mouse_down",
+          "name": "MouseDown"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "ปล่อยปุ่มเมาส์บนตัวนี้",
+          "key": "mouse_up",
+          "name": "MouseUp"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "เมาส์เคลื่อนบนตัวนี้",
+          "key": "mouse_move",
+          "name": "MouseMove"
+        },
+        {
+          "arg": "phai_ui::events::MouseEventArgs",
+          "category": "เมาส์",
+          "help": "หมุนลูกล้อเมาส์บน control - e.delta ทีละ 120 ต่อหนึ่งจังหวะ มากกว่า 0 คือหมุนออกจากตัว",
+          "key": "mouse_wheel",
+          "name": "MouseWheel"
+        },
+        {
+          "arg": null,
+          "category": "การจัดวาง",
+          "help": "ขนาดเปลี่ยน - หน้าต่างถูกย่อขยายและตัวนี้ยึดขอบหรือ dock ไว้",
+          "key": "resize",
+          "name": "Resize"
+        },
+        {
+          "arg": "phai_ui::events::FileDropEventArgs",
+          "category": "การกระทำ",
+          "help": "มีของถูกวางลงมา: ไฟล์จาก Explorer (e.files) หรือข้อความที่ลากมาจาก control อื่น (e.text, e.source)",
+          "key": "drag_drop",
+          "name": "DragDrop"
+        }
+      ],
+      "group": 1,
+      "label": "กราฟ",
+      "properties": [
+        {
+          "category": "ออกแบบ",
+          "default": "chart",
+          "help": "ชื่อ control ในโค้ด และ #id ใน CSS",
+          "name": "รหัส",
+          "part": false
+        },
+        {
+          "category": "ออกแบบ",
+          "default": "",
+          "help": "คลาส CSS จากธีม เช่น primary หลายคลาสคั่นด้วยช่องว่าง",
+          "name": "คลาส",
+          "part": false
+        },
+        {
+          "category": "ออกแบบ",
+          "default": "False",
+          "help": "ล็อกไว้: เมาส์และปุ่มลูกศรจะไม่ย้ายหรือปรับขนาดในหน้าออกแบบ",
+          "name": "ล็อก",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "Sales by month",
+          "help": "ข้อความที่แสดง - คีย์ภาษาอังกฤษ โปรแกรมแปลให้",
+          "name": "ข้อความ",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "Segoe UI, 9pt",
+          "help": "ขนาดและน้ำหนักของตัวอักษร - Segoe UI, 9pt คือของ Windows",
+          "name": "ฟอนต์",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ขนาดตัวอักษร (พอยต์) ของ control นี้ ทับของฟอร์ม",
+          "name": "ขนาดฟอนต์",
+          "part": true
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "False",
+          "help": "แสดงข้อความเป็นตัวหนา",
+          "name": "ตัวหนา",
+          "part": true
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีพื้นหลัง ทับธีม - เขียนเป็น CSS #id { background }",
+          "name": "สีพื้น",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีข้อความ ทับธีม - #id { color }",
+          "name": "สีตัวอักษร",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีขอบ ทับธีม - #id { border-color }",
+          "name": "สีขอบ",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ความมนของมุม เป็นพิกเซล - #id { border-radius }",
+          "name": "มุมมน",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "True",
+          "help": "ใช้งานได้ หรือแสดงเป็นสีเทา",
+          "name": "ใช้งานได้",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "True",
+          "help": "แสดงเมื่อเปิดหน้าต่างหรือไม่",
+          "name": "มองเห็น",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "12, 12",
+          "help": "มุมซ้ายบนนับจากของฟอร์ม ที่สเกล 100%",
+          "name": "ตำแหน่ง",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "12",
+          "help": "ระยะจากซ้ายของฟอร์ม ที่สเกล 100%",
+          "name": "X",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "12",
+          "help": "ระยะจากบนของฟอร์ม ที่สเกล 100%",
+          "name": "Y",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "120, 24",
+          "help": "ความกว้างและความสูง ที่สเกล 100%",
+          "name": "ขนาด",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "120",
+          "help": "ที่สเกล 100%",
+          "name": "กว้าง",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "24",
+          "help": "ที่สเกล 100%",
+          "name": "สูง",
+          "part": true
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "none",
+          "help": "ติดขอบหนึ่งของฟอร์ม หรือเต็มพื้นที่ที่เหลือ",
+          "name": "ติดขอบ",
+          "part": false
+        },
+        {
+          "category": "การจัดวาง",
+          "default": "left top",
+          "help": "ขอบที่รักษาระยะไว้เมื่อหน้าต่างขยาย",
+          "name": "ยึดขอบ",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ข้อความที่ขึ้นเมื่อวางเมาส์ค้างไว้",
+          "name": "ToolTip",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "default",
+          "help": "รูปตัวชี้เมาส์เมื่ออยู่บนตัวนี้",
+          "name": "Cursor",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "ความหนาของขอบ (พิกเซล) - #id { border-width }",
+          "name": "Border width",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีเคลื่อนไหวเอง: blink 1s infinite (กะพริบ), pulse 1.5s infinite (เต้น), fade-in 400ms (ค่อย ๆ ปรากฏ) หรือ @keyframes ในธีม - #id { animation }",
+          "name": "Animation",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "แบบตัวอักษรของข้อความ เช่น Consolas สำหรับ log ส่วน Segoe UI คือแบบของ Windows เอง",
+          "name": "FontFamily",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "",
+          "help": "สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน เช่น 150ms, 0.3s ease-out - #id { transition }",
+          "name": "Transition",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "False",
+          "help": "ลากไฟล์จาก Explorer มาวางได้ - ใช้ event DragDrop",
+          "name": "AllowDrop",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "column",
+          "help": "วาดเป็นอะไร: แท่งตั้ง แท่งนอน เส้น พื้นที่ วงกลมหรือโดนัทของชุดข้อมูลแรก หรือแท่งเทียน (เปิด สูงสุด ต่ำสุด ปิด)",
+          "name": "ChartType",
+          "part": false
+        },
+        {
+          "category": "รูปลักษณ์",
+          "default": "True",
+          "help": "แสดงสีและชื่อของแต่ละชุดข้อมูลด้านบน (ข้างวงกลมสำหรับกราฟวงกลม)",
+          "name": "Legend",
+          "part": false
+        },
+        {
+          "category": "พฤติกรรม",
+          "default": "0",
+          "help": "เก็บจุดข้อมูลไว้กี่จุดเมื่อเพิ่มด้วย add_point จุดเก่าสุดหายไปก่อน 0 คือเก็บทั้งหมด",
+          "name": "MaxPoints",
+          "part": false
+        }
+      ],
+      "tag": "chart",
+      "type": "Chart"
+    },
+    {
+      "component": false,
       "event": "on_change",
       "events": [
         {
