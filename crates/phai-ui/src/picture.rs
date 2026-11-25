@@ -55,27 +55,83 @@ pub(crate) fn load(path: &Path) -> Option<Image> {
         let factory: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).ok()?;
         let name = HSTRING::from(path.as_os_str());
         let decoder = factory.CreateDecoderFromFilename(&name, None, GENERIC_READ, WICDecodeMetadataCacheOnDemand).ok()?;
-        let frame = decoder.GetFrame(0).ok()?;
-        let conv = factory.CreateFormatConverter().ok()?;
-        conv.Initialize(&frame, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None, 0.0, WICBitmapPaletteTypeCustom).ok()?;
-        let (mut w, mut h) = (0u32, 0u32);
-        conv.GetSize(&mut w, &mut h).ok()?;
-        if w == 0 || h == 0 || w > 16384 || h > 16384 {
-            return None;
+        decode(&factory, &decoder, None)
+    }
+}
+
+/// The first frame of `decoder` as a premultiplied 32-bit bitmap - made at most `fit` (width,
+/// height) when given, its shape kept, with Windows' good scaling rather than a blur at draw time.
+unsafe fn decode(factory: &IWICImagingFactory, decoder: &IWICBitmapDecoder, fit: Option<(i32, i32)>) -> Option<Image> {
+    let frame = decoder.GetFrame(0).ok()?;
+    let (mut w, mut h) = (0u32, 0u32);
+    frame.GetSize(&mut w, &mut h).ok()?;
+    if w == 0 || h == 0 || w > 16384 || h > 16384 {
+        return None;
+    }
+    let source: IWICBitmapSource = match fit {
+        Some((mw, mh)) if mw > 0 && mh > 0 && (w as i32 > mw || h as i32 > mh) => {
+            let to = self::fit(RECT { left: 0, top: 0, right: mw, bottom: mh }, w as i32, h as i32);
+            let (tw, th) = ((to.right - to.left).max(1) as u32, (to.bottom - to.top).max(1) as u32);
+            let scaler = factory.CreateBitmapScaler().ok()?;
+            scaler.Initialize(&frame, tw, th, WICBitmapInterpolationModeHighQualityCubic).ok()?;
+            w = tw;
+            h = th;
+            windows::core::Interface::cast(&scaler).ok()?
         }
-        let info = Gdi::BITMAPINFO {
-            bmiHeader: Gdi::BITMAPINFOHEADER { biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32, biWidth: w as i32, biHeight: -(h as i32), biPlanes: 1, biBitCount: 32, biCompression: Gdi::BI_RGB.0, ..Default::default() },
-            ..Default::default()
-        };
-        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let bmp = Gdi::CreateDIBSection(None, &info, Gdi::DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
-        let stride = w * 4;
-        let buf = std::slice::from_raw_parts_mut(bits as *mut u8, (stride * h) as usize);
-        if conv.CopyPixels(std::ptr::null(), stride, buf).is_err() {
-            let _ = Gdi::DeleteObject(bmp.into());
-            return None;
+        _ => windows::core::Interface::cast(&frame).ok()?,
+    };
+    let conv = factory.CreateFormatConverter().ok()?;
+    conv.Initialize(&source, &GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, None, 0.0, WICBitmapPaletteTypeCustom).ok()?;
+    let info = Gdi::BITMAPINFO {
+        bmiHeader: Gdi::BITMAPINFOHEADER { biSize: std::mem::size_of::<Gdi::BITMAPINFOHEADER>() as u32, biWidth: w as i32, biHeight: -(h as i32), biPlanes: 1, biBitCount: 32, biCompression: Gdi::BI_RGB.0, ..Default::default() },
+        ..Default::default()
+    };
+    let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+    let bmp = Gdi::CreateDIBSection(None, &info, Gdi::DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+    let stride = w * 4;
+    let buf = std::slice::from_raw_parts_mut(bits as *mut u8, (stride * h) as usize);
+    if conv.CopyPixels(std::ptr::null(), stride, buf).is_err() {
+        let _ = Gdi::DeleteObject(bmp.into());
+        return None;
+    }
+    Some(Image { bmp, w: w as i32, h: h as i32 })
+}
+
+/// A picture made ready to draw again and again - a list's small pictures, say - without
+/// reading it each time.
+pub struct Bitmap(Image);
+
+impl Bitmap {
+    /// A PNG, JPEG, BMP or GIF held in memory, made at most `max_w` by `max_h` device pixels (its
+    /// shape kept; a smaller one stays as it is).
+    pub fn from_bytes(bytes: &[u8], max_w: i32, max_h: i32) -> Option<Bitmap> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let factory: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).ok()?;
+            let stream = factory.CreateStream().ok()?;
+            stream.InitializeFromMemory(bytes).ok()?;
+            let decoder = factory.CreateDecoderFromStream(&stream, std::ptr::null(), WICDecodeMetadataCacheOnDemand).ok()?;
+            decode(&factory, &decoder, Some((max_w, max_h))).map(Bitmap)
         }
-        Some(Image { bmp, w: w as i32, h: h as i32 })
+    }
+
+    /// Its width and height.
+    pub fn size(&self) -> (i32, i32) {
+        (self.0.w, self.0.h)
+    }
+
+    /// Drawn on `dc` as large as fits in `r`, its shape kept, in the middle; where it went.
+    pub fn draw_in(&self, dc: Gdi::HDC, r: RECT) -> RECT {
+        let to = fit(r, self.0.w, self.0.h);
+        unsafe {
+            let src = Gdi::CreateCompatibleDC(Some(dc));
+            let old = Gdi::SelectObject(src, self.0.bmp.into());
+            let blend = Gdi::BLENDFUNCTION { BlendOp: 0, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: 1 /* AC_SRC_ALPHA */ };
+            let _ = Gdi::AlphaBlend(dc, to.left, to.top, to.right - to.left, to.bottom - to.top, src, 0, 0, self.0.w, self.0.h, blend);
+            Gdi::SelectObject(src, old);
+            let _ = Gdi::DeleteDC(src);
+        }
+        to
     }
 }
 
