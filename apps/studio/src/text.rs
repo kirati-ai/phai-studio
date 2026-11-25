@@ -1049,6 +1049,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Its colours change over time when its state does: 150ms, 0.3s ease-out - #id { transition }.", "สีค่อย ๆ เปลี่ยนเมื่อสถานะเปลี่ยน เช่น 150ms, 0.3s ease-out - #id { transition }"),
     ("A class's name: letters, digits and -, not starting with a digit.", "ชื่อ class: ตัวอักษร ตัวเลข และ - ห้ามขึ้นต้นด้วยตัวเลข"),
     ("Theme: {0} - the project's", "ธีม: {0} - ของโปรเจกต์"),
+    ("The page it opens - https://... - or empty for a blank page.", "หน้าเว็บที่เปิด - https://... - หรือเว้นว่างเพื่อเปิดหน้าว่าง"),
     ("The form has no theme - choose or make one in the Theme menu first.", "ฟอร์มนี้ยังไม่มีธีม - เลือกหรือสร้างธีมในเมนู Theme ก่อน"),
     ("{0} is in {1} now", "ย้าย {0} ไปไว้ใน {1} แล้ว"),
     ("Style", "สไตล์"),
