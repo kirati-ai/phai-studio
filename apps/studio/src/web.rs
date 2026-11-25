@@ -250,7 +250,11 @@ pub fn build(project: &Path, mut say: impl FnMut(&str)) -> Result<WebBuild, Stri
 
     say("cargo build --target wasm32-unknown-unknown --release");
     let cargo = crate::cargo::find_cargo().ok_or("cargo is not installed - rustup.rs")?;
-    let out = Command::new(&cargo).args(["build", "--release", "--target", "wasm32-unknown-unknown", "--message-format=short"]).env("RUSTFLAGS", remapped_paths(project)).current_dir(project).output().map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(&cargo);
+    cmd.args(["build", "--release", "--target", "wasm32-unknown-unknown", "--message-format=short"]);
+    // The program a web page hands to anyone: this computer's folders kept out of it.
+    crate::cargo::hide_folders(&mut cmd, project);
+    let out = cmd.current_dir(project).output().map_err(|e| e.to_string())?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).to_string();
         if err.contains("target may not be installed") || err.contains("can't find crate for `core`") || err.contains("can't find crate for `std`") {
@@ -430,35 +434,6 @@ pub fn scaled_icon(file: &Path, size: u32, back: (u8, u8, u8)) -> Option<Vec<u8>
         w.write_image_data(&px).ok()?;
     }
     Some(out)
-}
-
-/// RUSTFLAGS that keep this computer's folders out of the program a web page hands to anyone:
-/// the project, the Phai libraries, cargo's downloads and Rust's own library each by a short name
-/// in the places a panic would name.
-fn remapped_paths(project: &Path) -> String {
-    let mut pairs: Vec<(PathBuf, &str)> = vec![(project.to_path_buf(), "app")];
-    if let Some(libs) = phai_web_path().parent().map(Path::to_path_buf) {
-        pairs.push((libs, "phai"));
-    }
-    let cargo_home = std::env::var_os("CARGO_HOME").map(PathBuf::from).or_else(|| std::env::var_os("USERPROFILE").map(|h| PathBuf::from(h).join(".cargo")));
-    if let Some(h) = cargo_home {
-        pairs.push((h, "cargo"));
-    }
-    if let Ok(out) = Command::new("rustc").args(["--print", "sysroot"]).output() {
-        let root = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !root.is_empty() {
-            pairs.push((PathBuf::from(root), "rust"));
-        }
-    }
-    let mut flags: Vec<String> = std::env::var("RUSTFLAGS").ok().filter(|s| !s.is_empty()).into_iter().collect();
-    for (from, to) in pairs {
-        let from = from.canonicalize().map(|p| PathBuf::from(p.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or(from);
-        // Spaces would split RUSTFLAGS; such a folder keeps its name.
-        if !from.to_string_lossy().contains(' ') {
-            flags.push(format!("--remap-path-prefix={}={to}", from.display()));
-        }
-    }
-    flags.join(" ")
 }
 
 /// Where cargo puts the project's builds: `CARGO_TARGET_DIR`, else `target`.

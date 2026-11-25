@@ -7266,6 +7266,10 @@ impl Studio {
         if let Some(b) = self.bottom.as_ref() {
             b.add_line(&said);
             b.add_line(&setup_path.display().to_string());
+            // The program is handed to others: a folder of this computer still in it is said.
+            for left in cargo::folders_left_in(&bytes, &dir) {
+                b.add_line(&tf("Warning: the program still names {0} - who gets it can read that", &[&left.display().to_string()]));
+            }
         }
         self.say_status(&said);
         if PUBLISH_TEST.load(Ordering::Relaxed) {

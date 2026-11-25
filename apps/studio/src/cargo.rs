@@ -376,6 +376,95 @@ pub fn find_cargo() -> Option<PathBuf> {
     places.into_iter().map(|d| d.join("cargo.exe")).find(|p| p.is_file())
 }
 
+/// This computer's folders and the short names a Release build gives them instead, so the
+/// program handed to others does not carry `C:\Users\<name>\...`: a panic's place, the paths
+/// of the libraries and of Rust's own library read `app\src\..`, `cargo\registry\..`,
+/// `rustup\toolchains\..`. The home folder is `~` for anything else under it (a library of the
+/// project's own next to it). The wider folders come first, since rustc takes the last that fits.
+pub fn hidden_folders(project: &Path) -> Vec<(PathBuf, &'static str)> {
+    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
+    let mut pairs: Vec<(PathBuf, &'static str)> = Vec::new();
+    if let Some(h) = &home {
+        pairs.push((h.clone(), "~"));
+    }
+    if let Some(c) = std::env::var_os("CARGO_HOME").map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".cargo"))) {
+        pairs.push((c, "cargo"));
+    }
+    if let Some(r) = std::env::var_os("RUSTUP_HOME").map(PathBuf::from).or_else(|| home.as_ref().map(|h| h.join(".rustup"))) {
+        pairs.push((r, "rustup"));
+    }
+    if let Some(libs) = crate::web::phai_web_path().parent() {
+        pairs.push((libs.to_path_buf(), "phai"));
+    }
+    if let Some(t) = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from) {
+        pairs.push((t, "target"));
+    }
+    pairs.push((project.to_path_buf(), "app"));
+    // Each as it was given and as the disk names it (a junction followed), once.
+    let mut out: Vec<(PathBuf, &'static str)> = Vec::new();
+    for (p, to) in pairs {
+        let disk = p.canonicalize().map(|c| PathBuf::from(c.to_string_lossy().trim_start_matches(r"\\?\"))).unwrap_or_else(|_| p.clone());
+        for form in [p, disk] {
+            if form.is_absolute() && !out.iter().any(|(q, _)| q == &form) {
+                out.push((form, to));
+            }
+        }
+    }
+    out.sort_by_key(|(p, _)| p.components().count());
+    out
+}
+
+/// `--config` for cargo that adds rustc flags to the project's own (its .cargo/config's are kept;
+/// RUSTFLAGS would replace them), each a TOML string so a folder with spaces stays one flag.
+pub fn rustflags_config(flags: &[String]) -> String {
+    let items: Vec<String> = flags.iter().map(|f| format!("\"{}\"", f.replace('\\', "\\\\").replace('"', "\\\""))).collect();
+    format!("build.rustflags = [{}]", items.join(", "))
+}
+
+/// A Release build's cargo command given [`hidden_folders`]. Set RUSTFLAGS or
+/// CARGO_ENCODED_RUSTFLAGS win over `--config`, so then the flags go on the end of those.
+pub fn hide_folders(cmd: &mut Command, project: &Path) {
+    let flags: Vec<String> = hidden_folders(project).iter().map(|(from, to)| format!("--remap-path-prefix={}={to}", from.display())).collect();
+    if let Some(own) = std::env::var("CARGO_ENCODED_RUSTFLAGS").ok().filter(|s| !s.is_empty()) {
+        let mut all = vec![own];
+        all.extend(flags);
+        cmd.env("CARGO_ENCODED_RUSTFLAGS", all.join("\u{1f}"));
+    } else if let Some(own) = std::env::var("RUSTFLAGS").ok().filter(|s| !s.trim().is_empty()) {
+        // Spaces split RUSTFLAGS: such a folder keeps its name.
+        let mut all = vec![own];
+        all.extend(flags.into_iter().filter(|f| !f.contains(' ')));
+        cmd.env("RUSTFLAGS", all.join(" "));
+    } else {
+        cmd.arg("--config").arg(rustflags_config(&flags));
+    }
+}
+
+/// A file a Release build's message names by its short name (`phai\phai-ui\src\grid.rs`) as
+/// it is on this computer, so the Error List still opens it.
+pub fn unhide(file: &Path, project: &Path) -> Option<PathBuf> {
+    let mut parts = file.components();
+    let first = parts.next()?.as_os_str().to_str()?.to_string();
+    let rest = parts.as_path();
+    hidden_folders(project).into_iter().rev().filter(|(_, to)| *to == first).map(|(from, _)| from.join(rest)).find(|p| p.exists())
+}
+
+/// Folders of this computer still in a built program (a Publish's check): the home folder and
+/// the project, as bytes and as UTF-16.
+pub fn folders_left_in(program: &[u8], project: &Path) -> Vec<PathBuf> {
+    let has = |s: &str| {
+        let wide: Vec<u8> = s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        program.windows(s.len()).any(|w| w.eq_ignore_ascii_case(s.as_bytes())) || program.windows(wide.len()).any(|w| w.eq_ignore_ascii_case(&wide))
+    };
+    let mut out = Vec::new();
+    for p in [std::env::var_os("USERPROFILE").map(PathBuf::from), Some(project.to_path_buf())].into_iter().flatten() {
+        let s = p.to_string_lossy().to_string();
+        if s.len() > 3 && has(&s) && !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    out
+}
+
 /// Rust code as rustfmt writes it - the project's edition, its `rustfmt.toml` if it has one.
 pub fn rustfmt(code: &str, file: &Path) -> Result<String, String> {
     use std::io::Write;
@@ -482,8 +571,11 @@ pub fn take_line(line: &str, project: &Path, wanted_manifest: &Path, out: &mut O
                     let p = PathBuf::from(&s.file_name);
                     if p.is_absolute() {
                         p
-                    } else {
+                    } else if project.join(&p).exists() {
                         project.join(p)
+                    } else {
+                        // A Release build names this computer's folders by their short names.
+                        unhide(&p, project).unwrap_or_else(|| project.join(p))
                     }
                 }),
                 line: span.map(|s| s.line_start).unwrap_or(0),
@@ -646,10 +738,13 @@ fn step(target: isize, project: &Path, args: &[String], out: &mut Outcome) {
                 let manifest = project.join("Cargo.toml");
                 post_line(target, format!("> cargo {} --manifest-path {}", args.join(" "), manifest.display()));
                 out.ok = false;
-                let child = Command::new(cargo)
-                    .args(args)
-                    .arg("--manifest-path")
-                    .arg(&manifest)
+                let mut cmd = Command::new(cargo);
+                cmd.args(args).arg("--manifest-path").arg(&manifest);
+                // A Release build is the one handed to others: this computer's folders kept out.
+                if args.iter().any(|a| a == "--release") && args.first().is_some_and(|a| a != "clean") {
+                    hide_folders(&mut cmd, project);
+                }
+                let child = cmd
                     .current_dir(project)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -815,5 +910,79 @@ mod tests {
         // version.workspace = true is replaced by a version of its own.
         let w = with_package_field("[package]\nname = \"a\"\nversion.workspace = true\n", "version", "2.0.0", false);
         assert!(w.contains("version = \"2.0.0\"") && !w.contains("workspace"));
+    }
+
+    #[test]
+    fn release_flags_keep_a_folder_with_spaces_whole_in_toml() {
+        let c = rustflags_config(&[r"--remap-path-prefix=C:\Users\A B\x=app".into(), "-Cfoo=\"q\"".into()]);
+        assert_eq!(c, r#"build.rustflags = ["--remap-path-prefix=C:\\Users\\A B\\x=app", "-Cfoo=\"q\""]"#);
+    }
+
+    #[test]
+    fn the_home_folder_first_and_the_project_last() {
+        let project = std::env::temp_dir().join("phai-hide-order");
+        let f = hidden_folders(&project);
+        let names: Vec<&str> = f.iter().map(|(_, t)| *t).collect();
+        assert_eq!(names.first(), Some(&"~"), "{f:?}");
+        assert_eq!(names.last(), Some(&"app"), "{f:?}");
+        let depth: Vec<usize> = f.iter().map(|(p, _)| p.components().count()).collect();
+        assert!(depth.windows(2).all(|w| w[0] <= w[1]), "wider folders first: {f:?}");
+    }
+
+    #[test]
+    fn a_short_name_in_an_error_is_the_file_on_this_computer() {
+        let project = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let libs = crate::web::phai_web_path();
+        let f = unhide(Path::new(r"phai\phai-web\Cargo.toml"), &project).expect("found");
+        assert!(same_file(&f, &libs.join("Cargo.toml")), "{f:?}");
+        assert_eq!(unhide(Path::new(r"app\src\main.rs"), &project).as_deref(), Some(project.join("src").join("main.rs").as_path()));
+        assert_eq!(unhide(Path::new(r"nowhere\x.rs"), &project), None);
+    }
+
+    #[test]
+    fn folders_left_in_a_program_found_as_bytes_and_utf16() {
+        let project = PathBuf::from(r"D:\Somewhere\shop");
+        assert!(folders_left_in(br"..d:\somewhere\SHOP\src\main.rs..", &project).contains(&project));
+        let wide: Vec<u8> = r"D:\Somewhere\shop\a.pdb".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+        assert!(folders_left_in(&wide, &project).contains(&project));
+        assert!(!folders_left_in(br"app\src\main.rs", &project).contains(&project));
+    }
+
+    /// A Release build of a program with a library beside it: none of this computer's folders in
+    /// the exe - and without the flags they are (so the test can see one).
+    #[test]
+    fn a_release_build_keeps_this_computer_s_folders_out() {
+        let Some(cargo) = find_cargo() else { return };
+        let root = std::env::temp_dir().join(format!("phai-hide-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (app, lib) = (root.join("shop"), root.join("helper"));
+        std::fs::create_dir_all(app.join("src")).unwrap();
+        std::fs::create_dir_all(lib.join("src")).unwrap();
+        std::fs::write(lib.join("Cargo.toml"), "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        std::fs::write(lib.join("src").join("lib.rs"), "pub fn third(v: &[u8]) -> u8 { *v.get(2).expect(\"three\") }\n").unwrap();
+        std::fs::write(app.join("Cargo.toml"), format!("[package]\nname = \"shop\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nhelper = {{ path = {:?} }}\n\n[profile.release]\nstrip = true\n", lib.to_string_lossy().replace('\\', "/"))).unwrap();
+        std::fs::write(app.join("src").join("main.rs"), "fn main() { let v: Vec<u8> = std::env::args().map(|a| a.len() as u8).collect(); println!(\"{}\", helper::third(&v)); }\n").unwrap();
+        let build = |hide: bool, dir: &str| {
+            let target = root.join(dir);
+            let mut cmd = Command::new(&cargo);
+            cmd.args(["build", "--release", "--quiet"]).current_dir(&app).env("CARGO_TARGET_DIR", &target).env_remove("RUSTFLAGS").env_remove("CARGO_ENCODED_RUSTFLAGS");
+            if hide {
+                hide_folders(&mut cmd, &app);
+            }
+            let out = cmd.output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            std::fs::read(target.join("release").join("shop.exe")).unwrap()
+        };
+        let lib_text = lib.to_string_lossy().to_string();
+        let plain = build(false, "plain");
+        assert!(plain.windows(lib_text.len()).any(|w| w == lib_text.as_bytes()), "without the flags the library's folder is there");
+        let hidden = build(true, "hidden");
+        assert!(!hidden.windows(lib_text.len()).any(|w| w == lib_text.as_bytes()), "the library's folder is gone");
+        assert_eq!(folders_left_in(&hidden, &app), Vec::<PathBuf>::new());
+        for (from, _) in hidden_folders(&app) {
+            let s = from.to_string_lossy().to_string();
+            assert!(!hidden.windows(s.len()).any(|w| w.eq_ignore_ascii_case(s.as_bytes())), "{s} left in");
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

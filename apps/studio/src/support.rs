@@ -17,7 +17,7 @@ const ID_PICTURE: i32 = 4;
 const ID_LINKS: i32 = 10;
 
 /// The PromptPay QR code (Thai QR Payment), as the owner gave it.
-const PROMPTPAY: &[u8] = include_bytes!("../art/promptpay.png");
+static PROMPTPAY: &[u8] = include_bytes!("../art/promptpay.png");
 
 const REPO: &str = env!("CARGO_PKG_REPOSITORY");
 const W: i32 = 540;

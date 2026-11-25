@@ -611,6 +611,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Offer a desktop shortcut", "เสนอทางลัดบนเดสก์ท็อป"),
     ("phai-setup.exe is not beside Phai Studio, so no setup program can be made.", "ไม่พบ phai-setup.exe ข้าง Phai Studio จึงสร้างตัวติดตั้งไม่ได้"),
     ("Published: {0} ({1} KB) and a portable folder", "เผยแพร่แล้ว: {0} ({1} KB) และโฟลเดอร์แบบพกพา"),
+    ("Warning: the program still names {0} - who gets it can read that", "คำเตือน: ในโปรแกรมยังมีชื่อโฟลเดอร์ {0} อยู่ - คนที่ได้โปรแกรมไปอ่านได้"),
     ("Move Line Up", "ย้ายบรรทัดขึ้น"),
     ("Move Line Down", "ย้ายบรรทัดลง"),
     ("Go To Next Error", "ไปยังข้อผิดพลาดถัดไป"),
