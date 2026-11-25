@@ -179,6 +179,7 @@ $T = $th ? [
     'shotsH' => 'หน้าจอจริง', 'shotsSub' => 'ภาพจากการใช้งานจริง หน้าตาแบบ Windows มาตรฐาน ใช้งานคุ้นมือทันที',
     'shots' => [
         ['designer', 'ออกแบบฟอร์ม', 'ลากวางปุ่ม ช่องกรอก และตาราง แล้วแก้คุณสมบัติในหน้าต่าง Properties'],
+        ['templates', 'เริ่มจากแม่แบบ', 'New Project มีแม่แบบ 13 แบบ ตั้งแต่โปรแกรมหน้าต่างเดียว ฐานข้อมูล รายงาน ไปจนถึงแดชบอร์ดผู้ดูแลระบบ'],
         ['theme', 'แต่งธีม', 'เลือกธีมสำเร็จรูป หรือปรับสีทุกส่วนของหน้าจอ เห็นผลทันทีก่อนบันทึก'],
         ['help', 'คู่มือทุกเครื่องมือ', 'ทุก control ใน Toolbox มีหน้าคู่มือภาษาไทย พร้อมตัวอย่างโค้ด - กด F1 เปิดได้ทันที'],
         ['editor', 'ตัวแก้โค้ด', 'สีตามไวยากรณ์ จำนวนที่ใช้งาน และเติมคำอัตโนมัติด้วย rust-analyzer'],
@@ -192,6 +193,7 @@ $T = $th ? [
     ],
     'shotMore' => [
         'designer' => ['ลากเครื่องมือจาก Toolbox ทางซ้ายมาวางบนฟอร์ม', 'เลือก control แล้วแก้ค่าในหน้าต่าง Properties ทางขวา', 'ดับเบิลคลิก control เพื่อเขียนโค้ดตอนผู้ใช้กด', 'กด F1 เปิดคู่มือของ control ที่เลือกอยู่'],
+        'templates' => ['ค้นหาแม่แบบ แยกเป็นกลุ่ม: พื้นฐาน ทั่วไป งานธุรกิจ แบบที่คุ้นเคย และโรงเรียน', 'เห็นภาพโปรแกรมที่จะได้ก่อนสร้าง', 'ได้ฟอร์ม โค้ด และข้อความภาษาไทยครบ กด F5 รันได้ทันที', 'อ่านโค้ดของแม่แบบเป็นตัวอย่างเรียนรู้ได้'],
         'theme' => ['คลิกธีมสำเร็จรูปด้านบนเพื่อเริ่ม', 'ปรับสีทีละส่วน เช่น สีหลัก พื้นหลัง ตัวอักษร', 'ดูผลในตัวอย่างทางขวาทันที ก่อนกดบันทึก', 'ธีมเป็นไฟล์ CSS ไฟล์เดียว ใช้กับทั้งโปรแกรม'],
         'help' => ['ทุก control ใน Toolbox มีหน้าของตัวเอง 43 หน้า', 'บอกว่าใช้ทำอะไร พร้อมภาพโปรแกรมตัวอย่าง', 'โค้ดตัวอย่างทุกชิ้น build ได้จริง', 'มี Method, Properties และ Events ครบ ค้นหาในเมนูได้'],
         'editor' => ['สีตามไวยากรณ์ของ Rust อ่านง่าย', 'บอกจำนวนที่ถูกเรียกใช้เหนือฟังก์ชันและ struct', 'เติมคำ ไปยังที่ประกาศ เปลี่ยนชื่อ ด้วย rust-analyzer', 'พับโค้ดเป็นส่วน ๆ ได้'],
@@ -424,6 +426,7 @@ $T = $th ? [
     'shotsH' => 'Real screens', 'shotsSub' => 'Taken from real use: a standard Windows look that feels familiar from the start',
     'shots' => [
         ['designer', 'Form designer', 'Drag buttons, text boxes and grids, and set their properties in the Properties window'],
+        ['templates', 'Start from a template', 'New Project has 13 templates, from a one-window program to a database, a report and an admin dashboard'],
         ['theme', 'Theme editor', 'Start from a ready theme or set every colour of the screen, and see it before saving'],
         ['help', 'A guide for every tool', 'Every Toolbox control has its own guide page with examples - F1 opens it'],
         ['editor', 'Code editor', 'Syntax colours, reference counts and completion, with rust-analyzer'],
@@ -437,6 +440,7 @@ $T = $th ? [
     ],
     'shotMore' => [
         'designer' => ['Drag tools from the Toolbox on the left onto the form', 'Choose a control and set it in the Properties window on the right', 'Double-click a control to write what happens when it is used', 'F1 opens the guide page of the chosen control'],
+        'templates' => ['Search the templates, listed in groups: basic, general, business, familiar and school', 'See the program you will get before making it', 'Forms, code and Thai words ready - F5 runs it at once', 'Read the code of a template to learn from it'],
         'theme' => ['Click a ready theme at the top to start from it', 'Set each colour: the accent, backgrounds, words', 'See it in the preview on the right before saving', 'A theme is one CSS file for the whole program'],
         'help' => ['Every Toolbox control has its own page: 43 of them', 'What it is for, with a picture of an example program', 'Every example builds as it stands', 'Its methods, properties and events, and a search over the menu'],
         'editor' => ['Rust in syntax colours, easy to read', 'How many times each function and struct is used, above it', 'Completion, go to definition and rename with rust-analyzer', 'Fold the code into parts'],

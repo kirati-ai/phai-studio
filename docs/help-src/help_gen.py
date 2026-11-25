@@ -8,6 +8,7 @@ OUT = os.path.join(HERE, '..', 'help')
 PAGES = [
     ('index.html', 'หน้าแรก', None),
     ('studio.html', 'ใช้งาน Phai Studio', 'Phai Studio'),
+    ('templates.html', 'เริ่มจากแม่แบบ', 'Phai Studio'),
     ('css.html', 'ตกแต่งหน้าตาด้วย CSS', 'Phai Studio'),
     ('database.html', 'ทำงานกับฐานข้อมูล', 'Phai Studio'),
     ('code.html', 'เขียนโค้ดกับ control', 'Phai Studio'),
@@ -96,6 +97,7 @@ PAGE_ICONS = {
     'winforms.html': _svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 13v7M13 16.5h7"/>'),
     'inspector.html': _svg('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
     'web.html': _svg('<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'),
+    'templates.html': _svg('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>'),
     'report.html': _svg('<path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/>'),
     'publish.html': _svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>'),
 }

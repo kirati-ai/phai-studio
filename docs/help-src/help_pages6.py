@@ -9,6 +9,7 @@ BODY['index.html'] = r'''
 <h2>เริ่มจากตรงไหนดี</h2>
 <div class="cards">
   <a class="card" href="studio.html"><b>ใช้งาน Phai Studio</b><span>สร้างโปรเจกต์ ออกแบบหน้าต่าง เขียนโค้ด รัน และดีบัก</span></a>
+  <a class="card" href="templates.html"><b>เริ่มจากแม่แบบ</b><span>13 โปรแกรมพร้อมรัน: ฐานข้อมูล รายงาน แดชบอร์ด MDI เกม และอื่น ๆ</span></a>
   <a class="card" href="rust-01.html"><b>เรียน Rust ตั้งแต่ศูนย์</b><span>11 บท ตั้งแต่ตัวแปรไปจนถึงเธรด พร้อมแบบฝึกหัด</span></a>
   <a class="card" href="rust-10.html"><b>อ่าน error ของคอมไพเลอร์</b><span>เจอข้อความแดง ๆ แล้วไม่รู้จะทำอะไร เปิดหน้านี้</span></a>
   <a class="card" href="css.html"><b>ตกแต่งหน้าตาด้วย CSS</b><span>สี เส้นขอบ มุมมน ของทั้งโปรแกรม จากไฟล์เดียว</span></a>
@@ -64,7 +65,7 @@ BODY['studio.html'] = r'''
   <li>หน้าเริ่มต้นมีไฟล์ที่เปิดล่าสุด พิมพ์ในช่อง <b>Search recent</b> เพื่อกรอง คลิกขวาที่รายการเพื่อ <b>ปักหมุดไว้บนสุด</b> หรือ <b>เอาออกจากรายการ</b></li>
   <li><b>Clone a repository...</b> ใส่ที่อยู่ของ repository (https://... หรือ git@...) แล้วเลือกโฟลเดอร์ Phai Studio รัน <code>git clone</code> ให้แล้วเปิดโปรเจกต์ต่อเลย</li>
   <li>ด้านล่างมีเคล็ดลับวันละข้อ กด <b>เคล็ดลับถัดไป</b> เพื่อดูข้อต่อไป</li>
-  <li><b>File &gt; New project...</b> ถามก่อนว่าจะทำแบบไหน: <b>โปรแกรม Windows</b> หรือ <b>แอปมือถือ (PWA)</b> ซึ่งได้ฟอร์มขนาดมือถือ และเปิด Device Preview ให้ดูบนจอมือถือทันที (ดู <a href="web.html">เว็บและมือถือ</a>)</li>
+  <li><b>File &gt; New project...</b> เลือกได้ 13 แม่แบบ ตั้งแต่ <b>โปรแกรม Windows</b> และ <b>แอปมือถือ (PWA)</b> ไปจนถึงฐานข้อมูล รายงาน แดชบอร์ดผู้ดูแลระบบ และเกม ดูทั้งหมดที่ <a href="templates.html">เริ่มจากแม่แบบ</a></li>
 </ul>
 
 <h2>หาของให้เจอ</h2>
@@ -298,6 +299,13 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td><kbd>Ctrl+Alt+1</kbd>…<kbd>0</kbd></td><td>เรียกการจัดหน้าต่างที่บันทึกไว้</td><td><kbd>Ctrl+`</kbd></td><td>Terminal</td></tr>
   <tr><td><kbd>Ctrl+Alt+A</kbd></td><td>ผู้ช่วย AI</td><td><kbd>Ctrl+Enter</kbd></td><td>ส่งข้อความถึง Copilot</td></tr>
 </table>
+
+<h2>ถาม ตอบ และสนับสนุน</h2>
+<ul>
+  <li>ติดอะไร อยากถาม หรืออยากอวดโปรแกรมที่ทำ เขียนได้ที่ <a href="https://phai-studio.monrak.net/board" target="_blank" rel="noopener">ชุมชนคนรัก Rust</a> ไม่ต้องสมัคร</li>
+  <li><b>Help &gt; สนับสนุน Phai Studio...</b> มีลิงก์กดดาวบน GitHub แจ้งปัญหา และ QR พร้อมเพย์สำหรับสนับสนุน (QR ซ่อนไว้ กด <b>แสดง QR code</b> ก่อนถึงจะเห็น)</li>
+  <li><b>Help &gt; เกี่ยวกับ Phai Studio</b> บอกรุ่นของ Phai Studio และเครื่องมือที่ใช้ กด <b>Copy info</b> แล้วแนบไปตอนแจ้งปัญหา</li>
+</ul>
 '''
 
 BODY['css.html'] = r'''
@@ -1874,4 +1882,80 @@ fn main_window_shown(&amp;mut self, ui: &amp;MainWindowUi) {
   <li><b>ลองบนเครื่องอื่นก่อน:</b> ติดตั้งบนเครื่องที่ไม่เคยลง Phai Studio หรือ Rust เพื่อดูว่าไม่ขาดไฟล์อะไร โดยเฉพาะไฟล์ที่ต้องใส่ใน Also include</li>
 </ul>
 <div class="note">อยากให้โปรแกรมเปิดในเบราว์เซอร์หรือบนมือถือแทน ดู <a href="web.html">เว็บและมือถือ (PWA)</a> ซึ่งมีคำสั่ง <b>Publish Web App</b> แยกต่างหาก</div>
+'''
+
+BODY['templates.html'] = r'''
+<h1>เริ่มจากแม่แบบ (New Project)</h1>
+<p class="lead">ไม่ต้องเริ่มจากฟอร์มว่าง: Phai Studio มีแม่แบบ 13 แบบ แต่ละแบบเป็นโปรแกรมที่รันได้ทันที มีฟอร์ม โค้ด และข้อความภาษาไทยครบ ใช้ต่อยอดหรืออ่านเป็นตัวอย่างก็ได้</p>
+
+<h2>สร้างโปรเจกต์จากแม่แบบ</h2>
+<ol>
+  <li>กด <b>File &gt; New project...</b> (หรือ <b>New project</b> ในหน้าเริ่มต้น)</li>
+  <li>เลือกแม่แบบจากรายการด้านซ้าย แยกเป็นกลุ่ม: <b>พื้นฐาน</b> <b>ทั่วไป</b> <b>งานธุรกิจ</b> <b>แบบที่คุ้นตา</b> และ <b>สำหรับโรงเรียน</b> พิมพ์ในช่อง <b>ค้นหาแม่แบบ</b> เพื่อกรอง เช่น <code>ฐานข้อมูล</code> หรือ <code>timer</code></li>
+  <li>ด้านขวาเป็นภาพโปรแกรมที่จะได้ ชื่อ และสิ่งที่มันทำ กด <b>ถัดไป...</b> แล้วเลือกโฟลเดอร์ (ชื่อโฟลเดอร์เป็นชื่อโปรเจกต์)</li>
+  <li>Phai Studio สร้างไฟล์ทั้งหมดและเปิดฟอร์มแรกให้ กด <kbd>F5</kbd> รันได้เลย</li>
+</ol>
+<div class="note">ทุกแม่แบบมีฟอร์ม (<code>.phf</code>) โค้ด Rust ของแต่ละฟอร์ม <code>text.rs</code> ที่เก็บข้อความภาษาไทย และ <code>theme.css</code> แก้ได้ทุกไฟล์เหมือนโปรเจกต์ที่เขียนเอง ส่วนไฟล์ <code>_ui.rs</code> ของฟอร์ม Phai Studio เขียนให้ใหม่ทุกครั้งที่บันทึกฟอร์ม อย่าแก้ไฟล์นั้นเอง</div>
+
+<h2>แม่แบบทั้งหมด</h2>
+<div class="tpl" id="windows">
+  <img src="img/tpl-windows.png" alt="โปรแกรม Windows" loading="lazy">
+  <div><h3>โปรแกรม Windows <small>พื้นฐาน</small></h3><p>หน้าต่างที่มีเมนู แถบเครื่องมือ และแถบสถานะ ฟอร์มเปิดเต็มจอ</p><p class="muted">จุดเริ่มต้นที่ว่างที่สุด ลาก control ลงฟอร์มแล้วต่อเติมเองได้ทุกอย่าง</p></div>
+</div>
+<div class="tpl" id="phone">
+  <img src="img/tpl-phone.png" alt="แอปมือถือ (PWA)" loading="lazy">
+  <div><h3>แอปมือถือ (PWA) <small>พื้นฐาน</small></h3><p>ฟอร์มขนาดมือถือ control เรียงลงมาทีละตัว</p><p class="muted">กด <b>Build &gt; รันบนมือถือ</b> แล้วสแกน QR เปิดดูบนมือถือได้ทันที (ดู <a href="web.html">เว็บและมือถือ</a>)</p></div>
+</div>
+<div class="tpl" id="mdi">
+  <img src="img/tpl-mdi.png" alt="โปรแกรมหลายเอกสาร (MDI)" loading="lazy">
+  <div><h3>โปรแกรมหลายเอกสาร (MDI) <small>ทั่วไป</small></h3><p>หน้าต่างหลักที่เปิดเอกสารหลายฉบับไว้ข้างใน มีเมนูแฟ้ม หน้าต่าง และวิธีใช้</p><p class="muted">ฟอร์มลูก (child form) เปิดได้หลายฉบับ จัดเรียงแบบซ้อนหรือเรียงข้างกัน</p></div>
+</div>
+<div class="tpl" id="dialog">
+  <img src="img/tpl-dialog.png" alt="โปรแกรมหน้าต่างเล็ก" loading="lazy">
+  <div><h3>โปรแกรมหน้าต่างเล็ก <small>ทั่วไป</small></h3><p>หน้าต่างเดียวขนาดคงที่ แปลงหน่วยความยาว</p><p class="muted">เหมาะเป็นโปรแกรมแรก: อ่านค่าจากช่องกรอก คำนวณ แล้วแสดงผล</p></div>
+</div>
+<div class="tpl" id="tray">
+  <img src="img/tpl-tray.png" alt="โปรแกรมในถาด" loading="lazy">
+  <div><h3>โปรแกรมในถาด <small>ทั่วไป</small></h3><p>เริ่มแบบซ่อนเป็นไอคอนข้างนาฬิกา เมนูคลิกขวาเปิดหน้าต่างเล็กหรือออกจากโปรแกรม</p><p class="muted">ใช้ Notify icon กับ Context menu สำหรับโปรแกรมที่ทำงานอยู่เบื้องหลัง</p></div>
+</div>
+<div class="tpl" id="records">
+  <img src="img/tpl-records.png" alt="ข้อมูลลูกค้าในฐานข้อมูล" loading="lazy">
+  <div><h3>ข้อมูลลูกค้าในฐานข้อมูล <small>งานธุรกิจ</small></h3><p>เก็บรายชื่อลูกค้าในไฟล์ SQLite (<code>customers.db</code>) ข้างโปรแกรม ค้นหา แก้ไข เพิ่ม และลบได้</p><p class="muted">ตาราง ช่องกรอก และ Binding source ผูกกับฐานข้อมูลด้วย phai-data (ดู <a href="database.html">ทำงานกับฐานข้อมูล</a>)</p></div>
+</div>
+<div class="tpl" id="login">
+  <img src="img/tpl-login.png" alt="เข้าสู่ระบบก่อนใช้งาน" loading="lazy">
+  <div><h3>เข้าสู่ระบบก่อนใช้งาน <small>งานธุรกิจ</small></h3><p>หน้าเข้าสู่ระบบขึ้นก่อน ใส่รหัสถูกจึงเปิดหน้าต่างหลัก ออกจากระบบแล้วกลับมาหน้าเข้าสู่ระบบ</p><p class="muted">ลองด้วยผู้ใช้ <code>admin</code> รหัส <code>1234</code> ตอนทำจริงควรเก็บผู้ใช้ในฐานข้อมูล และเก็บรหัสแบบ hash ไม่เก็บเป็นข้อความตรง ๆ</p></div>
+</div>
+<div class="tpl" id="report">
+  <img src="img/tpl-report.png" alt="รายงานพร้อมดูก่อนพิมพ์" loading="lazy">
+  <div><h3>รายงานพร้อมดูก่อนพิมพ์ <small>งานธุรกิจ</small></h3><p>ยอดขายในตาราง พิมพ์เป็นรายงานแยกตามสาขาพร้อมยอดรวม</p><p class="muted">ดูก่อนพิมพ์ พิมพ์ หรือบันทึกเป็น PDF (ดู <a href="report.html">รายงานพิมพ์</a>)</p></div>
+</div>
+<div class="tpl" id="admin">
+  <img src="img/tpl-admin.png" alt="แดชบอร์ดผู้ดูแลระบบ" loading="lazy">
+  <div><h3>แดชบอร์ดผู้ดูแลระบบ <small>งานธุรกิจ</small></h3><p>หน้าต่างระบบหลังร้าน เมนูสีเข้มด้านซ้าย แถบหัวพร้อมช่องค้นหา การ์ดสรุปตัวเลข เป้าหมาย และหน้าผู้ใช้ คำสั่งซื้อ ตั้งค่า</p><p class="muted">แต่ละหน้าเป็นฟอร์มแยก สลับกันในหน้าต่างเดียว และตกแต่งทั้งหมดด้วย <code>theme.css</code> (ดู <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>)</p></div>
+</div>
+<div class="tpl" id="explorer">
+  <img src="img/tpl-explorer.png" alt="หน้าต่างแบบ Explorer" loading="lazy">
+  <div><h3>หน้าต่างแบบ Explorer <small>แบบที่คุ้นตา</small></h3><p>โฟลเดอร์เป็นต้นไม้ด้านซ้าย ไฟล์ในโฟลเดอร์ที่เลือกพร้อมขนาดและวันที่ด้านขวา</p><p class="muted">Tree view กับ List อ่านไฟล์จริงในเครื่องด้วย <code>std::fs</code></p></div>
+</div>
+<div class="tpl" id="notepad">
+  <img src="img/tpl-notepad.png" alt="โปรแกรมแก้ข้อความ (แบบ Notepad)" loading="lazy">
+  <div><h3>โปรแกรมแก้ข้อความ (แบบ Notepad) <small>แบบที่คุ้นตา</small></h3><p>เปิด บันทึก ค้นหา ตัดบรรทัด เลือกแบบอักษร</p><p class="muted">กล่องเปิด/บันทึกไฟล์ กล่องเลือกแบบอักษร และถามก่อนทิ้งงานที่ยังไม่บันทึก</p></div>
+</div>
+<div class="tpl" id="wizard">
+  <img src="img/tpl-wizard.png" alt="ตัวช่วยทีละขั้น" loading="lazy">
+  <div><h3>ตัวช่วยทีละขั้น <small>แบบที่คุ้นตา</small></h3><p>หน้าต้อนรับ ตัวเลือก รายละเอียด และสรุป พร้อมปุ่มย้อนกลับ ถัดไป เสร็จสิ้น และยกเลิก</p><p class="muted">สลับหน้าในฟอร์มเดียว และเปิด/ปิดปุ่มตามขั้นที่อยู่</p></div>
+</div>
+<div class="tpl" id="game">
+  <img src="img/tpl-game.png" alt="เกมจับลูกบอล (ใช้ Timer)" loading="lazy">
+  <div><h3>เกมจับลูกบอล (ใช้ Timer) <small>สำหรับโรงเรียน</small></h3><p>คลิกลูกบอลที่เด้งไปมาให้ได้มากที่สุดใน 30 วินาที</p><p class="muted">Timer สองตัว: ตัวหนึ่งขยับลูกบอล 50 ครั้งต่อวินาที อีกตัวนับถอยหลัง และวาดเองในเหตุการณ์ Paint เหมาะใช้สอนในห้องเรียน</p></div>
+</div>
+
+<h2>เรียนจากแม่แบบ</h2>
+<ul>
+  <li>เปิดไฟล์ <code>.rs</code> ของฟอร์ม จะเห็นแต่ละเหตุการณ์ (เช่น <code>fn new_clicked</code>) พร้อมคำอธิบายว่าทำอะไร</li>
+  <li>ดับเบิลคลิก control บนฟอร์มเพื่อไปที่โค้ดของมัน หรือดูแท็บ <b>Events</b> ใน Properties ว่าเหตุการณ์ไหนผูกกับฟังก์ชันอะไร</li>
+  <li>ลองแก้ <code>theme.css</code> แล้วดูฟอร์มเปลี่ยนตามทันที</li>
+  <li>ข้อความทุกคำอยู่ใน <code>text.rs</code> โปรแกรมขึ้นภาษาไทยเมื่อเปิดด้วย <code>--thai</code> ไม่ใส่จะเป็นภาษาอังกฤษ</li>
+</ul>
 '''

@@ -136,7 +136,9 @@ pub fn make(owner: HWND) -> HWND {
         win::move_to(cancel, px(w - 16 - 96), px(h - 44), px(96), px(28));
         let rows = rows_for("");
         win::set_state(hwnd, Box::new(Dialog { rows, chosen: None, answer: None, done: false, top: 0, list, picture, name, about, group, font, bold, big }));
-        choose_row(hwnd, first_item(hwnd));
+        // `PHAI_SHOT_TEMPLATE=<key>`: that one chosen, for a picture of it (`--templates`).
+        let wanted = std::env::var("PHAI_SHOT_TEMPLATE").ok().and_then(|k| state(hwnd)?.rows.iter().position(|r| matches!(r, Row::Item(tp) if tp.key == k)));
+        choose_row(hwnd, wanted.or_else(|| first_item(hwnd)));
         let mut r = RECT { left: 0, top: 0, right: px(w), bottom: px(h) };
         let _ = wm::AdjustWindowRectEx(&mut r, wm::WS_POPUP | wm::WS_CAPTION | wm::WS_SYSMENU, false, wm::WS_EX_DLGMODALFRAME);
         let _ = wm::SetWindowPos(hwnd, None, 0, 0, r.right - r.left, r.bottom - r.top, wm::SWP_NOZORDER | wm::SWP_NOMOVE);

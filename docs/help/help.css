@@ -154,3 +154,11 @@ figure img.shot { max-width: 100%; height: auto; border: 1px solid var(--line); 
 figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
 details.common { margin: 12px 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; }
 details.common summary { cursor: pointer; font-weight: 600; }
+
+/* The templates page: each template's picture beside what it makes. */
+.tpl { display: grid; grid-template-columns: minmax(200px, 300px) 1fr; gap: 18px; align-items: start; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.tpl img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; }
+.tpl h3 { margin: 0 0 6px; }
+.tpl h3 small { color: var(--muted); font-weight: normal; font-size: 0.85rem; margin-left: 6px; }
+.tpl p { margin: 0 0 6px; }
+@media (max-width: 640px) { .tpl { grid-template-columns: 1fr; } }

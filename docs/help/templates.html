@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เริ่มจากแม่แบบ - คู่มือ Phai Studio</title>
+<link rel="stylesheet" href="help.css">
+<script>try{if(JSON.parse(localStorage.getItem('phai-help-hidden'))&&innerWidth>860)document.documentElement.classList.add('nav-hidden')}catch(e){}</script>
+<script src="help.js" defer></script>
+</head>
+<body>
+<div class="layout">
+<nav id="nav">
+<div class="nav-head"><a class="brand" href="index.html"><img src="icons/studio.png" alt="" width="26" height="26">คู่มือ Phai Studio</a><button class="nav-close" type="button" title="ปิดเมนู" aria-label="ปิดเมนู"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/><path d="M20 6l-6 6 6 6"/></svg></button><input class="nav-search" type="search" placeholder="ค้นหาในเมนู…" aria-label="ค้นหาในเมนู"></div>
+<div class="nav-body">
+<a href="index.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg><span>หน้าแรก</span></a>
+<details class="grp" data-key="Phai Studio" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Phai Studio</span></summary><div class="grp-body">
+<a href="studio.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01M10 6.5h.01"/></svg><span>ใช้งาน Phai Studio</span></a>
+<a href="templates.html" class="here" aria-current="page"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg><span>เริ่มจากแม่แบบ</span></a>
+<a href="css.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.9 1.2-1.7-.4-1 .2-2.3 1.5-2.3H17a4 4 0 0 0 4-4c0-5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></svg><span>ตกแต่งหน้าตาด้วย CSS</span></a>
+<a href="database.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg><span>ทำงานกับฐานข้อมูล</span></a>
+<a href="code.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg><span>เขียนโค้ดกับ control</span></a>
+<a href="winforms.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><path d="M16.5 13v7M13 16.5h7"/></svg><span>control และความสามารถเพิ่มเติม</span></a>
+<a href="inspector.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><span>ตัวตรวจสด (F12)</span></a>
+<a href="web.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg><span>เว็บและมือถือ (PWA)</span></a>
+<a href="report.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7" rx="1.5"/><path d="M7 14h10v6H7z"/></svg><span>รายงานพิมพ์</span></a>
+<a href="publish.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg><span>ทำตัวติดตั้ง (Publish)</span></a>
+</div></details>
+<details class="grp" data-key="Toolbox" data-folded="1"><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Toolbox</span></summary><div class="grp-body">
+<a href="ctl-form.html"><img class="ti" src="icons/form.png" alt="" width="18" height="18"><span>ฟอร์ม (Form)</span></a>
+<details class="grp sub" data-key="Toolbox/Common controls" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Common controls</span></summary><div class="grp-body">
+<a href="ctl-button.html"><img class="ti" src="icons/button.png" alt="" width="18" height="18"><span>ปุ่ม (Button)</span></a>
+<a href="ctl-checkbox.html"><img class="ti" src="icons/checkbox.png" alt="" width="18" height="18"><span>ช่องติ๊ก (CheckBox)</span></a>
+<a href="ctl-checkedlist.html"><img class="ti" src="icons/checkedlist.png" alt="" width="18" height="18"><span>กล่องรายการติ๊ก (CheckedListBox)</span></a>
+<a href="ctl-combo.html"><img class="ti" src="icons/combo.png" alt="" width="18" height="18"><span>รายการเลือก (ComboBox)</span></a>
+<a href="ctl-date.html"><img class="ti" src="icons/date.png" alt="" width="18" height="18"><span>วันที่ (DateTimePicker)</span></a>
+<a href="ctl-label.html"><img class="ti" src="icons/label.png" alt="" width="18" height="18"><span>ป้าย (Label)</span></a>
+<a href="ctl-link.html"><img class="ti" src="icons/link.png" alt="" width="18" height="18"><span>ลิงก์ (LinkLabel)</span></a>
+<a href="ctl-listbox.html"><img class="ti" src="icons/listbox.png" alt="" width="18" height="18"><span>กล่องรายการ (ListBox)</span></a>
+<a href="ctl-list.html"><img class="ti" src="icons/list.png" alt="" width="18" height="18"><span>รายการ (ListView)</span></a>
+<a href="ctl-masked.html"><img class="ti" src="icons/masked.png" alt="" width="18" height="18"><span>ช่องกรอกตามแบบ (MaskedTextBox)</span></a>
+<a href="ctl-calendar.html"><img class="ti" src="icons/calendar.png" alt="" width="18" height="18"><span>ปฏิทินเดือน (MonthCalendar)</span></a>
+<a href="ctl-notifyicon.html"><img class="ti" src="icons/notifyicon.png" alt="" width="18" height="18"><span>ไอคอนมุมจอ (NotifyIcon)</span></a>
+<a href="ctl-number.html"><img class="ti" src="icons/number.png" alt="" width="18" height="18"><span>ตัวเลข (NumericUpDown)</span></a>
+<a href="ctl-picture.html"><img class="ti" src="icons/picture.png" alt="" width="18" height="18"><span>รูปภาพ (PictureBox)</span></a>
+<a href="ctl-progress.html"><img class="ti" src="icons/progress.png" alt="" width="18" height="18"><span>แถบความคืบหน้า (ProgressBar)</span></a>
+<a href="ctl-radio.html"><img class="ti" src="icons/radio.png" alt="" width="18" height="18"><span>ตัวเลือก (RadioButton)</span></a>
+<a href="ctl-richtext.html"><img class="ti" src="icons/richtext.png" alt="" width="18" height="18"><span>กล่องข้อความหลายรูปแบบ (RichTextBox)</span></a>
+<a href="ctl-edit.html"><img class="ti" src="icons/edit.png" alt="" width="18" height="18"><span>ช่องข้อความ (TextBox)</span></a>
+<a href="ctl-textarea.html"><img class="ti" src="icons/textarea.png" alt="" width="18" height="18"><span>ช่องข้อความหลายบรรทัด (TextBox (Multiline))</span></a>
+<a href="ctl-slider.html"><img class="ti" src="icons/slider.png" alt="" width="18" height="18"><span>ตัวเลื่อน (TrackBar)</span></a>
+<a href="ctl-tree.html"><img class="ti" src="icons/tree.png" alt="" width="18" height="18"><span>มุมมองต้นไม้ (TreeView)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Containers" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Containers</span></summary><div class="grp-body">
+<a href="ctl-flow.html"><img class="ti" src="icons/flow.png" alt="" width="18" height="18"><span>จัดเรียงต่อกัน (FlowLayoutPanel)</span></a>
+<a href="ctl-group.html"><img class="ti" src="icons/group.png" alt="" width="18" height="18"><span>กลุ่ม (GroupBox)</span></a>
+<a href="ctl-panel.html"><img class="ti" src="icons/panel.png" alt="" width="18" height="18"><span>แผง (Panel)</span></a>
+<a href="ctl-split.html"><img class="ti" src="icons/split.png" alt="" width="18" height="18"><span>แบ่งสองช่อง (SplitContainer)</span></a>
+<a href="ctl-tabs.html"><img class="ti" src="icons/tabs.png" alt="" width="18" height="18"><span>แท็บ (TabControl)</span></a>
+<a href="ctl-table.html"><img class="ti" src="icons/table.png" alt="" width="18" height="18"><span>จัดเป็นตาราง (TableLayoutPanel)</span></a>
+<a href="ctl-usercontrol.html"><img class="ti" src="icons/usercontrol.png" alt="" width="18" height="18"><span>User control (UserControl)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Menus and toolbars" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Menus and toolbars</span></summary><div class="grp-body">
+<a href="ctl-contextmenu.html"><img class="ti" src="icons/contextmenu.png" alt="" width="18" height="18"><span>เมนูคลิกขวา (ContextMenuStrip)</span></a>
+<a href="ctl-menubar.html"><img class="ti" src="icons/menubar.png" alt="" width="18" height="18"><span>แถบเมนู (MenuStrip)</span></a>
+<a href="ctl-statusbar.html"><img class="ti" src="icons/statusbar.png" alt="" width="18" height="18"><span>แถบสถานะ (StatusStrip)</span></a>
+<a href="ctl-toolbar.html"><img class="ti" src="icons/toolbar.png" alt="" width="18" height="18"><span>แถบเครื่องมือ (ToolStrip)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Data" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Data</span></summary><div class="grp-body">
+<a href="ctl-bindingsource.html"><img class="ti" src="icons/bindingsource.png" alt="" width="18" height="18"><span>แหล่งข้อมูลผูก (BindingSource)</span></a>
+<a href="ctl-grid.html"><img class="ti" src="icons/grid.png" alt="" width="18" height="18"><span>ตารางข้อมูล (DataGridView)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Components" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Components</span></summary><div class="grp-body">
+<a href="ctl-errorprovider.html"><img class="ti" src="icons/errorprovider.png" alt="" width="18" height="18"><span>ตัวบอกข้อผิดพลาด (ErrorProvider)</span></a>
+<a href="ctl-timer.html"><img class="ti" src="icons/timer.png" alt="" width="18" height="18"><span>ตัวจับเวลา (Timer)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Printing" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Printing</span></summary><div class="grp-body">
+<a href="ctl-printdocument.html"><img class="ti" src="icons/printdocument.png" alt="" width="18" height="18"><span>เอกสารสำหรับพิมพ์ (PrintDocument)</span></a>
+</div></details>
+<details class="grp sub" data-key="Toolbox/Dialogs" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Dialogs</span></summary><div class="grp-body">
+<a href="ctl-colordialog.html"><img class="ti" src="icons/colordialog.png" alt="" width="18" height="18"><span>หน้าต่างเลือกสี (ColorDialog)</span></a>
+<a href="ctl-folderbrowserdialog.html"><img class="ti" src="icons/folderbrowserdialog.png" alt="" width="18" height="18"><span>หน้าต่างเลือกโฟลเดอร์ (FolderBrowserDialog)</span></a>
+<a href="ctl-fontdialog.html"><img class="ti" src="icons/fontdialog.png" alt="" width="18" height="18"><span>หน้าต่างเลือกฟอนต์ (FontDialog)</span></a>
+<a href="ctl-openfiledialog.html"><img class="ti" src="icons/openfiledialog.png" alt="" width="18" height="18"><span>หน้าต่างเปิดไฟล์ (OpenFileDialog)</span></a>
+<a href="ctl-savefiledialog.html"><img class="ti" src="icons/savefiledialog.png" alt="" width="18" height="18"><span>หน้าต่างบันทึกไฟล์ (SaveFileDialog)</span></a>
+</div></details>
+</div></details>
+<details class="grp" data-key="Rust Language" data-folded="1"><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Rust Language</span></summary><div class="grp-body">
+<a href="rust-01.html"><span class="num">1</span><span>เริ่มต้นกับ Rust</span></a>
+<a href="rust-02.html"><span class="num">2</span><span>ตัวแปร ชนิดข้อมูล ฟังก์ชัน</span></a>
+<a href="rust-03.html"><span class="num">3</span><span>เงื่อนไขและการวนซ้ำ</span></a>
+<a href="rust-04.html"><span class="num">4</span><span>Ownership และการยืม</span></a>
+<a href="rust-05.html"><span class="num">5</span><span>struct, enum และ match</span></a>
+<a href="rust-06.html"><span class="num">6</span><span>จัดการข้อผิดพลาด</span></a>
+<a href="rust-07.html"><span class="num">7</span><span>Vec, String, HashMap</span></a>
+<a href="rust-08.html"><span class="num">8</span><span>trait และ generic</span></a>
+<a href="rust-09.html"><span class="num">9</span><span>โมดูล crate และเทสต์</span></a>
+<a href="rust-10.html"><span class="num">10</span><span>อ่าน error ของคอมไพเลอร์</span></a>
+<a href="rust-11.html"><span class="num">11</span><span>เธรด และก้าวต่อไป</span></a>
+</div></details>
+<p class="nav-none" hidden>ไม่พบหน้าที่ตรงกัน</p></div>
+</nav>
+<div class="nav-shade"></div>
+<main>
+<button class="nav-open" type="button" title="เปิดเมนู" aria-label="เปิดเมนู"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+<h1>เริ่มจากแม่แบบ (New Project)</h1>
+<p class="lead">ไม่ต้องเริ่มจากฟอร์มว่าง: Phai Studio มีแม่แบบ 13 แบบ แต่ละแบบเป็นโปรแกรมที่รันได้ทันที มีฟอร์ม โค้ด และข้อความภาษาไทยครบ ใช้ต่อยอดหรืออ่านเป็นตัวอย่างก็ได้</p>
+
+<h2>สร้างโปรเจกต์จากแม่แบบ</h2>
+<ol>
+  <li>กด <b>File &gt; New project...</b> (หรือ <b>New project</b> ในหน้าเริ่มต้น)</li>
+  <li>เลือกแม่แบบจากรายการด้านซ้าย แยกเป็นกลุ่ม: <b>พื้นฐาน</b> <b>ทั่วไป</b> <b>งานธุรกิจ</b> <b>แบบที่คุ้นตา</b> และ <b>สำหรับโรงเรียน</b> พิมพ์ในช่อง <b>ค้นหาแม่แบบ</b> เพื่อกรอง เช่น <code>ฐานข้อมูล</code> หรือ <code>timer</code></li>
+  <li>ด้านขวาเป็นภาพโปรแกรมที่จะได้ ชื่อ และสิ่งที่มันทำ กด <b>ถัดไป...</b> แล้วเลือกโฟลเดอร์ (ชื่อโฟลเดอร์เป็นชื่อโปรเจกต์)</li>
+  <li>Phai Studio สร้างไฟล์ทั้งหมดและเปิดฟอร์มแรกให้ กด <kbd>F5</kbd> รันได้เลย</li>
+</ol>
+<div class="note">ทุกแม่แบบมีฟอร์ม (<code>.phf</code>) โค้ด Rust ของแต่ละฟอร์ม <code>text.rs</code> ที่เก็บข้อความภาษาไทย และ <code>theme.css</code> แก้ได้ทุกไฟล์เหมือนโปรเจกต์ที่เขียนเอง ส่วนไฟล์ <code>_ui.rs</code> ของฟอร์ม Phai Studio เขียนให้ใหม่ทุกครั้งที่บันทึกฟอร์ม อย่าแก้ไฟล์นั้นเอง</div>
+
+<h2>แม่แบบทั้งหมด</h2>
+<div class="tpl" id="windows">
+  <img src="img/tpl-windows.png" alt="โปรแกรม Windows" loading="lazy">
+  <div><h3>โปรแกรม Windows <small>พื้นฐาน</small></h3><p>หน้าต่างที่มีเมนู แถบเครื่องมือ และแถบสถานะ ฟอร์มเปิดเต็มจอ</p><p class="muted">จุดเริ่มต้นที่ว่างที่สุด ลาก control ลงฟอร์มแล้วต่อเติมเองได้ทุกอย่าง</p></div>
+</div>
+<div class="tpl" id="phone">
+  <img src="img/tpl-phone.png" alt="แอปมือถือ (PWA)" loading="lazy">
+  <div><h3>แอปมือถือ (PWA) <small>พื้นฐาน</small></h3><p>ฟอร์มขนาดมือถือ control เรียงลงมาทีละตัว</p><p class="muted">กด <b>Build &gt; รันบนมือถือ</b> แล้วสแกน QR เปิดดูบนมือถือได้ทันที (ดู <a href="web.html">เว็บและมือถือ</a>)</p></div>
+</div>
+<div class="tpl" id="mdi">
+  <img src="img/tpl-mdi.png" alt="โปรแกรมหลายเอกสาร (MDI)" loading="lazy">
+  <div><h3>โปรแกรมหลายเอกสาร (MDI) <small>ทั่วไป</small></h3><p>หน้าต่างหลักที่เปิดเอกสารหลายฉบับไว้ข้างใน มีเมนูแฟ้ม หน้าต่าง และวิธีใช้</p><p class="muted">ฟอร์มลูก (child form) เปิดได้หลายฉบับ จัดเรียงแบบซ้อนหรือเรียงข้างกัน</p></div>
+</div>
+<div class="tpl" id="dialog">
+  <img src="img/tpl-dialog.png" alt="โปรแกรมหน้าต่างเล็ก" loading="lazy">
+  <div><h3>โปรแกรมหน้าต่างเล็ก <small>ทั่วไป</small></h3><p>หน้าต่างเดียวขนาดคงที่ แปลงหน่วยความยาว</p><p class="muted">เหมาะเป็นโปรแกรมแรก: อ่านค่าจากช่องกรอก คำนวณ แล้วแสดงผล</p></div>
+</div>
+<div class="tpl" id="tray">
+  <img src="img/tpl-tray.png" alt="โปรแกรมในถาด" loading="lazy">
+  <div><h3>โปรแกรมในถาด <small>ทั่วไป</small></h3><p>เริ่มแบบซ่อนเป็นไอคอนข้างนาฬิกา เมนูคลิกขวาเปิดหน้าต่างเล็กหรือออกจากโปรแกรม</p><p class="muted">ใช้ Notify icon กับ Context menu สำหรับโปรแกรมที่ทำงานอยู่เบื้องหลัง</p></div>
+</div>
+<div class="tpl" id="records">
+  <img src="img/tpl-records.png" alt="ข้อมูลลูกค้าในฐานข้อมูล" loading="lazy">
+  <div><h3>ข้อมูลลูกค้าในฐานข้อมูล <small>งานธุรกิจ</small></h3><p>เก็บรายชื่อลูกค้าในไฟล์ SQLite (<code>customers.db</code>) ข้างโปรแกรม ค้นหา แก้ไข เพิ่ม และลบได้</p><p class="muted">ตาราง ช่องกรอก และ Binding source ผูกกับฐานข้อมูลด้วย phai-data (ดู <a href="database.html">ทำงานกับฐานข้อมูล</a>)</p></div>
+</div>
+<div class="tpl" id="login">
+  <img src="img/tpl-login.png" alt="เข้าสู่ระบบก่อนใช้งาน" loading="lazy">
+  <div><h3>เข้าสู่ระบบก่อนใช้งาน <small>งานธุรกิจ</small></h3><p>หน้าเข้าสู่ระบบขึ้นก่อน ใส่รหัสถูกจึงเปิดหน้าต่างหลัก ออกจากระบบแล้วกลับมาหน้าเข้าสู่ระบบ</p><p class="muted">ลองด้วยผู้ใช้ <code>admin</code> รหัส <code>1234</code> ตอนทำจริงควรเก็บผู้ใช้ในฐานข้อมูล และเก็บรหัสแบบ hash ไม่เก็บเป็นข้อความตรง ๆ</p></div>
+</div>
+<div class="tpl" id="report">
+  <img src="img/tpl-report.png" alt="รายงานพร้อมดูก่อนพิมพ์" loading="lazy">
+  <div><h3>รายงานพร้อมดูก่อนพิมพ์ <small>งานธุรกิจ</small></h3><p>ยอดขายในตาราง พิมพ์เป็นรายงานแยกตามสาขาพร้อมยอดรวม</p><p class="muted">ดูก่อนพิมพ์ พิมพ์ หรือบันทึกเป็น PDF (ดู <a href="report.html">รายงานพิมพ์</a>)</p></div>
+</div>
+<div class="tpl" id="admin">
+  <img src="img/tpl-admin.png" alt="แดชบอร์ดผู้ดูแลระบบ" loading="lazy">
+  <div><h3>แดชบอร์ดผู้ดูแลระบบ <small>งานธุรกิจ</small></h3><p>หน้าต่างระบบหลังร้าน เมนูสีเข้มด้านซ้าย แถบหัวพร้อมช่องค้นหา การ์ดสรุปตัวเลข เป้าหมาย และหน้าผู้ใช้ คำสั่งซื้อ ตั้งค่า</p><p class="muted">แต่ละหน้าเป็นฟอร์มแยก สลับกันในหน้าต่างเดียว และตกแต่งทั้งหมดด้วย <code>theme.css</code> (ดู <a href="css.html">ตกแต่งหน้าตาด้วย CSS</a>)</p></div>
+</div>
+<div class="tpl" id="explorer">
+  <img src="img/tpl-explorer.png" alt="หน้าต่างแบบ Explorer" loading="lazy">
+  <div><h3>หน้าต่างแบบ Explorer <small>แบบที่คุ้นตา</small></h3><p>โฟลเดอร์เป็นต้นไม้ด้านซ้าย ไฟล์ในโฟลเดอร์ที่เลือกพร้อมขนาดและวันที่ด้านขวา</p><p class="muted">Tree view กับ List อ่านไฟล์จริงในเครื่องด้วย <code>std::fs</code></p></div>
+</div>
+<div class="tpl" id="notepad">
+  <img src="img/tpl-notepad.png" alt="โปรแกรมแก้ข้อความ (แบบ Notepad)" loading="lazy">
+  <div><h3>โปรแกรมแก้ข้อความ (แบบ Notepad) <small>แบบที่คุ้นตา</small></h3><p>เปิด บันทึก ค้นหา ตัดบรรทัด เลือกแบบอักษร</p><p class="muted">กล่องเปิด/บันทึกไฟล์ กล่องเลือกแบบอักษร และถามก่อนทิ้งงานที่ยังไม่บันทึก</p></div>
+</div>
+<div class="tpl" id="wizard">
+  <img src="img/tpl-wizard.png" alt="ตัวช่วยทีละขั้น" loading="lazy">
+  <div><h3>ตัวช่วยทีละขั้น <small>แบบที่คุ้นตา</small></h3><p>หน้าต้อนรับ ตัวเลือก รายละเอียด และสรุป พร้อมปุ่มย้อนกลับ ถัดไป เสร็จสิ้น และยกเลิก</p><p class="muted">สลับหน้าในฟอร์มเดียว และเปิด/ปิดปุ่มตามขั้นที่อยู่</p></div>
+</div>
+<div class="tpl" id="game">
+  <img src="img/tpl-game.png" alt="เกมจับลูกบอล (ใช้ Timer)" loading="lazy">
+  <div><h3>เกมจับลูกบอล (ใช้ Timer) <small>สำหรับโรงเรียน</small></h3><p>คลิกลูกบอลที่เด้งไปมาให้ได้มากที่สุดใน 30 วินาที</p><p class="muted">Timer สองตัว: ตัวหนึ่งขยับลูกบอล 50 ครั้งต่อวินาที อีกตัวนับถอยหลัง และวาดเองในเหตุการณ์ Paint เหมาะใช้สอนในห้องเรียน</p></div>
+</div>
+
+<h2>เรียนจากแม่แบบ</h2>
+<ul>
+  <li>เปิดไฟล์ <code>.rs</code> ของฟอร์ม จะเห็นแต่ละเหตุการณ์ (เช่น <code>fn new_clicked</code>) พร้อมคำอธิบายว่าทำอะไร</li>
+  <li>ดับเบิลคลิก control บนฟอร์มเพื่อไปที่โค้ดของมัน หรือดูแท็บ <b>Events</b> ใน Properties ว่าเหตุการณ์ไหนผูกกับฟังก์ชันอะไร</li>
+  <li>ลองแก้ <code>theme.css</code> แล้วดูฟอร์มเปลี่ยนตามทันที</li>
+  <li>ข้อความทุกคำอยู่ใน <code>text.rs</code> โปรแกรมขึ้นภาษาไทยเมื่อเปิดด้วย <code>--thai</code> ไม่ใส่จะเป็นภาษาอังกฤษ</li>
+</ul>
+<div class="pager"><a href="studio.html">← ใช้งาน Phai Studio</a><a href="css.html">ตกแต่งหน้าตาด้วย CSS →</a></div>
+</main>
+</div>
+</body>
+</html>

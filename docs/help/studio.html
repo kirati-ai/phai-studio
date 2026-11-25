@@ -16,6 +16,7 @@
 <a href="index.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/></svg><span>หน้าแรก</span></a>
 <details class="grp" data-key="Phai Studio" open><summary><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span>Phai Studio</span></summary><div class="grp-body">
 <a href="studio.html" class="here" aria-current="page"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M7 6.5h.01M10 6.5h.01"/></svg><span>ใช้งาน Phai Studio</span></a>
+<a href="templates.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg><span>เริ่มจากแม่แบบ</span></a>
 <a href="css.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.5-.9 1.2-1.7-.4-1 .2-2.3 1.5-2.3H17a4 4 0 0 0 4-4c0-5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="14.5" cy="7" r="1"/></svg><span>ตกแต่งหน้าตาด้วย CSS</span></a>
 <a href="database.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg><span>ทำงานกับฐานข้อมูล</span></a>
 <a href="code.html"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg><span>เขียนโค้ดกับ control</span></a>
@@ -125,7 +126,7 @@
   <li>หน้าเริ่มต้นมีไฟล์ที่เปิดล่าสุด พิมพ์ในช่อง <b>Search recent</b> เพื่อกรอง คลิกขวาที่รายการเพื่อ <b>ปักหมุดไว้บนสุด</b> หรือ <b>เอาออกจากรายการ</b></li>
   <li><b>Clone a repository...</b> ใส่ที่อยู่ของ repository (https://... หรือ git@...) แล้วเลือกโฟลเดอร์ Phai Studio รัน <code>git clone</code> ให้แล้วเปิดโปรเจกต์ต่อเลย</li>
   <li>ด้านล่างมีเคล็ดลับวันละข้อ กด <b>เคล็ดลับถัดไป</b> เพื่อดูข้อต่อไป</li>
-  <li><b>File &gt; New project...</b> ถามก่อนว่าจะทำแบบไหน: <b>โปรแกรม Windows</b> หรือ <b>แอปมือถือ (PWA)</b> ซึ่งได้ฟอร์มขนาดมือถือ และเปิด Device Preview ให้ดูบนจอมือถือทันที (ดู <a href="web.html">เว็บและมือถือ</a>)</li>
+  <li><b>File &gt; New project...</b> เลือกได้ 13 แม่แบบ ตั้งแต่ <b>โปรแกรม Windows</b> และ <b>แอปมือถือ (PWA)</b> ไปจนถึงฐานข้อมูล รายงาน แดชบอร์ดผู้ดูแลระบบ และเกม ดูทั้งหมดที่ <a href="templates.html">เริ่มจากแม่แบบ</a></li>
 </ul>
 
 <h2>หาของให้เจอ</h2>
@@ -359,7 +360,14 @@ crate::settings_ui::SettingsUi::show_dialog(ui.hwnd, crate::settings::Settings::
   <tr><td><kbd>Ctrl+Alt+1</kbd>…<kbd>0</kbd></td><td>เรียกการจัดหน้าต่างที่บันทึกไว้</td><td><kbd>Ctrl+`</kbd></td><td>Terminal</td></tr>
   <tr><td><kbd>Ctrl+Alt+A</kbd></td><td>ผู้ช่วย AI</td><td><kbd>Ctrl+Enter</kbd></td><td>ส่งข้อความถึง Copilot</td></tr>
 </table>
-<div class="pager"><a href="index.html">← หน้าแรก</a><a href="css.html">ตกแต่งหน้าตาด้วย CSS →</a></div>
+
+<h2>ถาม ตอบ และสนับสนุน</h2>
+<ul>
+  <li>ติดอะไร อยากถาม หรืออยากอวดโปรแกรมที่ทำ เขียนได้ที่ <a href="https://phai-studio.monrak.net/board" target="_blank" rel="noopener">ชุมชนคนรัก Rust</a> ไม่ต้องสมัคร</li>
+  <li><b>Help &gt; สนับสนุน Phai Studio...</b> มีลิงก์กดดาวบน GitHub แจ้งปัญหา และ QR พร้อมเพย์สำหรับสนับสนุน (QR ซ่อนไว้ กด <b>แสดง QR code</b> ก่อนถึงจะเห็น)</li>
+  <li><b>Help &gt; เกี่ยวกับ Phai Studio</b> บอกรุ่นของ Phai Studio และเครื่องมือที่ใช้ กด <b>Copy info</b> แล้วแนบไปตอนแจ้งปัญหา</li>
+</ul>
+<div class="pager"><a href="index.html">← หน้าแรก</a><a href="templates.html">เริ่มจากแม่แบบ →</a></div>
 </main>
 </div>
 </body>
