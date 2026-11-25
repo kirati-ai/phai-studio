@@ -237,6 +237,11 @@ $T = $th ? [
     'histH' => 'มีอะไรใหม่',
     'histSub' => 'ความสามารถหลักที่เพิ่มในแต่ละรุ่น (รายละเอียดทุกการแก้ไขอยู่ใน <a href="' . $github . '/commits/main" rel="noopener">ประวัติบน GitHub</a>)',
     'hist' => [
+        ['0.2.16', '25 พ.ย. 2569', [
+            'กราฟ (Chart) ใน Toolbox: แท่งตั้ง แท่งนอน เส้น พื้นที่ วงกลม โดนัท และแท่งเทียน วาดจากตารางที่พิมพ์ใน แก้ข้อมูล... เส้นเรียบ สีตามธีมทั้งสว่างและมืด ชี้เมาส์แล้วเห็นค่า และข้อมูลสดด้วย add_point เช่น ราคาที่ขยับทุกวินาที พร้อมคู่มือหน้า กราฟ (Chart)',
+            'โปรแกรมที่แจกไม่มีชื่อโฟลเดอร์ในเครื่องคุณ: build แบบ Release และ Publish เปลี่ยนที่อยู่ของโปรเจกต์ ไลบรารี และโฟลเดอร์ผู้ใช้ (C:\Users\ชื่อคุณ) ในไฟล์ .exe เป็นชื่อสั้น และ Publish ตรวจไฟล์ที่ได้ให้อีกรอบ ถ้ายังเหลือจะเตือน',
+            'Tools > Disk Space of Builds...: ดูว่างาน build (โฟลเดอร์ target) ของแต่ละโปรเจกต์กินที่เท่าไหร่ build ล่าสุดเมื่อไร อันที่ไม่ได้ build มาเดือนหนึ่งติ๊กไว้ให้ กด OK แล้วได้พื้นที่คืน งาน build กลับมาเองเมื่อ build ครั้งถัดไป',
+        ]],
         ['0.2.15', '25 พ.ย. 2569', [
             'New Project แบบใหม่: แม่แบบ 13 แบบแยกเป็นกลุ่ม ค้นหาได้ เห็นภาพโปรแกรมก่อนสร้าง มีโปรแกรมหลายเอกสาร (MDI) หน้าต่างเล็ก โปรแกรมในถาด ข้อมูลลูกค้าในฐานข้อมูล SQLite เข้าสู่ระบบก่อนใช้งาน รายงานพร้อมดูก่อนพิมพ์ แดชบอร์ดผู้ดูแลระบบ แบบ Explorer แบบ Notepad ตัวช่วยทีละขั้น และเกมจับลูกบอลสำหรับโรงเรียน ทุกแบบรันได้ทันที พร้อมคู่มือหน้า "เริ่มจากแม่แบบ"',
             'ก้าวแรกสู่ส่วนเสริม: Tools > Options > Text Editor > Language Servers เพิ่มตัวช่วยภาษาอื่นได้ (เช่น taplo สำหรับ .toml, sqls สำหรับ .sql) ได้ error เติมคำ และ Go To Definition และ Tools > External Tools... เพิ่มโปรแกรมภายนอกลงเมนู Tools ส่งชื่อไฟล์ โฟลเดอร์ หรือข้อความที่เลือกไปให้ได้',
@@ -490,6 +495,11 @@ $T = $th ? [
     'histH' => "What's new",
     'histSub' => 'The main features each release added (every change is in the <a href="' . $github . '/commits/main" rel="noopener">history on GitHub</a>)',
     'hist' => [
+        ['0.2.16', '25 Nov 2026', [
+            'A Chart in the Toolbox: columns, bars, lines, areas, a pie, a doughnut or candlesticks of a table typed in Edit Data... - smooth lines, the theme\'s colours light or dark, the values when the mouse is over it, and live data with add_point, such as a price that moves every second. With a new guide page, Chart',
+            'Programs you hand out no longer name your folders: a Release build and Publish give the project, the libraries and your user folder (C:\Users\you) short names inside the .exe, and Publish reads the finished program again and warns if any is left',
+            'Tools > Disk Space of Builds...: how much room each project\'s builds (its target folder) take and when it was last built, those not built for a month ticked - OK gives the space back; the builds come back on the next build',
+        ]],
         ['0.2.15', '25 Nov 2026', [
             'A new New Project: 13 templates in groups, searchable, each with a picture of the program it makes - child forms (MDI), a small dialog, a tray program, customers in a SQLite database, sign in first, a report with print preview, an admin dashboard, Explorer-style, Notepad-style, a step-by-step wizard and a timer game for schools; each runs at once, with a new guide page, Start from a template',
             'A first step toward extensions: Tools > Options > Text Editor > Language Servers adds help for other languages (taplo for .toml, sqls for .sql...) - errors, completion and Go To Definition - and Tools > External Tools... puts your own tools on the Tools menu, handed the file, its folder or the selected text',
