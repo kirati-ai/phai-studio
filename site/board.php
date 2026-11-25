@@ -34,6 +34,22 @@ function board_groups(bool $th): array
     return $out;
 }
 
+/** A question a person answers at once and a robot does not read: two numbers in words, added.
+ * The answer is kept in the session under the form's time (`t`), so each form has its own. */
+function board_question(bool $th, int $t): string
+{
+    $words = $th ? ['ศูนย์', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'] : ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+    $a = random_int(1, 9);
+    $b = random_int(1, 9);
+    $_SESSION['cap'] ??= [];
+    $_SESSION['cap'][$t] = $a + $b;
+    // Only the last few forms' answers kept.
+    if (count($_SESSION['cap']) > 20) {
+        $_SESSION['cap'] = array_slice($_SESSION['cap'], -20, null, true);
+    }
+    return $th ? "{$words[$a]} บวก {$words[$b]} เท่ากับเท่าไร?" : "What is {$words[$a]} plus {$words[$b]}?";
+}
+
 function board_db(string $storage): PDO
 {
     if (!is_dir($storage)) {
@@ -125,6 +141,7 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         'notFound' => 'ไม่พบกระทู้นี้ อาจถูกลบไปแล้ว', 'admin' => 'หลังบ้าน', 'login' => 'เข้าสู่ระบบ', 'user' => 'ผู้ใช้', 'pass' => 'รหัสผ่าน', 'logout' => 'ออกจากระบบ', 'delete' => 'ลบ', 'sure' => 'ลบจริงไหม?',
         'wrong' => 'ผู้ใช้หรือรหัสผ่านไม่ถูก', 'locked' => 'ลองผิดหลายครั้ง รอ 15 นาที', 'noAdmin' => 'ยังเข้าหลังบ้านไม่ได้: ไม่พบระบบผู้ใช้ของ monrak.net', 'recentReplies' => 'คำตอบล่าสุด', 'onlyAdmin' => 'หมวดนี้ตั้งกระทู้ได้เฉพาะผู้ดูแล',
         'page' => 'หน้า', 'by' => 'โดย', 'rules' => 'เขียนอย่างสุภาพ ข้อความที่ไม่เหมาะสมจะถูกลบ',
+        'cap' => 'คำถามกันสแปม', 'capHint' => 'ตอบเป็นตัวเลข', 'capWrong' => 'คำตอบคำถามกันสแปมไม่ถูก ลองข้อใหม่',
     ] : [
         'title' => 'Phai Studio Q&A', 'lead' => 'Ask, answer and share what you know about Phai Studio and Rust - anyone may write, no sign-up.',
         'topics' => 'topics', 'replies' => 'replies', 'views' => 'views', 'latest' => 'Latest topics', 'new' => 'New topic', 'none' => 'No topic here yet - start the first.',
@@ -134,6 +151,7 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         'notFound' => 'No such topic - it may have been deleted', 'admin' => 'Back office', 'login' => 'Sign in', 'user' => 'User', 'pass' => 'Password', 'logout' => 'Sign out', 'delete' => 'Delete', 'sure' => 'Delete it?',
         'wrong' => 'Wrong user or password', 'locked' => 'Too many tries - wait 15 minutes', 'noAdmin' => 'The back office cannot open: monrak.net\'s users were not found', 'recentReplies' => 'Latest replies', 'onlyAdmin' => 'Only the back office starts topics here',
         'page' => 'Page', 'by' => 'by', 'rules' => 'Be kind - what is not fit will be deleted',
+        'cap' => 'Anti-spam question', 'capHint' => 'answer with a number', 'capWrong' => 'The anti-spam answer was wrong - try the new one',
     ];
     $sub = substr($path, strlen('/board'));
     $error = '';
@@ -147,10 +165,11 @@ function board_page(string $path, string $B, bool $th, string $storage): void
             return $L['tooFast'];
         }
         $shown = (int) ($_POST['t'] ?? 0);
-        if ($shown <= 0 || time() - $shown < 3) {
+        $at = intdiv($shown, 100);
+        if ($shown <= 0 || time() - $at < 3) {
             return $L['tooFast'];
         }
-        if (time() - $shown > 86400) {
+        if (time() - $at > 86400) {
             return $L['stale'];
         }
         if (trim($body) === '' || trim($title) === '') {
@@ -158,6 +177,14 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         }
         if (preg_match_all('~https?://~i', $body) > 3) {
             return $L['links'];
+        }
+        if (!$admin) {
+            $want = $_SESSION['cap'][$shown] ?? null;
+            $got = trim(strtr((string) ($_POST['cap'] ?? ''), ['๐' => '0', '๑' => '1', '๒' => '2', '๓' => '3', '๔' => '4', '๕' => '5', '๖' => '6', '๗' => '7', '๘' => '8', '๙' => '9']));
+            unset($_SESSION['cap'][$shown]);
+            if ($want === null || $got !== (string) $want) {
+                return $L['capWrong'];
+            }
         }
         if (!$admin) {
             $q = $db->prepare('SELECT COUNT(*) FROM posts WHERE ip = ? AND at > ?');
@@ -253,9 +280,11 @@ function board_page(string $path, string $B, bool $th, string $storage): void
     $title = $L['title'];
     $body = '';
     $savedName = (string) ($_COOKIE['board_name'] ?? '');
-    $form = function (string $action, bool $topic, string $grp = '') use ($e, $L, $csrf, $groups, $savedName, $admin): string {
+    $form = function (string $action, bool $topic, string $grp = '') use ($e, $L, $csrf, $groups, $savedName, $admin, $th): string {
+        // The form's time: when it was shown, and the key its anti-spam answer is kept under.
+        $now = time() * 100 + random_int(0, 99);
         $h = '<form class="board-form" method="post" action="' . $e($action) . '">';
-        $h .= '<input type="hidden" name="csrf" value="' . $e($csrf) . '"><input type="hidden" name="t" value="' . time() . '">';
+        $h .= '<input type="hidden" name="csrf" value="' . $e($csrf) . '"><input type="hidden" name="t" value="' . $now . '">';
         $h .= '<label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>';
         if ($topic) {
             $h .= '<label>' . $e($L['group']) . '<select name="grp">';
@@ -270,6 +299,9 @@ function board_page(string $path, string $B, bool $th, string $storage): void
         }
         $h .= '<label>' . $e($L['body']) . '<textarea name="body" rows="' . ($topic ? 8 : 5) . '" maxlength="8000" required></textarea><small>' . $e($L['code']) . '</small></label>';
         $h .= '<div class="row"><label>' . $e($L['name']) . '<input name="name" maxlength="40" value="' . $e($savedName) . '" autocomplete="nickname"></label>';
+        if (!$admin) {
+            $h .= '<label class="cap">' . $e($L['cap']) . ': ' . $e(board_question($th, $now)) . '<input name="cap" inputmode="numeric" maxlength="3" required autocomplete="off" placeholder="' . $e($L['capHint']) . '"></label>';
+        }
         $h .= '<button class="btn btn-primary" type="submit"><i class="ti ti-send"></i> ' . $e($topic ? $L['post'] : $L['send']) . '</button></div>';
         $h .= '<p class="rules">' . $e($L['rules']) . '</p></form>';
         return $h;

@@ -333,3 +333,4 @@ h3.part + .muted { margin: 0 0 16px; }
 .excerpt { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
 .board-foot { padding: 20px 16px 40px; text-align: right; font-size: .85rem; }
 .board-foot a { color: var(--muted); }
+.board-form .cap input { max-width: 160px; }
