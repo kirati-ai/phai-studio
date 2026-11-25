@@ -611,7 +611,7 @@ fn yes_no(b: bool) -> String {
 /// Every class the project's theme sheet names - `button.primary` gives `primary`.
 fn theme_classes() -> Vec<String> {
     let Some(s) = studio() else { return vec![] };
-    let (Some(path), Some(theme)) = (s.doc.path.as_ref(), s.doc.form.form.theme.as_ref()) else { return vec!["primary".into(), "muted".into()] };
+    let (Some(path), Some(theme)) = (s.doc.path.as_ref(), s.form_theme()) else { return vec!["primary".into(), "muted".into()] };
     let css = std::fs::read_to_string(path.with_file_name("").join(theme)).unwrap_or_default();
     let mut out: Vec<String> = vec!["primary".into(), "muted".into()];
     for word in css.split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_' || c == '.')) {

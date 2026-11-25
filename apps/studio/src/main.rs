@@ -1596,7 +1596,7 @@ fn build_menu() -> HMENU {
         // The form's theme in one place: change its colours (the Theme Editor) or its words, then
         // which style sheet the form uses - the project's own, the form's ticked - a new one, one
         // brought in, or none.
-        let (sheets, current) = studio().map(|s| (s.theme_files(), s.doc.form.form.theme.clone())).unwrap_or_default();
+        let (sheets, current) = studio().map(|s| (s.theme_files(), s.form_theme())).unwrap_or_default();
         add(th, ID_THEME_EDITOR, t("Theme Editor..."), "");
         if current.is_some() {
             add(th, ID_THEME_EDIT, &tf("Edit {0} as text", &[&current.clone().unwrap_or_default().rsplit(['/', char::from(92)]).next().unwrap_or_default().to_string()]), "");
@@ -2145,7 +2145,7 @@ impl Studio {
             controls::status_text(self.status, 0, t("A class's name: letters, digits and -, not starting with a digit."));
             return;
         }
-        let (Some(form), Some(theme)) = (self.doc.path.clone(), self.doc.form.form.theme.clone()) else {
+        let (Some(form), Some(theme)) = (self.doc.path.clone(), self.form_theme()) else {
             controls::status_text(self.status, 0, t("The form has no theme - choose or make one in the Theme menu first."));
             return;
         };
@@ -6008,16 +6008,33 @@ impl Studio {
 
     // --- themes -------------------------------------------------------------------------------
 
+    /// The theme the form is drawn in: its own, or - for a form that names none, a page or a dialog
+    /// say - the project's `theme.css`, which the program's main window loads for all its forms.
+    pub fn form_theme(&self) -> Option<String> {
+        if let Some(th) = &self.doc.form.form.theme {
+            return Some(th.clone());
+        }
+        let path = self.doc.path.as_deref()?;
+        let sheet = cargo::project_of(path)?.join("theme.css");
+        if !sheet.is_file() {
+            return None;
+        }
+        relative_to(path.parent()?, &sheet)
+    }
+
     /// The form's theme, read beside the form and watched; the built-in one when it has none.
     fn load_theme(&mut self) {
-        let file = match (&self.doc.path, &self.doc.form.form.theme) {
+        let theme = self.form_theme();
+        let file = match (&self.doc.path, &theme) {
             (Some(p), Some(th)) => Some(p.with_file_name("").join(th)),
             _ => None,
         };
         match file {
             Some(f) if f.exists() => {
                 win::watch_theme(self.hwnd, &f);
-                controls::status_text(self.status, 0, &tf("Theme: {0}", &[&self.doc.form.form.theme.clone().unwrap_or_default()]));
+                let name = theme.unwrap_or_default();
+                let said = if self.doc.form.form.theme.is_some() { tf("Theme: {0}", &[&name]) } else { tf("Theme: {0} - the project's", &[&name]) };
+                controls::status_text(self.status, 0, &said);
             }
             _ => {
                 win::unwatch_theme(self.hwnd);
@@ -6030,7 +6047,7 @@ impl Studio {
 
     /// The Theme Editor on the form's theme file - one made from the standard first if it has none.
     fn theme_editor(&mut self) {
-        let file = match (&self.doc.path, &self.doc.form.form.theme) {
+        let file = match (&self.doc.path, &self.form_theme()) {
             (Some(p), Some(th)) => Some(p.with_file_name("").join(th)),
             _ => None,
         };
@@ -9596,7 +9613,7 @@ impl Studio {
                 }
             }
             ID_THEME_EDIT => {
-                if let (Some(p), Some(th)) = (self.doc.path.clone(), self.doc.form.form.theme.clone()) {
+                if let (Some(p), Some(th)) = (self.doc.path.clone(), self.form_theme()) {
                     // A style sheet: in the code editor, not read as a form. Its path without the
                     // `..` a form's theme is named with.
                     let file = p.with_file_name("").join(&th);
@@ -11714,7 +11731,7 @@ fn main() {
             s.send_style_to_theme("save");
             let c = &s.doc.form.control[6];
             println!("after: class {:?}, states {:?}, transition {:?}, back {:?}", c.class, c.states, phai_form::HasProps::prop(c, "transition"), c.back_color);
-            let theme = s.doc.path.as_ref().map(|p| p.with_file_name("").join(s.doc.form.form.theme.clone().unwrap_or_default())).unwrap_or_default();
+            let theme = s.doc.path.as_ref().map(|p| p.with_file_name("").join(s.form_theme().unwrap_or_default())).unwrap_or_default();
             let css = std::fs::read_to_string(theme).unwrap_or_default();
             println!("theme ends: {}", css.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | "));
             std::process::exit(0);

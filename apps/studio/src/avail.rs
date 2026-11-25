@@ -64,7 +64,7 @@ impl Now {
             project: project.is_some(),
             project_shown: s.explorer.as_ref().is_some_and(|e| e.shows_project()),
             chosen: if open && !code { s.selection().len() } else { 0 },
-            theme: open && !code && path.is_some() && s.doc.form.form.theme.is_some(),
+            theme: open && !code && path.is_some() && s.form_theme().is_some(),
             conns: s.servers.as_ref().is_some_and(|v| !v.conns.is_empty()),
             query: path.as_ref().is_some_and(|p| s.queries.keys().any(|q| phai_editor::lsp::same_path(q, p))),
             debugging: s.debug.is_some(),
