@@ -93,7 +93,7 @@ parts = [120]
 
 | ช่อง | ใช้กับ | ความหมาย |
 |---|---|---|
-| `kind` | ทุกตัว | `label` `edit` `textarea` `button` `checkbox` `radio` `combo` `list` `date` `number` `slider` `progress` `group` `tabs` `statusbar` `tree` `picture` `timer` `flow` `table` `richtext` `grid` `contextmenu` |
+| `kind` | ทุกตัว | `label` `edit` `textarea` `button` `checkbox` `radio` `combo` `list` `date` `number` `slider` `progress` `group` `tabs` `statusbar` `tree` `picture` `browser` `timer` `flow` `table` `richtext` `grid` `contextmenu` |
 | `id` | ทุกตัว | ชื่อ field ใน struct ที่สร้าง และ `#id` ใน CSS — snake_case ห้ามซ้ำ |
 | `text` | label, edit, textarea, button, checkbox, radio, group | คีย์อังกฤษ (edit = ข้อความเริ่มต้น ไม่แปล) |
 | `bounds` | ทุกตัวที่ไม่ dock | `[x, y, w, h]` design px |
@@ -113,6 +113,7 @@ parts = [120]
 | `context_menu` | ทุกตัว | id ของ contextmenu ที่ขึ้นเมื่อคลิกขวา; contextmenu มี `items` เป็น `"เมธอด \| ข้อความ"` (`-` คือเส้นคั่น, เมนูย่อย ติ๊ก ซ่อน: หัวข้อ "โปรแกรมในถาด") |
 | `cols` | table | จำนวนคอลัมน์ (ค่าเริ่ม 2); control ที่อยู่ในกรอบ flow/table ถูกจัดวางให้เอง |
 | `image` | picture | ไฟล์รูป PNG/JPEG/BMP/GIF จากโฟลเดอร์โปรเจกต์ (ตอนรัน: ข้างโปรแกรม หรือที่ที่รัน) หรือพาธเต็ม |
+| `url` | browser | หน้าเว็บที่เปิดเมื่อหน้าต่างเปิด (https://...) ว่างไว้ = หน้าว่าง; เปลี่ยนตอนรันด้วย `ui.<id>.navigate(url)` |
 | `value` | timer | ช่วงเวลาเป็นมิลลิวินาที (ค่าเริ่ม 1000); timer ไม่ต้องมี `bounds` - อยู่ใน component tray ใต้ฟอร์ม |
 | `min` `max` `value` | number, slider, progress | ช่วงค่าและค่าเริ่มต้น (ค่าเริ่ม 0, 100, 0) |
 | `font_size` | | pt ของ control นี้ ทับของฟอร์ม |
@@ -303,6 +304,29 @@ balloon_closed = "notice_gone"                    # BalloonTipClosed: หมด�
   รวมที่ซ่อนอยู่ (`start_hidden`) และที่มีเจ้าของ (`show_in_taskbar = false`) — **ไม่ถึงหน้าต่างลูก**: notifyicon บนฟอร์ม MDI child
   หรือ user control จะกลับมาก็ต่อเมื่อมีฟอร์มชั้นบนที่มี notifyicon อยู่ในโปรแกรมด้วย; โปรแกรมที่สิทธิ์สูงกว่า Explorer
   (administrator, LocalSystem) ได้ยินเพราะ `NotifyIcon::new` เปิดทางให้ข้อความนี้ (`ChangeWindowMessageFilterEx`)
+
+## หน้าเว็บในหน้าต่าง — control `browser`
+
+```toml
+[[control]]
+kind = "browser"
+id = "page"
+url = "https://example.com/"
+bounds = [0, 0, 640, 480]
+anchor = "left top right bottom"
+```
+
+แสดงหน้าเว็บด้วย Microsoft Edge WebView2 (เหมือน control WebView2 ของ WinForms) ในโค้ด: `ui.page.navigate(url)`
+`ui.page.url()` `ui.page.reload()` `ui.page.go_back()` และ `ui.page.ready()` (เริ่มแสดงได้แล้วหรือยัง)
+
+- ต้องเปิดคุณสมบัติ `browser` ของ phai-ui ใน `Cargo.toml` ของโปรแกรม:
+  `phai-ui = { git = "...", rev = "...", features = ["browser"] }` ถ้าไม่เปิด โปรแกรมยัง compile ได้ และ control
+  จะบอกในตัวมันว่าแสดงหน้าเว็บไม่ได้
+- ตอนรันต้องมี `WebView2Loader.dll` อยู่ข้างโปรแกรม (โหลดตอนรันจากโฟลเดอร์ของโปรแกรมเท่านั้น) และเครื่องต้องมี
+  WebView2 Runtime (Windows 10/11 มีมาแล้ว) ถ้าไม่มี control บอกเหตุผลแทนหน้าเว็บ โปรแกรมไม่ล้ม
+- หน้าเว็บเริ่มหลังหน้าต่างเปิดแล้ว ไม่ใช่ระหว่างสร้างฟอร์ม ข้อมูลของหน้าเว็บ (cookie, cache) เก็บที่
+  `%LOCALAPPDATA%\<ชื่อโปรแกรม>\WebView2` เพราะข้างโปรแกรมใน Program Files เขียนไม่ได้
+- ใน designer จะเห็นแค่กรอบกับที่อยู่ ไม่เปิดหน้าเว็บจริง; ในเว็บ (PWA) เป็น `<iframe>`
 
 ## การพิมพ์ — component `printdocument`
 

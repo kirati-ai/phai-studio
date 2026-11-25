@@ -56,6 +56,7 @@ pub mod glyph {
     pub const TEXTAREA: u16 = 0xE70B; // QuickNote
     pub const TREE: u16 = 0xE8B7; // Folder
     pub const PICTURE: u16 = 0xE8B9;
+    pub const GLOBE: u16 = 0xE774; // Globe: the browser control
     pub const TIMER: u16 = 0xE916; // Stopwatch
     pub const MENU_BAR: u16 = 0xE700; // GlobalNavigationButton
     pub const TOOLBAR: u16 = 0xEC7A; // DeveloperTools

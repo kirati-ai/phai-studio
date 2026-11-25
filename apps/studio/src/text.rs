@@ -683,6 +683,7 @@ pub static THAI: &[(&str, &str)] = &[
     ("Toggle All Outlining", "พับ/ขยายทั้งหมด"),
     ("Tree view", "มุมมองต้นไม้"),
     ("Picture", "รูปภาพ"),
+    ("Web page", "หน้าเว็บ"),
     ("Timer", "ตัวจับเวลา"),
     ("Tick", "ทุกช่วงเวลา (Tick)"),
     ("Interval", "ช่วงเวลา"),

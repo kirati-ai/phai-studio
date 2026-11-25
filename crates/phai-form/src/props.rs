@@ -136,6 +136,7 @@ pub const CONTROL: &[Spec] = &[
     spec("initial_directory", "InitialDirectory", "Behavior", Ty::Text, "", &[Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog], How::Code, "The folder it opens in; empty: the one used last."),
     spec("default_ext", "DefaultExt", "Behavior", Ty::Text, "", &[Kind::OpenFile, Kind::SaveFile], How::Code, "Added to a name typed without one: txt."),
     spec("multiselect", "Multiselect", "Behavior", Ty::Bool, "false", &[Kind::OpenFile], How::Code, "Several files can be chosen: show_dialog_multi()."),
+    spec("url", "Source", "Behavior", Ty::Text, "", &[Kind::Browser], How::Code, "The page it opens - https://... - or empty for a blank page."),
     spec("mask", "Mask", "Behavior", Ty::Text, "", &[Kind::Masked], How::Code, "What it takes: 0 a digit, 9 a digit or none, L a letter, A a letter or digit, & anything; the rest stays as written - 000-000-0000."),
     spec("selected_index", "SelectedIndex", "Behavior", Ty::Int(-1, 9999), "0", &[Kind::Combo], How::Call, "The item chosen when the window opens, from 0; -1 none."),
     spec("max_drop_down_items", "MaxDropDownItems", "Behavior", Ty::Int(1, 100), "8", &[Kind::Combo], How::Call, "How many items the open list shows before it scrolls."),

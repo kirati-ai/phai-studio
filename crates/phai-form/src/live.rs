@@ -181,6 +181,8 @@ pub fn make(parent: HWND, c: &Control, id: i32, font: HFONT) -> HWND {
             h
         }
         Kind::Picture => phai_ui::picture::picture(parent, id, c.image.as_deref().unwrap_or("")),
+        // The designer shows the address, never the page.
+        Kind::Browser => phai_ui::browser::placeholder(parent, id, c.word("url").unwrap_or("")),
         Kind::Flow | Kind::Table => win::panel(parent, id, true),
         Kind::Rich => phai_ui::grid::richtext(parent, id, font, text),
         Kind::Grid => {

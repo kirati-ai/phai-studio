@@ -215,6 +215,10 @@ pub enum Kind {
     Tree,
     /// A picture from a file.
     Picture,
+    /// A web page inside the window - Microsoft Edge WebView2, as WinForms' WebView2 control;
+    /// `url` is the page it opens. Needs phai-ui's `browser` feature and WebView2Loader.dll
+    /// beside the program; without them it says so in its place.
+    Browser,
     /// A component, not a control: something happens every so many milliseconds.
     Timer,
     /// A panel that lays the controls in it out left to right, row after row.
@@ -277,7 +281,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 40] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource, Kind::UserControl];
+    pub const ALL: [Kind; 41] = [Kind::Label, Kind::Edit, Kind::Textarea, Kind::Rich, Kind::Button, Kind::Checkbox, Kind::Radio, Kind::Combo, Kind::List, Kind::Grid, Kind::Tree, Kind::Picture, Kind::Browser, Kind::Date, Kind::Number, Kind::Slider, Kind::Progress, Kind::Group, Kind::Tabs, Kind::Flow, Kind::Table, Kind::Statusbar, Kind::Timer, Kind::ContextMenu, Kind::Panel, Kind::ListBox, Kind::CheckedList, Kind::Link, Kind::Masked, Kind::Calendar, Kind::OpenFile, Kind::SaveFile, Kind::FolderDialog, Kind::ColorDialog, Kind::FontDialog, Kind::ErrorProvider, Kind::NotifyIcon, Kind::Split, Kind::PrintDocument, Kind::BindingSource, Kind::UserControl];
 
     /// A container that places the controls in it itself.
     pub fn arranges(self) -> bool {
@@ -307,6 +311,7 @@ impl Kind {
             Kind::Slider => "slider",
             Kind::Tree => "tree",
             Kind::Picture => "picture",
+            Kind::Browser => "browser",
             Kind::Timer => "timer",
             Kind::Flow => "flow",
             Kind::Table => "table",
@@ -353,6 +358,7 @@ impl Kind {
             Kind::Slider => (200, 30),
             Kind::Tree => (200, 150),
             Kind::Picture => (120, 90),
+            Kind::Browser => (320, 240),
             Kind::Timer => (32, 32),
             Kind::Flow | Kind::Table => (240, 120),
             Kind::Rich => (240, 120),

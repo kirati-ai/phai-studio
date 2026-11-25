@@ -2091,6 +2091,7 @@ fn kind_of(o: &Obj) -> Option<Kind> {
         "DataGridView" => Kind::Grid,
         "TreeView" => Kind::Tree,
         "PictureBox" => Kind::Picture,
+        "WebView2" | "WebBrowser" => Kind::Browser,
         "ProgressBar" => Kind::Progress,
         "TrackBar" => Kind::Slider,
         "NumericUpDown" => Kind::Number,

@@ -553,6 +553,11 @@ pub fn generate(f: &FormFile) -> String {
                     let _ = writeln!(w, "        phai_ui::ctl::PictureBox({}).load({});", c.id, lit(img));
                 }
             }
+            Kind::Browser => {
+                if let Some(url) = c.word("url").filter(|u| !u.trim().is_empty()) {
+                    let _ = writeln!(w, "        phai_ui::ctl::WebBrowser({}).navigate({});", c.id, lit(url.trim()));
+                }
+            }
             _ => {}
         }
         if matches!(c.kind, Kind::Checkbox | Kind::Radio) && c.checked == Some(true) {

@@ -15,6 +15,9 @@ path = "src/lib.rs"
 default = ["shot"]
 # Photographs a window to PNG (PrintWindow): bugs in how a window looks do not show in code.
 shot = ["dep:png"]
+# The browser control (kind = "browser") shows its page with Microsoft Edge WebView2. Off unless a
+# program asks for it: without it the control compiles and says the page cannot be shown.
+browser = ["dep:webview2-com"]
 
 [[example]]
 name = "grid_demo"
@@ -23,6 +26,9 @@ required-features = ["shot"]
 
 [dependencies]
 png = { workspace = true, optional = true }
+# Microsoft's WebView2 COM bindings, on windows 0.62. Only its interfaces and callback helpers are
+# used: WebView2Loader.dll is loaded at run time from beside the program (browser.rs).
+webview2-com = { version = "0.39", optional = true }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

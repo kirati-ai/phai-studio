@@ -264,6 +264,7 @@ control!(TabControl);
 control!(StatusBar);
 control!(LinkLabel);
 control!(PictureBox);
+control!(WebBrowser);
 control!(TreeView);
 control!(SplitContainer);
 control!(UserControl);
@@ -733,6 +734,30 @@ impl ProgressBar {
     }
     pub fn perform_step(self) {
         self.increment(10)
+    }
+}
+
+impl WebBrowser {
+    /// Opens a page in the frame.
+    pub fn navigate(self, url: &str) {
+        if let Some(e) = el(self.0) {
+            let _ = e.set_attribute("src", url);
+        }
+    }
+    /// The address the frame was given.
+    pub fn url(self) -> String {
+        el(self.0).and_then(|e| e.get_attribute("src")).unwrap_or_default()
+    }
+    /// Loads the page again.
+    pub fn reload(self) {
+        let at = self.url();
+        self.navigate(&at);
+    }
+    /// A frame cannot go back on the program's behalf in a browser; it does nothing here.
+    pub fn go_back(self) {}
+    /// A frame is always there in a browser.
+    pub fn ready(self) -> bool {
+        true
     }
 }
 

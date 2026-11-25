@@ -401,6 +401,10 @@ control!(
     PictureBox
 );
 control!(
+    /// A web page inside the window - WinForms' WebView2 (phai-ui's `browser` feature).
+    WebBrowser
+);
+control!(
     /// WinForms' TabControl.
     TabControl
 );
@@ -1403,6 +1407,39 @@ impl PictureBox {
     /// Example: `ui.picture1.set_size_mode("zoom");`
     pub fn set_size_mode(self, mode: &str) {
         crate::picture::set_size_mode(self.0, mode)
+    }
+}
+
+impl WebBrowser {
+    /// Opens a page.
+    /// ไทย: เปิดหน้าเว็บ
+    /// Example: `ui.page.navigate("https://example.com/");`
+    pub fn navigate(self, url: &str) {
+        crate::browser::navigate(self.0, url)
+    }
+    /// The address of the page shown now.
+    /// ไทย: ที่อยู่ของหน้าที่แสดงอยู่
+    /// Example: `let at = ui.page.url();`
+    pub fn url(self) -> String {
+        crate::browser::url(self.0)
+    }
+    /// Loads the page again.
+    /// ไทย: โหลดหน้าใหม่อีกครั้ง
+    /// Example: `ui.page.reload();`
+    pub fn reload(self) {
+        crate::browser::reload(self.0)
+    }
+    /// The page before this one, as a browser's Back button.
+    /// ไทย: กลับไปหน้าก่อน
+    /// Example: `ui.page.go_back();`
+    pub fn go_back(self) {
+        crate::browser::go_back(self.0)
+    }
+    /// Whether a page is showing: WebView2 started on this computer.
+    /// ไทย: แสดงหน้าเว็บได้แล้วหรือยัง
+    /// Example: `if !ui.page.ready() { ... }`
+    pub fn ready(self) -> bool {
+        crate::browser::ready(self.0)
     }
 }
 

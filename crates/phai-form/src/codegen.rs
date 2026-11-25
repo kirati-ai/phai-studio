@@ -225,6 +225,7 @@ pub fn ctl_type(kind: Kind) -> &'static str {
         Kind::Grid => "Grid",
         Kind::Tree => "TreeView",
         Kind::Picture => "PictureBox",
+        Kind::Browser => "WebBrowser",
         Kind::Date => "DateTimePicker",
         Kind::Number => "NumericUpDown",
         Kind::Slider => "TrackBar",
@@ -708,6 +709,7 @@ pub fn generate(f: &FormFile, opts: &Options) -> String {
             Kind::Slider => format!("win::slider(hwnd, {id}, {}, {}, {})", c.min.unwrap_or(0), c.max.unwrap_or(100), c.value.unwrap_or(0)),
             Kind::Tree => format!("{{ let h = win::tree(hwnd, {id}, {font}); win::tree_items(h, &[{}]); h }}", c.items.iter().map(|s| lit(s)).collect::<Vec<_>>().join(", ")),
             Kind::Picture => format!("phai_ui::picture::picture(hwnd, {id}, {})", lit(c.image.as_deref().unwrap_or(""))),
+            Kind::Browser => format!("phai_ui::browser::browser(hwnd, {id}, {})", lit(c.word("url").unwrap_or(""))),
             Kind::Flow | Kind::Table => format!("win::panel(hwnd, {id}, false)"),
             Kind::Rich => format!("phai_ui::grid::richtext(hwnd, {id}, {font}, {})", lit(&text_of(c))),
             Kind::Grid => {

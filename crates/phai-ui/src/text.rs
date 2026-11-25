@@ -49,6 +49,10 @@ pub const LIBRARY: &[(&str, &str)] = &[
     ("CSV file|*.csv", "ไฟล์ CSV|*.csv"),
     ("PDF document|*.pdf", "เอกสาร PDF|*.pdf"),
     ("Cancel", "ยกเลิก"),
+    ("Web page", "หน้าเว็บ"),
+    ("This program was built without phai-ui's browser feature, so the page cannot be shown.", "โปรแกรมนี้สร้างโดยไม่ได้เปิดคุณสมบัติ browser ของ phai-ui จึงแสดงหน้าเว็บไม่ได้"),
+    ("The page cannot be shown: WebView2Loader.dll is not beside the program.", "แสดงหน้าเว็บไม่ได้: ไม่มีไฟล์ WebView2Loader.dll อยู่ข้างโปรแกรม"),
+    ("The page cannot be shown: Microsoft Edge WebView2 Runtime is not installed on this computer.", "แสดงหน้าเว็บไม่ได้: เครื่องนี้ยังไม่ได้ติดตั้ง Microsoft Edge WebView2 Runtime"),
     ("Yes", "ใช่"),
     ("No", "ไม่"),
     // The Live Inspector (`inspect`).
