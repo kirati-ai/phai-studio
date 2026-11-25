@@ -59,6 +59,7 @@ mod dbgwin;
 mod vsextra;
 mod update;
 mod about;
+mod support;
 mod ai;
 mod acp;
 mod copilot;
@@ -227,6 +228,7 @@ const ID_ADD_USER_CONTROL: i32 = 293;
 const ID_IMPORT_WINFORMS: i32 = 2903;
 const ID_VIEW_AI: i32 = 2904;
 const ID_USER_SNIPPETS: i32 = 2905;
+const ID_SUPPORT: i32 = 2906;
 /// Project > Add Report: a printed report of the project's, designed in the Report Designer.
 const ID_ADD_REPORT: i32 = 292;
 /// Build > Build for Web: the project as a web page that installs as an app on phones.
@@ -1656,6 +1658,7 @@ fn build_menu() -> HMENU {
         add(help, ID_HELP_ERRORS, t("Reading Compiler Errors"), "");
         sep(help);
         add(help, ID_CHECK_UPDATES, t("Check for Updates..."), "");
+        add(help, ID_SUPPORT, t("Support Phai Studio..."), "");
         add(help, ID_ABOUT, t("About Phai Studio"), "");
         sub(t("&Help"), help);
         // A coloured picture beside every command.
@@ -9423,6 +9426,7 @@ impl Studio {
                 }
             }
             ID_CHECK_UPDATES => self.check_for_updates(),
+            ID_SUPPORT => support::show(self.hwnd),
             ID_UPDATE_READY => self.update_downloaded(),
             ID_QUICK_ACTIONS => match self.code_shown() {
                 Some(h) => self.lsp_actions(h),

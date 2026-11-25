@@ -1,6 +1,8 @@
 /target
 *.png
 !docs/**/*.png
+!apps/studio/templates/*/preview.png
+!apps/studio/art/promptpay.png
 /dist
 /site/storage
 __pycache__/
