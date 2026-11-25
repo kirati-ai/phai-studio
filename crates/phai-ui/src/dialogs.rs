@@ -393,7 +393,9 @@ pub fn ask_fields(owner: Option<HWND>, title: &str, fields: &[Field]) -> Option<
             Field::Text(l, _) | Field::Password(l, _) => Some(win::measure(hwnd, font, l).0),
             Field::Check(..) => None,
         }).max().unwrap_or(0);
-        let label_w = (widest + win::px(hwnd, 12)).clamp(win::px(hwnd, 110), win::px(hwnd, 420));
+        // Only tick boxes: no labels' column, the boxes at the left edge.
+        let only_checks = fields.iter().all(|f| matches!(f, Field::Check(..)));
+        let label_w = if only_checks { 0 } else { (widest + win::px(hwnd, 12)).clamp(win::px(hwnd, 110), win::px(hwnd, 420)) };
         // A tick box's words run in the boxes' column: that column as wide as the longest of them
         // (its box and gap included), so none is cut off.
         let widest_check = fields.iter().filter_map(|f| match f {

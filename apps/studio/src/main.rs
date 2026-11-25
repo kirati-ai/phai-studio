@@ -64,6 +64,7 @@ mod ai;
 mod acp;
 mod copilot;
 mod extend;
+mod diskuse;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -297,6 +298,8 @@ const ID_STICKY_SCROLL: i32 = 1996;
 const ID_SCROLL_MAP: i32 = 1997;
 /// Tools > Compare Files..., View > Class View, Tools > Git's branches and stash.
 const ID_COMPARE: i32 = 2101;
+/// Tools > Disk Space of Builds...
+const ID_DISK_SPACE: i32 = 2990;
 const ID_CLASS_VIEW: i32 = 2102;
 const ID_BRANCHES: i32 = 2103;
 const ID_NEW_BRANCH: i32 = 2104;
@@ -1655,6 +1658,7 @@ fn build_menu() -> HMENU {
         add(tools, ID_EXT_TOOLS, t("External Tools..."), "");
         sep(tools);
         add(tools, ID_COMPARE, t("Compare Files..."), "");
+        add(tools, ID_DISK_SPACE, t("Disk Space of Builds..."), "");
         add(tools, ID_USER_SNIPPETS, t("Code Snippets..."), "");
         add(tools, ID_KEYMAP, t("Keyboard Shortcuts..."), "");
         add(tools, ID_OPTIONS, t("Options..."), "");
@@ -7283,6 +7287,68 @@ impl Studio {
         open_with_windows(&out.to_string_lossy());
     }
 
+    /// Tools > Disk Space of Builds: the builds (`target` folders) of the recent projects and the
+    /// projects beside them, the biggest first, with when each was last built; those not built for
+    /// a month ticked. The ticked are emptied - they come back on the next build.
+    fn disk_space(&mut self) {
+        if self.building {
+            win::message(Some(self.hwnd), t("Wait for the build to finish first."), "Phai Studio", wm::MB_ICONINFORMATION);
+            return;
+        }
+        let recent = recent_projects();
+        let shared = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from);
+        let Some(list) = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Disk Space of Builds"), t("Measuring the builds of your projects..."), move |_| diskuse::measure(&diskuse::projects_near(&recent), shared)) else { return };
+        let test = std::env::var_os("PHAI_DISK_TEST").is_some();
+        if list.is_empty() {
+            if test {
+                println!("no builds");
+                std::process::exit(0);
+            }
+            win::message(Some(self.hwnd), t("None of your projects has builds to empty."), t("Disk Space of Builds"), wm::MB_ICONINFORMATION);
+            return;
+        }
+        let total: u64 = list.iter().map(|b| b.bytes).sum();
+        let shown: Vec<&diskuse::Builds> = list.iter().take(15).collect();
+        let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
+        let labels: Vec<String> = shown
+            .iter()
+            .map(|b| {
+                let name = cargo::package_name(&b.project).unwrap_or_else(|| b.project.file_name().unwrap_or_default().to_string_lossy().to_string());
+                let when = match b.days {
+                    Some(0) => t("built today").to_string(),
+                    Some(1) => t("built yesterday").to_string(),
+                    Some(d) => tf("built {0} days ago", &[&d]),
+                    None => String::new(),
+                };
+                format!("{name} - {} - {when}   {}", diskuse::human(b.bytes), diskuse::short_path(&b.project, home.as_deref())).replace('&', "&&")
+            })
+            .collect();
+        let ticked = |b: &diskuse::Builds| b.days.is_some_and(|d| d >= 30);
+        let title = tf("Disk Space of Builds - {0} in all; the ticked are emptied", &[&diskuse::human(total)]);
+        let answers: Vec<String> = if test {
+            for (b, l) in shown.iter().zip(&labels) {
+                println!("[{}] {l}", if ticked(b) { "x" } else { " " });
+            }
+            println!("{title}");
+            std::process::exit(0);
+        } else {
+            let fields: Vec<phai_ui::dialogs::Field> = shown.iter().zip(&labels).map(|(b, l)| phai_ui::dialogs::Field::Check(l, ticked(b))).collect();
+            let Some(a) = phai_ui::dialogs::ask_fields(Some(self.hwnd), &title, &fields) else { return };
+            a
+        };
+        let chosen: Vec<PathBuf> = shown.iter().zip(&answers).filter(|(_, v)| *v == "1").map(|(b, _)| b.target.clone()).collect();
+        if chosen.is_empty() {
+            return;
+        }
+        let Some(done) = phai_ui::dialogs::wait_for(Some(self.hwnd), t("Disk Space of Builds"), t("Emptying the builds..."), move |_| chosen.iter().map(|d| diskuse::empty(d)).collect::<Vec<_>>()) else { return };
+        let freed: u64 = done.iter().filter_map(|r| r.as_ref().ok()).sum();
+        let said = tf("Freed {0} - each comes back on the project's next build", &[&diskuse::human(freed)]);
+        self.say_status(&said);
+        let failed: Vec<String> = done.into_iter().filter_map(Result::err).collect();
+        let text = if failed.is_empty() { said } else { format!("{said}\n\n{}\n{}", t("Some could not be emptied - a program may be using them:"), failed.join("\n")) };
+        win::message(Some(self.hwnd), &text, t("Disk Space of Builds"), if failed.is_empty() { wm::MB_ICONINFORMATION } else { wm::MB_ICONWARNING });
+    }
+
     /// F5: build the project as Debug, then run it under the debugger.
     fn start_debugging(&mut self) {
         let was = self.release;
@@ -9199,6 +9265,7 @@ impl Studio {
             ID_SEARCH => self.feature_search(""),
             ID_PIN_TAB => self.pin_tab(),
             ID_INFER_ANCHORS => self.infer_anchors(),
+            ID_DISK_SPACE => self.disk_space(),
             ID_COMPARE => {
                 // `PHAI_COMPARE=a|b`: those two, without the file dialogs.
                 if let Some((a, b)) = std::env::var("PHAI_COMPARE").ok().and_then(|v| v.split_once('|').map(|(a, b)| (PathBuf::from(a), PathBuf::from(b)))) {
@@ -12029,6 +12096,11 @@ fn main() {
             PUBLISH_TEST.store(true, Ordering::Relaxed);
             std::env::set_var("PHAI_PUBLISH_TEST", "1");
             s.command(ID_PUBLISH);
+        }
+        // `--disktest`: Tools > Disk Space of Builds without the questions; prints the list.
+        if args.iter().any(|a| a == "--disktest") {
+            std::env::set_var("PHAI_DISK_TEST", "1");
+            s.command(ID_DISK_SPACE);
         }
         // `--debugtest`: see `debug_test_step`. With `PHAI_ATTACH_PID`, attached to that program
         // rather than started - Stop then lets it go on.
