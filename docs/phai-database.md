@@ -121,7 +121,7 @@ plain text.
 | A backup first | `db.backup_to(path)` (an online copy, page by page) before an AI session that may write | 3 |
 | Column labels | The table `_phai_columns` (table, column, label: `personal` / `secret`, mask), plus masks for a national ID, phone, e-mail and address, and a custom pattern | 3 |
 | Masking | Only the rule is stored, in `_phai_columns`; a masked copy is never stored. The real value stays in the file, under the file's encryption, and the mask is applied as each answer is made, for a connection opened with the role `ai` or `guest`. Such a connection may not use a labelled column in `WHERE`, `ORDER BY`, `GROUP BY` or a join either. Otherwise `WHERE phone = '0812345678'` answering "one row" or "none" would let it test guesses until it learns the real value. The owner can allow exact-match search per column, with a limit on lookups per minute | 3 |
-| Column encryption | `secret` columns stored as AES-256-GCM BLOBs under a column key kept apart from the file's password (DPAPI or a second password). With the key, values read and write as normal; without it, they read as `[encrypted]`. Equality search on such a column needs a deterministic mode (AES-SIV), which reveals which rows are equal, so it is off unless asked for | 4.5 |
+| Column encryption | `secret` columns are stored as AES-256-GCM BLOBs. **Later**: the key is held by the user, not the engine; see "Field encryption with the user's key" below | later |
 | Key slots | The key stays with people: one slot per person in `-keys`, never one for an AI; re-key when someone leaves | 4.5 |
 | Users and roles | `_users.phdb`; the role `ai` has no slot and, by default, `SELECT` on the tables chosen, no `secret` columns, 1,000 rows and 5 seconds, and no DDL | 5 |
 | A copy for an AI | *Share a copy*: chosen tables and columns written to a separate `.phdb`, for an AI to read instead of the real one | 5 |
@@ -137,12 +137,69 @@ Limits to state plainly in the guide:
 - **`_phai_audit` and `_phai_columns` are ordinary tables in the file.** Another SQLite program
   can read or change them, so the labels and masks hold only through phai-database. Against
   other programs, the file needs whole-file encryption.
-- **A column-encrypted value is a BLOB to other tools**, and stays secret from them too.
+- **A column-encrypted value** (later) is a BLOB to every tool and to the engine itself. Only the
+  program holding the user's key can read it.
 - **On one computer, without the server, the audit log is a record, not a proof.** Someone who
   may write to the file may also change the log. Only on the server (stage 5), where users can't
   touch `_phai_*`, is it tamper-resistant.
 - **Prompt injection inside the data can't be stopped by the engine.** The read-only role and safe
   mode only limit what a fooled AI can do.
+
+### Field encryption with the user's key (written down 2026-11-26, set aside for later)
+
+The owner asked for this to be written down and kept for later. It is not in any stage yet.
+
+**Why.** Data is mostly stolen through the running system, not from the file:
+- a stolen staff or admin password
+- SQL injection or another hole in a program
+- an API that doesn't check whose row it returns
+- a database left open to the internet
+- malware, or an insider
+
+In all of these the engine is running with the key, so it decrypts for the thief. Whole-file
+encryption (stage 4.5) stops only a stolen file: a backup, a lost laptop, a public cloud bucket.
+
+**The design.** Sensitive columns are encrypted field by field, and **the key is never in the
+engine**:
+- The user's program (Studio's forms, phai-ui, phai-web) holds the column key, unlocked from the
+  person's own slot, as in stage 4.5.
+- The program encrypts a value before sending it and decrypts it only on that person's screen.
+- The engine, the server, `_phai_audit`, a dump, a SQL injection and an AI all see only the
+  stored bytes.
+- What is stored per field: nonce 12 + data + tag 16 bytes (AES-256-GCM), as a BLOB.
+
+**Searching: the blind index.** Beside each searchable secret column, a second column holds
+`HMAC-SHA256(index key, normalised value)`, truncated to 16 bytes. The index key is another key
+the program holds. The column is indexed, so `WHERE phone_bi = HMAC('0812345678')` is an
+ordinary indexed lookup:
+- Without the index key, no one can test guesses, not even across the few billion Thai phone
+  numbers.
+- Cost: whoever sees the column learns which rows share a value, but not the value.
+- Range search (`<`, `>`), `LIKE`, sorting and `SUM` on a secret column remain impossible inside
+  the engine, and the program does them after decrypting. So only columns that need none of
+  these should be secret: a national ID, a phone, a bank account, a salary.
+
+**Measured on 2026-11-26** (Intel Core Ultra 7 155H, AES from Windows CNG, one thread):
+
+| What | Result |
+|---|---|
+| `"อันดา"` | 15 bytes of UTF-8 → 43 bytes stored; the same name encrypted twice gives different bytes |
+| Decrypt one field | 126 ns |
+| Decrypt one 4 KB page (whole-file, CBC + HMAC-SHA512) | 7.6 µs (539 MB/s) |
+| Unlock with PBKDF2-HMAC-SHA512 at 256,000 iterations | 113 ms, once |
+| A screen of 50 rows × 10 secret fields | about 0.06 ms |
+| Scanning one secret column of 10M rows | about 1.3 s, which is why secret columns can't be searched without a blind index |
+| Size | +28 bytes per field: 10M rows × 10 secret fields ≈ +2.8 GB, against about 2 % for whole-file encryption |
+
+**Before it is scheduled, decide:**
+- **Where the program keeps the key.** Its own slot, DPAPI or Windows Hello. Then how a
+  person's slot reaches a phone running the web build.
+- **What happens when a person leaves.** The column key is shared by everyone allowed to see the
+  column, so removing someone means re-encrypting those columns.
+- **How Studio's designer shows a secret column.** Its properties, the blind index made for it,
+  and the grid decrypting only visible rows (the virtual mode above).
+- **Server-side features that stop working on these columns.** `CHECK` constraints, `UNIQUE`
+  (except through the blind index) and server-side reports.
 
 ## Large tables: 10 million rows and more
 
