@@ -122,7 +122,9 @@ plain text.
 | Column labels | The table `_phai_columns` (table, column, label: `personal` / `secret`, mask), plus masks for a national ID, phone, e-mail and address, and a custom pattern | 3 |
 | Masking | Only the rule is stored, in `_phai_columns`; a masked copy is never stored. The real value stays in the file, under the file's encryption, and the mask is applied as each answer is made, for a connection opened with the role `ai` or `guest`. Such a connection may not use a labelled column in `WHERE`, `ORDER BY`, `GROUP BY` or a join either. Otherwise `WHERE phone = '0812345678'` answering "one row" or "none" would let it test guesses until it learns the real value. The owner can allow exact-match search per column, with a limit on lookups per minute | 3 |
 | Column encryption | `secret` columns stored as AES-256-GCM BLOBs under a column key kept apart from the file's password (DPAPI or a second password). With the key, values read and write as normal; without it, they read as `[encrypted]`. Equality search on such a column needs a deterministic mode (AES-SIV), which reveals which rows are equal, so it is off unless asked for | 4.5 |
-| Users and roles | `_users.phdb`; the role `ai` by default has `SELECT` on the tables chosen, no `secret` columns, 1,000 rows and 5 seconds, and no DDL | 5 |
+| Key slots | The key stays with people: one slot per person in `-keys`, never one for an AI; re-key when someone leaves | 4.5 |
+| Users and roles | `_users.phdb`; the role `ai` has no slot and, by default, `SELECT` on the tables chosen, no `secret` columns, 1,000 rows and 5 seconds, and no DDL | 5 |
+| A copy for an AI | *Share a copy*: chosen tables and columns written to a separate `.phdb`, for an AI to read instead of the real one | 5 |
 
 Safe when:
 - **A test agent tries every write as the `ai` user**, through the API and through the server, and
@@ -336,19 +338,75 @@ People get:
 - **Change password / encrypt / decrypt**, made safe against a power cut: written to a new file,
   then swapped.
 
-Done when: files encrypted by phai-database open in SQLCipher (rusqlite's `bundled-sqlcipher` as a
-dev-dependency) and in DB Browser for SQLite with the password. SQLCipher's files open in
-phai-database.
+#### A key for each person (key slots)
+
+The rule is that **the key stays with people, and no AI is ever given one**. A file used by more
+than one person is keyed by slots, as disk encryption does:
+
+- **The file key.** The file is encrypted with a random 256-bit file key, using SQLCipher's raw-key
+  form (`PRAGMA key = "x'…'"`), so it is still a SQLCipher 4 file. Nobody types this key.
+- **The slots** are kept in `shop.phdb-keys`, beside the file, like `-wal`. Each slot holds the file
+  key locked by one person's secret: Argon2id from their password, then AES-256-GCM (RustCrypto
+  `argon2` and `aes-gcm`). Each slot also has its name, kind, and when it was made and last used.
+- **The kinds of slot:**
+  - a password
+  - Windows DPAPI for one Windows user, so they don't type the password
+  - the recovery key, printed as text and QR
+  - later, Windows Hello or a FIDO2 key, if asked for
+- **No slot, no data.** Someone without a slot can't decrypt a single page, so they can't even
+  learn the table names. An AI is never given a slot.
+- **Adding a person** needs someone already unlocked: their session holds the file key and locks a
+  new copy of it for the new person.
+- **Removing a person** deletes their slot, and they can no longer unlock. If they could have kept
+  the file key itself (for example from a copy of the file and memory while they used it),
+  removing the slot is not enough. **Re-key** then: the whole file is written again under a new
+  file key, into a new file that is swapped in, so it is safe against a power cut. Every remaining
+  slot is locked with the new key. Studio offers re-keying whenever a slot is removed.
+- **The slots file is written safely**: to a temporary file, flushed, then renamed, with a MAC over
+  the whole file so a damaged or edited slots file is found. Losing it leaves only the recovery
+  key, so Studio's backup copies `shop.phdb`, `-wal` and `-keys` together, and the guide says so.
+- **Guessing is slow.** Anyone holding `-keys` can try passwords offline. Argon2id with a large
+  memory cost (64 MB, measured to take about half a second) makes each guess expensive. Studio
+  asks for passwords of at least 12 characters, or a pass phrase.
+- **A single person** can keep the simple form: one password, SQLCipher's own key derivation, and
+  no `-keys` file.
+
+#### Done when, and safe when
+
+Done when:
+- Files encrypted by phai-database open in SQLCipher (rusqlite's `bundled-sqlcipher` as a
+  dev-dependency) and in DB Browser for SQLite with the password, or with the raw key for slotted
+  files. SQLCipher's files open in phai-database.
+- Slots can be added, removed and listed, and a file can be re-keyed.
+- Unlocking works through each kind of slot.
 
 Safe when:
-- The stage 3 crash test passes encrypted, including a stop halfway through a password change.
-- A flipped bit anywhere in the file is reported as tampering, never read as data.
+- The stage 3 crash test passes encrypted, including a stop halfway through a password change, a
+  slot change and a re-key.
+- A flipped bit anywhere in the file, or in `-keys`, is reported as tampering, never read as data.
+- After a re-key, the old file key opens nothing.
+- The file key and the derived keys are wiped from memory (`zeroize`) when the database closes.
 
 ### Stage 5: the server, speaking MySQL's protocol
 
 `apps/phai-dbserver`, which also runs inside Studio. A folder of `.phdb` files is served, and each
 file is one database (`USE shop` opens `shop.phdb`). Users and their rights live in
 `_users.phdb`, with passwords stored as `caching_sha2_password` verifiers.
+
+How encrypted databases are served:
+- **A user may have a slot.** When a user with a slot logs in, over TLS, their password unlocks it.
+  The server never stores the file key or any password: it holds the file key in memory only while
+  sessions with a slot are open.
+- **Users without a slot**, such as the role `ai`, can't open an encrypted database while no one
+  with a slot is connected, and that is guaranteed by the encryption itself. While someone with a
+  slot is connected, the server holds the key, and keeping the others out is the rights check's
+  job. The guide says this plainly.
+- **Locked again when idle.** When the last session with a slot ends, or after a set time
+  (15 minutes by default) with no such session, the key and every decrypted page in the cache are
+  wiped.
+- **Give an AI a copy, not the key.** Studio's *Share a copy* writes only the tables and columns
+  chosen into a new `.phdb`. The copy is unencrypted, or keyed separately. That copy is what an AI
+  gets, so the real database's key never comes near it.
 
 What it does:
 - the handshake v10
@@ -422,7 +480,8 @@ All of this works with no error on any page.
 2. **The application ID** `0x50484149` is not in SQLite's `magic.txt`.
 3. **SQLCipher 4's exact defaults** from its design page: KDF iterations, HMAC algorithm, the
    page-1 layout and the reserve size. Check them against a file it makes before writing
-   `crypt.rs`.
+   `crypt.rs`. Also check its raw-key form (key, and key with salt), on which key slots rely.
+   Check the licences of `argon2`, `aes-gcm` and `zeroize` (remembered as MIT / Apache-2.0).
 4. **OPFS in the browsers we support.** Synchronous access handles in a worker: Chrome, Edge,
    Safari (iOS) and Firefox.
 5. **Speed targets.** With `bench_grid` and 100k rows, measure fill, sort, find and an indexed

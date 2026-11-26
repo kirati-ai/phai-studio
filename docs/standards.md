@@ -39,6 +39,20 @@ program opens it with the key, the engine answers SQL in plain text. An AI never
 bytes; it asks the engine, and the engine decrypts. So the file being encrypted does not stop an
 AI that is allowed to query.
 
+**The first rule: the key stays with people.** In an encrypted database, an AI without the key
+reads nothing. It can't decrypt a page, so it can't even learn the table names. The AI is
+therefore never given a key:
+- **No slot for an AI** in a file's key slots (`-keys`, phai-database stage 4.5).
+- **No password or key** in a prompt, in a file an agent may read, or in the program's code.
+- **Studio's agents never read `*.phdb`, `*.phdb-wal` or `*.phdb-keys`**, not even inside the
+  project. `-keys` holds only locked keys, but a copy of it lets anyone guess passwords offline.
+- **When an AI needs some data, give it a copy, not the key.** Studio's *Share a copy* writes the
+  chosen tables and columns to a separate file.
+
+An AI can read the data only when it works through a program a person has already unlocked: Studio
+with the file open, or a server holding the key for someone's session. The layers below are for
+that case.
+
 Three layers, used together:
 
 | Against | Layer |
@@ -73,6 +87,9 @@ What none of this can do:
 Where it stands today:
 - **Rule 6 is broken in Studio.** `ai.rs:544` allows the agent's `read`, `search` and `fetch`
   without asking; see item 8 of the list above.
+- **The first rule is broken too.** Through that same line, an agent can read any `.db` / `.sqlite`
+  file in the project, and later a `.phdb` and its `-keys`. The fix for item 8 must also refuse
+  database files outright.
 - **Rules 1-5 are designed for phai-database** (docs/phai-database.md, "AI agents and private
   data"). For MySQL and PostgreSQL, Studio should create or use a separate read-only user for AI
   and say so in the connection dialog.
