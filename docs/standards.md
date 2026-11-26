@@ -27,6 +27,56 @@ Each part's summary is followed by a table of what still falls short, most impor
 
 Smaller points are in each part's table.
 
+## Data and AI: Phai's own rule, for every database Studio opens
+
+This is not a published spec. It is the rule Phai holds itself to, written down on 2026-11-26.
+It covers phai-database, MySQL, PostgreSQL and SQLite alike, wherever Studio's Copilot, an ACP
+agent or a program connects with AI in the loop.
+
+**What encryption does and does not do.** Encrypting the file (phai-database stage 4.5) protects
+the file while it is closed: copied, backed up to a cloud, or left on a lost USB stick. Once a
+program opens it with the key, the engine answers SQL in plain text. An AI never reads the file's
+bytes; it asks the engine, and the engine decrypts. So the file being encrypted does not stop an
+AI that is allowed to query.
+
+Three layers, used together:
+
+| Against | Layer |
+|---|---|
+| The file leaving the computer | Whole-file encryption |
+| An AI changing or deleting data, or being tricked into it | Its own user with fewer rights, safe mode, limits, an audit log, a backup first |
+| An AI seeing private data | Columns labelled personal and masked for it; columns encrypted with a second key it doesn't hold |
+
+The rules:
+1. **An AI connects as its own user**, never as the owner. By default it may read only (`SELECT`),
+   only the tables chosen for it, at most 1,000 rows per answer, for at most 5 seconds per query.
+2. **Safe mode for that user.** `UPDATE` / `DELETE` without `WHERE` are refused. `DROP`,
+   `ALTER` and `TRUNCATE` wait for a person to confirm.
+3. **Every statement an AI sends is logged**: when, which user, what, and how many rows. Studio
+   shows the log as "what the AI did".
+4. **A backup before an AI may write.** The file, or a savepoint on a server, is kept so that its
+   work can be undone in one step.
+5. **Personal columns are labelled** (national ID, phone, address, salary, grades) and masked for
+   the AI's user: `1-2345-xxxxx-xx-x`, `08x-xxx-5678`. This helps with PDPA; it does not by itself
+   make a program comply.
+6. **Studio never sends rows to an AI service without asking** the person first, and never sends
+   personal columns unmasked.
+7. **Data is data.** Text read from a table can contain instructions written to fool an AI
+   (prompt injection). No engine can stop that, because to the engine it is only text. The AI's
+   client must treat it as data, and rules 1-2 keep the harm small if it is fooled.
+
+What none of this can do:
+- **Tell an AI from a person.** Protection comes from rights, not from guessing who is
+  connecting.
+- **Stop a person who may see the data from pasting it into an AI themselves.**
+
+Where it stands today:
+- **Rule 6 is broken in Studio.** `ai.rs:544` allows the agent's `read`, `search` and `fetch`
+  without asking; see item 8 of the list above.
+- **Rules 1-5 are designed for phai-database** (docs/phai-database.md, "AI agents and private
+  data"). For MySQL and PostgreSQL, Studio should create or use a separate read-only user for AI
+  and say so in the connection dialog.
+
 ## HTTP/1.1: the data server (`phai-data/src/server.rs`) and Studio's phone/web server (`studio/src/web.rs`)
 
 Spec: RFC 9110 (semantics) and RFC 9112 (HTTP/1.1), both June 2022, current.

@@ -106,6 +106,42 @@ iterators are too slow.
 5. **A copy before the first write.** The first time phai-database writes to a file made by
    another program, it keeps `shop.phdb.bak` beside it.
 
+## AI agents and private data
+
+The rule is in docs/standards.md ("Data and AI"). This is how phai-database carries it out.
+Encrypting the file is not enough on its own: an AI asks the engine, and the engine answers in
+plain text.
+
+| Part | What | Stage |
+|---|---|---|
+| Read-only connections | `Database::open_read_only`; every write is refused at the engine, not only in the UI | 2 |
+| Limits per connection | Most rows per answer; a deadline per query (checked in the executor's loop, so a runaway join stops); most memory for sorts | 2 |
+| Safe mode | `PRAGMA phai_safe = on` for a connection: `UPDATE` / `DELETE` without `WHERE` refused; `DROP`, `ALTER` and `VACUUM` need a confirmation token that only the person's UI gives | 3 |
+| Audit log | The table `_phai_audit` (time, user, statement, rows touched), appended in the same transaction as the change, so a rolled-back change leaves no false line | 3 |
+| A backup first | `db.backup_to(path)` (an online copy, page by page) before an AI session that may write | 3 |
+| Column labels | The table `_phai_columns` (table, column, label: `personal` / `secret`, mask), plus masks for a national ID, phone, e-mail and address, and a custom pattern | 3 |
+| Masking | For a connection opened with the role `ai` or `guest`, labelled columns come back masked. `WHERE` still compares the real values, so "find by phone" works without showing the phone | 3 |
+| Column encryption | `secret` columns stored as AES-256-GCM BLOBs under a column key kept apart from the file's password (DPAPI or a second password). With the key, values read and write as normal; without it, they read as `[encrypted]`. Equality search on such a column needs a deterministic mode (AES-SIV), which reveals which rows are equal, so it is off unless asked for | 4.5 |
+| Users and roles | `_users.phdb`; the role `ai` by default has `SELECT` on the tables chosen, no `secret` columns, 1,000 rows and 5 seconds, and no DDL | 5 |
+
+Safe when:
+- **A test agent tries every write as the `ai` user**, through the API and through the server, and
+  every one is refused.
+- **Masked and encrypted values never reach the AI**, in any column, `JOIN`, `UNION`, subquery or
+  error message. The test greps every answer for the real values.
+- **`_phai_audit` matches what happened**, through crashes as in stage 3's crash test.
+
+Limits to state plainly in the guide:
+- **`_phai_audit` and `_phai_columns` are ordinary tables in the file.** Another SQLite program
+  can read or change them, so the labels and masks hold only through phai-database. Against
+  other programs, the file needs whole-file encryption.
+- **A column-encrypted value is a BLOB to other tools**, and stays secret from them too.
+- **On one computer, without the server, the audit log is a record, not a proof.** Someone who
+  may write to the file may also change the log. Only on the server (stage 5), where users can't
+  touch `_phai_*`, is it tamper-resistant.
+- **Prompt injection inside the data can't be stopped by the engine.** The read-only role and safe
+  mode only limit what a fooled AI can do.
+
 ## Large tables: 10 million rows and more
 
 The file format is not the limit:
