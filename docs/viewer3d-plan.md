@@ -1,7 +1,7 @@
 # A 3D model on a form: the `viewer3d` control (plan for a later project)
 
 Written 2026-11-26 at the owner's word: "write a plan". Nothing here is built yet. It comes after
-the `.phdb` database (docs/phdb-plan.md).
+the database engine (docs/phai-database.md).
 
 ## What it is, and what it is not
 
