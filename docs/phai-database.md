@@ -106,9 +106,104 @@ iterators are too slow.
 5. **A copy before the first write.** The first time phai-database writes to a file made by
    another program, it keeps `shop.phdb.bak` beside it.
 
+## Large tables: 10 million rows and more
+
+The file format is not the limit:
+- Page numbers are 32-bit, so a file can hold up to 2^32 - 2 pages. That is 16 TB with 4 KB pages,
+  or 281 TB with 64 KB pages.
+- Rowids are 64-bit.
+
+Ten million rows of about 100 bytes are a file of about 1 GB, plus its indexes. A 4 KB leaf page
+holds about 35 such rows, and an interior page points to about 400 children. A lookup by key is
+therefore 4 pages deep, and the top 3 levels stay in the cache, so it costs about one read from
+the disk. The engine has to be built for this from stage 1. These rules make it so:
+
+1. **Memory has a budget, not the table's size.** The page cache is a fixed number of pages:
+   `cache_size`, 2,000 pages (8 MB) by default, settable. It is evicted by a clock or LRU policy.
+   Nothing ever loads a whole table. Peak memory is tested: it stays under the budget plus a small
+   fixed overhead, whatever the row count.
+2. **Results stream.** Every executor node is a pull iterator, and a row is produced only when it
+   is asked for. `LIMIT 50` on 10 million rows reads about 50 rows. The server (stage 5) sends rows
+   as they come, never a whole result set at once.
+3. **Sorting spills to disk.** `ORDER BY`, `GROUP BY`, `DISTINCT` and `CREATE INDEX` sort in
+   memory up to `temp_memory` (64 MB by default). Above that, they write sorted runs to a temporary
+   file and merge them. The temporary file is encrypted when the database is, and deleted at once.
+4. **The planner uses indexes and knows sizes.**
+   - It seeks instead of scanning when a `WHERE` or `ORDER BY` matches an index.
+   - It uses covering indexes, so a query that needs only indexed columns never reads the table.
+   - `ANALYZE` writes `sqlite_stat1`, as SQLite does, so the join order and index choice follow the
+     real row counts.
+   - `EXPLAIN QUERY PLAN` shows what was chosen.
+5. **Joins without an index don't go quadratic.** Nested loops are used when an index exists. A
+   hash join (spilling to disk like the sort) is used when one doesn't, so two 10-million-row
+   tables don't make 10^14 comparisons.
+6. **Loading fast.**
+   - Inside one transaction, rows with rising rowids are appended to the right-most leaf without
+     a full search and balance.
+   - `CREATE INDEX` on a full table sorts the keys and builds the B-tree bottom up, which is much
+     faster than inserting one by one.
+   - The guide says: wrap a bulk load in one `BEGIN … COMMIT`, and create the indexes afterwards.
+7. **Paging by key, not by `OFFSET`.** `LIMIT 50 OFFSET 9000000` must step past 9 million rows.
+   `WHERE id > last_seen ORDER BY id LIMIT 50` seeks straight there. Studio's grid and the server's
+   browsing use keyset paging. `OFFSET` still works, but it is documented as slow on big tables.
+8. **`COUNT(*)` reads the smallest index.** It has no row counter to cheat with: the format has
+   none, and keeping one would break compatibility. On 10 million rows that is roughly a second.
+   Studio shows "about N rows" from `sqlite_stat1` at once, and the exact count when asked.
+9. **WAL and journal stay bounded.** The WAL auto-checkpoints at 1,000 pages. `journal_size_limit`
+   trims the files after big transactions. A transaction that changes millions of rows is allowed,
+   but the guide recommends batches of 10,000 to 100,000 rows.
+10. **Space comes back without doubling the disk.** `VACUUM` needs room for a full copy, which is
+    hard on a 50 GB file. Incremental vacuum (`auto_vacuum = INCREMENTAL`) gives pages back a few
+    at a time. Studio offers it when the freelist is large.
+11. **Big values.** BLOBs and long texts go into overflow chains. The default maximum value is
+    1 GB, as in SQLite, and it can be set. Reading a big BLOB can stream (`blob_open`), so a 500 MB
+    video needn't be in memory at once.
+12. **All sizes are 64-bit in our code.** Counts and file offsets are `u64`, and rowids `i64`. Page
+    numbers are `u32`, as the format says. Nothing breaks at 2^31 rows or 2 GB of file.
+
+On the web, browsers cap storage, and a phone may allow only a few hundred MB to a page. A table
+of 10 million rows belongs on a computer or behind the server (stage 5). The web build checks
+`navigator.storage.estimate()` and says plainly when the data won't fit.
+
+### Inside Studio, for big tables
+
+Today the data grid fills a ListView with every row, and phai-data stops at `MAX_ROWS = 1000`
+(`phai-data/src/lib.rs:100`). For big tables:
+- **The grid gets a virtual mode** (`LVS_OWNERDATA`). It asks for only the rows on the screen,
+  and a cursor fetches them by keyset paging, a page ahead and a page behind.
+- **Sorting a column** becomes `ORDER BY` in the engine, using an index when there is one, not a
+  sort of the rows in memory.
+- **The filter row** becomes `WHERE`.
+- **The status bar** shows "about 10,000,000 rows" from `sqlite_stat1`.
+- **The 1,000-row cap stays** for engines that can't page cheaply. phai-database's tables page
+  instead.
+- On the web, phai-web's grid does the same: it draws only the visible rows.
+
+### Benchmarks for big tables (`bench_db`, from stage 2)
+
+A generated table of 10 million rows (and one run at 100 million), with
+`id INTEGER PRIMARY KEY`, a Thai name, a price, a date and an index on the name. Every result is
+measured against SQLite on the same computer and written down here:
+
+| What | Target |
+|---|---|
+| Load 10M rows in one transaction | within 3× of SQLite |
+| Create the index on the name after loading | within 3× of SQLite |
+| Look up by `id` | under 1 ms once the cache is warm |
+| Look up a name through the index | under 1 ms once the cache is warm |
+| The first screen of the grid, sorted by an indexed column | under 50 ms |
+| A jump to the middle of the grid | under 50 ms |
+| `ORDER BY price` (no index) with `temp_memory` 64 MB | finishes, with peak memory under 64 MB + cache + 32 MB |
+| `GROUP BY` the month, `SUM(price)` | within 3× of SQLite |
+| `COUNT(*)` | within 2× of SQLite |
+| Peak memory over the whole run | under the cache budget + 32 MB, at 10M and at 100M rows alike |
+
 ## Stages
 
-Each stage works on its own and is used before the next starts.
+Each stage works on its own and is used before the next starts. The rules for large tables
+apply from the stage that brings each part: streaming and the cache budget from stage 1; spilling
+sorts, the planner's indexes and keyset paging from stage 2; fast loading and bottom-up
+`CREATE INDEX` from stage 3; WAL limits from stage 4.
 
 ### Stage 1: read any SQLite file
 
@@ -123,7 +218,7 @@ Done when:
   reason.
 
 Safe when: `cargo-fuzz` feeds broken pages for hours and gets only errors, never a panic and never
-unbounded memory.
+unbounded memory. Reading all of a 10-million-row file stays under the cache budget.
 
 ### Stage 2: SQL that reads
 
@@ -141,7 +236,10 @@ Done when:
   all, with each skip written down and justified).
 - A differential test runs random queries on random data in both phai-database and SQLite, and the
   results are identical.
-- Studio's Server Explorer and data grid can browse a `.phdb` with phai-database alone.
+- Studio's Server Explorer and data grid can browse a `.phdb` with phai-database alone. The grid's
+  virtual mode scrolls a 10-million-row table smoothly.
+- `bench_db`'s read targets (lookups, the first screen, a jump, the sort with spilling, `GROUP BY`,
+  `COUNT(*)`) are met at 10M rows.
 
 Safe when: the parser is fuzzed as the pages were, and a query plan never reads past a page.
 
@@ -158,6 +256,8 @@ Done when:
 - Files written by phai-database are read by SQLite, and files written by SQLite are written to
   by phai-database, with `integrity_check` `ok` both ways.
 - Studio's data grid edits a `.phdb` through phai-database, behind a "preview" switch.
+- `bench_db`'s load and `CREATE INDEX` targets are met at 10M rows, and a 100M-row run finishes
+  within the memory budget.
 
 Safe when:
 - **The crash test passes.** The fault-injection VFS stops the process at every write and flush in
