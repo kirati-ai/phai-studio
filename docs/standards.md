@@ -30,10 +30,10 @@ Smaller points are in each part's table.
 ## Data and AI: Phai's own rule, for every database Studio opens
 
 This is not a published spec. It is the rule Phai holds itself to, written down on 2026-11-26.
-It covers phai-database, MySQL, PostgreSQL and SQLite alike, wherever Studio's Copilot, an ACP
+It covers phai-sql, MySQL, PostgreSQL and SQLite alike, wherever Studio's Copilot, an ACP
 agent or a program connects with AI in the loop.
 
-**What encryption does and does not do.** Encrypting the file (phai-database stage 4.5) protects
+**What encryption does and does not do.** Encrypting the file (phai-sql stage 4.5) protects
 the file while it is closed: copied, backed up to a cloud, or left on a lost USB stick. Once a
 program opens it with the key, the engine answers SQL in plain text. An AI never reads the file's
 bytes; it asks the engine, and the engine decrypts. So the file being encrypted does not stop an
@@ -42,7 +42,7 @@ AI that is allowed to query.
 **The first rule: the key stays with people.** In an encrypted database, an AI without the key
 reads nothing. It can't decrypt a page, so it can't even learn the table names. The AI is
 therefore never given a key:
-- **No slot for an AI** in a file's key slots (`-keys`, phai-database stage 4.5).
+- **No slot for an AI** in a file's key slots (`-keys`, phai-sql stage 4.5).
 - **No password or key** in a prompt, in a file an agent may read, or in the program's code.
 - **Studio's agents never read `*.phdb`, `*.phdb-wal` or `*.phdb-keys`**, not even inside the
   project. `-keys` holds only locked keys, but a copy of it lets anyone guess passwords offline.
@@ -90,7 +90,7 @@ Where it stands today:
 - **The first rule is broken too.** Through that same line, an agent can read any `.db` / `.sqlite`
   file in the project, and later a `.phdb` and its `-keys`. The fix for item 8 must also refuse
   database files outright.
-- **Rules 1-5 are designed for phai-database** (its own project D:/Project.Rust/phai-database, docs/blueprint.md, "AI agents and private
+- **Rules 1-5 are designed for phai-sql** (its own project D:/Project.Rust/phai-sql, docs/blueprint.md, "AI agents and private
   data"). For MySQL and PostgreSQL, Studio should create or use a separate read-only user for AI
   and say so in the connection dialog.
 
