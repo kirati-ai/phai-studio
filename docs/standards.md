@@ -90,7 +90,7 @@ Where it stands today:
 - **The first rule is broken too.** Through that same line, an agent can read any `.db` / `.sqlite`
   file in the project, and later a `.phdb` and its `-keys`. The fix for item 8 must also refuse
   database files outright.
-- **Rules 1-5 are designed for phai-database** (docs/phai-database.md, "AI agents and private
+- **Rules 1-5 are designed for phai-database** (its own project D:/Project.Rust/phai-database, docs/blueprint.md, "AI agents and private
   data"). For MySQL and PostgreSQL, Studio should create or use a separate read-only user for AI
   and say so in the connection dialog.
 
