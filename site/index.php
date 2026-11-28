@@ -83,8 +83,8 @@ define('PHAI_SITE', true);
 require __DIR__ . '/board.php';
 board_page($path, $B, $th, $storage);
 $c = counts($countsFile);
-// The count shows once it says something: a handful reads as "nobody uses it".
-$showCount = ($c['downloads'] ?? 0) >= 100;
+// The download count, shown always (the owner wants it seen, small or not).
+$showCount = true;
 
 function e(string $s): string
 {
