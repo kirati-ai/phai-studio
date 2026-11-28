@@ -83,6 +83,8 @@ define('PHAI_SITE', true);
 require __DIR__ . '/board.php';
 board_page($path, $B, $th, $storage);
 $c = counts($countsFile);
+// The count shows once it says something: a handful reads as "nobody uses it".
+$showCount = ($c['downloads'] ?? 0) >= 100;
 
 function e(string $s): string
 {
@@ -94,6 +96,9 @@ function v(string $f): string
     return $B . 'assets/' . $f . '?v=' . (@filemtime(__DIR__ . '/assets/' . $f) ?: 1);
 }
 $mb = number_format($release['size'] / 1048576, 1);
+// A phone or tablet: Phai Studio installs on Windows only, so it gets a way to send the page to a
+// computer instead of a download it cannot use.
+$phone = (bool) preg_match('/Android|iPhone|iPad|iPod|Mobile/i', $_SERVER['HTTP_USER_AGENT'] ?? '');
 $date = date($th ? 'd/m/Y' : 'd M Y', strtotime($release['date']));
 
 $T = $th ? [
@@ -205,6 +210,9 @@ $T = $th ? [
         'coverage' => ['รันเทสต์แล้ววัดว่าเทสต์วิ่งผ่านบรรทัดไหนบ้าง', 'แถบสีข้างบรรทัดบอกบรรทัดที่ครอบคลุมแล้ว และที่ยังไม่ครอบคลุม', 'รู้ว่าควรเขียนเทสต์เพิ่มตรงไหน'],
         'program' => ['โปรแกรม Windows จริงที่สร้างจาก Phai Studio', 'ได้ไฟล์ .exe ไฟล์เดียว ใช้แค่ Visual C++ runtime ที่เครื่องส่วนใหญ่มีอยู่แล้ว', 'หน้าจอภาษาไทยได้เต็มที่', 'Publish ทำตัวติดตั้งให้'],
     ],
+    'phoneH' => 'Phai Studio ติดตั้งบนคอม Windows', 'phoneP' => 'ส่งลิงก์นี้ไปเปิดบนคอมเพื่อดาวน์โหลด ระหว่างนี้อ่านคู่มือภาษาไทยบนมือถือได้เลย',
+    'phoneShare' => 'ส่งลิงก์ไปเปิดบนคอม', 'phoneCopied' => 'คัดลอกลิงก์แล้ว วางในแชทหรืออีเมลถึงตัวเองได้เลย', 'phoneShareText' => 'Phai Studio เขียนโปรแกรม Windows ด้วย Rust พร้อมคู่มือภาษาไทย - เปิดบนคอมเพื่อดาวน์โหลด',
+    'statWin' => 'ใช้กับ',
     'statDownloads' => 'ดาวน์โหลดแล้ว', 'statVersion' => 'เวอร์ชัน', 'cta' => 'ดาวน์โหลด',
     'zoom' => 'คลิกเพื่อดูภาพเต็ม', 'prev' => 'ก่อนหน้า', 'next' => 'ถัดไป', 'close' => 'ปิด',
     'whyH' => 'ทำไมต้อง Phai Studio',
@@ -216,13 +224,13 @@ $T = $th ? [
         ['เหมาะกับมือใหม่', 'หน้าจอภาษาไทย คู่มือภาษาไทย มีบทสอนอ่านข้อความ error และโปรเจกต์ตัวอย่างให้ลอง'],
         ['ไม่เก็บข้อมูลผู้ใช้', 'ไม่มี telemetry ไม่ต้องสมัครสมาชิก ส่งข้อมูลออกเฉพาะเมื่อสั่งเอง เช่น ดาวน์โหลด crate หรือ push Git'],
     ],
-    'insH' => 'ติดตั้งใน 3 ขั้น', 'insSub' => 'ใช้กับ Windows 10 หรือ 11 แบบ 64 บิต',
+    'insH' => 'ติดตั้งใน 3 ขั้น', 'insSub' => 'ใช้กับ Windows 10 หรือ 11 แบบ 64 บิต · ครั้งแรกต้องลง Rust ด้วย (ฟรี ลงครั้งเดียว ใช้พื้นที่รวมราว 7 GB เวลาราว 15–30 นาทีตามความเร็วเน็ต)',
     'ins' => [
         '<b>ดาวน์โหลดตัวติดตั้ง</b> แล้วดับเบิลคลิก เลือกที่ติดตั้งและทางลัดบนเดสก์ท็อป',
         '<b>ติดตั้ง Rust</b> (ฟรี) ถ้ายังไม่มี ตอน build ครั้งแรก Phai Studio จะพาไปที่ <a href="https://rustup.rs" rel="noopener">rustup.rs</a> ให้ดาวน์โหลด <code>rustup-init.exe</code> แล้วติดตั้งตามค่าเริ่มต้น ตัวติดตั้งจะพาลง Microsoft C++ Build Tools (ฟรี) ให้ด้วย',
         '<b>เปิด Phai Studio</b> เลือก "สร้างโปรเจกต์ใหม่" แล้วกด F5 กด F1 เมื่อไรก็ได้เพื่อเปิดคู่มือ',
     ],
-    'smart' => 'ถ้า Windows ขึ้นหน้าจอ "Windows protected your PC" ให้กด <b>More info</b> แล้วกด <b>Run anyway</b> เพราะตัวติดตั้งยังไม่ได้เซ็นโค้ด ตัวติดตั้ง build จากซอร์สโค้ดบน GitHub ตรวจสอบได้ทุกขั้น',
+    'smart' => 'ครั้งแรกที่เปิดตัวติดตั้ง Windows อาจขึ้นหน้าจอสีฟ้า "Windows protected your PC" เพราะ Phai Studio ยังเป็นโปรแกรมใหม่ที่ยังไม่มีใบรับรองเซ็นโค้ด กด <b>More info</b> แล้วกด <b>Run anyway</b> ได้เลย ตัวติดตั้งสร้างจากซอร์สโค้ดบน GitHub โดยอัตโนมัติ ตรวจดูได้ทุกขั้น',
     'uninst' => 'ถอนการติดตั้งได้ที่ Settings > Apps เหมือนโปรแกรมทั่วไป',
     'supH' => 'เรียนไปด้วยกัน', 'supSub' => 'ฟรี ไม่มีค่าสมาชิก ไม่ต้องลงทะเบียน',
     'selfH' => 'เริ่มเรียนเอง', 'selfP' => 'ดาวน์โหลด เปิดคู่มือภาษาไทย แล้วทำตามทีละบท ค่อย ๆ ไปตามจังหวะของตัวเอง',
@@ -339,10 +347,9 @@ $T = $th ? [
         ]],
     ],
     'dlH' => 'ดาวน์โหลด', 'dlName' => 'Phai Studio (ตัวติดตั้ง)',
-    'dlDesc' => 'ไฟล์เดียว มีโปรแกรม ตัวถอนการติดตั้ง และคู่มือภาษาไทยในตัว',
-    'dlMeta' => fn ($c) => "รุ่น {$release['version']} · วันที่ {$date} · ดาวน์โหลดแล้ว {$c['downloads']} ครั้ง",
-    'dlBuilt' => 'ตัวติดตั้ง build จากซอร์สโค้ดโดย GitHub Actions ตรวจสอบได้ทุกขั้น ดูได้ที่ <a href="' . $github . '/releases" rel="noopener">หน้า Releases</a>',
-    'dlSign' => 'การเซ็นโค้ด: ตอนนี้ไฟล์ยังไม่ได้เซ็น ใบรับรองเซ็นโค้ดฟรีสำหรับโอเพนซอร์สให้กับโปรเจกต์ที่มีคนใช้และรู้จักแล้ว เมื่อ Phai Studio มีคนใช้มากขึ้นจะขออีกครั้ง อ่าน <a href="' . $github . '/blob/main/docs/code-signing-policy.md" rel="noopener">นโยบายการเซ็นโค้ด</a>',
+    'dlDesc' => 'ไฟล์เดียว มีโปรแกรม ตัวถอนการติดตั้ง และคู่มือภาษาไทยในตัว · ครั้งแรกต้องลง Rust ด้วย (ฟรี ราว 7 GB ดูขั้นตอนใน วิธีติดตั้ง)',
+    'dlMeta' => fn ($c) => "รุ่น {$release['version']} · วันที่ {$date}" . ($showCount ? " · ดาวน์โหลดแล้ว " . number_format($c['downloads']) . " ครั้ง" : ''),
+    'dlBuilt' => 'ตัวติดตั้ง build จากซอร์สโค้ดโดย GitHub Actions ตรวจสอบได้ทุกขั้น ดูได้ที่ <a href="' . $github . '/releases" rel="noopener">หน้า Releases</a> · เรื่องการเซ็นโค้ด อ่าน <a href="' . $github . '/blob/main/docs/code-signing-policy.md" rel="noopener">นโยบายการเซ็นโค้ด</a>',
     'dlGit' => 'หรือดึงโค้ดล่าสุดจาก GitHub (แจก แก้ และส่ง pull request ได้):',
     'license' => 'ใช้ฟรีทุกงาน รวมถึงทำโปรแกรมขาย · ไลบรารีที่ติดไปกับโปรแกรมของคุณ (phai-ui, phai-data, phai-web) เป็นสัญญาอนุญาต MIT · ตัว Phai Studio เป็น PolyForm Perimeter 1.0.1: ใช้ แก้ และแจกต่อได้ แต่ห้ามนำไปทำเป็นโปรแกรมที่แข่งกับ Phai Studio · ชื่อ Phai Studio และโลโก้ไผ่เป็นของ Monrak Net',
     'quote' => 'เราได้เรียนรู้จากซอฟต์แวร์โอเพนซอร์ส ของผู้อื่นมามาก จึงขอมอบซอฟต์แวร์ตระกูลไผ่ เป็นวิทยาทานแก่ทุกคน ให้ใครก็ได้มาเรียนรู้ ใช้งาน และต่อยอดได้ฟรี',
@@ -463,6 +470,9 @@ $T = $th ? [
         'coverage' => ['Run the tests and measure which lines they reach', 'A coloured bar by each line: reached, or not yet', 'Know where more tests are needed'],
         'program' => ['A real Windows program made with Phai Studio', 'One .exe file, needing only the Visual C++ runtime most computers already have', 'A Thai interface, in full', 'Publish makes its installer'],
     ],
+    'phoneH' => 'Phai Studio installs on a Windows computer', 'phoneP' => 'Send this link to your computer to download it; meanwhile the Thai guide reads fine on your phone',
+    'phoneShare' => 'Send the link to my computer', 'phoneCopied' => 'Link copied: paste it into a chat or an email to yourself', 'phoneShareText' => 'Phai Studio: Windows programs in Rust, with a Thai guide - open it on a computer to download',
+    'statWin' => 'Runs on',
     'statDownloads' => 'Downloads', 'statVersion' => 'Version', 'cta' => 'Download',
     'zoom' => 'Click to see it full size', 'prev' => 'Previous', 'next' => 'Next', 'close' => 'Close',
     'whyH' => 'Why Phai Studio',
@@ -474,13 +484,13 @@ $T = $th ? [
         ['Made for beginners', 'Thai interface, a Thai guide with a lesson on reading errors, and a sample project to try'],
         ['Nothing collected about you', 'No telemetry, no sign-up; it goes online only when you ask, such as downloading crates or pushing to Git'],
     ],
-    'insH' => 'Install in 3 steps', 'insSub' => 'For Windows 10 or 11, 64-bit',
+    'insH' => 'Install in 3 steps', 'insSub' => 'For Windows 10 or 11, 64-bit · the first time, Rust goes on too (free, once; about 7 GB of disk in all, 15–30 minutes depending on your internet)',
     'ins' => [
         '<b>Download the installer</b> and double-click it; choose where to install and whether to add a desktop shortcut',
         '<b>Install Rust</b> (free) if you do not have it: on the first build Phai Studio takes you to <a href="https://rustup.rs" rel="noopener">rustup.rs</a>; download <code>rustup-init.exe</code> and accept its defaults. It installs the free Microsoft C++ Build Tools for you too',
         '<b>Open Phai Studio</b>, choose "Create a new project" and press F5. Press F1 at any time for the guide',
     ],
-    'smart' => 'If Windows shows "Windows protected your PC", choose <b>More info</b> then <b>Run anyway</b>: the installer is not code-signed yet. It is built from source on GitHub, every step open to check',
+    'smart' => 'The first time, Windows may show a blue "Windows protected your PC" screen: Phai Studio is new and has no code-signing certificate yet. Choose <b>More info</b>, then <b>Run anyway</b>. The installer is built from the source on GitHub by machine, every step open to check',
     'uninst' => 'Uninstall it from Settings > Apps like any other program',
     'supH' => 'Learning together', 'supSub' => 'Free: no subscription, no sign-up',
     'selfH' => 'Start on your own', 'selfP' => 'Download, open the guide and follow it lesson by lesson, at your own pace',
@@ -597,10 +607,9 @@ $T = $th ? [
         ]],
     ],
     'dlH' => 'Download', 'dlName' => 'Phai Studio (installer)',
-    'dlDesc' => 'One file with the program, its uninstaller and the Thai guide',
-    'dlMeta' => fn ($c) => "Version {$release['version']} · {$date} · Downloaded {$c['downloads']} times",
-    'dlBuilt' => 'The installer is built from source by GitHub Actions, every step open to check, on the <a href="' . $github . '/releases" rel="noopener">Releases page</a>',
-    'dlSign' => 'Code signing: the files are not signed yet. Free code signing for open source is given to projects that are already widely used; Phai Studio will apply again as more people use it. See the <a href="' . $github . '/blob/main/docs/code-signing-policy.md" rel="noopener">code signing policy</a>',
+    'dlDesc' => 'One file with the program, its uninstaller and the Thai guide · the first time, Rust goes on too (free, about 7 GB; see Install)',
+    'dlMeta' => fn ($c) => "Version {$release['version']} · {$date}" . ($showCount ? " · Downloaded " . number_format($c['downloads']) . " times" : ''),
+    'dlBuilt' => 'The installer is built from source by GitHub Actions, every step open to check, on the <a href="' . $github . '/releases" rel="noopener">Releases page</a> · on code signing, see the <a href="' . $github . '/blob/main/docs/code-signing-policy.md" rel="noopener">code signing policy</a>',
     'dlGit' => 'Or get the latest code from GitHub (share it, change it, send pull requests):',
     'license' => 'Free for any work, programs you sell included · The libraries that go into your programs (phai-ui, phai-data, phai-web) are MIT · Phai Studio itself is PolyForm Perimeter 1.0.1: use it, change it and pass it on, but not to make a product that competes with Phai Studio · The Phai Studio name and bamboo logo are Monrak Net\'s',
     'quote' => 'We have learned a great deal from other people\'s open-source software, so we give the Phai family of software to everyone as a gift of knowledge: anyone may learn from it, use it and build on it, free.',
@@ -670,7 +679,7 @@ $base = 'https://phai-studio.monrak.net/';
             <a class="hide-sm" href="#features"><?= e($T['nav']['features']) ?></a>
             <a class="hide-sm" href="#install"><?= e($T['nav']['install']) ?></a>
             <a class="hide-sm" href="#history"><?= e($T['histH']) ?></a>
-            <a href="<?= $B ?>board"><?= $th ? 'ชุมชนคนรัก Rust' : 'Rust Community' ?></a>
+            <a class="hide-sm" href="<?= $B ?>board"><?= $th ? 'ชุมชนคนรัก Rust' : 'Rust Community' ?></a>
             <a class="lang" href="?lang=<?= $th ? 'en' : 'th' ?>"><i class="ti ti-world"></i> <?= $th ? 'EN' : 'ไทย' ?></a>
             <a class="cta" href="#download"><?= e($T['cta']) ?> <i class="ti ti-arrow-right"></i></a>
         </nav>
@@ -684,13 +693,15 @@ $base = 'https://phai-studio.monrak.net/';
             <span class="label"><i class="ti ti-bolt"></i> <?= e($T['tag']) ?></span>
             <h1><?= $T['h1'] ?></h1>
             <p class="lead"><?= e($T['lead']) ?></p>
+            <?php if ($phone): ?><p class="phone-note"><i class="ti ti-device-desktop"></i><span><b><?= e($T['phoneH']) ?></b><?= e($T['phoneP']) ?></span></p><?php endif ?>
             <div class="actions">
-                <a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a>
+                <?php if ($phone): ?><button type="button" class="btn btn-primary js-share" data-url="https://phai-studio.monrak.net/#download" data-text="<?= e($T['phoneShareText']) ?>" data-done="<?= e($T['phoneCopied']) ?>"><i class="ti ti-send"></i> <?= e($T['phoneShare']) ?></button><?php else: ?><a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a><?php endif ?>
                 <a class="btn btn-ghost" href="<?= $B ?>help/" target="_blank" rel="noopener"><i class="ti ti-book"></i> <?= e($T['btnGuide']) ?></a>
                 <a class="btn btn-ghost" href="<?= $github ?>" rel="noopener"><i class="ti ti-brand-github"></i> GitHub</a>
             </div>
             <div class="stats">
-                <div><small><?= e($T['statDownloads']) ?></small><b><?= number_format($c['downloads']) ?></b></div>
+                <?php if ($showCount): ?><div><small><?= e($T['statDownloads']) ?></small><b><?= number_format($c['downloads']) ?></b></div><?php endif ?>
+                <div><small><?= e($T['statWin']) ?></small><b>Windows</b></div>
                 <div><small><?= e($T['statVersion']) ?></small><b><?= e($release['version']) ?></b></div>
             </div>
         </div>
@@ -794,7 +805,7 @@ $base = 'https://phai-studio.monrak.net/';
         <p class="sub"><?= e($T['supSub']) ?></p>
         <div class="grid g2">
             <article class="card"><div class="icon"><i class="ti ti-book"></i></div><h3><?= e($T['selfH']) ?></h3><p><?= e($T['selfP']) ?></p>
-                <p class="mt"><a class="btn btn-ghost" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a></p></article>
+                <p class="mt"><?php if ($phone): ?><button type="button" class="btn btn-ghost js-share" data-url="https://phai-studio.monrak.net/#download" data-text="<?= e($T['phoneShareText']) ?>" data-done="<?= e($T['phoneCopied']) ?>"><i class="ti ti-send"></i> <?= e($T['phoneShare']) ?></button><?php else: ?><a class="btn btn-ghost" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= e($T['btnDownload']) ?></a><?php endif ?></p></article>
             <article class="card main"><div class="icon"><i class="ti ti-users"></i></div><h3><?= e($T['proH']) ?></h3><p><?= e($T['proP']) ?></p>
                 <ul class="muted"><?php foreach ($T['pro'] as $s): ?><li><?= $s ?></li><?php endforeach ?></ul></article>
         </div>
@@ -817,11 +828,10 @@ $base = 'https://phai-studio.monrak.net/';
                 <p><?= e($T['dlDesc']) ?></p>
                 <details><summary><code><?= e($release['file']) ?></code></summary><?php if ($release['sha256']): ?><small>SHA-256 <code class="sha"><?= e($release['sha256']) ?></code></small><?php endif ?></details>
             </div>
-            <a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= $mb ?> MB</a>
+            <?php if ($phone): ?><button type="button" class="btn btn-primary js-share" data-url="https://phai-studio.monrak.net/#download" data-text="<?= e($T['phoneShareText']) ?>" data-done="<?= e($T['phoneCopied']) ?>"><i class="ti ti-send"></i> <?= e($T['phoneShare']) ?></button><?php else: ?><a class="btn btn-primary" href="<?= $B ?>download/setup" rel="nofollow"><i class="ti ti-download"></i> <?= $mb ?> MB</a><?php endif ?>
         </div>
         <p class="note mt"><?= $T['dlMeta']($c) ?></p>
         <p class="note"><i class="ti ti-brand-github"></i> <?= $T['dlBuilt'] ?></p>
-        <p class="note"><i class="ti ti-certificate"></i> <?= $T['dlSign'] ?></p>
         <p class="note mt"><?= e($T['dlGit']) ?></p>
         <pre><code>git clone https://github.com/kirati-ai/phai-studio.git</code></pre>
     </div>

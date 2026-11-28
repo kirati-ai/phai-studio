@@ -144,3 +144,18 @@ document.querySelectorAll('.gallery').forEach((gal) => {
     addEventListener('resize', kick);
     kick();
 })();
+
+// On a phone: "send the link to my computer" - the phone's own share sheet, or the link copied.
+document.querySelectorAll('.js-share').forEach((b) => {
+    const was = b.innerHTML;
+    b.addEventListener('click', async () => {
+        const url = b.dataset.url, text = b.dataset.text;
+        if (navigator.share) {
+            try { await navigator.share({ title: 'Phai Studio', text, url }); } catch (e) { /* closed */ }
+            return;
+        }
+        try { await navigator.clipboard.writeText(url); } catch (e) { window.prompt('', url); return; }
+        b.textContent = b.dataset.done;
+        setTimeout(() => { b.innerHTML = was; }, 3000);
+    });
+});
