@@ -54,7 +54,8 @@ function is_bot(): bool
 }
 
 if ($path === '/download/setup') {
-    if (!is_bot()) {
+    // Every download counts, bots too (the owner's wish); a HEAD only checks the link, so it doesn't.
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
         counts($countsFile, fn ($c) => ['downloads' => $c['downloads'] + 1] + $c);
     }
     header('Location: ' . $setupUrl, true, 302);
